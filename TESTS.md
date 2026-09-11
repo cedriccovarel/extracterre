@@ -1,9 +1,17 @@
-# Tests — ExtracTerre v1.1.4
+# Tests — ExtracTerre v1.1.5
 
 Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
 
 État attendu : **112/112 auto-tests**.
 
+
+## Régressions v1.1.5
+
+- écran d’accès présent avant initialisation de l’application ;
+- vérification PBKDF2-SHA-256 salée, sans secret en clair dans le dépôt ;
+- restauration IndexedDB déclenchée seulement après déverrouillage ;
+- verrouillage manuel sans suppression du projet ;
+- session d’accès limitée à `sessionStorage`.
 
 ## Régressions v1.1.4
 

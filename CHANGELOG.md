@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.5 — Écran d’accueil sécurisé
+
+- Ajout d’un écran d’accueil verrouillé avant l’initialisation de l’application.
+- Le secret d’accès n’est jamais stocké en clair dans les fichiers livrés ; seule une empreinte PBKDF2-SHA-256 salée est embarquée.
+- L’accès est mémorisé uniquement dans `sessionStorage` pour la durée de la session du navigateur.
+- Ajout d’une commande **Verrouiller** qui sauvegarde le projet puis revient immédiatement à l’écran d’accès.
+- IndexedDB n’est restauré qu’après validation de l’accès.
+
 ## v1.1.4 — Onglets métier, vitrage normalisé et crible fin
 - Répartition de la synthèse en six onglets métier : **Données générales**, **Thermique neuf**, **Thermique réno**, **Carbone neuf**, **Carbone réno** et **Structure & enveloppe**.
 - Chaque onglet est lui-même découpé en petits tableaux thématiques pour éviter le tableau horizontal de 167 colonnes à l'écran.

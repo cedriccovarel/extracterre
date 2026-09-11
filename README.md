@@ -1,7 +1,11 @@
-# ExtracTerre v1.1.4
+# ExtracTerre v1.1.5
 
 Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
 
+
+## v1.1.5 — Écran d’accueil sécurisé
+
+ExtracTerre affiche désormais un écran d’accès avant de charger l’espace de travail. Le secret n’est pas présent en clair dans les fichiers du site : la vérification repose sur PBKDF2-SHA-256 avec sel et l’autorisation ne reste active que pour la session courante du navigateur. Le menu **Verrouiller** permet de sauvegarder puis de fermer immédiatement l’accès sans supprimer les données IndexedDB.
 
 ## v1.1.4 — Onglets métier, vitrage technique et Crible fin
 

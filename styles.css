@@ -589,3 +589,23 @@ button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible
 .result-data-group-head span{font-size:10px;color:var(--muted);font-weight:800}
 .targeted-file{border-color:#b8d0c3!important;background:#f4faf6!important}
 @media(max-width:1000px){.result-tabs-wrap{justify-content:flex-start;max-width:none}.result-tab{font-size:10.5px}}
+
+/* v1.1.5 — écran d’accueil sécurisé */
+body.auth-locked{overflow:hidden;background:#eef4f0}
+body.auth-locked .app-shell{visibility:hidden;pointer-events:none;user-select:none}
+.auth-noscript{position:fixed;inset:0;display:grid;place-items:center;background:#eef4f0;color:#173e31;font:700 16px Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;z-index:10000}
+.auth-gate{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;overflow:hidden;padding:30px;background:linear-gradient(135deg,#f7faf8 0%,#edf4ef 52%,#e3efe7 100%);opacity:1;transition:opacity .24s ease}
+.auth-gate::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 18% 18%,rgba(94,160,108,.16),transparent 25%),radial-gradient(circle at 86% 76%,rgba(16,84,59,.11),transparent 28%);pointer-events:none}
+.auth-gate-leaving{opacity:0}
+.auth-backdrop-shape{position:absolute;border-radius:999px;filter:blur(1px);pointer-events:none}
+.auth-shape-one{width:520px;height:520px;left:-180px;bottom:-250px;background:rgba(86,147,98,.08);border:1px solid rgba(23,62,49,.06)}
+.auth-shape-two{width:360px;height:360px;right:-120px;top:-130px;background:rgba(23,62,49,.06);border:1px solid rgba(23,62,49,.05)}
+.auth-card{position:relative;width:min(920px,94vw);min-height:500px;display:grid;grid-template-columns:.9fr 1px 1.1fr;align-items:center;gap:52px;padding:58px 62px;border:1px solid rgba(23,62,49,.1);border-radius:30px;background:rgba(255,255,255,.9);box-shadow:0 34px 100px rgba(22,58,45,.14);backdrop-filter:blur(22px);transform:translateY(0)}
+.auth-brand-block{text-align:center}.auth-logo{width:154px;height:154px;object-fit:contain;display:block;margin:0 auto 26px;filter:drop-shadow(0 16px 24px rgba(23,62,49,.09))}
+.auth-brand-name{font-size:38px;font-weight:850;letter-spacing:-1.4px;color:#16221e}.auth-brand-name span{color:#34765b}.auth-brand-subtitle{margin-top:8px;color:#718079;font-size:13px;font-weight:650;letter-spacing:.02em}
+.auth-divider{width:1px;height:270px;background:linear-gradient(180deg,transparent,#d9e5de 18%,#d9e5de 82%,transparent)}
+.auth-form{display:flex;flex-direction:column;align-items:stretch}.auth-eyebrow{display:block;margin-bottom:8px;color:#3a725c;font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.1em}.auth-form h1{margin:0;color:#12251e;font-size:34px;letter-spacing:-.8px}.auth-form>p{margin:10px 0 28px;color:#687971;line-height:1.55;font-size:14px}.auth-form>label{margin:0 0 7px;color:#294b3e;font-size:12px;font-weight:800}
+.auth-password-wrap{position:relative}.auth-password-wrap input{width:100%;height:52px;padding:0 52px 0 15px;border:1px solid #cbd9d1;border-radius:13px;background:#fbfdfc;font-size:16px;letter-spacing:.04em;transition:border-color .15s,box-shadow .15s}.auth-password-wrap input:focus{outline:0;border-color:#4d8b6e;box-shadow:0 0 0 4px rgba(72,133,104,.11)}
+.auth-toggle{position:absolute;right:8px;top:8px;width:36px;height:36px;border:0;border-radius:9px;background:transparent;color:#557168;cursor:pointer;font-size:15px}.auth-toggle:hover{background:#edf4ef;color:#173e31}.auth-error{min-height:24px;padding-top:7px;color:#a23e3e;font-size:12px;font-weight:750}.auth-submit{height:50px;margin-top:4px;border:0;border-radius:13px;background:#173e31;color:white;font:800 14px Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;box-shadow:0 12px 26px rgba(23,62,49,.15);transition:transform .15s,background .15s,opacity .15s}.auth-submit:hover{background:#245947;transform:translateY(-1px)}.auth-submit:disabled{opacity:.6;cursor:wait;transform:none}.auth-form>small{margin-top:13px;color:#8a9892;font-size:10px;text-align:center}
+.auth-shake{animation:authShake .34s ease}@keyframes authShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}
+@media(max-width:760px){.auth-gate{padding:18px}.auth-card{grid-template-columns:1fr;gap:18px;padding:34px 28px;min-height:0}.auth-divider{display:none}.auth-logo{width:100px;height:100px;margin-bottom:14px}.auth-brand-name{font-size:30px}.auth-brand-subtitle{font-size:11px}.auth-form h1{font-size:28px}.auth-form>p{margin-bottom:20px}}

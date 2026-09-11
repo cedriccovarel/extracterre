@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v1.1.5 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.4';
+const APP_VERSION = '1.1.5';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -4002,7 +4002,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); $('#newProjectBtn').onclick=addNewProject; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats sauvegardés dans ce navigateur seront supprimés. Les règles de sources resteront conservées.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);toast('Session locale effacée.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats sauvegardés dans ce navigateur seront supprimés. Les règles de sources resteront conservées.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);toast('Session locale effacée.','success');};
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
   $$('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab)); $$('.result-tab').forEach(b=>b.onclick=()=>{ activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); });
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
@@ -4021,6 +4021,8 @@ function wire(){
 }
 
 async function initializeApp(){
+  if(!globalThis.__extracterreAccessPromise) throw new Error('Le contrôle d’accès ExtracTerre n’a pas été initialisé.');
+  await globalThis.__extracterreAccessPromise;
   wire(); setLocalSaveUi('Recherche de session…');
   try{
     const restored=await loadWorkspaceSnapshot();

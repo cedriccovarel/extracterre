@@ -6,13 +6,15 @@
   <meta name="theme-color" content="#07583f">
   <title>ExtracTerre</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=1.1.4">
+  <link rel="stylesheet" href="styles.css?v=1.1.5">
+  <script defer src="js/security.js?v=1.1.5"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
-  <script defer src="js/app.bundle.js?v=1.1.4"></script>
+  <script defer src="js/app.bundle.js?v=1.1.5"></script>
 </head>
-<body>
+<body class="auth-locked">
+<noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
 <div class="app-shell ux-shell">
   <header class="ux-header ux-header-clean">
     <div class="ux-brand">
@@ -30,7 +32,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v1.1.4</span>
+      <span class="ux-version-chip" id="version">v1.1.5</span>
     </div>
   </header>
 
@@ -46,6 +48,7 @@
         <button class="tab ux-nav-item" data-tab="diag" type="button"><span class="nav-ico">⌁</span><span>Diagnostics</span></button>
         <button class="ux-nav-item" id="exportBtn" type="button" disabled><span class="nav-ico">⇩</span><span>Exporter Excel</span></button>
         <button class="ux-nav-item danger-nav" id="clearBtn" type="button"><span class="nav-ico">×</span><span>Effacer la session</span></button>
+        <button class="ux-nav-item" id="lockBtn" type="button"><span class="nav-ico">⌑</span><span>Verrouiller</span></button>
         <button class="ux-nav-item" id="helpBtn" type="button" onclick="document.getElementById('helpDialog').showModal()"><span class="nav-ico">?</span><span>Aide / FAQ</span></button>
       </nav>
       <div class="ux-sidebar-brand">
