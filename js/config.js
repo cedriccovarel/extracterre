@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.1.5';
+export const APP_VERSION = '1.1.9';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -339,7 +339,7 @@ export const HVAC = {
   ],
   ecs:[
     pair('Chauffe-eau thermodynamique',['cet','chauffe-eau thermodynamique','chauffe eau thermodynamique','ballon thermodynamique','chauffe-eau thermodynamique individuel']),
-    pair('Ballon électrique',['ballon électrique','ballon electrique','chauffe-eau électrique','chauffe eau electrique','cumulus','préparateur électrique','preparateur electrique']),
+    pair('Ballon électrique',['ballon électrique','ballon electrique','chauffe-eau électrique','chauffe eau electrique','chauffe eau élec','chauffe-eau élec','chauffe eau elec','chauffe-eau elec','cumulus','préparateur électrique','preparateur electrique']),
     pair('Solaire thermique',['solaire thermique','ecs solaire','chauffe-eau solaire','chauffe eau solaire','cesi']),
     pair('Réseau de chaleur',['réseau de chaleur','reseau de chaleur','rcu','sous-station','sous station']),
     pair('Chaudière',['chaudière','chaudiere','préparateur gaz','preparateur gaz']),
@@ -348,6 +348,7 @@ export const HVAC = {
     pair('ECS individuelle',['ecs individuelle','production individuelle ecs','eau chaude individuelle'])
   ],
   ventilation:[
+    pair('VMC Hygro-Gaz',['hygro-gaz','hygro gaz','atlantic hygro-gaz','atlantic hygro gaz']),
     pair('VMC Hygro B',['vmc hygro b','hygro b','simple flux hygro b','hygroreglable type b','hygroréglable type b','hygroreglable b']),
     pair('VMC Hygro A',['vmc hygro a','hygro a','simple flux hygro a','hygroreglable type a','hygroréglable type a']),
     pair('VMC double flux',['vmc double flux','double flux','ventilation double flux','df haut rendement','double flux haut rendement']),

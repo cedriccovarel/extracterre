@@ -609,3 +609,48 @@ body.auth-locked .app-shell{visibility:hidden;pointer-events:none;user-select:no
 .auth-toggle{position:absolute;right:8px;top:8px;width:36px;height:36px;border:0;border-radius:9px;background:transparent;color:#557168;cursor:pointer;font-size:15px}.auth-toggle:hover{background:#edf4ef;color:#173e31}.auth-error{min-height:24px;padding-top:7px;color:#a23e3e;font-size:12px;font-weight:750}.auth-submit{height:50px;margin-top:4px;border:0;border-radius:13px;background:#173e31;color:white;font:800 14px Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;cursor:pointer;box-shadow:0 12px 26px rgba(23,62,49,.15);transition:transform .15s,background .15s,opacity .15s}.auth-submit:hover{background:#245947;transform:translateY(-1px)}.auth-submit:disabled{opacity:.6;cursor:wait;transform:none}.auth-form>small{margin-top:13px;color:#8a9892;font-size:10px;text-align:center}
 .auth-shake{animation:authShake .34s ease}@keyframes authShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}
 @media(max-width:760px){.auth-gate{padding:18px}.auth-card{grid-template-columns:1fr;gap:18px;padding:34px 28px;min-height:0}.auth-divider{display:none}.auth-logo{width:100px;height:100px;margin-bottom:14px}.auth-brand-name{font-size:30px}.auth-brand-subtitle{font-size:11px}.auth-form h1{font-size:28px}.auth-form>p{margin-bottom:20px}}
+
+/* v1.1.6 — journal d'amélioration */
+.ux-journal-card{background:linear-gradient(180deg,#fbfdfc,#f2f8f5);border-color:#dbe9e1}
+.ux-journal-copy{margin:0 0 10px;color:#66766f;font-size:11px;line-height:1.45}
+.ux-journal-actions{display:grid;grid-template-columns:1fr 1.35fr;gap:7px;margin-top:11px}
+.ux-journal-actions .ux-journal-config{grid-column:1/-1}
+.ux-journal-actions .btn{padding:8px 9px;font-size:10px;white-space:normal}
+.ux-journal-note{display:block;margin-top:9px;color:#819087;font-size:9.5px;line-height:1.4}
+#journalRemoteStatus.ok{color:#0b714c}#journalRemoteStatus.warn{color:#986a13}
+.journal-config-shell{width:min(760px,94vw)}
+.journal-config-form{display:grid;gap:14px;padding:22px 24px}
+.journal-config-form label{display:grid;gap:7px;color:#294b3e;font-size:12px;font-weight:800}
+.journal-config-form input{width:100%;height:44px;padding:0 12px;border:1px solid #cfddd5;border-radius:10px;background:#fbfdfc;font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace}
+.journal-config-feedback{padding:11px 12px;border-radius:10px;background:#f3f7f5;color:#687971;font-size:11px;line-height:1.45}
+.journal-config-feedback.ok{background:#eaf6ef;color:#216145}.journal-config-feedback.error{background:#fff0f0;color:#9b3838}
+.journal-config-foot>div{display:flex;gap:8px}.journal-pack-password-shell{width:min(560px,92vw)}
+
+/* v1.1.7 — journal déplacé dans Aide / FAQ */
+.ux-help-journal{grid-column:1/-1;padding:16px!important;background:linear-gradient(180deg,#fbfdfc,#f2f8f5)!important;border-color:#dbe9e1!important}
+.ux-help-journal .ux-side-card-head{margin-bottom:8px}
+.ux-help-journal-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.ux-help-journal-stats .ux-meta-row{margin:0;padding:9px 10px;border:1px solid #e0eae4;border-radius:10px;background:#fff}
+.ux-help-journal .ux-journal-actions{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px}
+.ux-help-journal .ux-journal-actions .ux-journal-config{grid-column:auto}
+.ux-help-journal .ux-journal-actions .btn{font-size:11px}
+@media(max-width:760px){.ux-help-journal-stats,.ux-help-journal .ux-journal-actions{grid-template-columns:1fr}.ux-help-journal .ux-journal-actions .ux-journal-config{grid-column:auto}}
+
+
+/* v1.1.9 — aperçu intégré des fichiers */
+.file-row{grid-template-columns:42px minmax(0,1fr) auto auto}
+.file-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;min-width:0}
+.file-actions .btn{white-space:nowrap}
+.file-preview-dialog{border:0;padding:0;background:transparent;width:min(1180px,96vw);max-width:none;height:min(880px,92vh);max-height:92vh}
+.file-preview-dialog::backdrop{background:rgba(3,34,24,.34);backdrop-filter:blur(5px)}
+.file-preview-shell{height:100%;display:flex;flex-direction:column;overflow:hidden;background:#fff;border:1px solid #dce7e1;border-radius:18px;box-shadow:0 28px 70px rgba(5,52,37,.26)}
+.file-preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:15px 18px 13px;border-bottom:1px solid #e4ece7;background:#f8fbf9}
+.file-preview-title-wrap{min-width:0}.file-preview-title-wrap h3{margin:2px 0 0;font-size:18px;color:#0a513b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(900px,78vw)}.file-preview-title-wrap p{margin:4px 0 0;color:#718078;font-size:11px}
+.file-preview-body{flex:1;min-height:0;overflow:auto;background:#f1f4f2;position:relative}
+.file-preview-frame{display:block;width:100%;height:100%;min-height:650px;border:0;background:#e9eeeb}
+.file-preview-loading,.file-preview-empty{min-height:320px;display:flex;align-items:center;justify-content:center;gap:10px;color:#65766e;font-weight:700;padding:30px;text-align:center}.file-preview-empty.error{color:#9d3939}
+.file-preview-notice{padding:9px 14px;background:#fff8df;border-bottom:1px solid #eadcae;color:#765b10;font-size:11px;font-weight:700}
+.file-preview-text{margin:0;padding:18px 20px;min-height:100%;box-sizing:border-box;background:#fff;color:#24352f;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.file-preview-sheetbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;background:#f8fbf9;border-bottom:1px solid #dfe9e3;color:#476158;font-size:11px}.file-preview-sheetbar label{display:flex;align-items:center;gap:8px;font-weight:700}.file-preview-sheetbar select{padding:6px 8px;border:1px solid #cddbd3;border-radius:7px;background:#fff;color:#183a2f}
+.file-preview-sheet-scroll{overflow:auto;background:#fff;min-height:100%}.file-preview-sheet{border-collapse:collapse;width:max-content;min-width:100%;font-size:11px}.file-preview-sheet th,.file-preview-sheet td{border:1px solid #e0e7e3;padding:6px 8px;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.file-preview-sheet th{position:sticky;top:42px;background:#edf5f0;color:#204b3d;text-align:left;z-index:1}
+@media(max-width:720px){.file-row{grid-template-columns:34px minmax(0,1fr) auto}.file-row>.badge{grid-column:2/4;justify-self:start}.file-actions{grid-column:2/4;justify-content:flex-start}.file-preview-dialog{width:calc(100vw - 14px);height:calc(100vh - 20px);max-height:none}.file-preview-frame{min-height:520px}.file-preview-title-wrap h3{max-width:74vw}}

@@ -6,12 +6,14 @@
   <meta name="theme-color" content="#07583f">
   <title>ExtracTerre</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=1.1.5">
-  <script defer src="js/security.js?v=1.1.5"></script>
+  <link rel="stylesheet" href="styles.css?v=1.1.9">
+  <script defer src="js/journal-config.js?v=1.1.9"></script>
+  <script defer src="js/security.js?v=1.1.9"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
-  <script defer src="js/app.bundle.js?v=1.1.5"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script defer src="js/app.bundle.js?v=1.1.9"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -32,7 +34,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v1.1.5</span>
+      <span class="ux-version-chip" id="version">v1.1.7</span>
     </div>
   </header>
 
@@ -163,6 +165,7 @@
             <small id="localSaveDetail" class="ux-local-save-detail">Stockage local du navigateur</small>
           </section>
 
+
           <section class="card ux-side-card ux-kpi-card">
             <div class="ux-side-card-head"><span>◉</span><h3>Informations extraites</h3></div>
             <div class="ux-kpi-main">
@@ -187,10 +190,8 @@
           <div class="ux-workspace-tools">
             <div id="resultTabsWrap" class="result-tabs-wrap" aria-label="Répartition des résultats">
               <button class="result-tab active" data-result-view="generic" type="button">Données générales</button>
-              <button class="result-tab" data-result-view="thermalNew" type="button">Thermique neuf</button>
-              <button class="result-tab" data-result-view="thermalReno" type="button">Thermique réno</button>
-              <button class="result-tab" data-result-view="carbonNew" type="button">Carbone neuf</button>
-              <button class="result-tab" data-result-view="carbonReno" type="button">Carbone réno</button>
+              <button class="result-tab" data-result-view="thermal" type="button">Thermique</button>
+              <button class="result-tab" data-result-view="carbon" type="button">Carbone</button>
               <button class="result-tab" data-result-view="envelope" type="button">Structure & enveloppe</button>
             </div>
             <div id="rulesActionWrap" class="context-rule-actions" hidden>
@@ -222,6 +223,17 @@
     </main>
   </div>
 </div>
+
+
+<dialog id="filePreviewDialog" class="file-preview-dialog">
+  <div class="file-preview-shell">
+    <div class="file-preview-head">
+      <div class="file-preview-title-wrap"><span class="ux-eyebrow">Aperçu du document</span><h3 id="filePreviewTitle">Fichier</h3><p id="filePreviewMeta"></p></div>
+      <button id="filePreviewClose" class="icon-btn" type="button" aria-label="Fermer l’aperçu">×</button>
+    </div>
+    <div id="filePreviewBody" class="file-preview-body"></div>
+  </div>
+</dialog>
 
 <dialog id="manualDataDialog" class="targeted-dialog manual-data-dialog">
   <div class="targeted-dialog-shell manual-data-shell">
@@ -290,6 +302,39 @@
   </div>
 </dialog>
 
+
+<dialog id="journalConfigDialog" class="search-integrate-dialog journal-config-dialog">
+  <div class="search-integrate-shell journal-config-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Journal partagé</span><h3>Connexion multi-ordinateurs</h3><p>Connectez ExtracTerre à la base Supabase préparée pour agréger le journal entre plusieurs ordinateurs. L’URL et la clé anonyme Supabase ne sont pas des mots de passe.</p></div>
+      <button id="journalConfigClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="journal-config-form">
+      <label>URL du projet Supabase<input id="journalSupabaseUrl" type="url" placeholder="https://…supabase.co" autocomplete="off"></label>
+      <label>Clé publishable / anon legacy<input id="journalSupabaseKey" type="password" placeholder="Clé publishable du projet" autocomplete="off"></label>
+      <div id="journalConfigFeedback" class="journal-config-feedback">La configuration locale surcharge le fichier <code>js/journal-config.js</code>. Pour tous les ordinateurs, renseignez ensuite ces mêmes valeurs dans ce fichier sur GitHub.</div>
+    </div>
+    <div class="search-integrate-foot journal-config-foot">
+      <button id="journalConfigClear" class="btn light" type="button">Utiliser la configuration du site</button>
+      <div><button id="journalConfigTest" class="btn light" type="button">Tester</button><button id="journalConfigSave" class="btn primary" type="button">Enregistrer</button></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="journalPackPasswordDialog" class="search-integrate-dialog journal-pack-password-dialog">
+  <div class="search-integrate-shell journal-pack-password-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Pack d’amélioration</span><h3>Autorisation requise</h3><p>Ce profil d’accès nécessite la clé dédiée avant de pouvoir extraire le journal complet.</p></div>
+      <button id="journalPackPasswordClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="journal-config-form">
+      <label>Clé du pack<input id="journalPackPassword" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false"></label>
+      <div id="journalPackPasswordError" class="auth-error" aria-live="polite"></div>
+    </div>
+    <div class="search-integrate-foot"><button id="journalPackPasswordSubmit" class="btn primary" type="button">Télécharger le pack</button></div>
+  </div>
+</dialog>
+
 <dialog id="helpDialog" class="ux-help-dialog">
   <div class="ux-help-shell">
     <div class="ux-help-head"><div><span class="ux-eyebrow">ExtracTerre</span><h2>Aide rapide</h2></div><button id="helpDialogClose" class="icon-btn" type="button" onclick="document.getElementById('helpDialog').close()">×</button></div>
@@ -299,7 +344,22 @@
       <div><strong>3. Compléter</strong><p>Ajoutez de nouveaux documents sans retraiter les anciens, ou utilisez le bouton « 🔎 Crible fin » sur le PDF à approfondir.</p></div>
       <div><strong>4. Vérifier</strong><p>Corrigez manuellement les cellules avant export et validez ou refusez les propositions issues du crible fin.</p></div>
       <div><strong>5. Reprendre après interruption</strong><p>ExtracTerre sauvegarde localement chaque document analysé, les résultats et vos validations. À la réouverture, la session est restaurée automatiquement ; redéposez un PDF uniquement si vous souhaitez refaire sa lecture ou son OCR.</p></div>
-      <div><strong>Confidentialité locale</strong><p>Les fichiers PDF bruts ne sont pas enregistrés dans IndexedDB. « Effacer la session » supprime les checkpoints et résultats locaux, sans modifier les règles de sources.</p></div>
+      <div><strong>Confidentialité locale</strong><p>Les fichiers PDF bruts ne sont pas enregistrés dans IndexedDB. « Effacer la session » supprime les checkpoints et résultats du projet, sans modifier les règles de sources ni le journal d’amélioration. Le journal peut être synchronisé entre plusieurs ordinateurs lorsqu’une base partagée est configurée.</p></div>
+      <div class="ux-help-journal ux-journal-card">
+        <div class="ux-side-card-head"><span>🧠</span><h3>Journal d’amélioration</h3></div>
+        <p class="ux-journal-copy">Les corrections, validations/rejets, champs manquants, erreurs et performances alimentent un journal séparé de la session de travail.</p>
+        <div class="ux-help-journal-stats">
+          <div class="ux-meta-row"><span>Observations locales</span><strong id="journalEventCount">0</strong></div>
+          <div class="ux-meta-row"><span>Journal partagé</span><strong id="journalRemoteStatus">Local uniquement</strong></div>
+          <div class="ux-meta-row"><span>Dernière synchro</span><strong id="journalSyncTime">—</strong></div>
+        </div>
+        <div class="ux-journal-actions">
+          <button id="journalSyncBtn" class="btn light" type="button">↻ Synchroniser</button>
+          <button id="journalPackBtn" class="btn primary" type="button">⇩ Pack d’amélioration</button>
+          <button id="journalConfigBtn" class="btn light ux-journal-config" type="button">⚙ Journal partagé</button>
+        </div>
+        <small class="ux-journal-note">« Effacer la session » ne supprime jamais ce journal. Le partage multi-ordinateurs nécessite une connexion distante configurée.</small>
+      </div>
     </div>
   </div>
 </dialog>

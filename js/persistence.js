@@ -1,9 +1,10 @@
 import {APP_VERSION} from './config.js';
 
 const DB_NAME='extracterre-local-workspace';
-const DB_VERSION=1;
+const DB_VERSION=2;
 const WORKSPACE_STORE='workspaces';
 const DOCUMENT_STORE='documents';
+const JOURNAL_STORE='learningJournal';
 const WORKSPACE_KEY='current';
 const SNAPSHOT_SCHEMA=1;
 
@@ -17,6 +18,12 @@ function openDb(){
       if(!db.objectStoreNames.contains(DOCUMENT_STORE)){
         const store=db.createObjectStore(DOCUMENT_STORE,{keyPath:'id'});
         store.createIndex('projectId','projectId',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(JOURNAL_STORE)){
+        const journal=db.createObjectStore(JOURNAL_STORE,{keyPath:'id'});
+        journal.createIndex('createdAt','createdAt',{unique:false});
+        journal.createIndex('syncedAt','syncedAt',{unique:false});
+        journal.createIndex('eventType','eventType',{unique:false});
       }
     };
     req.onsuccess=()=>resolve(req.result);
@@ -253,3 +260,95 @@ export async function getWorkspaceStorageInfo(){
 export async function requestPersistentStorage(){
   try{return !!(await navigator.storage?.persist?.());}catch{return false;}
 }
+
+function makeJournalId(){
+  try{return `evt-${Date.now()}-${crypto.randomUUID()}`;}catch{return `evt-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;}
+}
+function compactJournalPayload(value,depth=0){
+  if(depth>5) return '[profondeur limitée]';
+  if(value===null||value===undefined) return value??null;
+  if(typeof value==='string') return value.length>900?`${value.slice(0,900)}…`:value;
+  if(typeof value==='number'||typeof value==='boolean') return value;
+  if(Array.isArray(value)) return value.slice(0,220).map(v=>compactJournalPayload(v,depth+1));
+  if(typeof value==='object'){
+    const out={}; let n=0;
+    for(const [k,v] of Object.entries(value)){
+      if(++n>120){ out.__truncated=true; break; }
+      out[k]=compactJournalPayload(v,depth+1);
+    }
+    return out;
+  }
+  return String(value);
+}
+export async function appendLearningEvent(event={}){
+  const record={
+    id:event.id||makeJournalId(),
+    schema:1,
+    appVersion:event.appVersion||APP_VERSION,
+    createdAt:Number(event.createdAt)||Date.now(),
+    eventType:String(event.eventType||'event'),
+    projectRef:String(event.projectRef||''),
+    instanceId:String(event.instanceId||''),
+    accessRole:String(event.accessRole||''),
+    payload:compactJournalPayload(event.payload||{}),
+    syncedAt:event.syncedAt||null,
+    syncError:null
+  };
+  const db=await openDb();
+  try{
+    const tx=db.transaction(JOURNAL_STORE,'readwrite');
+    tx.objectStore(JOURNAL_STORE).put(record);
+    await transactionDone(tx);
+  }finally{db.close();}
+  return record;
+}
+export async function listLearningEvents({unsyncedOnly=false,limit=50000}={}){
+  const db=await openDb();
+  try{
+    const tx=db.transaction(JOURNAL_STORE,'readonly');
+    const done=transactionDone(tx);
+    const all=await requestPromise(tx.objectStore(JOURNAL_STORE).getAll());
+    await done;
+    const rows=(all||[]).filter(x=>!unsyncedOnly||!x.syncedAt).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    return rows.slice(Math.max(0,rows.length-Math.max(1,limit)));
+  }finally{db.close();}
+}
+export async function getLearningJournalStats(){
+  const events=await listLearningEvents({limit:50000});
+  return {
+    total:events.length,
+    unsynced:events.filter(x=>!x.syncedAt).length,
+    firstAt:events[0]?.createdAt||null,
+    lastAt:events[events.length-1]?.createdAt||null,
+    byType:events.reduce((acc,e)=>(acc[e.eventType]=(acc[e.eventType]||0)+1,acc),{})
+  };
+}
+export async function markLearningEventsSynced(ids=[],syncedAt=Date.now()){
+  const wanted=new Set(ids||[]); if(!wanted.size) return 0;
+  const db=await openDb(); let count=0;
+  try{
+    const tx=db.transaction(JOURNAL_STORE,'readwrite');
+    const store=tx.objectStore(JOURNAL_STORE);
+    for(const id of wanted){
+      const record=await requestPromise(store.get(id));
+      if(record){ record.syncedAt=syncedAt; record.syncError=null; store.put(record); count++; }
+    }
+    await transactionDone(tx);
+  }finally{db.close();}
+  return count;
+}
+export async function markLearningEventsSyncError(ids=[],message=''){
+  const wanted=new Set(ids||[]); if(!wanted.size) return 0;
+  const db=await openDb(); let count=0;
+  try{
+    const tx=db.transaction(JOURNAL_STORE,'readwrite');
+    const store=tx.objectStore(JOURNAL_STORE);
+    for(const id of wanted){
+      const record=await requestPromise(store.get(id));
+      if(record){ record.syncError=String(message||'').slice(0,500); store.put(record); count++; }
+    }
+    await transactionDone(tx);
+  }finally{db.close();}
+  return count;
+}
+

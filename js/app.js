@@ -11,6 +11,7 @@ import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {analyzeEconomicData} from './economics.js';
 import {parseDocument} from './parsers.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
+import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack} from './journal.js';
 
 function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary'};
@@ -27,42 +28,114 @@ const RESULT_VIEWS = Object.freeze({
     {title:'Projet & programme',families:['Programme']},
     {title:'Référentiel & contexte',keys:['reference_name','reference_version','mentions','performance','selected_profile','built_before_1948','built_after_1948','renovation','anru_zone','no_mention','environmental_performance','specific_profile']},
     {title:'Mentions, labels & dérogations',keys:['mention_building_performance','mention_bee_plus','mention_tfpb','mention_ec','derogation_ec','mention_bbca','derogation_bbca','mention_neutrality_contribution','mention_effinergie','effinergie_energy_carbon_level','mention_biosourced_building','derogation_biosourced','mention_habitat_quality','mention_charge_assessment','mention_buildability_bonus','mention_air_quality','mention_acoustic','mention_circular_economy','mention_eu_taxonomy','mention_zero_carbon','mention_biodiversity']},
-    {title:'Niveaux & performances de certification',keys:['dpe_ges_label','energy_level','passive_level','cep_level','cepnr_level','bbio_level','ic_construction_level','ic_energy_level','enhanced_performance','biosourced_2013']}
+    {title:'Niveaux de certification',keys:['dpe_ges_label','energy_level','passive_level','cep_level','cepnr_level','bbio_level','ic_construction_level','ic_energy_level','enhanced_performance','biosourced_2013']}
   ]},
-  thermalNew:{label:'Thermique neuf',groups:[
-    {title:"Confort d’été",families:["Confort d’été"]},
-    {title:'Systèmes',keys:['heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation']},
-    {title:'Performance énergétique',keys:['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain','cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']},
-    {title:'DPE & ENR',keys:['dpe_energy_after','dpe_ges_after','enr','enr_type']}
+  thermal:{label:'Thermique',groups:[
+    {title:'Confort d’été',keys:['dh','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
+    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']},
+    {title:'Performance réglementaire',keys:['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']},
+    {title:'Rénovation — avant / après',keys:['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
+    {title:'Consommations par poste / énergie',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']}
   ]},
-  thermalReno:{label:'Thermique réno',groups:[
-    {title:'Avant / après travaux',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','ubat_before','ubat_after','cep_before','cep_after_final']},
-    {title:'Performance réglementaire après travaux',keys:['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain','cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']},
-    {title:"Confort d’été",families:["Confort d’été"]},
-    {title:'DPE & ENR',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','enr','enr_type']}
-  ]},
-  carbonNew:{label:'Carbone neuf',groups:[
+  carbon:{label:'Carbone',groups:[
     {title:'IC composants & chantier',keys:['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
     {title:'IC énergie',keys:['ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
-  ]},
-  carbonReno:{label:'Carbone réno',groups:[
-    {title:'IC composants & chantier — rénovation',keys:['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
-    {title:'IC énergie — rénovation',keys:['ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
   ]}
 });
-function currentResultView(){ const p=activeProject(); return RESULT_VIEWS[p.resultView]||RESULT_VIEWS.generic; }
+const RESULT_VIEW_ALIASES=Object.freeze({thermalNew:'thermal',thermalReno:'thermal',carbonNew:'carbon',carbonReno:'carbon'});
+function normalizedResultViewKey(key){ return RESULT_VIEW_ALIASES[key]||key||'generic'; }
+function currentResultView(){ const p=activeProject(); const key=normalizedResultViewKey(p.resultView); if(p.resultView!==key) p.resultView=key; return RESULT_VIEWS[key]||RESULT_VIEWS.generic; }
 function fieldsForResultGroup(group){
   if(group.keys) return group.keys.map(k=>FIELD_MAP[k]).filter(Boolean);
   const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&families.has(f.family));
 }
 function fieldsForCurrentResultView(){ return [...new Map(currentResultView().groups.flatMap(fieldsForResultGroup).map(f=>[f.key,f])).values()]; }
-function syncResultTabs(){ const key=activeProject().resultView||'generic'; $$('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.resultView===key)); }
+function syncResultTabs(){ const key=normalizedResultViewKey(activeProject().resultView); $$('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.resultView===key)); }
 
 let persistenceReady=false,restoringWorkspace=false,workspaceSaveChain=Promise.resolve(),workspaceSaveTimer=null,lastLocalSaveAt=null;
+let lastJournalSyncAt=null,journalUiTimer=null;
+function accessRole(){ return globalThis.__extracterreGetAccessContext?.()?.role||''; }
+function learningPayloadBase(project=activeProject()){ return {operation:project?.operationName||project?.result?.operation||'',projectLabel:projectTitle(project)}; }
+function learn(type,payload={},project=activeProject()){
+  recordLearningEvent(type,{...learningPayloadBase(project),...payload},project).then(()=>scheduleJournalUiRefresh()).catch(err=>console.warn('Learning journal event failed',err));
+}
+function scheduleJournalUiRefresh(delay=250){ if(journalUiTimer) clearTimeout(journalUiTimer); journalUiTimer=setTimeout(()=>{journalUiTimer=null;refreshJournalUi();},delay); }
+async function refreshJournalUi(){
+  try{
+    const stats=await getLearningJournalOverview(),status=$('#journalRemoteStatus'),count=$('#journalEventCount'),syncTime=$('#journalSyncTime');
+    if(count) count.textContent=String(stats.total||0);
+    if(status){ status.textContent=stats.remoteConfigured?(stats.unsynced?`Partagé · ${stats.unsynced} à synchroniser`:'Partagé · à jour'):'Local uniquement'; status.className=stats.remoteConfigured?'ok':'warn'; }
+    if(syncTime) syncTime.textContent=lastJournalSyncAt?new Date(lastJournalSyncAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'—';
+  }catch(err){ const status=$('#journalRemoteStatus'); if(status){status.textContent='Journal indisponible';status.className='warn';} }
+}
+async function syncLearningJournalNow(showToast=true){
+  const cfg=getRemoteJournalConfig(); if(!cfg.configured){ if(showToast) toast('Journal partagé non configuré. Le journal local continue à être conservé.','info'); await refreshJournalUi(); return; }
+  const btn=$('#journalSyncBtn'); if(btn) btn.disabled=true;
+  try{ const result=await flushLearningJournal(); lastJournalSyncAt=Date.now(); if(showToast) toast(`${result?.sent||0} observation(s) synchronisée(s) avec le journal partagé.`,'success'); }
+  catch(err){ if(showToast) toast(`Synchronisation du journal impossible : ${err?.message||err}`,'warn'); }
+  finally{ if(btn) btn.disabled=false; await refreshJournalUi(); }
+}
+
+function openJournalConfigDialog(){
+  const dlg=$('#journalConfigDialog'); if(!dlg) return;
+  const cfg=getRemoteJournalConfig();
+  $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||'';
+  const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration détectée. Utilisez « Tester » pour vérifier la connexion.':'Aucune base partagée configurée : le journal reste actuellement limité à ce navigateur.';fb.className='journal-config-feedback';}
+  dlg.showModal();
+}
+async function saveJournalConfigFromDialog(){
+  const cfg=saveRemoteJournalConfig({supabaseUrl:$('#journalSupabaseUrl')?.value||'',supabaseAnonKey:$('#journalSupabaseKey')?.value||''});
+  const fb=$('#journalConfigFeedback'); if(!cfg.configured){ if(fb){fb.textContent='Configuration incomplète.';fb.className='journal-config-feedback error';} return; }
+  if(fb){fb.textContent='Configuration enregistrée sur cet ordinateur. Test de connexion…';fb.className='journal-config-feedback';}
+  try{ await testRemoteJournalConnection(); if(fb){fb.textContent='Connexion réussie. Le journal peut maintenant être synchronisé.';fb.className='journal-config-feedback ok';} await syncLearningJournalNow(false); toast('Journal partagé configuré et synchronisé.','success'); }
+  catch(err){ if(fb){fb.textContent=`Configuration enregistrée, mais le test a échoué : ${err?.message||err}`;fb.className='journal-config-feedback error';} toast('La configuration a été conservée pour correction.','warn'); }
+  await refreshJournalUi();
+}
+async function testJournalConfigFromDialog(){
+  saveRemoteJournalConfig({supabaseUrl:$('#journalSupabaseUrl')?.value||'',supabaseAnonKey:$('#journalSupabaseKey')?.value||''});
+  const fb=$('#journalConfigFeedback'); if(fb){fb.textContent='Test de connexion…';fb.className='journal-config-feedback';}
+  try{ const result=await testRemoteJournalConnection(); if(fb){fb.textContent=`Connexion réussie${result?.events!==undefined?` · ${result.events} événement(s) distant(s)`:''}.`;fb.className='journal-config-feedback ok';} }
+  catch(err){ if(fb){fb.textContent=`Échec : ${err?.message||err}`;fb.className='journal-config-feedback error';} }
+}
+async function performJournalPackDownload(packProof=''){
+  const btn=$('#journalPackBtn'); if(btn) btn.disabled=true;
+  try{
+    const cfg=getRemoteJournalConfig();
+    if(cfg.configured) await syncLearningJournalNow(false);
+    const result=await downloadLearningImprovementPack({packProof});
+    toast(`Pack d’amélioration généré · ${result?.manifest?.events||0} observation(s).`,'success');
+  }catch(err){
+    const cfg=getRemoteJournalConfig();
+    if(cfg.configured&&confirm(`Le journal partagé n’est pas joignable ou refuse l’export. Télécharger uniquement le journal présent sur cet ordinateur ?\n\n${err?.message||err}`)){
+      try{ const result=await downloadLearningImprovementPack({packProof,skipRemote:true}); toast(`Pack local généré · ${result?.manifest?.events||0} observation(s).`,'warn'); }
+      catch(localErr){toast(`Pack impossible : ${localErr?.message||localErr}`,'error');}
+    }else toast(`Pack impossible : ${err?.message||err}`,'error');
+  }finally{ if(btn) btn.disabled=false; await refreshJournalUi(); }
+}
+async function requestJournalPackDownload(){
+  const role=accessRole();
+  if(role==='owner'){ await performJournalPackDownload(''); return; }
+  if(role!=='team'){ toast('Profil d’accès introuvable. Verrouillez puis reconnectez-vous.','error'); return; }
+  const dlg=$('#journalPackPasswordDialog'); if(!dlg) return;
+  $('#journalPackPassword').value=''; $('#journalPackPasswordError').textContent=''; dlg.showModal(); setTimeout(()=>$('#journalPackPassword')?.focus(),50);
+}
+async function submitJournalPackPassword(){
+  const input=$('#journalPackPassword'),error=$('#journalPackPasswordError'),button=$('#journalPackPasswordSubmit'); if(!input||!button) return;
+  const candidate=input.value; if(!candidate) return;
+  button.disabled=true; error.textContent='Vérification…';
+  try{
+    const result=await globalThis.__extracterreVerifyPackPassword?.(candidate);
+    input.value='';
+    if(!result?.ok){error.textContent='Clé incorrecte.';return;}
+    error.textContent=''; $('#journalPackPasswordDialog')?.close(); await performJournalPackDownload(result.proof||'');
+  }catch(err){error.textContent=err?.message||'Vérification impossible.';}
+  finally{button.disabled=false;}
+}
+
 function meaningfulWorkspace(projects=[]){ return projects.some(p=>(p.docs||[]).length||p.result||(p.manualPasteRows||[]).length||Object.keys(p.manualValues||{}).length||String(p.operationName||p.customTitle||'').trim())||projects.length>1; }
 function formatBytes(bytes=0){ const n=Number(bytes)||0; if(n<1024*1024) return `${Math.round(n/1024)} Ko`; if(n<1024*1024*1024) return `${(n/1024/1024).toFixed(1).replace('.',',')} Mo`; return `${(n/1024/1024/1024).toFixed(2).replace('.',',')} Go`; }
 function setLocalSaveUi(status,time=lastLocalSaveAt,detail=''){
@@ -102,17 +175,76 @@ function setStatus(text,pct=null){ const status=$('#statusText'); if(status){sta
 function toast(msg,type='info'){ const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=msg; $('#toasts').appendChild(el); setTimeout(()=>el.remove(),4200); }
 function libraryCheck(){ const issues=[]; if(!globalThis.pdfjsLib) issues.push('PDF.js'); if(!globalThis.XLSX) issues.push('SheetJS'); const ocrMissing=!globalThis.Tesseract; if(issues.length){ $('#libWarning').hidden=false; $('#libWarning').innerHTML=`<strong>Bibliothèque non chargée :</strong> ${issues.join(', ')}. Rechargez la page avec une connexion internet.`; } else if(ocrMissing){ $('#libWarning').hidden=false; $('#libWarning').innerHTML="<strong>OCR indisponible :</strong> Tesseract.js n'a pas pu être chargé. La lecture PDF classique reste disponible, mais les pages scannées ne bénéficieront pas du secours OCR."; } else $('#libWarning').hidden=true; }
 
+let previewObjectUrl=null;
+function closeFilePreview(){
+  const frame=$('#filePreviewFrame');
+  if(frame) frame.src='about:blank';
+  if(previewObjectUrl){ try{URL.revokeObjectURL(previewObjectUrl);}catch{} previewObjectUrl=null; }
+  const body=$('#filePreviewBody'); if(body) body.innerHTML='';
+}
+function previewFileMeta(doc){
+  const bits=[`${(Number(doc.size||0)/1024/1024).toFixed(2)} Mo`];
+  if(doc.type&&doc.type!=='En attente') bits.push(doc.type);
+  if(doc.read?.pageCount) bits.push(`${doc.read.pageCount} page${doc.read.pageCount>1?'s':''}`);
+  return bits.join(' · ');
+}
+function renderSpreadsheetPreview(workbook,sheetName){
+  const body=$('#filePreviewBody'); if(!body||!workbook) return;
+  const names=workbook.SheetNames||[]; const selected=names.includes(sheetName)?sheetName:names[0];
+  const ws=workbook.Sheets?.[selected];
+  if(!ws){ body.innerHTML='<div class="file-preview-empty">Aucune feuille lisible dans ce classeur.</div>'; return; }
+  const rows=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',blankrows:false,raw:false}).slice(0,100).map(r=>r.slice(0,40));
+  const maxCols=Math.min(40,Math.max(0,...rows.map(r=>r.length)));
+  const table=rows.length?`<div class="file-preview-sheet-scroll"><table class="file-preview-sheet"><tbody>${rows.map((row,ri)=>`<tr>${Array.from({length:maxCols},(_,ci)=>`<${ri===0?'th':'td'}>${escapeHtml(row[ci]??'')}</${ri===0?'th':'td'}>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="file-preview-empty">Cette feuille est vide.</div>';
+  body.innerHTML=`${names.length>1?`<div class="file-preview-sheetbar"><label>Feuille <select id="filePreviewSheetSelect">${names.map(n=>`<option value="${escapeHtml(n)}" ${n===selected?'selected':''}>${escapeHtml(n)}</option>`).join('')}</select></label><small>Aperçu limité aux 100 premières lignes et 40 colonnes.</small></div>`:`<div class="file-preview-sheetbar"><strong>${escapeHtml(selected||'Feuille')}</strong><small>Aperçu limité aux 100 premières lignes et 40 colonnes.</small></div>`}${table}`;
+  const select=$('#filePreviewSheetSelect'); if(select) select.onchange=()=>renderSpreadsheetPreview(workbook,select.value);
+}
+async function openFilePreview(id){
+  const doc=state.docs.find(x=>x.id===id); if(!doc) return;
+  if(!doc.file){ toast('Ce fichier a été restauré depuis la sauvegarde locale. Redéposez-le pour afficher son aperçu.','info'); return; }
+  const dlg=$('#filePreviewDialog'),body=$('#filePreviewBody'),title=$('#filePreviewTitle'),meta=$('#filePreviewMeta');
+  if(!dlg||!body) return;
+  closeFilePreview();
+  if(title) title.textContent=doc.name; if(meta) meta.textContent=previewFileMeta(doc);
+  body.innerHTML='<div class="file-preview-loading"><span class="spinner"></span>Préparation de l’aperçu…</div>';
+  if(!dlg.open) dlg.showModal();
+  try{
+    if(/\.pdf$/i.test(doc.name)){
+      previewObjectUrl=URL.createObjectURL(doc.file);
+      body.innerHTML='<iframe id="filePreviewFrame" class="file-preview-frame" title="Aperçu PDF"></iframe>';
+      $('#filePreviewFrame').src=`${previewObjectUrl}#toolbar=1&navpanes=0&view=FitH`;
+      return;
+    }
+    if(/\.xml$/i.test(doc.name)){
+      const raw=await doc.file.text(),limit=500000,truncated=raw.length>limit;
+      let shown=raw.slice(0,limit);
+      try{ const parsed=new DOMParser().parseFromString(shown,'application/xml'); if(!parsed.querySelector('parsererror')) shown=new XMLSerializer().serializeToString(parsed); }catch{}
+      body.innerHTML=`${truncated?'<div class="file-preview-notice">Aperçu limité aux 500 000 premiers caractères pour préserver la mémoire.</div>':''}<pre class="file-preview-text">${escapeHtml(shown)}</pre>`;
+      return;
+    }
+    if(/\.xlsx?$/i.test(doc.name)||/\.xls$/i.test(doc.name)){
+      if(!globalThis.XLSX) throw new Error('SheetJS n’est pas disponible. Rechargez la page avec une connexion internet.');
+      const data=await doc.file.arrayBuffer();
+      const workbook=globalThis.XLSX.read(data,{type:'array',dense:true,cellFormula:false,cellHTML:false,cellStyles:false});
+      renderSpreadsheetPreview(workbook,workbook.SheetNames?.[0]);
+      return;
+    }
+    body.innerHTML='<div class="file-preview-empty">Aperçu non disponible pour ce format.</div>';
+  }catch(err){ console.error('File preview error',err); body.innerHTML=`<div class="file-preview-empty error">Aperçu impossible : ${escapeHtml(err?.message||String(err))}</div>`; }
+}
+
 function renderFiles(){
   const box=$('#fileList'); if(!state.docs.length){ box.innerHTML='<div class="empty-small">Aucun fichier ajouté.</div>'; return; }
   box.innerHTML=state.docs.map(d=>{
-    const isPdf=/\.pdf$/i.test(d.name); const targetedRunning=d.targetedStatus==='running'; const showTarget=d.status==='ready'&&isPdf; const canTarget=showTarget&&!!d.file&&!!state.result;
+    const isPdf=/\.pdf$/i.test(d.name); const targetedRunning=d.targetedStatus==='running'; const showTarget=d.status==='ready'&&isPdf; const canTarget=showTarget&&!!d.file&&!!state.result; const canPreview=!!d.file;
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · > 5 min':d.status==='reading'?'Lecture parallèle…':'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div>`;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · > 5 min':d.status==='reading'?'Lecture parallèle…':'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
   $$('.targeted-file').forEach(b=>b.onclick=()=>targetedReanalysis(b.dataset.id));
+  $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
 function addFiles(fileList){
@@ -238,7 +370,9 @@ function applyManualPaste(){
   state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
-  $('#manualDataDialog')?.close(); recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
+  $('#manualDataDialog')?.close();
+  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
+  recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
   state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
@@ -251,9 +385,22 @@ function showUncertainReview(){
   const render=()=>{
     list.innerHTML=candidates.length?candidates.map((c,i)=>{const d=decisions.get(i)||''; return `<article class="targeted-proposal ${d?`decision-${d}`:''}"><div class="targeted-proposal-main"><div class="targeted-field"><span>${escapeHtml(c.building)}</span><strong>${escapeHtml(FIELD_MAP[c.field]?.label||c.field)}</strong></div><div class="targeted-new-value">${escapeHtml(formatValue(c.value))}</div><div class="targeted-source">${escapeHtml(c.fileName)} · p.${c.page} · ${Math.round(c.confidence*100)} %</div><div class="targeted-excerpt">${escapeHtml(c.excerpt||'')}</div></div><div class="targeted-actions"><button data-u-accept="${i}" class="targeted-accept">✓</button><button data-u-reject="${i}" class="targeted-reject">✕</button></div></article>`;}).join(''):'<div class="empty-small">Aucun candidat entre 65 et 89 % à vérifier.</div>';
     const a=[...decisions.values()].filter(x=>x==='accept').length,r=[...decisions.values()].filter(x=>x==='reject').length; $('#uncertainReviewCount').textContent=`${a} acceptée(s) · ${r} refusée(s) · ${candidates.length-a-r} à décider`; apply.disabled=a+r===0;
-    $$('#uncertainReviewList [data-u-accept]').forEach(b=>b.onclick=()=>{decisions.set(Number(b.dataset.uAccept),'accept');render();}); $$('#uncertainReviewList [data-u-reject]').forEach(b=>b.onclick=()=>{decisions.set(Number(b.dataset.uReject),'reject');render();});
+    $$('#uncertainReviewList [data-u-accept]').forEach(b=>b.onclick=()=>{decisions.set(Number(b.dataset.uAccept),'accept');render();});
+    $$('#uncertainReviewList [data-u-reject]').forEach(b=>b.onclick=()=>{decisions.set(Number(b.dataset.uReject),'reject');render();});
   };
-  apply.onclick=()=>{ let accepted=0; for(const [i,d] of decisions){ const c=candidates[i]; if(!c) continue; if(d==='reject'){ state.uncertainRejectedKeys=[...new Set([...(state.uncertainRejectedKeys||[]),uncertainKey(c)])]; continue; } if(d==='accept'){ const key=`${c.building}|${c.field}`; state.manualValues[key]=c.value; state.manualSources[key]={docId:c.docId,fileName:c.fileName,page:c.page,excerpt:c.excerpt,method:'manual:uncertain-candidate-validated',provenanceNote:`Candidat ${Math.round(c.confidence*100)} % explicitement validé par l’utilisateur.`}; accepted++; } } applyManualValues(); dlg.close(); renderSummary(); renderOccurrences(); updateUxMirrors(); scheduleWorkspaceCheckpoint('validation candidats',80); toast(`${accepted} candidat(s) validé(s).`,'success'); };
+  apply.onclick=()=>{
+    let accepted=0;
+    for(const [i,d] of decisions){
+      const c=candidates[i]; if(!c) continue;
+      learn('uncertain_decision',{decision:d,building:c.building,field:c.field,label:FIELD_MAP[c.field]?.label||c.field,value:c.value,confidence:c.confidence,source:{fileName:c.fileName,docType:c.docType||'',page:c.page,method:c.method||'',excerpt:c.excerpt||''}},activeProject());
+      if(d==='reject'){ state.uncertainRejectedKeys=[...new Set([...(state.uncertainRejectedKeys||[]),uncertainKey(c)])]; continue; }
+      if(d==='accept'){
+        const key=`${c.building}|${c.field}`; state.manualValues[key]=c.value;
+        state.manualSources[key]={docId:c.docId,fileName:c.fileName,page:c.page,excerpt:c.excerpt,method:'manual:uncertain-candidate-validated',provenanceNote:`Candidat ${Math.round(c.confidence*100)} % explicitement validé par l’utilisateur.`}; accepted++;
+      }
+    }
+    applyManualValues(); dlg.close(); renderSummary(); renderOccurrences(); updateUxMirrors(); scheduleWorkspaceCheckpoint('validation candidats',80); toast(`${accepted} candidat(s) validé(s).`,'success');
+  };
   $('#uncertainReviewClose').onclick=()=>dlg.close(); render(); dlg.showModal();
 }
 
@@ -370,10 +517,13 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       }catch(parseErr){ console.warn('Pré-extraction checkpoint impossible',parseErr); d.cachedOccurrences=null; }
       d.analysisDurationMs=Math.round(performance.now()-started);
       await checkpointDocument(activeProject(),d);
+      const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
+      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length},activeProject());
     }catch(e){
       const timedOut=timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout');
       if(timedOut){ d.status='timeout'; d.error='Analyse interrompue après 5 minutes. Relance manuelle disponible sans limite de temps.'; d.retryUnlimited=false; }
       else { d.status='error'; d.error=e?.message||String(e); }
+      learn('analysis_error',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,status:d.status,error:d.error||e?.message||String(e),ocrMode,elapsedMs:Math.round(performance.now()-started)},activeProject());
     }finally{
       if(timeoutId) clearTimeout(timeoutId);
       progressByDoc.set(d.id,1); delete d.liveStage; activeIds.delete(d.id); done++; renderFiles();
@@ -408,6 +558,9 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     }
     renderAll(); await checkpointWorkspace('analyse terminée',true); setStatus('Analyse terminée',100);
     const elapsed=(performance.now()-etaTracker.startedAt)/1000;
+    const completeness=state.result?.completeness||null;
+    const missingFields=[...new Set((completeness?.checks||[]).flatMap(c=>c.missing||[]))];
+    learn('analysis_batch',{documents:state.docs.length,readyDocuments:state.docs.filter(d=>d.status==='ready').length,newDocuments:pendingDocs.length,durationMs:Math.round(elapsed*1000),analysisMode:profile.key,analysisProfile:profile.description,ocrMode,completeness:completeness?{percent:completeness.percent,found:completeness.found,expected:completeness.expected}:null,missingFields,missingLabels:missingFields.map(k=>FIELD_MAP[k]?.label||k),alerts:state.result?.alerts?.map(a=>({level:a.level,message:a.message,fileName:a.fileName||''})).slice(0,100)||[]},activeProject());
     const eta=$('#analysisEtaDetail'); if(eta) eta.textContent=`Analyse terminée en ${formatAnalysisDuration(elapsed)}`;
     setTimeout(()=>$('#progress').hidden=true,900);
     const timedOut=state.docs.filter(d=>d.status==='timeout').length;
@@ -459,7 +612,7 @@ function buildTargetedCandidates(doc,tempDoc,parsed){
 function showTargetedReview(doc,candidates,ocrMeta){
   const dlg=$('#targetedReviewDialog'), list=$('#targetedReviewList'), title=$('#targetedReviewTitle'), sub=$('#targetedReviewSub'), apply=$('#targetedReviewApply'), close=$('#targetedReviewClose');
   if(!dlg||!list) return;
-  const decisions=new Map();
+  const decisions=new Map(),logged=new Set();
   title.textContent=`Crible fin — ${doc.name}`;
   sub.textContent=`${candidates.length} information(s) nouvelle(s) trouvée(s). OCR maximal sur ${ocrMeta?.pages?.length||0} page(s). Aucune valeur existante n’est remplacée automatiquement : chaque proposition reste soumise à ✓ / ✕.`;
   const render=()=>{
@@ -470,16 +623,20 @@ function showTargetedReview(doc,candidates,ocrMeta){
     $$('#targetedReviewList [data-targeted-accept]').forEach(b=>b.onclick=()=>{ decisions.set(Number(b.dataset.targetedAccept),'accept'); render(); });
     $$('#targetedReviewList [data-targeted-reject]').forEach(b=>b.onclick=()=>{ decisions.set(Number(b.dataset.targetedReject),'reject'); render(); });
   };
+  const logDecision=(c,decision)=>{
+    const key=`${targetedCandidateKey(c)}|${decision}`; if(logged.has(key)) return; logged.add(key);
+    learn('targeted_decision',{decision,docId:doc.id,fileName:doc.name,docType:doc.type,building:c.building,field:c.field,label:FIELD_MAP[c.field]?.label||c.field,value:c.value,confidence:c.confidence,page:c.page,method:c.method||'',excerpt:c.excerpt||'',ocrPages:ocrMeta?.pages?.length||0},activeProject());
+  };
   const persistRejected=()=>{
     const rejected=candidates.filter((_,i)=>decisions.get(i)==='reject');
-    if(rejected.length) doc.targetedRejectedKeys=[...new Set([...(doc.targetedRejectedKeys||[]),...rejected.map(targetedCandidateKey)])];
+    if(rejected.length){ doc.targetedRejectedKeys=[...new Set([...(doc.targetedRejectedKeys||[]),...rejected.map(targetedCandidateKey)])]; rejected.forEach(c=>logDecision(c,'reject')); }
   };
   render();
   close.onclick=()=>{ persistRejected(); scheduleWorkspaceCheckpoint('refus réanalyse ciblée',80); dlg.close(); };
   dlg.oncancel=()=>{ persistRejected(); scheduleWorkspaceCheckpoint('refus réanalyse ciblée',80); };
   apply.onclick=async()=>{
     const accepted=candidates.filter((_,i)=>decisions.get(i)==='accept');
-    persistRejected();
+    persistRejected(); accepted.forEach(c=>logDecision(c,'accept'));
     if(accepted.length){
       const existing=Array.isArray(doc.cachedOccurrences)?doc.cachedOccurrences:[];
       const additions=accepted.map(c=>({...c,docId:doc.id,fileName:doc.name,docType:doc.type,confidence:1,method:`targeted-ocr:max:user-validated:${c.method||'parser'}`,userValidated:true,targetedOcr:true,origin:`${doc.type} — OCR maximal validé`,provenanceNote:'Valeur issue d’une réanalyse OCR maximale et explicitement acceptée par l’utilisateur.'}));
@@ -489,8 +646,7 @@ function showTargetedReview(doc,candidates,ocrMeta){
       const valid=state.docs.filter(x=>x.status==='ready');
       state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests();
       toast(`${accepted.length} nouvelle${accepted.length>1?'s':''} valeur${accepted.length>1?'s':''} validée${accepted.length>1?'s':''} et ajoutée${accepted.length>1?'s':''} au tableau.`,'success');
-      renderAll();
-      await checkpointDocument(activeProject(),doc);
+      renderAll(); await checkpointDocument(activeProject(),doc);
     }else scheduleWorkspaceCheckpoint('décisions réanalyse ciblée',80);
     dlg.close();
   };
@@ -511,11 +667,12 @@ async function targetedReanalysis(id){
     const parsed=parseDocument(tempDoc);
     const candidates=buildTargetedCandidates(doc,tempDoc,parsed);
     doc.targetedLastAt=Date.now(); doc.targetedLastProposals=candidates.length; doc.targetedLastOcrPages=highRead.ocr?.pages?.length||0;
+    learn('targeted_scan',{docId:doc.id,fileName:doc.name,docType:doc.type,ocrPages:doc.targetedLastOcrPages,proposals:candidates.length,candidateFields:candidates.map(c=>c.field)},activeProject());
     setStatus(`Crible fin terminé — ${candidates.length} proposition(s)`,100); setTimeout(()=>$('#progress').hidden=true,900);
     await checkpointWorkspace('réanalyse ciblée',true);
     if(!candidates.length){ toast('Aucune nouvelle valeur exploitable trouvée pour les champs actuellement vides.','info'); }
     else showTargetedReview(doc,candidates,highRead.ocr);
-  }catch(e){ console.error('Fine scan OCR error',e); toast(`Crible fin impossible : ${e?.message||e}`,'error'); setStatus('Crible fin interrompu'); }
+  }catch(e){ console.error('Fine scan OCR error',e); learn('analysis_error',{scope:'targeted_scan',docId:doc.id,fileName:doc.name,docType:doc.type,error:e?.message||String(e)},activeProject()); toast(`Crible fin impossible : ${e?.message||e}`,'error'); setStatus('Crible fin interrompu'); }
   finally{ doc.targetedStatus=null; renderFiles(); }
 }
 
@@ -597,7 +754,15 @@ function resetBuildingLinks(){
 }
 
 function manualOverride(building,field){
-  if(!state.result) return; const def=FIELD_MAP[field]; const row=state.result.rows.find(r=>r.building===building); if(!row||!def) return; const current=row[field]??''; const raw=prompt(`Corriger ${def.label} — ${building}`,String(current)); if(raw===null) return; let value=raw.trim(); if(def.type==='number'){ const n=parseFrNumber(value); if(n===null){ toast('Valeur numérique invalide.','error'); return; } value=n; } if(field==='window_glazing') value=normalizeGlazingType(value)||value; if(!value&&def.type!=='number') value='non précisé'; state.manualValues[`${building}|${field}`]=value; delete state.manualSources[`${building}|${field}`]; applyManualValues(); state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); toast(`${def.label} corrigé pour ${building}. La correction sera conservée lors des compléments d’analyse.`,'success'); renderSummary(); renderOccurrences(); scheduleWorkspaceCheckpoint('correction manuelle',80);
+  if(!state.result) return;
+  const def=FIELD_MAP[field],row=state.result.rows.find(r=>r.building===building); if(!row||!def) return;
+  const current=row[field]??'', prior=state.result.finals.find(o=>o.field===field&&(o.building===building||o.building==='Bâtiment unique'));
+  const raw=prompt(`Corriger ${def.label} — ${building}`,String(current)); if(raw===null) return;
+  let value=raw.trim(); if(def.type==='number'){ const n=parseFrNumber(value); if(n===null){ toast('Valeur numérique invalide.','error'); return; } value=n; }
+  if(field==='window_glazing') value=normalizeGlazingType(value)||value; if(!value&&def.type!=='number') value='non précisé';
+  state.manualValues[`${building}|${field}`]=value; delete state.manualSources[`${building}|${field}`];
+  learn('manual_override',{building,field,label:def.label,previousValue:current,newValue:value,source:prior?{fileName:prior.fileName||'',docType:prior.docType||'',page:prior.page||'',confidence:prior.confidence,method:prior.method||'',excerpt:prior.excerpt||''}:null},activeProject());
+  applyManualValues(); state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); toast(`${def.label} corrigé pour ${building}. La correction sera conservée lors des compléments d’analyse.`,'success'); renderSummary(); renderOccurrences(); scheduleWorkspaceCheckpoint('correction manuelle',80);
 }
 
 
@@ -667,6 +832,7 @@ function applySearchIntegration(){
   if(def.type==='number'){ const n=parseFrNumber(raw); if(n===null){ toast('La valeur choisie doit être numérique pour ce champ.','error'); return; } value=n; }
   else if(!value) value='non précisé';
   const key=`${building}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:result.docId||'search',fileName:result.document,page:result.page,excerpt:result.excerpt,method:'manual:free-search-validated',provenanceNote:'Valeur intégrée manuellement depuis Recherche libre après validation utilisateur.'};
+  learn('free_search_validation',{decision:'accept',building,field,label:def.label,value,source:{fileName:result.document,page:result.page,confidence:result.confidence,excerpt:result.excerpt||''}},activeProject());
   applyManualValues(); state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); renderSummary(); renderOccurrences(); updateUxMirrors();
   if(dlg?.open) dlg.close(); scheduleWorkspaceCheckpoint('intégration recherche',80); toast(`${def.label} intégré au résultat pour ${building}.`,'success');
 }
@@ -713,7 +879,18 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats sauvegardés dans ce navigateur seront supprimés. Les règles de sources resteront conservées.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);toast('Session locale effacée.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
+  const journalPack=$('#journalPackBtn'); if(journalPack) journalPack.onclick=()=>requestJournalPackDownload();
+  const journalConfig=$('#journalConfigBtn'); if(journalConfig) journalConfig.onclick=openJournalConfigDialog;
+  const journalConfigClose=$('#journalConfigClose'); if(journalConfigClose) journalConfigClose.onclick=()=>$('#journalConfigDialog')?.close();
+  const journalConfigSave=$('#journalConfigSave'); if(journalConfigSave) journalConfigSave.onclick=()=>saveJournalConfigFromDialog();
+  const journalConfigTest=$('#journalConfigTest'); if(journalConfigTest) journalConfigTest.onclick=()=>testJournalConfigFromDialog();
+  const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
+  const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
+  const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
+  const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
+  window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
   $$('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab)); $$('.result-tab').forEach(b=>b.onclick=()=>{ activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); });
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
@@ -754,6 +931,6 @@ async function initializeApp(){
   }catch(err){
     console.warn('IndexedDB restore failed',err); persistenceReady=false; setLocalSaveUi('Indisponible'); const detail=$('#localSaveDetail'); if(detail) detail.textContent='Le navigateur ne permet pas la restauration locale dans ce contexte.';
   }
-  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); window.__prestaterreExtractReady=true;
+  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); await refreshJournalUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
 initializeApp();

@@ -1,4 +1,43 @@
-# Changelog
+# v1.1.9
+
+- Ajout d’un bouton **👁 Aperçu** sur chaque fichier chargé.
+- Aperçu ouvert dans une fenêtre modale ExtracTerre, sans nouvel onglet ni nouvelle page.
+- PDF affichés avec le lecteur PDF intégré du navigateur à partir d’une URL Blob locale.
+- XML affichés comme texte, avec limite de sécurité mémoire à 500 000 caractères.
+- Excel XLS/XLSX prévisualisés directement dans la fenêtre, avec choix de feuille et limite de 100 lignes × 40 colonnes.
+- L’URL Blob PDF est révoquée à la fermeture de la fenêtre pour éviter une fuite mémoire.
+- Après restauration IndexedDB, le bouton reste visible mais désactivé tant que le fichier brut n’a pas été redéposé.
+
+# v1.1.8
+
+- Configuration Supabase du journal partagé intégrée au site.
+- Classification spécifique des rapports Bao Evolution.
+- Extraction Ubat explicite depuis « COEFFICIENT UBAT » avec distinction état initial / après travaux.
+- « Température intérieure » n’est jamais interprétée comme Tic.
+- Systèmes rénovation contextualisés à l’échelle de la page pour éviter de mélanger avant et après travaux.
+- Alias Bao ajoutés pour ECS électrique et ventilation Hygro-Gaz.
+- Résultats simplifiés en 4 onglets métier sans répétition des mêmes champs.
+- 117 auto-tests moteur.
+
+# Changelog — ExtracTerre
+
+## v1.1.7 — Journal déplacé dans Aide / FAQ
+- Suppression de l’encart Journal d’amélioration de la colonne principale.
+- Journal, synchronisation, export du pack et configuration distante regroupés dans Aide / FAQ.
+- Aucun changement sur la collecte, les droits d’accès, le stockage local/distant ou le contenu du pack.
+
+## v1.1.6 — Journal d’amélioration multi-ordinateurs
+
+- Journal IndexedDB indépendant de l’espace de travail : **Effacer la session** ne le supprime pas.
+- Enregistrement des analyses, performances, champs manquants, erreurs, corrections, validations/rejets et Cribles fins.
+- Synchronisation distante optionnelle via Supabase avec déduplication par identifiant d’événement.
+- Ajout d’un panneau Journal : compteur, état local/partagé, synchronisation manuelle, configuration et export.
+- Ajout d’un export ZIP **Pack d’amélioration** avec prompt autonome pour reprendre le développement dans un nouveau chat à partir du dernier ZIP + journal.
+- Gestion de deux profils d’accès sans mot de passe en clair ; export du pack direct pour le profil propriétaire et seconde autorisation requise pour le profil équipe.
+- La base distante n’expose pas directement la table au rôle anonyme : accès uniquement via fonctions RPC sécurisées et preuves dérivées du mot de passe saisi.
+- Ajout des fichiers de déploiement `SUPABASE_JOURNAL_SETUP.sql`, `JOURNAL_PARTAGE_SETUP.md` et `js/journal-config.js`.
+- Conservation intégrale du moteur v1.1.5 : 167 colonnes, onglets métier, Crible fin, pool borné et export Excel complet.
+
 
 ## v1.1.5 — Écran d’accueil sécurisé
 

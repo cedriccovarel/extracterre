@@ -1,9 +1,23 @@
-# Tests — ExtracTerre v1.1.5
+# Tests — ExtracTerre v1.1.9
 
 Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
 
-État attendu : **112/112 auto-tests**.
+État attendu : **117/117 auto-tests**.
 
+
+
+## Régressions v1.1.6
+
+- journal IndexedDB dans un store distinct de `workspaces` / `documents` ;
+- `clearWorkspaceSnapshot()` ne touche pas au store du journal ;
+- événements de correction, validation/rejet, Crible fin, analyse et erreur instrumentés ;
+- synchronisation Supabase bornée par lots et déduplication par ID ;
+- export du pack avec `PROMPT_NOUVEAU_CHAT.md` et fichiers JSON spécialisés ;
+- profils propriétaire/équipe conservés uniquement sous forme d’empreintes PBKDF2 ;
+- seconde autorisation du pack conservée uniquement sous forme d’empreinte ;
+- aucune des clés d’accès fournies ne doit apparaître en clair dans les fichiers livrés ;
+- schéma métier toujours fixé à 167 colonnes ;
+- auto-tests moteur historiques toujours intégralement passants.
 
 ## Régressions v1.1.5
 
@@ -177,3 +191,22 @@ Les fichiers de test ne sont pas inclus dans le dépôt GitHub.
 - Vérifier qu’après quelques secondes l’interface affiche durée totale estimée, temps restant et heure de fin estimée.
 - Vérifier que l’estimation se termine par « Analyse terminée en … ».
 - Vérifier que le checkpoint IndexedDB reste écrit après chaque document dans les trois modes.
+
+
+## Tests v1.1.8
+- Bao Evolution classé comme étude thermique.
+- Ubat état initial et après travaux.
+- Température intérieure non confondue avec Tic.
+- Vitrage « Double +15mm » normalisé sans inventer 4.x.4.
+- Régression globale : 117/117 tests.
+
+
+## Tests v1.1.9 — Aperçu intégré
+- bouton `👁 Aperçu` présent pour chaque fichier encore disponible en mémoire ;
+- aucun appel à `window.open` pour l’aperçu ;
+- PDF rendu dans `#filePreviewDialog` via une URL Blob locale ;
+- révocation de l’URL Blob à la fermeture ;
+- XML limité à 500 000 caractères pour éviter une forte consommation mémoire ;
+- Excel limité à 100 lignes × 40 colonnes avec sélection de feuille ;
+- aperçu désactivé après restauration IndexedDB tant que le fichier brut n’est pas redéposé ;
+- Crible fin, analyse et suppression du document restent fonctionnels.

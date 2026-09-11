@@ -1,7 +1,27 @@
-# ExtracTerre v1.1.5
+# ExtracTerre v1.1.9
 
 Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
 
+
+
+## v1.1.9 — Aperçu intégré des documents
+
+Chaque fichier chargé dispose désormais d’un bouton **👁 Aperçu** qui affiche son contenu dans une fenêtre interne à ExtracTerre, sans ouvrir de nouvel onglet. Les PDF utilisent une URL Blob locale temporaire, les XML sont affichés en texte et les classeurs Excel disposent d’un aperçu limité avec sélection de feuille. La ressource d’aperçu PDF est libérée dès la fermeture pour préserver la mémoire.
+
+## v1.1.8 — Interface allégée
+- Le Journal d’amélioration est désormais accessible depuis **Aide / FAQ** au lieu de la colonne principale.
+
+
+## v1.1.6 — Journal d’amélioration persistant et partagé
+
+- Ajout d’un **journal d’amélioration séparé de la session projet**. Le bouton **Effacer la session** supprime les checkpoints/résultats de travail mais ne supprime jamais ce journal.
+- Journalisation des temps d’analyse/OCR, types de documents, champs trouvés, champs manquants, erreurs, corrections manuelles, validations/rejets des candidats et décisions du **Crible fin**. Les extraits contextuels sont volontairement courts ; les PDF originaux ne sont pas envoyés.
+- Ajout d’un connecteur **Supabase** optionnel pour agréger le même journal entre plusieurs ordinateurs. Le mode local reste opérationnel sans serveur.
+- Ajout de `SUPABASE_JOURNAL_SETUP.sql`, `JOURNAL_PARTAGE_SETUP.md` et `js/journal-config.js`. Une fois l’URL et la clé publique du projet renseignées dans `journal-config.js`, tous les ordinateurs utilisant le site partagent automatiquement le même historique.
+- Deux profils d’accès sont maintenant reconnus par empreinte cryptographique, sans secret en clair. Le profil propriétaire peut exporter le journal directement ; le profil équipe doit valider une seconde clé dédiée. Cette règle est aussi vérifiable côté base partagée.
+- Nouveau bouton **Pack d’amélioration**. Il génère un ZIP contenant le journal complet et des vues dédiées (`corrections_manuelles.json`, `validations_rejets.json`, `performances.json`, `donnees_manquantes.json`, `erreurs.json`).
+- Le pack contient `PROMPT_NOUVEAU_CHAT.md` : en joignant le pack et le dernier ZIP d’ExtracTerre dans un nouveau chat, la mission d’amélioration est déjà explicitée (fiabilité, couverture, rapidité, mémoire, OCR ciblé, non-régression et conservation des 167 colonnes).
+- Les PDF bruts ne sont ni copiés dans le journal local, ni transmis à la base partagée.
 
 ## v1.1.5 — Écran d’accueil sécurisé
 

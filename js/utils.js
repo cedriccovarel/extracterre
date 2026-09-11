@@ -24,6 +24,10 @@ export function normalizeGlazingType(value='') {
   m=raw.match(/(?<!\d)(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)/);
   if(m&&plausible([m[1],m[2],m[3]])){ const gas=gasFrom(raw); return `${m[1]}.${m[2]}.${m[3]}${gas?` ${gas}`:''}`; }
   const low=normLower(raw);
+  // Certains rapports Bao Evolution n'indiquent pas l'épaisseur des verres mais seulement
+  // « Double +15mm ». On conserve l'information réellement présente sans inventer 4/15/4.
+  m=raw.match(/\bdouble(?:\s+vitrage)?\s*\+?\s*(\d{1,2}(?:[,.]\d+)?)\s*mm\b/i);
+  if(m) return `Double vitrage — lame ${n(m[1])} mm`;
   if(/triple\s+vitrage|3\s+vitrages|triple\s+verre/.test(low)) return 'Triple vitrage';
   if(/double\s+vitrage|2\s+vitrages|vitrage\s+vir|faible\s+emissiv|low-e|peu\s+emissif/.test(low)) return /vir|faible\s+emissiv|low-e|peu\s+emissif/.test(low)?'Double vitrage VIR':'Double vitrage';
   if(/simple\s+vitrage|simple\s+verre/.test(low)) return 'Simple vitrage';
