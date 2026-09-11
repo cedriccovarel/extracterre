@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><body>RUNNING<script type="module">
+import {saveWorkspaceSnapshot,saveDocumentCheckpoint,loadWorkspaceSnapshot,clearWorkspaceSnapshot} from './js/persistence.js';
+const doc={id:'doc-test',name:'RSET_TEST.pdf',size:1234,type:'RSET RE2020',status:'ready',classification:{type:'RSET RE2020'},buildings:{names:['Bâtiment A'],hits:[]},read:{kind:'pdf',pageCount:1,pages:[{page:1,text:'Bbio 42,1',lines:[{index:0,y:700,text:'Bbio 42,1',items:[{text:'Bbio',x:10},{text:'42,1',x:50}]}]}],text:'Bbio 42,1',ocr:{used:false,pages:[]}},cachedOccurrences:[{field:'bbio',value:42.1,building:'Bâtiment A',confidence:.98}],analysisCachedAt:Date.now()};
+const project={id:'project-test',label:'Projet test',operationName:'Opération test',docs:[doc],result:{operation:'Opération test',rows:[{building:'Bâtiment A',bbio:42.1}],finals:[],detailed:[],alerts:[]},buildingOverrides:{},manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,expanded:true};
+try{
+ await clearWorkspaceSnapshot();
+ const cp=await saveDocumentCheckpoint(project.id,doc);
+ await saveWorkspaceSnapshot({projects:[project],activeProjectId:project.id,activeTab:'summary'});
+ const restored=await loadWorkspaceSnapshot();
+ const rd=restored.projects[0].docs[0];
+ const ok=restored.activeProjectId==='project-test'&&rd.status==='ready'&&rd.cachedOccurrences?.[0]?.value===42.1&&rd.read?.text.includes('Bbio 42,1');
+ document.body.textContent=JSON.stringify({ok,mode:cp.mode,projects:restored.projects.length,docStatus:rd.status,bbio:rd.cachedOccurrences?.[0]?.value,readText:rd.read?.text});
+ await clearWorkspaceSnapshot();
+}catch(e){document.body.textContent=JSON.stringify({ok:false,error:e?.message||String(e),name:e?.name});}
+</script></body>

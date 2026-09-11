@@ -1,0 +1,4338 @@
+{
+  "version": "1.1.4",
+  "generatedAt": "2026-09-11T08:03:48.550762+00:00",
+  "count": 167,
+  "fields": [
+    {
+      "position": 1,
+      "key": "internal_code",
+      "label": "Code interne",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Code interne",
+        "code opération",
+        "code interne opération",
+        "n° opération",
+        "numero operation"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 2,
+      "key": "operation_name",
+      "label": "Nom opération",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Nom opération",
+        "nom de l'opération",
+        "nom de l operation",
+        "opération interne"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 3,
+      "key": "contract_status",
+      "label": "Contrat: Statut",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Contrat: Statut",
+        "Contrat Statut",
+        "Statut Contrat",
+        "état contrat"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 4,
+      "key": "evaluation_status",
+      "label": "Évaluation: Statut",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Évaluation: Statut",
+        "Évaluation Statut",
+        "Statut Évaluation",
+        "état évaluation"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 5,
+      "key": "case_stage",
+      "label": "Affaire: Étape",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Affaire: Étape",
+        "Affaire Étape",
+        "Étape Affaire",
+        "phase affaire"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 6,
+      "key": "client_program_name",
+      "label": "Nom du programme (client)",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Nom du programme (client)",
+        "Nom du programme",
+        "nom programme client",
+        "programme client"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 7,
+      "key": "owner_company",
+      "label": "Maître d'ouvrage: Nom de la société",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Maître d'ouvrage: Nom de la société",
+        "Maître d'ouvrage Nom de la société",
+        "Nom de la société Maître d'ouvrage",
+        "maître d'ouvrage",
+        "maitre d ouvrage",
+        "MOA",
+        "client",
+        "société maître d’ouvrage",
+        "societe maitre d ouvrage"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 8,
+      "key": "owner_main_company",
+      "label": "Maître d'ouvrage: Société principale: Nom de la société",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Maître d'ouvrage: Société principale: Nom de la société",
+        "Maître d'ouvrage Société principale: Nom de la société",
+        "Société principale: Nom de la société Maître d'ouvrage",
+        "société principale du maître d’ouvrage",
+        "societe principale du maitre d ouvrage",
+        "MOA société principale"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 9,
+      "key": "owner_hierarchy",
+      "label": "Maître d'ouvrage: Hiérarchie",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Maître d'ouvrage: Hiérarchie",
+        "Maître d'ouvrage Hiérarchie",
+        "Hiérarchie Maître d'ouvrage",
+        "hiérarchie maître d’ouvrage",
+        "hierarchie maitre d ouvrage",
+        "hiérarchie MOA"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 10,
+      "key": "stage",
+      "label": "Étape",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Étape",
+        "phase",
+        "étape projet"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 11,
+      "key": "creation_date",
+      "label": "Date de création",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Date de création",
+        "créé le",
+        "date création"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 12,
+      "key": "case_name",
+      "label": "Affaire: Nom de l'affaire",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Affaire: Nom de l'affaire",
+        "Affaire Nom de l'affaire",
+        "Nom de l'affaire Affaire",
+        "nom affaire",
+        "affaire",
+        "intitulé affaire"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 13,
+      "key": "case_creation_date",
+      "label": "Affaire: Date de création",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Affaire: Date de création",
+        "Affaire Date de création",
+        "Date de création Affaire",
+        "date création affaire"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 14,
+      "key": "case_accepted_date",
+      "label": "Affaire: Accepté le",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Affaire: Accepté le",
+        "Affaire Accepté le",
+        "Accepté le Affaire",
+        "date acceptation affaire",
+        "affaire acceptée le"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 15,
+      "key": "case_amount_ht",
+      "label": "Montant HT affaire",
+      "family": "Administration",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Montant HT affaire",
+        "montant affaire HT",
+        "montant HT de l’affaire",
+        "montant HT de l affaire"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 16,
+      "key": "contract_number",
+      "label": "Contrat: Numéro du contrat",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Contrat: Numéro du contrat",
+        "Contrat Numéro du contrat",
+        "Numéro du contrat Contrat",
+        "numéro contrat",
+        "n° contrat",
+        "référence contrat"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 17,
+      "key": "contract_creation_date",
+      "label": "Contrat: Date de création",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Contrat: Date de création",
+        "Contrat Date de création",
+        "Date de création Contrat",
+        "date création contrat"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 18,
+      "key": "contract_activation_date",
+      "label": "Contrat: Date d'activation",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Contrat: Date d'activation",
+        "Contrat Date d'activation",
+        "Date d'activation Contrat",
+        "date activation contrat",
+        "contrat activé le"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 19,
+      "key": "order_amount_ht",
+      "label": "Montant HT commande",
+      "family": "Administration",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Montant HT commande",
+        "montant commande HT",
+        "montant HT de la commande"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 20,
+      "key": "evaluation_internal_code",
+      "label": "Évaluation: Code interne",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Évaluation: Code interne",
+        "Évaluation Code interne",
+        "Code interne Évaluation",
+        "code évaluation"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 21,
+      "key": "evaluation_creation_date",
+      "label": "Évaluation: Date de création",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Évaluation: Date de création",
+        "Évaluation Date de création",
+        "Date de création Évaluation",
+        "date création évaluation"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 22,
+      "key": "certification_ap_date",
+      "label": "Certification: Date de décision AP",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Certification: Date de décision AP",
+        "Certification Date de décision AP",
+        "Date de décision AP Certification",
+        "date décision AP",
+        "décision AP"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 23,
+      "key": "certification_cd_date",
+      "label": "Certification: Date de décision CD",
+      "family": "Administration",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Certification: Date de décision CD",
+        "Certification Date de décision CD",
+        "Date de décision CD Certification",
+        "date décision CD",
+        "décision CD"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 24,
+      "key": "work_type",
+      "label": "Ouvrage",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Ouvrage",
+        "type ouvrage",
+        "type d’ouvrage",
+        "type d ouvrage",
+        "usage ouvrage"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 25,
+      "key": "housing_individual_scattered",
+      "label": "Individuel diffus (maison individuelle)",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Individuel diffus (maison individuelle)",
+        "Individuel diffus",
+        "maison individuelle",
+        "maisons individuelles",
+        "MI diffus"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 26,
+      "key": "housing_grouped_units",
+      "label": "Individuel groupé - Nombre de logements",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Individuel groupé - Nombre de logements",
+        "logements individuels groupés",
+        "nb logements individuel groupé",
+        "nombre logements IG"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 27,
+      "key": "housing_grouped_buildings",
+      "label": "Individuel groupé - Nombre de bâtiments",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Individuel groupé - Nombre de bâtiments",
+        "bâtiments individuels groupés",
+        "nb bâtiments individuel groupé",
+        "nombre bâtiments IG"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 28,
+      "key": "housing_collective_units",
+      "label": "Logement collectif - Nombre de logements",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Logement collectif - Nombre de logements",
+        "nombre logements collectifs",
+        "nb logements collectifs",
+        "logements collectifs"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 29,
+      "key": "housing_collective_buildings",
+      "label": "Logement collectif - Nombre de bâtiments",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Logement collectif - Nombre de bâtiments",
+        "nombre bâtiments collectifs",
+        "nb bâtiments collectifs"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 30,
+      "key": "housing_community_units",
+      "label": "Hab. communautaire - Nombre de logements",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Hab. communautaire - Nombre de logements",
+        "habitat communautaire logements",
+        "nombre logements habitat communautaire",
+        "résidence communautaire logements"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 31,
+      "key": "housing_uncertified",
+      "label": "Logements non certifiés",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Logements non certifiés",
+        "nombre logements non certifiés",
+        "logements hors certification"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 32,
+      "key": "housing_total",
+      "label": "Total logements",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Total logements",
+        "nombre total de logements",
+        "nb total logements",
+        "total des logements"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 33,
+      "key": "building_total",
+      "label": "Total bâtiments",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Total bâtiments",
+        "nombre total de bâtiments",
+        "nb total bâtiments",
+        "total des bâtiments"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 34,
+      "key": "reference_name",
+      "label": "Référentiel: Nom du référentiel",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Référentiel: Nom du référentiel",
+        "Référentiel Nom du référentiel",
+        "Nom du référentiel Référentiel",
+        "nom du référentiel",
+        "référentiel applicable",
+        "référentiel"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 35,
+      "key": "reference_version",
+      "label": "Version du référentiel applicable: Version",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Version du référentiel applicable: Version",
+        "Version du référentiel applicable Version",
+        "Version Version du référentiel applicable",
+        "version du référentiel",
+        "version referentiel",
+        "millésime référentiel",
+        "version applicable"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 36,
+      "key": "mentions",
+      "label": "Mentions",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Mentions",
+        "mentions retenues",
+        "mentions choisies",
+        "labels et mentions"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 37,
+      "key": "performance",
+      "label": "Performance",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Performance",
+        "niveau de performance",
+        "performances retenues",
+        "performance retenue"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 38,
+      "key": "selected_profile",
+      "label": "Profil choisi",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Profil choisi",
+        "profil",
+        "profil retenu",
+        "profil sélectionné"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 39,
+      "key": "built_before_1948",
+      "label": "Bâtiment construit avant 1948",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Bâtiment construit avant 1948",
+        "avant 1948",
+        "construction avant 1948"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 40,
+      "key": "built_after_1948",
+      "label": "Bâtiment construit après 1948",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Bâtiment construit après 1948",
+        "après 1948",
+        "construction après 1948"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 41,
+      "key": "renovation",
+      "label": "Rénovation",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Rénovation",
+        "opération de rénovation",
+        "rénovation bâtiment"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 42,
+      "key": "anru_zone",
+      "label": "Zone ANRU",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Zone ANRU",
+        "ANRU",
+        "zone de rénovation urbaine",
+        "NPNRU"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 43,
+      "key": "no_mention",
+      "label": "Sans mention",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Sans mention",
+        "aucune mention",
+        "sans label",
+        "aucun label"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 44,
+      "key": "environmental_performance",
+      "label": "Performance environnementale",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Performance environnementale",
+        "performance env",
+        "niveau environnemental"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 45,
+      "key": "mention_building_performance",
+      "label": "Mention Bâtiment Performance",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Bâtiment Performance",
+        "bâtiment performance"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 46,
+      "key": "mention_bee_plus",
+      "label": "Mention BEE+",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention BEE+",
+        "BEE+",
+        "BEE +"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 47,
+      "key": "mention_tfpb",
+      "label": "Mention Option TFPB",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Option TFPB",
+        "option TFPB",
+        "TFPB"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 48,
+      "key": "mention_ec",
+      "label": "Mention Label E+C-",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Label E+C-",
+        "label E+C-",
+        "E+C-",
+        "E+C−",
+        "énergie carbone"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 49,
+      "key": "derogation_ec",
+      "label": "Dérogation E+C-",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Dérogation E+C-",
+        "dérogation label E+C-"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 50,
+      "key": "mention_bbca",
+      "label": "Mention Label BBCA",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Label BBCA",
+        "label BBCA",
+        "BBCA"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 51,
+      "key": "derogation_bbca",
+      "label": "Dérogation BBCA",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Dérogation BBCA",
+        "dérogation label BBCA"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 52,
+      "key": "mention_neutrality_contribution",
+      "label": "Mention option Contribution Neutralité",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention option Contribution Neutralité",
+        "Contribution Neutralité",
+        "option neutralité"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 53,
+      "key": "mention_effinergie",
+      "label": "Mention Label Effinergie",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Label Effinergie",
+        "label Effinergie",
+        "Effinergie"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 54,
+      "key": "effinergie_energy_carbon_level",
+      "label": "Niveau Énergie Carbone Effinergie 2017",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau Énergie Carbone Effinergie 2017",
+        "Énergie Carbone Effinergie 2017",
+        "niveau E+C Effinergie 2017"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 55,
+      "key": "mention_biosourced_building",
+      "label": "Mention Label Bâtiment Biosourcé",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Label Bâtiment Biosourcé",
+        "label bâtiment biosourcé",
+        "bâtiment biosourcé"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 56,
+      "key": "derogation_biosourced",
+      "label": "Dérogation Biosourcé",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Dérogation Biosourcé",
+        "dérogation bâtiment biosourcé"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 57,
+      "key": "mention_habitat_quality",
+      "label": "Mention Habitat Qualité",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Habitat Qualité",
+        "Habitat Qualité"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 58,
+      "key": "mention_charge_assessment",
+      "label": "Mention Évaluation des charges",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Évaluation des charges",
+        "Évaluation des charges"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 59,
+      "key": "mention_buildability_bonus",
+      "label": "Mention Bonus de constructibilité",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Bonus de constructibilité",
+        "Bonus de constructibilité"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 60,
+      "key": "mention_air_quality",
+      "label": "Mention Qualité de l'air",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Qualité de l'air",
+        "Qualité de l'air",
+        "QAI"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 61,
+      "key": "mention_acoustic",
+      "label": "Mention Acoustique renforcée",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Acoustique renforcée",
+        "Acoustique renforcée"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 62,
+      "key": "mention_circular_economy",
+      "label": "Mention Économie circulaire",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Économie circulaire",
+        "Économie circulaire",
+        "réemploi"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 63,
+      "key": "mention_eu_taxonomy",
+      "label": "Mention Taxinomie européenne",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Taxinomie européenne",
+        "Taxinomie européenne",
+        "Taxonomie européenne"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 64,
+      "key": "mention_zero_carbon",
+      "label": "Mention Horizon Zéro Carbone",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Horizon Zéro Carbone",
+        "Horizon Zéro Carbone",
+        "HZC"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 65,
+      "key": "mention_biodiversity",
+      "label": "Mention Biodiversité",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Mention Biodiversité",
+        "Biodiversité"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 66,
+      "key": "specific_profile",
+      "label": "Profil spécifique",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Profil spécifique"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Choix des exigences",
+          "CR environnemental",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 67,
+      "key": "dpe_ges_label",
+      "label": "Étiquette DPE & GES",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Étiquette DPE & GES",
+        "étiquette DPE",
+        "classe DPE et GES",
+        "classe énergie et GES"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 68,
+      "key": "energy_level",
+      "label": "Niveau Énergie",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau Énergie",
+        "niveau énergétique"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 69,
+      "key": "passive_level",
+      "label": "Niveau Passif",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau Passif",
+        "Passivhaus",
+        "bâtiment passif"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 70,
+      "key": "cep_level",
+      "label": "Niveau Cep",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau Cep",
+        "Cep -5%",
+        "Cep -10%",
+        "Cep RE2020"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 71,
+      "key": "cepnr_level",
+      "label": "Niveau Cep,nr",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau Cep,nr",
+        "niveau Cepnr",
+        "niveau Cep,nr",
+        "Cepnr -5%",
+        "Cepnr -10%"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 72,
+      "key": "bbio_level",
+      "label": "Niveau Bbio",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau Bbio",
+        "Bbio -10%",
+        "Bbio -20%",
+        "Bbio RE2020"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 73,
+      "key": "ic_construction_level",
+      "label": "Niveau IC Construction",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau IC Construction",
+        "IC Construction 2025",
+        "IC Construction 2028",
+        "IC Construction 2031"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 74,
+      "key": "ic_energy_level",
+      "label": "Niveau IC Énergie",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Niveau IC Énergie",
+        "IC Énergie 2025",
+        "IC Énergie 2028"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 75,
+      "key": "enhanced_performance",
+      "label": "Performance renforcée",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Performance renforcée"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 76,
+      "key": "biosourced_2013",
+      "label": "Biosourcé 2013",
+      "family": "Certification & exigences",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "Biosourcé 2013",
+        "label biosourcé 2013",
+        "niveau biosourcé 2013"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "CR environnemental",
+          "Choix des exigences",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 77,
+      "key": "department",
+      "label": "Département",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Département",
+        "dept",
+        "code département"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 78,
+      "key": "progress_status",
+      "label": "Avancement",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Avancement",
+        "état d’avancement",
+        "etat d avancement",
+        "phase avancement"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 79,
+      "key": "project",
+      "label": "Projet",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Projet",
+        "nom projet"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 80,
+      "key": "operation",
+      "label": "Opération",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Opération",
+        "opération projet",
+        "opération technique"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 81,
+      "key": "building",
+      "label": "Bâtiment",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Bâtiment",
+        "nom bâtiment",
+        "zone bâtiment"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 82,
+      "key": "housing_count",
+      "label": "Nombre de logements",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Nombre de logements",
+        "nb logements",
+        "nb de logements",
+        "logements"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 83,
+      "key": "shab",
+      "label": "Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",
+        "Surface bâtiment",
+        "SHAB",
+        "Sref",
+        "S ref",
+        "surface de référence",
+        "surface habitable",
+        "SU",
+        "SURT",
+        "SRT",
+        "SHONRT"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Tableau de surfaces",
+          "Plan architectural",
+          "RSENV / RSNV",
+          "Entrée manuelle"
+        ],
+        "secondary": [
+          "RT Existant",
+          "Notice architecturale / pièce écrite architecte",
+          "Permis / pièce administrative"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 84,
+      "key": "housing_typologies",
+      "label": "Typologies de logements",
+      "family": "Programme",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Typologies de logements",
+        "typologie logements",
+        "types de logements",
+        "répartition typologique",
+        "T1 T2 T3"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Descriptif du projet",
+          "Tableau de surfaces",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 85,
+      "key": "construction_year",
+      "label": "Année de construction",
+      "family": "Programme",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Année de construction",
+        "année construction"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "RT Existant",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 86,
+      "key": "dh",
+      "label": "DH",
+      "family": "Confort d’été",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "DH",
+        "degrés-heures",
+        "degrés heures",
+        "DH bâtiment"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 87,
+      "key": "dh_max",
+      "label": "DH Max",
+      "family": "Confort d’été",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "DH Max",
+        "DHmax",
+        "seuil DH",
+        "DH réglementaire"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 88,
+      "key": "tic",
+      "label": "Tic",
+      "family": "Confort d’été",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Tic",
+        "température intérieure conventionnelle"
+      ],
+      "sources": {
+        "main": [
+          "RT2012",
+          "RT Existant",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 89,
+      "key": "tic_ref",
+      "label": "Tic ref",
+      "family": "Confort d’été",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Tic ref",
+        "Ticréf",
+        "Tic référence"
+      ],
+      "sources": {
+        "main": [
+          "RT2012",
+          "RT Existant",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 90,
+      "key": "cross_ventilated",
+      "label": "Logement traversant",
+      "family": "Confort d’été",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Logement traversant",
+        "logements traversants",
+        "zone traversante"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Plan architectural",
+          "CCTP",
+          "Entrée manuelle"
+        ],
+        "secondary": [
+          "Notice architecturale / pièce écrite architecte"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 91,
+      "key": "non_cross_ventilated",
+      "label": "Logement non traversant",
+      "family": "Confort d’été",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Logement non traversant",
+        "logements non traversants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Plan architectural",
+          "CCTP",
+          "Entrée manuelle"
+        ],
+        "secondary": [
+          "Notice architecturale / pièce écrite architecte"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 92,
+      "key": "fan_count",
+      "label": "Nombre de brasseurs d’air",
+      "family": "Confort d’été",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Nombre de brasseurs d’air",
+        "nombre de brasseurs d'air",
+        "nb brasseurs air",
+        "nombre ventilateurs plafond"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Plan architectural",
+          "CCTP",
+          "Entrée manuelle"
+        ],
+        "secondary": [
+          "Notice architecturale / pièce écrite architecte"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 93,
+      "key": "fan_type",
+      "label": "Type de brasseurs d’air",
+      "family": "Confort d’été",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Type de brasseurs d’air",
+        "type de brasseurs d'air",
+        "brasseur air type",
+        "HVLS",
+        "ventilateur plafond"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "Étude thermique",
+          "Plan architectural",
+          "CCTP",
+          "Entrée manuelle"
+        ],
+        "secondary": [
+          "Notice architecturale / pièce écrite architecte"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 94,
+      "key": "structure",
+      "label": "Structure",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Structure",
+        "structure principale",
+        "mode constructif",
+        "système constructif"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 95,
+      "key": "roof_structure",
+      "label": "Planchers hauts",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Planchers hauts",
+        "plancher haut",
+        "toiture structure",
+        "toiture"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 96,
+      "key": "roof_insulation",
+      "label": "Planchers hauts isolant",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Planchers hauts isolant",
+        "isolant plancher haut",
+        "isolation toiture",
+        "isolant toiture"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 97,
+      "key": "roof_insulation_thickness",
+      "label": "Planchers hauts épaisseur isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Planchers hauts épaisseur isolant",
+        "épaisseur isolant plancher haut",
+        "épaisseur isolation toiture"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 98,
+      "key": "roof_insulation_r",
+      "label": "Planchers hauts R isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Planchers hauts R isolant",
+        "R plancher haut",
+        "résistance thermique toiture",
+        "R toiture"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 99,
+      "key": "wall_structure",
+      "label": "Parois verticales structure",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Parois verticales structure",
+        "structure paroi verticale",
+        "structure mur",
+        "mur structure",
+        "façade structure"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 100,
+      "key": "wall_insulation",
+      "label": "Parois verticales type d’isolant",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Parois verticales type d’isolant",
+        "isolant paroi verticale",
+        "isolation mur",
+        "isolant mur",
+        "isolation façade"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 101,
+      "key": "wall_insulation_thickness",
+      "label": "Parois verticales épaisseur isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Parois verticales épaisseur isolant",
+        "épaisseur isolant paroi verticale",
+        "épaisseur isolation mur"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 102,
+      "key": "wall_insulation_r",
+      "label": "Parois verticales R isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Parois verticales R isolant",
+        "R paroi verticale",
+        "R mur",
+        "R façade",
+        "résistance thermique mur"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 103,
+      "key": "floor_structure",
+      "label": "Planchers bas structure",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Planchers bas structure",
+        "structure plancher bas",
+        "plancher bas structure"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 104,
+      "key": "floor_insulation",
+      "label": "Planchers bas isolant",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Planchers bas isolant",
+        "isolant plancher bas",
+        "isolation plancher bas",
+        "isolant sol"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 105,
+      "key": "floor_insulation_thickness",
+      "label": "Planchers bas épaisseur isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Planchers bas épaisseur isolant",
+        "épaisseur isolant plancher bas",
+        "épaisseur isolation sol"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 106,
+      "key": "floor_insulation_r",
+      "label": "Planchers bas R isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Planchers bas R isolant",
+        "R plancher bas",
+        "R sol",
+        "résistance thermique plancher bas"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 107,
+      "key": "window_material",
+      "label": "Menuiseries matériau",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Menuiseries matériau",
+        "matériau menuiseries",
+        "menuiserie matériau",
+        "châssis"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 108,
+      "key": "window_glazing",
+      "label": "Menuiseries vitrage",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Menuiseries vitrage",
+        "vitrage",
+        "type vitrage",
+        "composition vitrage",
+        "composition du vitrage",
+        "double vitrage",
+        "triple vitrage",
+        "4/16/4",
+        "4.16.4",
+        "argon",
+        "lame argon",
+        "Ug"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 109,
+      "key": "window_shading",
+      "label": "Menuiseries occultations",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Menuiseries occultations",
+        "occultations",
+        "protections solaires",
+        "volets",
+        "stores",
+        "brise soleil"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 110,
+      "key": "heating_vector_before",
+      "label": "Vecteur chauffage avant travaux",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Vecteur chauffage avant travaux",
+        "énergie chauffage avant",
+        "vecteur chauffage existant",
+        "chauffage existant énergie"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 111,
+      "key": "heating_vector_after",
+      "label": "Vecteur chauffage après travaux",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Vecteur chauffage après travaux",
+        "énergie chauffage après",
+        "vecteur chauffage projet",
+        "énergie chauffage projet"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 112,
+      "key": "heating_mode_after",
+      "label": "Mode de chauffage après travaux",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Mode de chauffage après travaux",
+        "système chauffage après",
+        "générateur chauffage projet",
+        "mode chauffage projet"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 113,
+      "key": "ecs_vector_before",
+      "label": "Vecteur ECS avant travaux",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Vecteur ECS avant travaux",
+        "énergie ECS avant",
+        "vecteur ECS existant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 114,
+      "key": "ecs_vector_after",
+      "label": "Vecteur ECS après travaux",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Vecteur ECS après travaux",
+        "énergie ECS après",
+        "vecteur ECS projet"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 115,
+      "key": "ecs",
+      "label": "ECS",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "ECS",
+        "eau chaude sanitaire",
+        "production ECS",
+        "système ECS"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 116,
+      "key": "cooling",
+      "label": "Refroidissement",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Refroidissement",
+        "climatisation",
+        "système de refroidissement"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 117,
+      "key": "ventilation",
+      "label": "Ventilation",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Ventilation",
+        "VMC",
+        "système ventilation"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 118,
+      "key": "bbio",
+      "label": "Bbio",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Bbio",
+        "coefficient Bbio",
+        "Bbio projet"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 119,
+      "key": "bbio_max",
+      "label": "Bbio Max",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Bbio Max",
+        "Bbiomax",
+        "Bbio maximal"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 120,
+      "key": "bbio_gain",
+      "label": "Gain Bbio",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Gain Bbio",
+        "gain de Bbio",
+        "réduction Bbio"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 121,
+      "key": "cep",
+      "label": "Cep",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep",
+        "coefficient Cep",
+        "Cep projet"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 122,
+      "key": "cep_max",
+      "label": "Cep Max",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep Max",
+        "Cepmax",
+        "Cep maximal",
+        "Cep référence"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 123,
+      "key": "cep_gain",
+      "label": "Gain Cep",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Gain Cep",
+        "gain de Cep",
+        "réduction Cep"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 124,
+      "key": "cepnr",
+      "label": "Cepnr",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cepnr",
+        "Cep,nr",
+        "Cep nr",
+        "coefficient Cepnr"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 125,
+      "key": "cepnr_max",
+      "label": "Cepnr Max",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cepnr Max",
+        "Cep,nr max",
+        "Cep nr max",
+        "Cepnr maximal"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 126,
+      "key": "cepnr_gain",
+      "label": "Gain Cepnr",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Gain Cepnr",
+        "gain Cep,nr",
+        "réduction Cepnr"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 127,
+      "key": "cep_cooling",
+      "label": "Cep refroidissement",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep refroidissement",
+        "Cep froid",
+        "consommation refroidissement"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 128,
+      "key": "cep_lighting",
+      "label": "Cep éclairage",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep éclairage",
+        "consommation éclairage"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 129,
+      "key": "cep_aux_vent",
+      "label": "Cep auxiliaires ventilation",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep auxiliaires ventilation",
+        "Cep ventilateurs",
+        "auxiliaires ventilation"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 130,
+      "key": "cep_aux_dist",
+      "label": "Cep auxiliaires distribution",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep auxiliaires distribution",
+        "Cep pompes",
+        "auxiliaires distribution"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 131,
+      "key": "cep_mobility",
+      "label": "Cep déplacement occupants",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep déplacement occupants",
+        "Cep mobilité",
+        "ascenseurs"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 132,
+      "key": "cep_electricity",
+      "label": "Cep électricité",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep électricité",
+        "Cep électrique"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 133,
+      "key": "cep_gas",
+      "label": "Cep gaz",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep gaz",
+        "consommation gaz Cep"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 134,
+      "key": "cep_district",
+      "label": "Cep réseau de chaleur",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep réseau de chaleur",
+        "Cep RCU"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 135,
+      "key": "cep_biomass",
+      "label": "Cep bois / biomasse",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep bois / biomasse",
+        "Cep bois",
+        "Cep biomasse",
+        "Cep bois biomasse"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSET RE2020",
+          "RT2012",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 136,
+      "key": "ubat_before",
+      "label": "Ubat avant travaux",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Ubat avant travaux",
+        "Ubat avant",
+        "Ubat initial",
+        "Ubat existant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Rapport d'imperméabilité",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 137,
+      "key": "ubat_after",
+      "label": "Ubat après travaux",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Ubat après travaux",
+        "Ubat après",
+        "Ubat projet"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Rapport d'imperméabilité",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 138,
+      "key": "cep_before",
+      "label": "Cep avant travaux",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep avant travaux",
+        "Cep avant",
+        "Cep initial",
+        "Cep existant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Rapport d'imperméabilité",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 139,
+      "key": "cep_after_final",
+      "label": "Cep après travaux final",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Cep après travaux final",
+        "Cep après",
+        "Cep final",
+        "Cep projet final"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Rapport d'imperméabilité",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 140,
+      "key": "ic_components",
+      "label": "IC composants bâtiment",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants bâtiment",
+        "IC composants",
+        "Iccomposant",
+        "IC construction composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 141,
+      "key": "ic_site",
+      "label": "IC chantier",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC chantier"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 142,
+      "key": "ic_lot_1",
+      "label": "IC composants lot 1",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 1",
+        "lot 1",
+        "lot 1 IC",
+        "lot 1 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 143,
+      "key": "ic_lot_2",
+      "label": "IC composants lot 2",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 2",
+        "lot 2",
+        "lot 2 IC",
+        "lot 2 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 144,
+      "key": "ic_lot_3",
+      "label": "IC composants lot 3",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 3",
+        "lot 3",
+        "lot 3 IC",
+        "lot 3 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 145,
+      "key": "ic_lot_4",
+      "label": "IC composants lot 4",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 4",
+        "lot 4",
+        "lot 4 IC",
+        "lot 4 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 146,
+      "key": "ic_lot_5",
+      "label": "IC composants lot 5",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 5",
+        "lot 5",
+        "lot 5 IC",
+        "lot 5 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 147,
+      "key": "ic_lot_6",
+      "label": "IC composants lot 6",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 6",
+        "lot 6",
+        "lot 6 IC",
+        "lot 6 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 148,
+      "key": "ic_lot_7",
+      "label": "IC composants lot 7",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 7",
+        "lot 7",
+        "lot 7 IC",
+        "lot 7 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 149,
+      "key": "ic_lot_8",
+      "label": "IC composants lot 8",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 8",
+        "lot 8",
+        "lot 8 IC",
+        "lot 8 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 150,
+      "key": "ic_lot_9",
+      "label": "IC composants lot 9",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 9",
+        "lot 9",
+        "lot 9 IC",
+        "lot 9 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 151,
+      "key": "ic_lot_10",
+      "label": "IC composants lot 10",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 10",
+        "lot 10",
+        "lot 10 IC",
+        "lot 10 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 152,
+      "key": "ic_lot_11",
+      "label": "IC composants lot 11",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 11",
+        "lot 11",
+        "lot 11 IC",
+        "lot 11 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 153,
+      "key": "ic_lot_12",
+      "label": "IC composants lot 12",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 12",
+        "lot 12",
+        "lot 12 IC",
+        "lot 12 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 154,
+      "key": "ic_lot_13",
+      "label": "IC composants lot 13",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC composants lot 13",
+        "lot 13",
+        "lot 13 IC",
+        "lot 13 composants"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 155,
+      "key": "ic_energy",
+      "label": "IC énergie bâtiment",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie bâtiment",
+        "IC énergie",
+        "Icenergie",
+        "énergie CE"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 156,
+      "key": "ic_energy_heating",
+      "label": "IC énergie chauffage",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie chauffage",
+        "IC chauffage"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 157,
+      "key": "ic_energy_cooling",
+      "label": "IC énergie refroidissement",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie refroidissement",
+        "IC refroidissement"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 158,
+      "key": "ic_energy_ecs",
+      "label": "IC énergie ECS",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie ECS",
+        "IC ECS"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 159,
+      "key": "ic_energy_aux_vent",
+      "label": "IC énergie auxiliaires ventilation",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie auxiliaires ventilation",
+        "IC auxiliaires ventilation"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 160,
+      "key": "ic_energy_aux_dist",
+      "label": "IC énergie auxiliaires distribution",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie auxiliaires distribution",
+        "IC auxiliaires distribution"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 161,
+      "key": "ic_energy_mobility",
+      "label": "IC énergie déplacements",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie déplacements",
+        "IC déplacements"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 162,
+      "key": "dpe_energy_before",
+      "label": "DPE Énergie avant travaux",
+      "family": "DPE",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "DPE Énergie avant travaux",
+        "DPE énergie avant",
+        "classe énergie avant"
+      ],
+      "sources": {
+        "main": [
+          "DPE",
+          "Diagnostic",
+          "RT Existant",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 163,
+      "key": "dpe_ges_before",
+      "label": "DPE GES avant travaux",
+      "family": "DPE",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "DPE GES avant travaux",
+        "DPE GES avant",
+        "classe GES avant",
+        "GES avant travaux"
+      ],
+      "sources": {
+        "main": [
+          "DPE",
+          "Diagnostic",
+          "RT Existant",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 164,
+      "key": "dpe_energy_after",
+      "label": "DPE Énergie après travaux final",
+      "family": "DPE",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "DPE Énergie après travaux final",
+        "DPE énergie après",
+        "classe énergie après"
+      ],
+      "sources": {
+        "main": [
+          "DPE",
+          "Diagnostic",
+          "RT Existant",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 165,
+      "key": "dpe_ges_after",
+      "label": "DPE GES après travaux final",
+      "family": "DPE",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "DPE GES après travaux final",
+        "DPE GES après",
+        "classe GES après"
+      ],
+      "sources": {
+        "main": [
+          "DPE",
+          "Diagnostic",
+          "RT Existant",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 166,
+      "key": "enr",
+      "label": "ENR oui/non",
+      "family": "ENR",
+      "type": "text",
+      "presence": true,
+      "tags": [
+        "ENR oui/non",
+        "ENR",
+        "énergie renouvelable",
+        "présence ENR"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 167,
+      "key": "enr_type",
+      "label": "ENR type",
+      "family": "ENR",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "ENR type",
+        "type ENR",
+        "photovoltaïque",
+        "solaire thermique",
+        "géothermie",
+        "biomasse"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    }
+  ]
+}
