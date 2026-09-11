@@ -1,6 +1,6 @@
 {
-  "version": "1.1.7",
-  "generatedAt": "2026-09-11T08:03:48.550762+00:00",
+  "version": "1.1.10",
+  "generatedAt": "2026-09-11T15:42:09.296Z",
   "count": 167,
   "fields": [
     {
@@ -582,7 +582,8 @@
         "type ouvrage",
         "type d’ouvrage",
         "type d ouvrage",
-        "usage ouvrage"
+        "usage ouvrage",
+        "type de bâtiment"
       ],
       "sources": {
         "main": [
@@ -1898,7 +1899,9 @@
       "tags": [
         "Département",
         "dept",
-        "code département"
+        "code département",
+        "numéro de département",
+        "département sélectionné"
       ],
       "sources": {
         "main": [
@@ -1912,7 +1915,11 @@
           "Notice architecturale / pièce écrite architecte",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique",
+          "RT Existant",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -2873,7 +2880,9 @@
         "Mode de chauffage après travaux",
         "système chauffage après",
         "générateur chauffage projet",
-        "mode chauffage projet"
+        "mode chauffage projet",
+        "type de générateur",
+        "générateur après travaux"
       ],
       "sources": {
         "main": [
@@ -2961,7 +2970,9 @@
         "ECS",
         "eau chaude sanitaire",
         "production ECS",
-        "système ECS"
+        "système ECS",
+        "type de stockage",
+        "type d ECS"
       ],
       "sources": {
         "main": [
@@ -3019,7 +3030,9 @@
       "tags": [
         "Ventilation",
         "VMC",
-        "système ventilation"
+        "système ventilation",
+        "système de ventilation",
+        "etat de la ventilation"
       ],
       "sources": {
         "main": [
@@ -3276,7 +3289,9 @@
       "tags": [
         "Cep refroidissement",
         "Cep froid",
-        "consommation refroidissement"
+        "consommation refroidissement",
+        "refroidissement énergie primaire",
+        "refroidissement kWhEP/m²"
       ],
       "sources": {
         "main": [
@@ -3301,7 +3316,9 @@
       "presence": false,
       "tags": [
         "Cep éclairage",
-        "consommation éclairage"
+        "consommation éclairage",
+        "éclairage énergie primaire",
+        "eclairage kWhEP/m²"
       ],
       "sources": {
         "main": [
@@ -3327,7 +3344,9 @@
       "tags": [
         "Cep auxiliaires ventilation",
         "Cep ventilateurs",
-        "auxiliaires ventilation"
+        "auxiliaires ventilation",
+        "ventilateurs énergie primaire",
+        "ventilateurs kWhEP/m²"
       ],
       "sources": {
         "main": [
@@ -3353,7 +3372,9 @@
       "tags": [
         "Cep auxiliaires distribution",
         "Cep pompes",
-        "auxiliaires distribution"
+        "auxiliaires distribution",
+        "auxiliaires énergie primaire",
+        "auxiliaires kWhEP/m²"
       ],
       "sources": {
         "main": [
@@ -3404,7 +3425,9 @@
       "presence": false,
       "tags": [
         "Cep électricité",
-        "Cep électrique"
+        "Cep électrique",
+        "consommations par énergie électricité",
+        "répartition des conso par énergie"
       ],
       "sources": {
         "main": [
@@ -3508,7 +3531,9 @@
         "Ubat avant travaux",
         "Ubat avant",
         "Ubat initial",
-        "Ubat existant"
+        "Ubat existant",
+        "état initial calcul du coefficient Ubat",
+        "coefficient Ubat état initial"
       ],
       "sources": {
         "main": [
@@ -3538,7 +3563,9 @@
       "tags": [
         "Ubat après travaux",
         "Ubat après",
-        "Ubat projet"
+        "Ubat projet",
+        "modification calcul du coefficient Ubat",
+        "coefficient Ubat état après travaux"
       ],
       "sources": {
         "main": [
@@ -3569,7 +3596,10 @@
         "Cep avant travaux",
         "Cep avant",
         "Cep initial",
-        "Cep existant"
+        "Cep existant",
+        "total kWhEP/m² état initial",
+        "total EP état initial",
+        "bilan énergétique état initial"
       ],
       "sources": {
         "main": [
@@ -3600,7 +3630,10 @@
         "Cep après travaux final",
         "Cep après",
         "Cep final",
-        "Cep projet final"
+        "Cep projet final",
+        "total kWhEP/m² état après travaux",
+        "total EP état après travaux",
+        "bilan énergétique après travaux"
       ],
       "sources": {
         "main": [

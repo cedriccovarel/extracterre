@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.1.9';
+export const APP_VERSION = '1.1.10';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -62,7 +62,7 @@ export const FIELD_DEFS = [
   {key:"evaluation_creation_date",label:"Évaluation: Date de création",family:"Administration",type:"text",tags:["Évaluation: Date de création", "Évaluation Date de création", "Date de création Évaluation", "date création évaluation"] ,presence:false},
   {key:"certification_ap_date",label:"Certification: Date de décision AP",family:"Administration",type:"text",tags:["Certification: Date de décision AP", "Certification Date de décision AP", "Date de décision AP Certification", "date décision AP", "décision AP"] ,presence:false},
   {key:"certification_cd_date",label:"Certification: Date de décision CD",family:"Administration",type:"text",tags:["Certification: Date de décision CD", "Certification Date de décision CD", "Date de décision CD Certification", "date décision CD", "décision CD"] ,presence:false},
-  {key:"work_type",label:"Ouvrage",family:"Programme",type:"text",tags:["Ouvrage", "type ouvrage", "type d’ouvrage", "type d ouvrage", "usage ouvrage"] ,presence:false},
+  {key:"work_type",label:"Ouvrage",family:"Programme",type:"text",tags:["Ouvrage", "type ouvrage", "type d’ouvrage", "type d ouvrage", "usage ouvrage", "type de bâtiment"] ,presence:false},
   {key:"housing_individual_scattered",label:"Individuel diffus (maison individuelle)",family:"Programme",type:"number",tags:["Individuel diffus (maison individuelle)", "Individuel diffus", "maison individuelle", "maisons individuelles", "MI diffus"] ,presence:false},
   {key:"housing_grouped_units",label:"Individuel groupé - Nombre de logements",family:"Programme",type:"number",tags:["Individuel groupé - Nombre de logements", "logements individuels groupés", "nb logements individuel groupé", "nombre logements IG"] ,presence:false},
   {key:"housing_grouped_buildings",label:"Individuel groupé - Nombre de bâtiments",family:"Programme",type:"number",tags:["Individuel groupé - Nombre de bâtiments", "bâtiments individuels groupés", "nb bâtiments individuel groupé", "nombre bâtiments IG"] ,presence:false},
@@ -115,7 +115,7 @@ export const FIELD_DEFS = [
   {key:"ic_energy_level",label:"Niveau IC Énergie",family:"Certification & exigences",type:"text",tags:["Niveau IC Énergie", "IC Énergie 2025", "IC Énergie 2028"] ,presence:false},
   {key:"enhanced_performance",label:"Performance renforcée",family:"Certification & exigences",type:"text",tags:["Performance renforcée"] ,presence:true},
   {key:"biosourced_2013",label:"Biosourcé 2013",family:"Certification & exigences",type:"text",tags:["Biosourcé 2013", "label biosourcé 2013", "niveau biosourcé 2013"] ,presence:true},
-  {key:"department",label:"Département",family:"Programme",type:"text",tags:["Département", "dept", "code département"] ,presence:false},
+  {key:"department",label:"Département",family:"Programme",type:"text",tags:["Département", "dept", "code département", "numéro de département", "département sélectionné"] ,presence:false},
   {key:"progress_status",label:"Avancement",family:"Programme",type:"text",tags:["Avancement", "état d’avancement", "etat d avancement", "phase avancement"] ,presence:false},
   {key:"project",label:"Projet",family:"Programme",type:"text",tags:["Projet", "nom projet"] ,presence:false},
   {key:"operation",label:"Opération",family:"Programme",type:"text",tags:["Opération", "opération projet", "opération technique"] ,presence:false},
@@ -150,12 +150,12 @@ export const FIELD_DEFS = [
   {key:"window_shading",label:"Menuiseries occultations",family:"Enveloppe",type:"text",tags:["Menuiseries occultations", "occultations", "protections solaires", "volets", "stores", "brise soleil"] ,presence:false},
   {key:"heating_vector_before",label:"Vecteur chauffage avant travaux",family:"Systèmes",type:"text",tags:["Vecteur chauffage avant travaux", "énergie chauffage avant", "vecteur chauffage existant", "chauffage existant énergie"] ,presence:false},
   {key:"heating_vector_after",label:"Vecteur chauffage après travaux",family:"Systèmes",type:"text",tags:["Vecteur chauffage après travaux", "énergie chauffage après", "vecteur chauffage projet", "énergie chauffage projet"] ,presence:false},
-  {key:"heating_mode_after",label:"Mode de chauffage après travaux",family:"Systèmes",type:"text",tags:["Mode de chauffage après travaux", "système chauffage après", "générateur chauffage projet", "mode chauffage projet"] ,presence:false},
+  {key:"heating_mode_after",label:"Mode de chauffage après travaux",family:"Systèmes",type:"text",tags:["Mode de chauffage après travaux", "système chauffage après", "générateur chauffage projet", "mode chauffage projet", "type de générateur", "générateur après travaux"] ,presence:false},
   {key:"ecs_vector_before",label:"Vecteur ECS avant travaux",family:"Systèmes",type:"text",tags:["Vecteur ECS avant travaux", "énergie ECS avant", "vecteur ECS existant"] ,presence:false},
   {key:"ecs_vector_after",label:"Vecteur ECS après travaux",family:"Systèmes",type:"text",tags:["Vecteur ECS après travaux", "énergie ECS après", "vecteur ECS projet"] ,presence:false},
-  {key:"ecs",label:"ECS",family:"Systèmes",type:"text",tags:["ECS", "eau chaude sanitaire", "production ECS", "système ECS"] ,presence:false},
+  {key:"ecs",label:"ECS",family:"Systèmes",type:"text",tags:["ECS", "eau chaude sanitaire", "production ECS", "système ECS", "type de stockage", "type d ECS"] ,presence:false},
   {key:"cooling",label:"Refroidissement",family:"Systèmes",type:"text",tags:["Refroidissement", "climatisation", "système de refroidissement"] ,presence:false},
-  {key:"ventilation",label:"Ventilation",family:"Systèmes",type:"text",tags:["Ventilation", "VMC", "système ventilation"] ,presence:false},
+  {key:"ventilation",label:"Ventilation",family:"Systèmes",type:"text",tags:["Ventilation", "VMC", "système ventilation", "système de ventilation", "etat de la ventilation"] ,presence:false},
   {key:"bbio",label:"Bbio",family:"Performance énergétique",type:"number",tags:["Bbio", "coefficient Bbio", "Bbio projet"] ,presence:false},
   {key:"bbio_max",label:"Bbio Max",family:"Performance énergétique",type:"number",tags:["Bbio Max", "Bbiomax", "Bbio maximal"] ,presence:false},
   {key:"bbio_gain",label:"Gain Bbio",family:"Performance énergétique",type:"number",tags:["Gain Bbio", "gain de Bbio", "réduction Bbio"] ,presence:false},
@@ -165,19 +165,19 @@ export const FIELD_DEFS = [
   {key:"cepnr",label:"Cepnr",family:"Performance énergétique",type:"number",tags:["Cepnr", "Cep,nr", "Cep nr", "coefficient Cepnr"] ,presence:false},
   {key:"cepnr_max",label:"Cepnr Max",family:"Performance énergétique",type:"number",tags:["Cepnr Max", "Cep,nr max", "Cep nr max", "Cepnr maximal"] ,presence:false},
   {key:"cepnr_gain",label:"Gain Cepnr",family:"Performance énergétique",type:"number",tags:["Gain Cepnr", "gain Cep,nr", "réduction Cepnr"] ,presence:false},
-  {key:"cep_cooling",label:"Cep refroidissement",family:"Performance énergétique",type:"number",tags:["Cep refroidissement", "Cep froid", "consommation refroidissement"] ,presence:false},
-  {key:"cep_lighting",label:"Cep éclairage",family:"Performance énergétique",type:"number",tags:["Cep éclairage", "consommation éclairage"] ,presence:false},
-  {key:"cep_aux_vent",label:"Cep auxiliaires ventilation",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires ventilation", "Cep ventilateurs", "auxiliaires ventilation"] ,presence:false},
-  {key:"cep_aux_dist",label:"Cep auxiliaires distribution",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires distribution", "Cep pompes", "auxiliaires distribution"] ,presence:false},
+  {key:"cep_cooling",label:"Cep refroidissement",family:"Performance énergétique",type:"number",tags:["Cep refroidissement", "Cep froid", "consommation refroidissement", "refroidissement énergie primaire", "refroidissement kWhEP/m²"] ,presence:false},
+  {key:"cep_lighting",label:"Cep éclairage",family:"Performance énergétique",type:"number",tags:["Cep éclairage", "consommation éclairage", "éclairage énergie primaire", "eclairage kWhEP/m²"] ,presence:false},
+  {key:"cep_aux_vent",label:"Cep auxiliaires ventilation",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires ventilation", "Cep ventilateurs", "auxiliaires ventilation", "ventilateurs énergie primaire", "ventilateurs kWhEP/m²"] ,presence:false},
+  {key:"cep_aux_dist",label:"Cep auxiliaires distribution",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires distribution", "Cep pompes", "auxiliaires distribution", "auxiliaires énergie primaire", "auxiliaires kWhEP/m²"] ,presence:false},
   {key:"cep_mobility",label:"Cep déplacement occupants",family:"Performance énergétique",type:"number",tags:["Cep déplacement occupants", "Cep mobilité", "ascenseurs"] ,presence:false},
-  {key:"cep_electricity",label:"Cep électricité",family:"Performance énergétique",type:"number",tags:["Cep électricité", "Cep électrique"] ,presence:false},
+  {key:"cep_electricity",label:"Cep électricité",family:"Performance énergétique",type:"number",tags:["Cep électricité", "Cep électrique", "consommations par énergie électricité", "répartition des conso par énergie"] ,presence:false},
   {key:"cep_gas",label:"Cep gaz",family:"Performance énergétique",type:"number",tags:["Cep gaz", "consommation gaz Cep"] ,presence:false},
   {key:"cep_district",label:"Cep réseau de chaleur",family:"Performance énergétique",type:"number",tags:["Cep réseau de chaleur", "Cep RCU"] ,presence:false},
   {key:"cep_biomass",label:"Cep bois / biomasse",family:"Performance énergétique",type:"number",tags:["Cep bois / biomasse", "Cep bois", "Cep biomasse", "Cep bois biomasse"] ,presence:false},
-  {key:"ubat_before",label:"Ubat avant travaux",family:"Performance énergétique",type:"number",tags:["Ubat avant travaux", "Ubat avant", "Ubat initial", "Ubat existant"] ,presence:false},
-  {key:"ubat_after",label:"Ubat après travaux",family:"Performance énergétique",type:"number",tags:["Ubat après travaux", "Ubat après", "Ubat projet"] ,presence:false},
-  {key:"cep_before",label:"Cep avant travaux",family:"Performance énergétique",type:"number",tags:["Cep avant travaux", "Cep avant", "Cep initial", "Cep existant"] ,presence:false},
-  {key:"cep_after_final",label:"Cep après travaux final",family:"Performance énergétique",type:"number",tags:["Cep après travaux final", "Cep après", "Cep final", "Cep projet final"] ,presence:false},
+  {key:"ubat_before",label:"Ubat avant travaux",family:"Performance énergétique",type:"number",tags:["Ubat avant travaux", "Ubat avant", "Ubat initial", "Ubat existant", "état initial calcul du coefficient Ubat", "coefficient Ubat état initial"] ,presence:false},
+  {key:"ubat_after",label:"Ubat après travaux",family:"Performance énergétique",type:"number",tags:["Ubat après travaux", "Ubat après", "Ubat projet", "modification calcul du coefficient Ubat", "coefficient Ubat état après travaux"] ,presence:false},
+  {key:"cep_before",label:"Cep avant travaux",family:"Performance énergétique",type:"number",tags:["Cep avant travaux", "Cep avant", "Cep initial", "Cep existant", "total kWhEP/m² état initial", "total EP état initial", "bilan énergétique état initial"] ,presence:false},
+  {key:"cep_after_final",label:"Cep après travaux final",family:"Performance énergétique",type:"number",tags:["Cep après travaux final", "Cep après", "Cep final", "Cep projet final", "total kWhEP/m² état après travaux", "total EP état après travaux", "bilan énergétique après travaux"] ,presence:false},
   {key:"ic_components",label:"IC composants bâtiment",family:"Carbone",type:"number",tags:["IC composants bâtiment", "IC composants", "Iccomposant", "IC construction composants"] ,presence:false},
   {key:"ic_site",label:"IC chantier",family:"Carbone",type:"number",tags:["IC chantier"] ,presence:false},
   {key:"ic_lot_1",label:"IC composants lot 1",family:"Carbone",type:"number",tags:["IC composants lot 1", "lot 1", "lot 1 IC", "lot 1 composants"] ,presence:false},
@@ -234,6 +234,8 @@ for(const key of ["work_type", "housing_individual_scattered", "housing_grouped_
 for(const key of ["reference_name", "reference_version", "mentions", "performance", "selected_profile", "built_before_1948", "built_after_1948", "renovation", "anru_zone", "no_mention", "environmental_performance", "mention_building_performance", "mention_bee_plus", "mention_tfpb", "mention_ec", "derogation_ec", "mention_bbca", "derogation_bbca", "mention_neutrality_contribution", "mention_effinergie", "effinergie_energy_carbon_level", "mention_biosourced_building", "derogation_biosourced", "mention_habitat_quality", "mention_charge_assessment", "mention_buildability_bonus", "mention_air_quality", "mention_acoustic", "mention_circular_economy", "mention_eu_taxonomy", "mention_zero_carbon", "mention_biodiversity", "specific_profile"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_CERT);
 for(const key of ["dpe_ges_label", "energy_level", "passive_level", "cep_level", "cepnr_level", "bbio_level", "ic_construction_level", "ic_energy_level", "enhanced_performance", "biosourced_2013"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_LEVELS);
 for(const key of ["department", "progress_status", "project", "operation", "building"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROJECT_META);
+// Une étude thermique/Bao peut porter un département explicite fiable ; elle reste en secours derrière les sources projet validées.
+DEFAULT_SOURCE_RULES.department=ordered(SOURCE_PROJECT_META,[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
 for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);

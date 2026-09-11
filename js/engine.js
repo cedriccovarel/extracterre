@@ -669,12 +669,86 @@ Total Lot : 547,3`;
   // v1.1.8 : rapport Bao Evolution / rénovation.
   const baoClass=classifyDocument('Rapport Bao Evolution SED.pdf','ETAT INITIAL : CALCUL du COEFFICIENT UBAT\nEtat après travaux');
   assert('Bao Evolution classé en étude thermique',baoClass.type===DOC_TYPES.THERMAL,baoClass.type);
-  const baoBefore=parseDocument(mk('ETAT INITIAL : CALCUL du COEFFICIENT UBAT\nTempérature intérieure : 20 °C\nCOEFFICIENT UBAT = 0,428',DOC_TYPES.THERMAL));
+  const baoBefore=parseDocument(mk('Bao Evolution\nETAT INITIAL : CALCUL du COEFFICIENT UBAT\nTempérature intérieure : 20 °C\nCOEFFICIENT UBAT = 0,428',DOC_TYPES.THERMAL));
   assert('Bao Ubat état initial',baoBefore.some(o=>o.field==='ubat_before'&&Math.abs(o.value-.428)<1e-9),JSON.stringify(baoBefore.filter(o=>/ubat/.test(o.field))));
+  assert('Bao Ubat état initial utilise le parseur dédié',baoBefore.some(o=>o.field==='ubat_before'&&o.method==='bao:ubat-before-explicit'),JSON.stringify(baoBefore.filter(o=>/ubat/.test(o.field))));
   assert('Température intérieure Bao jamais confondue avec Tic',!baoBefore.some(o=>o.field==='tic'),JSON.stringify(baoBefore.filter(o=>o.field==='tic')));
-  const baoAfter=parseDocument(mk('Modification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux\nCOEFFICIENT UBAT = 0,526',DOC_TYPES.THERMAL));
+  const baoAfter=parseDocument(mk('Bao Evolution\nModification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux\nCOEFFICIENT UBAT = 0,526',DOC_TYPES.THERMAL));
   assert('Bao Ubat état après travaux',baoAfter.some(o=>o.field==='ubat_after'&&Math.abs(o.value-.526)<1e-9),JSON.stringify(baoAfter.filter(o=>/ubat/.test(o.field))));
+  assert('Bao Ubat après travaux utilise le parseur dédié',baoAfter.some(o=>o.field==='ubat_after'&&o.method==='bao:ubat-after-explicit'),JSON.stringify(baoAfter.filter(o=>/ubat/.test(o.field))));
   assert('Bao vitrage Double +15mm normalisé sans invention',normalizeGlazingType('Double +15mm')==='Double vitrage — lame 15 mm',String(normalizeGlazingType('Double +15mm')));
+
+
+  // v1.1.10 : Bao Evolution — bilan énergétique par poste, GES et garde-fous contextuels.
+  const baoEnergyBeforeText=`Bao Evolution
+ETAT INITIAL
+Système de refroidissement : Sans système de refroidissement
+Détails des consommations Energie finale Energie primaire Dépense
+CHAUFFAGE
+Electricité 2682,51 26,99 0,00
+REFROIDISSEMENT 0,00
+ECS
+Electricité 3979,14 40,04 0,00
+ECLAIRAGE 1466,61 14,76 0,00
+AUXILIAIRES 168,06 1,69 0,00
+VENTILATEURS 1243,92 12,52 0,00
+AUTRES USAGES
+Electrique 4899,79 49,30
+TOTAL 14 440,0 145,3 0,0
+Bilan Energétique Bilan CO2
+TOTAL MWhEP/an : 37,26 TOTAL (tonnes) : ,953
+TOTAL kWhEP/m².an : 145,3 TOTAL (kg/m²) : 3,72`;
+  const baoEnergyBefore=parseDocument(mk(baoEnergyBeforeText,DOC_TYPES.THERMAL));
+  const baoBeforeCep=baoEnergyBefore.find(o=>o.field==='cep_before'&&o.method==='bao:primary-energy-total-before');
+  assert('Bao Cep avant depuis bilan énergie primaire',Math.abs((baoBeforeCep?.value??0)-145.3)<.001,String(baoBeforeCep?.value));
+  assert('Bao chauffage/ECS/autres conservés dans le bilan par poste',Math.abs((baoBeforeCep?.baoBreakdown?.heating??0)-26.99)<.001&&Math.abs((baoBeforeCep?.baoBreakdown?.ecs??0)-40.04)<.001&&Math.abs((baoBeforeCep?.baoBreakdown?.other??0)-49.3)<.001,JSON.stringify(baoBeforeCep?.baoBreakdown));
+  assert('Bao GES surfacique conservé sans faux mapping DPE/IC',Math.abs((baoBeforeCep?.baoGes?.kgM2??0)-3.72)<.001&&!baoEnergyBefore.some(o=>/^dpe_|^ic_/.test(o.field)),JSON.stringify(baoBeforeCep?.baoGes));
+  assert('Bao contrôle somme des postes = total',baoBeforeCep?.baoChecks?.crossOk===true,JSON.stringify(baoBeforeCep?.baoChecks));
+
+  const baoEnergyAfterText=`Bao Evolution
+Etat après travaux
+Système de refroidissement : Sans système de refroidissement
+Détails des consommations Energie finale Energie primaire Dépense
+CHAUFFAGE
+Electricité 3670,89 36,94 0,00
+REFROIDISSEMENT 0,00
+ECS
+Electricité 3979,14 40,04 0,00
+ECLAIRAGE 1466,61 14,76 0,00
+AUXILIAIRES 96,75 0,97 0,00
+VENTILATEURS 1243,92 12,52 0,00
+AUTRES USAGES
+Electrique 4899,79 49,30
+TOTAL 15 357,1 154,53 0,0
+Bilan Energétique Bilan CO2
+TOTAL MWhEP/an : 39,62 TOTAL (tonnes) : 1,128
+TOTAL kWhEP/m².an : 154,53 TOTAL (kg/m²) : 4,4`;
+  const baoEnergyAfter=parseDocument(mk(baoEnergyAfterText,DOC_TYPES.THERMAL));
+  const baoAfterCep=baoEnergyAfter.find(o=>o.field==='cep_after_final'&&o.method==='bao:primary-energy-total-after');
+  assert('Bao Cep final depuis bilan énergie primaire',Math.abs((baoAfterCep?.value??0)-154.53)<.001,String(baoAfterCep?.value));
+  assert('Bao Cep détaillé éclairage/auxiliaires/ventilateurs',baoEnergyAfter.some(o=>o.field==='cep_lighting'&&Math.abs(o.value-14.76)<.001)&&baoEnergyAfter.some(o=>o.field==='cep_aux_dist'&&Math.abs(o.value-.97)<.001)&&baoEnergyAfter.some(o=>o.field==='cep_aux_vent'&&Math.abs(o.value-12.52)<.001),JSON.stringify(baoEnergyAfter.filter(o=>o.method?.startsWith('bao:primary-energy-post'))));
+  assert('Bao Cep électricité agrégé quand le bilan est mono-énergie',baoEnergyAfter.some(o=>o.field==='cep_electricity'&&Math.abs(o.value-154.53)<.001),JSON.stringify(baoEnergyAfter.filter(o=>o.field==='cep_electricity')));
+
+  const baoGlazing=parseDocument(mk(`Bao Evolution
+Etat après travaux
+Modification n° 1 : CATALOGUE DES VITRAGES
+FE1 Menuiserie 0.9x1.8 0,90 1,80 Volet Roulant Alu
++15mm
+Double`,DOC_TYPES.THERMAL));
+  assert('Bao vitrage scindé Double + 15 mm reconstitué',baoGlazing.some(o=>o.field==='window_glazing'&&o.value==='Double vitrage — lame 15 mm'),JSON.stringify(baoGlazing.filter(o=>o.field==='window_glazing')));
+  assert('Alu du volet Bao jamais pris pour matériau de menuiserie',!baoGlazing.some(o=>o.field==='window_material'&&o.value==='Aluminium'),JSON.stringify(baoGlazing.filter(o=>o.field==='window_material')));
+  const baoOptionList=parseDocument(mk(`Bao Evolution
+Etat après travaux
+Type de chauffage : Autre (Thermodynamique, Gaz, Fioul, Bois, Réseau,...)`,DOC_TYPES.THERMAL));
+  assert('Liste d’exemples Bao jamais interprétée comme vecteur chauffage',!baoOptionList.some(o=>o.field==='heating_vector_after'),JSON.stringify(baoOptionList.filter(o=>o.field==='heating_vector_after')));
+  const baoYearRange=parseDocument(mk(`Bao Evolution
+Année de construction : Entre 1948 et 1974`,DOC_TYPES.THERMAL));
+  assert('Période de construction Bao jamais convertie en année exacte',!baoYearRange.some(o=>o.field==='construction_year'),JSON.stringify(baoYearRange.filter(o=>o.field==='construction_year')));
+  const baoCritical=`Détails des consommations Energie finale Energie primaire Dépense\nCHAUFFAGE\nECS\nTOTAL`;
+  assert('OCR ciblé sur tableau Bao énergie primaire incomplet',shouldOcrPdfPage(baoCritical,richItems,'auto')===true);
+  assert('OCR ciblé sur page Ubat Bao sans valeur reconstruite',shouldOcrPdfPage('Modification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux',richItems,'auto')===true);
+  const baoCollective=parseDocument(mk(`Bao Evolution\nEtude thermique 4 logements Romorantin\nDONNEES TECHNIQUES\nType de bâtiment : Logements collectifs\nBATIMENT : Bâtiment n°1`,DOC_TYPES.THERMAL));
+  assert('Bao bâtiment collectif unique -> 1 bâtiment collectif',baoCollective.some(o=>o.field==='housing_collective_buildings'&&o.value===1),JSON.stringify(baoCollective.filter(o=>o.field==='housing_collective_buildings')));
 
   return {tests,passed:tests.filter(t=>t.ok).length,total:tests.length,ok:tests.every(t=>t.ok)};
 }

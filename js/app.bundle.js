@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.9 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v1.1.10 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.9';
+const APP_VERSION = '1.1.10';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -67,7 +67,7 @@ const FIELD_DEFS = [
   {key:"evaluation_creation_date",label:"Évaluation: Date de création",family:"Administration",type:"text",tags:["Évaluation: Date de création", "Évaluation Date de création", "Date de création Évaluation", "date création évaluation"] ,presence:false},
   {key:"certification_ap_date",label:"Certification: Date de décision AP",family:"Administration",type:"text",tags:["Certification: Date de décision AP", "Certification Date de décision AP", "Date de décision AP Certification", "date décision AP", "décision AP"] ,presence:false},
   {key:"certification_cd_date",label:"Certification: Date de décision CD",family:"Administration",type:"text",tags:["Certification: Date de décision CD", "Certification Date de décision CD", "Date de décision CD Certification", "date décision CD", "décision CD"] ,presence:false},
-  {key:"work_type",label:"Ouvrage",family:"Programme",type:"text",tags:["Ouvrage", "type ouvrage", "type d’ouvrage", "type d ouvrage", "usage ouvrage"] ,presence:false},
+  {key:"work_type",label:"Ouvrage",family:"Programme",type:"text",tags:["Ouvrage", "type ouvrage", "type d’ouvrage", "type d ouvrage", "usage ouvrage", "type de bâtiment"] ,presence:false},
   {key:"housing_individual_scattered",label:"Individuel diffus (maison individuelle)",family:"Programme",type:"number",tags:["Individuel diffus (maison individuelle)", "Individuel diffus", "maison individuelle", "maisons individuelles", "MI diffus"] ,presence:false},
   {key:"housing_grouped_units",label:"Individuel groupé - Nombre de logements",family:"Programme",type:"number",tags:["Individuel groupé - Nombre de logements", "logements individuels groupés", "nb logements individuel groupé", "nombre logements IG"] ,presence:false},
   {key:"housing_grouped_buildings",label:"Individuel groupé - Nombre de bâtiments",family:"Programme",type:"number",tags:["Individuel groupé - Nombre de bâtiments", "bâtiments individuels groupés", "nb bâtiments individuel groupé", "nombre bâtiments IG"] ,presence:false},
@@ -120,7 +120,7 @@ const FIELD_DEFS = [
   {key:"ic_energy_level",label:"Niveau IC Énergie",family:"Certification & exigences",type:"text",tags:["Niveau IC Énergie", "IC Énergie 2025", "IC Énergie 2028"] ,presence:false},
   {key:"enhanced_performance",label:"Performance renforcée",family:"Certification & exigences",type:"text",tags:["Performance renforcée"] ,presence:true},
   {key:"biosourced_2013",label:"Biosourcé 2013",family:"Certification & exigences",type:"text",tags:["Biosourcé 2013", "label biosourcé 2013", "niveau biosourcé 2013"] ,presence:true},
-  {key:"department",label:"Département",family:"Programme",type:"text",tags:["Département", "dept", "code département"] ,presence:false},
+  {key:"department",label:"Département",family:"Programme",type:"text",tags:["Département", "dept", "code département", "numéro de département", "département sélectionné"] ,presence:false},
   {key:"progress_status",label:"Avancement",family:"Programme",type:"text",tags:["Avancement", "état d’avancement", "etat d avancement", "phase avancement"] ,presence:false},
   {key:"project",label:"Projet",family:"Programme",type:"text",tags:["Projet", "nom projet"] ,presence:false},
   {key:"operation",label:"Opération",family:"Programme",type:"text",tags:["Opération", "opération projet", "opération technique"] ,presence:false},
@@ -155,12 +155,12 @@ const FIELD_DEFS = [
   {key:"window_shading",label:"Menuiseries occultations",family:"Enveloppe",type:"text",tags:["Menuiseries occultations", "occultations", "protections solaires", "volets", "stores", "brise soleil"] ,presence:false},
   {key:"heating_vector_before",label:"Vecteur chauffage avant travaux",family:"Systèmes",type:"text",tags:["Vecteur chauffage avant travaux", "énergie chauffage avant", "vecteur chauffage existant", "chauffage existant énergie"] ,presence:false},
   {key:"heating_vector_after",label:"Vecteur chauffage après travaux",family:"Systèmes",type:"text",tags:["Vecteur chauffage après travaux", "énergie chauffage après", "vecteur chauffage projet", "énergie chauffage projet"] ,presence:false},
-  {key:"heating_mode_after",label:"Mode de chauffage après travaux",family:"Systèmes",type:"text",tags:["Mode de chauffage après travaux", "système chauffage après", "générateur chauffage projet", "mode chauffage projet"] ,presence:false},
+  {key:"heating_mode_after",label:"Mode de chauffage après travaux",family:"Systèmes",type:"text",tags:["Mode de chauffage après travaux", "système chauffage après", "générateur chauffage projet", "mode chauffage projet", "type de générateur", "générateur après travaux"] ,presence:false},
   {key:"ecs_vector_before",label:"Vecteur ECS avant travaux",family:"Systèmes",type:"text",tags:["Vecteur ECS avant travaux", "énergie ECS avant", "vecteur ECS existant"] ,presence:false},
   {key:"ecs_vector_after",label:"Vecteur ECS après travaux",family:"Systèmes",type:"text",tags:["Vecteur ECS après travaux", "énergie ECS après", "vecteur ECS projet"] ,presence:false},
-  {key:"ecs",label:"ECS",family:"Systèmes",type:"text",tags:["ECS", "eau chaude sanitaire", "production ECS", "système ECS"] ,presence:false},
+  {key:"ecs",label:"ECS",family:"Systèmes",type:"text",tags:["ECS", "eau chaude sanitaire", "production ECS", "système ECS", "type de stockage", "type d ECS"] ,presence:false},
   {key:"cooling",label:"Refroidissement",family:"Systèmes",type:"text",tags:["Refroidissement", "climatisation", "système de refroidissement"] ,presence:false},
-  {key:"ventilation",label:"Ventilation",family:"Systèmes",type:"text",tags:["Ventilation", "VMC", "système ventilation"] ,presence:false},
+  {key:"ventilation",label:"Ventilation",family:"Systèmes",type:"text",tags:["Ventilation", "VMC", "système ventilation", "système de ventilation", "etat de la ventilation"] ,presence:false},
   {key:"bbio",label:"Bbio",family:"Performance énergétique",type:"number",tags:["Bbio", "coefficient Bbio", "Bbio projet"] ,presence:false},
   {key:"bbio_max",label:"Bbio Max",family:"Performance énergétique",type:"number",tags:["Bbio Max", "Bbiomax", "Bbio maximal"] ,presence:false},
   {key:"bbio_gain",label:"Gain Bbio",family:"Performance énergétique",type:"number",tags:["Gain Bbio", "gain de Bbio", "réduction Bbio"] ,presence:false},
@@ -170,19 +170,19 @@ const FIELD_DEFS = [
   {key:"cepnr",label:"Cepnr",family:"Performance énergétique",type:"number",tags:["Cepnr", "Cep,nr", "Cep nr", "coefficient Cepnr"] ,presence:false},
   {key:"cepnr_max",label:"Cepnr Max",family:"Performance énergétique",type:"number",tags:["Cepnr Max", "Cep,nr max", "Cep nr max", "Cepnr maximal"] ,presence:false},
   {key:"cepnr_gain",label:"Gain Cepnr",family:"Performance énergétique",type:"number",tags:["Gain Cepnr", "gain Cep,nr", "réduction Cepnr"] ,presence:false},
-  {key:"cep_cooling",label:"Cep refroidissement",family:"Performance énergétique",type:"number",tags:["Cep refroidissement", "Cep froid", "consommation refroidissement"] ,presence:false},
-  {key:"cep_lighting",label:"Cep éclairage",family:"Performance énergétique",type:"number",tags:["Cep éclairage", "consommation éclairage"] ,presence:false},
-  {key:"cep_aux_vent",label:"Cep auxiliaires ventilation",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires ventilation", "Cep ventilateurs", "auxiliaires ventilation"] ,presence:false},
-  {key:"cep_aux_dist",label:"Cep auxiliaires distribution",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires distribution", "Cep pompes", "auxiliaires distribution"] ,presence:false},
+  {key:"cep_cooling",label:"Cep refroidissement",family:"Performance énergétique",type:"number",tags:["Cep refroidissement", "Cep froid", "consommation refroidissement", "refroidissement énergie primaire", "refroidissement kWhEP/m²"] ,presence:false},
+  {key:"cep_lighting",label:"Cep éclairage",family:"Performance énergétique",type:"number",tags:["Cep éclairage", "consommation éclairage", "éclairage énergie primaire", "eclairage kWhEP/m²"] ,presence:false},
+  {key:"cep_aux_vent",label:"Cep auxiliaires ventilation",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires ventilation", "Cep ventilateurs", "auxiliaires ventilation", "ventilateurs énergie primaire", "ventilateurs kWhEP/m²"] ,presence:false},
+  {key:"cep_aux_dist",label:"Cep auxiliaires distribution",family:"Performance énergétique",type:"number",tags:["Cep auxiliaires distribution", "Cep pompes", "auxiliaires distribution", "auxiliaires énergie primaire", "auxiliaires kWhEP/m²"] ,presence:false},
   {key:"cep_mobility",label:"Cep déplacement occupants",family:"Performance énergétique",type:"number",tags:["Cep déplacement occupants", "Cep mobilité", "ascenseurs"] ,presence:false},
-  {key:"cep_electricity",label:"Cep électricité",family:"Performance énergétique",type:"number",tags:["Cep électricité", "Cep électrique"] ,presence:false},
+  {key:"cep_electricity",label:"Cep électricité",family:"Performance énergétique",type:"number",tags:["Cep électricité", "Cep électrique", "consommations par énergie électricité", "répartition des conso par énergie"] ,presence:false},
   {key:"cep_gas",label:"Cep gaz",family:"Performance énergétique",type:"number",tags:["Cep gaz", "consommation gaz Cep"] ,presence:false},
   {key:"cep_district",label:"Cep réseau de chaleur",family:"Performance énergétique",type:"number",tags:["Cep réseau de chaleur", "Cep RCU"] ,presence:false},
   {key:"cep_biomass",label:"Cep bois / biomasse",family:"Performance énergétique",type:"number",tags:["Cep bois / biomasse", "Cep bois", "Cep biomasse", "Cep bois biomasse"] ,presence:false},
-  {key:"ubat_before",label:"Ubat avant travaux",family:"Performance énergétique",type:"number",tags:["Ubat avant travaux", "Ubat avant", "Ubat initial", "Ubat existant"] ,presence:false},
-  {key:"ubat_after",label:"Ubat après travaux",family:"Performance énergétique",type:"number",tags:["Ubat après travaux", "Ubat après", "Ubat projet"] ,presence:false},
-  {key:"cep_before",label:"Cep avant travaux",family:"Performance énergétique",type:"number",tags:["Cep avant travaux", "Cep avant", "Cep initial", "Cep existant"] ,presence:false},
-  {key:"cep_after_final",label:"Cep après travaux final",family:"Performance énergétique",type:"number",tags:["Cep après travaux final", "Cep après", "Cep final", "Cep projet final"] ,presence:false},
+  {key:"ubat_before",label:"Ubat avant travaux",family:"Performance énergétique",type:"number",tags:["Ubat avant travaux", "Ubat avant", "Ubat initial", "Ubat existant", "état initial calcul du coefficient Ubat", "coefficient Ubat état initial"] ,presence:false},
+  {key:"ubat_after",label:"Ubat après travaux",family:"Performance énergétique",type:"number",tags:["Ubat après travaux", "Ubat après", "Ubat projet", "modification calcul du coefficient Ubat", "coefficient Ubat état après travaux"] ,presence:false},
+  {key:"cep_before",label:"Cep avant travaux",family:"Performance énergétique",type:"number",tags:["Cep avant travaux", "Cep avant", "Cep initial", "Cep existant", "total kWhEP/m² état initial", "total EP état initial", "bilan énergétique état initial"] ,presence:false},
+  {key:"cep_after_final",label:"Cep après travaux final",family:"Performance énergétique",type:"number",tags:["Cep après travaux final", "Cep après", "Cep final", "Cep projet final", "total kWhEP/m² état après travaux", "total EP état après travaux", "bilan énergétique après travaux"] ,presence:false},
   {key:"ic_components",label:"IC composants bâtiment",family:"Carbone",type:"number",tags:["IC composants bâtiment", "IC composants", "Iccomposant", "IC construction composants"] ,presence:false},
   {key:"ic_site",label:"IC chantier",family:"Carbone",type:"number",tags:["IC chantier"] ,presence:false},
   {key:"ic_lot_1",label:"IC composants lot 1",family:"Carbone",type:"number",tags:["IC composants lot 1", "lot 1", "lot 1 IC", "lot 1 composants"] ,presence:false},
@@ -239,6 +239,8 @@ for(const key of ["work_type", "housing_individual_scattered", "housing_grouped_
 for(const key of ["reference_name", "reference_version", "mentions", "performance", "selected_profile", "built_before_1948", "built_after_1948", "renovation", "anru_zone", "no_mention", "environmental_performance", "mention_building_performance", "mention_bee_plus", "mention_tfpb", "mention_ec", "derogation_ec", "mention_bbca", "derogation_bbca", "mention_neutrality_contribution", "mention_effinergie", "effinergie_energy_carbon_level", "mention_biosourced_building", "derogation_biosourced", "mention_habitat_quality", "mention_charge_assessment", "mention_buildability_bonus", "mention_air_quality", "mention_acoustic", "mention_circular_economy", "mention_eu_taxonomy", "mention_zero_carbon", "mention_biodiversity", "specific_profile"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_CERT);
 for(const key of ["dpe_ges_label", "energy_level", "passive_level", "cep_level", "cepnr_level", "bbio_level", "ic_construction_level", "ic_energy_level", "enhanced_performance", "biosourced_2013"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_LEVELS);
 for(const key of ["department", "progress_status", "project", "operation", "building"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROJECT_META);
+// Une étude thermique/Bao peut porter un département explicite fiable ; elle reste en secours derrière les sources projet validées.
+DEFAULT_SOURCE_RULES.department=ordered(SOURCE_PROJECT_META,[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
 for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
@@ -447,12 +449,12 @@ function normalizeGlazingType(value='') {
   const low=normLower(raw);
   // Certains rapports Bao Evolution n'indiquent pas l'épaisseur des verres mais seulement
   // « Double +15mm ». On conserve l'information réellement présente sans inventer 4/15/4.
-  m=raw.match(/\bdouble(?:\s+vitrage)?\s*\+?\s*(\d{1,2}(?:[,.]\d+)?)\s*mm\b/i);
+  m=raw.match(/\bdouble(?:\s+vitrage)?\s*(?:[-–—:]\s*)?lame\s*(?:de\s*)?(\d{1,2}(?:[,.]\d+)?)\s*mm\b/i)||raw.match(/\bdouble(?:\s+vitrage)?\s*\+?\s*(\d{1,2}(?:[,.]\d+)?)\s*mm\b/i);
   if(m) return `Double vitrage — lame ${n(m[1])} mm`;
   if(/triple\s+vitrage|3\s+vitrages|triple\s+verre/.test(low)) return 'Triple vitrage';
   if(/double\s+vitrage|2\s+vitrages|vitrage\s+vir|faible\s+emissiv|low-e|peu\s+emissif/.test(low)) return /vir|faible\s+emissiv|low-e|peu\s+emissif/.test(low)?'Double vitrage VIR':'Double vitrage';
   if(/simple\s+vitrage|simple\s+verre/.test(low)) return 'Simple vitrage';
-  return raw.length<=80?raw:null;
+  return null;
 }
 function parseFrNumber(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -966,6 +968,37 @@ function criticalTableNeedsOcr(text=''){
     const structured=lines.some(l=>/^(?:batiment|bâtiment)\b/i.test(l)&&countNumericTokens(l)>=6);
     const postRows=lines.filter(l=>/^(?:chauffage|refroidissement|ecs|eclairage|éclairage|auxiliaires|deplacement)/i.test(l)&&countNumericTokens(l)>=1).length;
     if(!structured&&postRows<3) return true;
+  }
+  // Bao Evolution / audits de rénovation : ces pages portent des consommations d'énergie primaire
+  // par poste. Si l'en-tête existe mais que les lignes du tableau sont trop fragmentées, on OCRise
+  // uniquement cette page afin de sécuriser Cep avant/après et les postes détaillés.
+  if(/details\s+des\s+consommations/.test(low) && /energie\s+primaire/.test(low)){
+    const labels=['chauffage','refroidissement','ecs','eclairage','auxiliaires','ventilateurs','autres usages'];
+    const labelHits=labels.filter(label=>low.includes(label)).length;
+    const numericPostRows=lines.filter(l=>/^(?:chauffage|refroidissement|ecs|eau\s+chaude|eclairage|éclairage|auxiliaires|ventilateurs|autres\s+usages|electricit)/i.test(l)&&countNumericTokens(l)>=2).length;
+    const totalPrimary=lines.some(l=>/^total\b/i.test(l)&&countNumericTokens(l)>=2)||/total\s+kwh\s*ep\s*\/\s*m[²2]/i.test(low);
+    if(labelHits<6||numericPostRows<4||!totalPrimary) return true;
+  }
+  // Le bilan GES Bao est court mais essentiel : OCR ciblé si les libellés sont visibles sans leurs valeurs.
+  if(/evolution\s+emission\s+ges|emission\s+de\s+co2\s+avant\s+travaux/.test(low)){
+    const gesRows=lines.filter(l=>/emission\s+de\s+co2\s+(?:avant|apres|après|des\s+travaux)/i.test(l)&&countNumericTokens(l)>=1).length;
+    if(gesRows<2) return true;
+  }
+  // Bao : les pages Ubat, enveloppe et systèmes ont une structure stable. Si leur titre est lisible
+  // mais que la valeur/ligne métier manque dans la couche texte, on OCRise uniquement cette page.
+  if(/calcul\s+du\s+coefficient\s+ubat/.test(low) && !/coefficient\s+ubat\s*=\s*[-+]?\d+(?:[,.]\d+)?/.test(low)) return true;
+  if(/details\s+des\s+parois/.test(low)){
+    const compositionRows=lines.filter(l=>/(?:laine|isover|polysty|polyurethane|fibre\s+de\s+bois|ouate|brique|beton|béton)/i.test(l)&&countNumericTokens(l)>=1).length;
+    if(compositionRows<2) return true;
+  }
+  if(/catalogue\s+des\s+vitrages/.test(low)){
+    const vitrageRows=lines.filter(l=>/^fe\d+\b/i.test(l)&&countNumericTokens(l)>=2).length;
+    if(vitrageRows<2 || (!/\bdouble\b|\btriple\b/i.test(low) && !/\buw\b/i.test(low))) return true;
+  }
+  if(/saisie\s+de\s+la\s+ventilation|saisie\s+de\s+l['’]?ecs|saisie\s+des\s+generations/.test(low)){
+    const signals=['systeme de ventilation','type d ecs','type de stockage','type de generateur','type d energie pour la production de chaud'];
+    const hits=signals.filter(x=>low.includes(x)).length;
+    if(hits===0) return true;
   }
   // ACV / RSENV : si le tableau résumé des lots est détecté mais ses totaux sont cassés,
   // l'OCR de secours est utile même quand la couche texte générale semble bonne.
@@ -1942,6 +1975,243 @@ function thermalStudyPhase(text){
   if(/(?:^|\b)(?:etat|état)\s+(?:apres|après)\s+travaux\b|\b(?:variante|modification)\s*(?:n[°ºo]?\s*)?\d*[^\n]{0,60}(?:apres|après)\s+travaux\b|(?:^|\b)(?:etat|état)\s+(?:projete|projeté|scenario|scénario)\b|\bscenario\s+\d+\b|\bscénario\s+\d+\b/.test(low)) return 'after';
   return '';
 }
+
+
+function isBaoEvolutionDocument(doc){
+  const s=normLower(`${doc?.name||''}\n${doc?.read?.text||''}`);
+  return /bao\s*(?:evolution|evolution)|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|details\s+des\s+consommations[\s\S]{0,160}energie\s+primaire|bilan\s+energetique[\s\S]{0,80}bilan\s+co2/.test(s);
+}
+function baoNumber(value=''){
+  let t=String(value??'').replace(/\u00a0/g,' ').trim();
+  if(/^[-+]?[,.]\d+$/.test(t)) t=t.replace(/^([-+]?)\s*([,.])/,'$10$2');
+  return parseFrNumber(t);
+}
+function baoNumericTail(raw=''){
+  const cleaned=String(raw??'').replace(/(?<!\d)([-+]?),(?=\d)/g,'$10,');
+  return numbersIn(cleaned);
+}
+function baoPhaseFromPage(page){
+  const low=normLower(page?.text||'');
+  if(/etat\s+apres\s+travaux|modification\s+(?:prioritaire|n[°ºo]?\s*\d+)|variante\s+\d+/.test(low)) return 'after';
+  if(/etat\s+initial|etat\s+existant/.test(low)) return 'before';
+  return '';
+}
+function baoLineAfter(lines,index,max=2){
+  const parts=[];
+  for(let j=index;j<Math.min(lines.length,index+max+1);j++){
+    const t=normalizeText(lines[j]?.text||''); if(t) parts.push(t);
+  }
+  return normalizeText(parts.join(' | '));
+}
+function baoPrimaryFromRow(raw=''){
+  const ns=baoNumericTail(raw);
+  // Format Bao courant : Energie finale | Energie primaire | Dépense.
+  // La consommation primaire est donc l'avant-dernière valeur, jamais le montant en euros.
+  if(ns.length>=3) return ns.at(-2);
+  if(ns.length===2) return ns.at(-1);
+  return null;
+}
+function baoFinalEnergyFromRow(raw=''){
+  const ns=baoNumericTail(raw);
+  if(ns.length>=3) return ns.at(-3);
+  if(ns.length===2) return ns[0];
+  return null;
+}
+function baoEnergyPage(page){
+  const low=normLower(page?.text||'');
+  if(!/details\s+des\s+consommations/.test(low)||!/energie\s+primaire/.test(low)) return null;
+  const phase=baoPhaseFromPage(page); if(!phase) return null;
+  const lines=page.lines||[], values={}, finalEnergy={};
+  const defs=[
+    ['heating',/^chauffage\b/i],['cooling',/^refroidissement\b/i],['ecs',/^ecs\b|^eau\s+chaude\s+sanitaire\b/i],
+    ['lighting',/^eclairage\b|^éclairage\b/i],['auxDist',/^auxiliaires\b/i],['auxVent',/^ventilateurs\b|^ventilation\b/i],['other',/^autres\s+usages\b/i]
+  ];
+  const headingRe=/^(?:chauffage|refroidissement|ecs|eau\s+chaude\s+sanitaire|eclairage|éclairage|auxiliaires|ventilateurs|ventilation|autres\s+usages|total\b)/i;
+  let total=null,totalFinalEnergy=null, totalMwh=null,gesTonnes=null,gesKgM2=null;
+  for(let i=0;i<lines.length;i++){
+    const raw=normalizeText(lines[i].text), lowLine=normLower(raw);
+    for(const [key,re] of defs){
+      if(!re.test(raw)) continue;
+      let source=raw, primary=baoPrimaryFromRow(source), ef=baoFinalEnergyFromRow(source);
+      if(primary===null){
+        for(let j=i+1;j<Math.min(lines.length,i+3);j++){
+          const nraw=normalizeText(lines[j].text); if(!nraw) continue;
+          if(headingRe.test(nraw)) break;
+          const pv=baoPrimaryFromRow(nraw); if(pv!==null){ source=`${raw} | ${nraw}`; primary=pv; ef=baoFinalEnergyFromRow(nraw); break; }
+        }
+      }
+      // Bao laisse parfois les colonnes énergie vides pour un poste nul et n'imprime que « 0,00 » en dépense.
+      // On ne convertit ce zéro en énergie primaire que pour le refroidissement ET seulement si le rapport
+      // indique ailleurs qu'il n'y a pas de système de refroidissement.
+      if(key==='cooling'&&primary===null&&baoNumericTail(raw).length===1&&baoNumericTail(raw)[0]===0&&/sans\s+systeme\s+de\s+refroidissement/.test(normLower(page?._docText||''))){ primary=0; ef=0; }
+      if(primary!==null&&primary>=0&&primary<5000){ values[key]=primary; if(ef!==null) finalEnergy[key]=ef; }
+    }
+    if(/^total\b/i.test(raw)&&!/depense|abonnement/i.test(lowLine)){
+      const ns=baoNumericTail(raw); if(ns.length>=2){
+        if(ns.length>=3){ totalFinalEnergy=ns.at(-3); total=ns.at(-2); }
+        else total=ns.at(-1);
+      }
+    }
+    let m;
+    if((m=raw.match(/total\s+mwh\s*ep\s*\/\s*an\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) totalMwh=baoNumber(m[1]);
+    if((m=raw.match(/total\s*\(\s*tonnes?\s*\)\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) gesTonnes=baoNumber(m[1]);
+    if((m=raw.match(/total\s+kwh\s*ep\s*\/\s*m[²2]\s*\.?(?:an)?\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) total=baoNumber(m[1]);
+    if((m=raw.match(/total\s*\(\s*kg\s*\/\s*m[²2]\s*\)\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) gesKgM2=baoNumber(m[1]);
+  }
+  return {page,phase,values,finalEnergy,total,totalFinalEnergy,totalMwh,gesTonnes,gesKgM2};
+}
+function parseBaoEvolution(doc){
+  if(!isBaoEvolutionDocument(doc)) return [];
+  const out=[], allText=normLower(doc.read?.text||'');
+  const add=(page,line,field,value,method,confidence=.995,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:'Bao Evolution / étude thermique',...extra})); };
+  const energyPages=[], recap={}, gesAbsolute={};
+  let titleHousing=null, firstBuildingLine=null;
+
+  let activePhase='';
+  for(const page of doc.read.pages||[]){
+    // Permet au parseur de ligne de vérifier les systèmes annoncés ailleurs dans le rapport sans multiplier les recherches.
+    page._docText=allText;
+    const explicitPagePhase=baoPhaseFromPage(page); if(explicitPagePhase) activePhase=explicitPagePhase;
+    const phase=activePhase, lines=page.lines||[];
+    const ep=baoEnergyPage(page); if(ep) energyPages.push(ep);
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i], raw=normalizeText(line.text), low=normLower(raw), ctx=baoLineAfter(lines,i,2); let m;
+      const building=buildingForPosition(doc,page.page,line.index);
+      if(!firstBuildingLine&&/batiment\s+n[°ºo]?\s*1|bâtiment\s+n[°ºo]?\s*1/i.test(raw)) firstBuildingLine={page,line,building};
+      if(titleHousing===null&&(m=raw.match(/(?:etude\s+thermique\s+)?(\d+)\s+logements?\b/i))){ const n=parseInt(m[1],10); if(n>0&&n<10000) titleHousing={n,page,line,building}; }
+
+      if((m=raw.match(/numero\s+de\s+departement\s*:\s*(\d{1,3})/i))){ const d=m[1].padStart(2,'0'); add(page,line,'department',d,'bao:department-code',.999,'',{building:'Bâtiment unique',excerpt:ctx}); }
+      if((m=raw.match(/type\s+de\s+batiment\s*:\s*(.+)$/i))){ const v=normLower(m[1]); const work=/logements?\s+collectifs?/.test(v)?'Logement collectif':/maisons?\s+individuelles?|logements?\s+individuels?/.test(v)?'Maison individuelle':normalizeText(m[1]); add(page,line,'work_type',work,'bao:building-type',.995,'',{building:'Bâtiment unique',excerpt:ctx}); }
+      if((m=raw.match(/surface\s+habitable\s*:\s*([\d\s.,]+)\s*m[²2]/i))){ const v=parseFrNumber(m[1]); if(v&&v>20) add(page,line,'shab',v,'bao:shab',.999,'m²',{building,surfacePriority:100,excerpt:ctx,provenanceNote:'Surface habitable explicitement indiquée par Bao Evolution.'}); }
+      // Bao imprime une valeur Ubat explicite dans deux blocs distincts. On la rattache à la phase
+      // déterminée par les titres de section, et jamais à une valeur U de paroi voisine.
+      if((m=raw.match(/coefficient\s+ubat\s*=\s*([-+]?\d+(?:[,.]\d+)?)/i))){
+        const v=parseFrNumber(m[1]);
+        if(v!==null&&phase==='before') add(page,line,'ubat_before',v,'bao:ubat-before-explicit',.999,'W/m².K',{building,excerpt:ctx,provenanceNote:'Valeur lue sur la ligne « COEFFICIENT UBAT » du bloc ÉTAT INITIAL.'});
+        if(v!==null&&phase==='after') add(page,line,'ubat_after',v,'bao:ubat-after-explicit',.999,'W/m².K',{building,excerpt:ctx,provenanceNote:'Valeur lue sur la ligne « COEFFICIENT UBAT » du bloc ÉTAT APRÈS TRAVAUX.'});
+      }
+
+      // Systèmes avant/après : lecture des champs exacts Bao, sans interpréter les listes d'exemples entre parenthèses.
+      if((m=raw.match(/systeme\s+de\s+refroidissement\s*:\s*(.+)$/i))&&phase==='after'){
+        const v=/sans\s+systeme\s+de\s+refroidissement/i.test(m[1])?'Sans système de refroidissement':findFirstMatch(m[1],COOLING)||normalizeText(m[1]);
+        add(page,line,'cooling',v,'bao:cooling-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+de\s+chauffage\s*:\s*electrique\s+thermodynamique/i))){
+        if(phase==='before') add(page,line,'heating_vector_before','Électricité','bao:heating-vector-before',.999,'',{building,excerpt:ctx});
+        if(phase==='after') add(page,line,'heating_vector_after','Électricité','bao:heating-vector-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+de\s+generateur\s*:\s*(.+)$/i))&&phase==='after'){
+        const mode=findFirstMatch(m[1],HVAC.heating); if(mode) add(page,line,'heating_mode_after',mode,'bao:heating-generator-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+d['’]?energie\s+pour\s+la\s+production\s+de\s+chaud\s*:\s*(.+)$/i))){
+        const vec=findFirstMatch(m[1],HVAC.vectors); if(vec&&phase==='before') add(page,line,'heating_vector_before',vec,'bao:generator-energy-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'heating_vector_after',vec,'bao:generator-energy-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+d['’]?ecs\s*:\s*(.+)$/i))){ const vec=findFirstMatch(m[1],HVAC.vectors); if(vec&&phase==='before') add(page,line,'ecs_vector_before',vec,'bao:ecs-vector-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'ecs_vector_after',vec,'bao:ecs-vector-after',.999,'',{building,excerpt:ctx}); }
+      if((m=raw.match(/type\s+de\s+stockage\s*:\s*(.+)$/i))&&phase==='after'){
+        const mode=findFirstMatch(m[1],HVAC.ecs); if(mode){
+          const nearby=normalizeText(lines.slice(Math.max(0,i-2),Math.min(lines.length,i+4)).map(x=>x.text).join(' | '));
+          const vol=nearby.match(/volume\s+de\s+stockage\s*:\s*([\d.,]+)/i), count=nearby.match(/nombre\s*:\s*(\d+)/i);
+          const note=[count?`${count[1]} ballon(s)`:null,vol?`${String(vol[1]).replace('.',',')} L`:null].filter(Boolean).join(' · ');
+          add(page,line,'ecs',mode,'bao:ecs-storage-after',.999,'',{building,excerpt:ctx,provenanceNote:note?`Production ECS : ${note}.`:'Type de stockage explicitement indiqué.'});
+        }
+      }
+      if((m=raw.match(/systeme\s+de\s+ventilation\s*:\s*(.+)$/i))&&phase==='after'){
+        const vent=findFirstMatch(m[1],HVAC.ventilation)||normalizeText(m[1]); add(page,line,'ventilation',vent,'bao:ventilation-after',.999,'',{building,excerpt:ctx});
+      }
+
+      // Enveloppe : on privilégie l'état final quand le rapport est une rénovation.
+      if(phase==='after'){
+        if(/parois?\s+me\d*\s*\/\s*murs?\s+exterieurs?|murs?\s+exterieurs?/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+15)).map(x=>x.text).join(' | '));
+          if(/brique\s+creuse/i.test(block)) add(page,line,'wall_structure','Brique terre cuite','bao:wall-structure-after',.998,'',{building,excerpt:block.slice(0,420)});
+          const iso=block.match(/doublage\s+isover[^|]{0,80}?(?:r\s*=\s*([\d.,]+))?[^|]{0,80}?\b(\d{1,3}(?:[,.]\d+)?)\s*(?:cm\b)?/i);
+          const rr=block.match(/doublage\s+isover[^|]{0,80}?r\s*=\s*([\d.,]+)/i), th=block.match(/doublage\s+isover[^|]{0,120}?\b(\d{1,2}(?:[,.]\d+)?)\s*(?:cm)\b/i);
+          if(/doublage\s+isover/i.test(block)) add(page,line,'wall_insulation','Laine de verre','bao:wall-insulation-after',.93,'',{building,libraryDerived:true,excerpt:block.slice(0,420),provenanceNote:'Matériau déduit de la marque ISOVER et contrôlé par le couple épaisseur/R ; le rapport n’indique pas le nom produit exact.'});
+          const directIsoRow=block.match(/doublage\s+isover\s+r\s*=\s*([\d.,]+)\s+(\d{1,3}(?:[,.]\d+)?)\s+([\d.,]+)\s+100/i);
+          if(directIsoRow){ const rv=parseFrNumber(directIsoRow[1]), tv=parseFrNumber(directIsoRow[2]); if(tv) add(page,line,'wall_insulation_thickness',tv*10,'bao:wall-insulation-thickness-after',.999,'mm',{building,excerpt:block.slice(0,420),provenanceNote:'Épaisseur lue dans la ligne de composition Bao (colonne cm).'}); if(rv) add(page,line,'wall_insulation_r',rv,'bao:wall-insulation-r-after',.999,'m².K/W',{building,excerpt:block.slice(0,420)}); }
+          else { if(th){ const v=parseFrNumber(th[1]); if(v) add(page,line,'wall_insulation_thickness',v*10,'bao:wall-insulation-thickness-after',.998,'mm',{building,excerpt:block.slice(0,420)}); } if(rr){ const v=parseFrNumber(rr[1]); if(v) add(page,line,'wall_insulation_r',v,'bao:wall-insulation-r-after',.999,'m².K/W',{building,excerpt:block.slice(0,420)}); } }
+        }
+        if(/parois?\s+to\d*\s*\/\s*plafond|type\s+de\s+plafond/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+15)).map(x=>x.text).join(' | '));
+          if(/dalle\s+beton|plancher\s*-?\s*dalle\s+beton/i.test(normLower(block))) add(page,line,'roof_structure','Dalle béton','bao:roof-structure-after',.997,'',{building,excerpt:block.slice(0,420)});
+          if(/laine\s+de\s+verre/i.test(block)){ add(page,line,'roof_insulation','Laine de verre','bao:roof-insulation-after',.999,'',{building,excerpt:block.slice(0,420)}); const r=block.match(/laine\s+de\s+verre[^|]{0,100}?\b(\d{1,2}(?:[,.]\d+)?)\s+([\d.,]+)\s+100/i); if(r){ add(page,line,'roof_insulation_thickness',parseFrNumber(r[1])*10,'bao:roof-thickness-after',.997,'mm',{building,excerpt:block.slice(0,420)}); add(page,line,'roof_insulation_r',parseFrNumber(r[2]),'bao:roof-r-after',.997,'m².K/W',{building,excerpt:block.slice(0,420)}); } }
+        }
+        if(/parois?\s+pl\s*\/\s*plancher|type\s+de\s+plancher/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+18)).map(x=>x.text).join(' | '));
+          if(/dalle\s+beton|plancher\s*-?\s*dalle\s+beton/i.test(normLower(block))) add(page,line,'floor_structure','Dalle béton','bao:floor-structure-after',.997,'',{building,excerpt:block.slice(0,420)});
+          // Ne pas recopier l'isolant de l'état initial si Bao annonce « Paroi non rénovée » et qu'aucune couche isolante n'est présente dans le bloc final.
+          if(!/paroi\s+non\s+renovee/i.test(normLower(block))){
+            if(/laine\s+de\s+roche/i.test(block)) add(page,line,'floor_insulation','Laine de roche','bao:floor-insulation-after',.999,'',{building,excerpt:block.slice(0,420)});
+          }
+        }
+        if(/catalogue\s+des\s+vitrages|\bfe\d+\b.*\bdouble\b/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+18)).map(x=>x.text).join(' | '));
+          const lame=block.match(/\+\s*(\d{1,2}(?:[,.]\d+)?)\s*mm/i); const gl=/\bdouble\b/i.test(block)&&lame?`Double vitrage — lame ${String(parseFrNumber(lame[1])).replace('.',',')} mm`:normalizeGlazingType(block); if(gl) add(page,line,'window_glazing',gl,'bao:glazing-after',.999,'',{building,excerpt:block.slice(0,420),provenanceNote:'Bao indique la nature du vitrage et la largeur de lame, mais pas les épaisseurs des verres : aucune composition 4.x.4 n’est inventée.'});
+          if(/volet\s+roulant\s+alu/i.test(block)) add(page,line,'window_shading','Volet roulant','bao:shading-after',.999,'',{building,excerpt:block.slice(0,420),provenanceNote:'Fermeture indiquée par Bao : volet roulant aluminium.'});
+        }
+      }
+
+      // Récapitulatif : deuxième source indépendante de contrôle pour Cep total et GES surfacique.
+      if(/\betat\s+initial\b/i.test(raw)&&/\d/.test(raw)&&/recapitulatif/i.test(normLower(page.text||''))){ const ns=baoNumericTail(raw.replace(/^\s*\d+\s*/,'')); if(ns.length>=3) recap.before={mwh:ns[0],cep:ns[1],gesKgM2:ns[2]}; }
+      if(/\betat\s+apres\s+travaux\b/i.test(raw)&&/\d/.test(raw)&&/recapitulatif/i.test(normLower(page.text||''))){ const ns=baoNumericTail(raw.replace(/^\s*\d+\s*/,'')); if(ns.length>=3) recap.after={mwh:ns[0],cep:ns[1],gesKgM2:ns[2]}; }
+
+      if((m=raw.match(/emission\s+de\s+co2\s+avant\s+travaux\s*:\s*([\d\s.,-]+)\s*kg\s*co2/i))) gesAbsolute.before=baoNumber(m[1]);
+      if((m=raw.match(/emission\s+de\s+co2\s+apres\s+travaux\s*:\s*([\d\s.,-]+)\s*kg\s*co2/i))) gesAbsolute.after=baoNumber(m[1]);
+      if((m=raw.match(/emission\s+de\s+co2\s+des\s+travaux\s*:\s*([\d\s.,-]+)\s*kg\s*co2/i))) gesAbsolute.works=baoNumber(m[1]);
+      if((m=raw.match(/economie\s+realisee\s*:\s*([-+\d\s.,]+)\s*kg/i))) gesAbsolute.saving30y=baoNumber(m[1]);
+    }
+  }
+
+  if(titleHousing){
+    add(titleHousing.page,titleHousing.line,'housing_count',titleHousing.n,'bao:housing-count-title',.995,'',{building:titleHousing.building,provenanceNote:'Nombre de logements lu une seule fois dans le titre du rapport Bao.'});
+    if(/type\s+de\s+batiment\s*:\s*logements?\s+collectifs?/.test(allText)){
+      add(titleHousing.page,titleHousing.line,'housing_collective_units',titleHousing.n,'bao:collective-housing-count',.99,'',{building:'Bâtiment unique'});
+      add(titleHousing.page,titleHousing.line,'housing_total',titleHousing.n,'bao:housing-total',.99,'',{building:'Bâtiment unique'});
+    }
+  }
+  if(firstBuildingLine){
+    add(firstBuildingLine.page,firstBuildingLine.line,'building_total',1,'bao:single-building',.93,'',{building:'Bâtiment unique',derivedFromDocument:true,provenanceNote:'Un seul identifiant bâtiment est présent dans le rapport Bao analysé.'});
+    if(/type\s+de\s+batiment\s*:\s*logements?\s+collectifs?/.test(allText)) add(firstBuildingLine.page,firstBuildingLine.line,'housing_collective_buildings',1,'bao:single-collective-building',.93,'',{building:'Bâtiment unique',derivedFromDocument:true,provenanceNote:'Le rapport décrit un seul bâtiment et le qualifie de logements collectifs.'});
+  }
+
+  for(const e of energyPages){
+    const lines=e.page.lines||[], line=lines.find(l=>/^total\b/i.test(normalizeText(l.text))&&!/depense/i.test(normLower(l.text)))||lines.find(l=>/total\s+kwh\s*ep/i.test(normLower(l.text)))||lines[0];
+    const building=buildingForPosition(doc,e.page.page,line?.index||0);
+    const vals=e.values;
+    const sumKeys=['heating','cooling','ecs','lighting','auxDist','auxVent','other'];
+    const complete=sumKeys.every(k=>Number.isFinite(vals[k]));
+    const sum=complete?Math.round(sumKeys.reduce((a,k)=>a+vals[k],0)*1000)/1000:null;
+    const crossOk=Number.isFinite(e.total)&&Number.isFinite(sum)&&Math.abs(e.total-sum)<=0.12;
+    const summary=recap[e.phase]; const recapOk=Number.isFinite(summary?.cep)&&Number.isFinite(e.total)&&Math.abs(summary.cep-e.total)<=0.15;
+    const parts=[['Chauffage',vals.heating],['Refroidissement',vals.cooling],['ECS',vals.ecs],['Éclairage',vals.lighting],['Aux. distribution',vals.auxDist],['Aux. ventilation',vals.auxVent],['Autres usages',vals.other]].filter(([,v])=>Number.isFinite(v));
+    const breakdown=parts.map(([k,v])=>`${k} ${String(v).replace('.',',')}`).join(' ; ');
+    const gesParts=[];
+    if(Number.isFinite(e.gesKgM2)) gesParts.push(`${String(e.gesKgM2).replace('.',',')} kgCO₂e/m².an`);
+    if(Number.isFinite(e.gesTonnes)) gesParts.push(`${String(e.gesTonnes).replace('.',',')} tCO₂e/an`);
+    if(Number.isFinite(gesAbsolute[e.phase])) gesParts.push(`${String(gesAbsolute[e.phase]).replace('.',',')} kgCO₂e/an (évolution GES)`);
+    const discrepancy=Number.isFinite(e.gesTonnes)&&Number.isFinite(gesAbsolute[e.phase])&&Math.abs(e.gesTonnes*1000-gesAbsolute[e.phase])>Math.max(25,e.gesTonnes*1000*.03);
+    const note=`Consommations d’énergie primaire par poste : ${breakdown}${Number.isFinite(e.total)?` ; total ${String(e.total).replace('.',',')} kWhEP/m².an`:''}.${gesParts.length?` Bilan GES : ${gesParts.join(' ; ')}.`:''}${crossOk?' Somme des postes = total Bao : contrôle OK.':''}${recapOk?' Récapitulatif final cohérent avec le tableau détaillé.':''}${discrepancy?' Attention : les deux valeurs annuelles de GES imprimées dans le rapport ne sont pas strictement cohérentes ; elles sont conservées séparément sans fusion.':''}`;
+    const meta={building,excerpt:normalizeText(e.page.text||'').slice(0,420),provenanceNote:note,baoBreakdown:{...vals},baoEnergyFinal:{...e.finalEnergy},baoGes:{kgM2:e.gesKgM2,tonnesPerYear:e.gesTonnes,kgPerYear:gesAbsolute[e.phase],worksKgPerYear:gesAbsolute.works,saving30yKg:gesAbsolute.saving30y},baoChecks:{postSum:sum,crossOk,recapOk,recap:summary||null}};
+    if(Number.isFinite(e.total)){
+      if(e.phase==='before') add(e.page,line,'cep_before',e.total,'bao:primary-energy-total-before',(crossOk&&recapOk)?0.999:0.997,'kWhEP/m².an',meta);
+      else { add(e.page,line,'cep_after_final',e.total,'bao:primary-energy-total-after',(crossOk&&recapOk)?0.999:0.997,'kWhEP/m².an',meta); add(e.page,line,'cep',e.total,'bao:primary-energy-total-project',(crossOk&&recapOk)?0.999:0.997,'kWhEP/m².an',meta); }
+    }
+    // Les colonnes détaillées existantes du schéma décrivent le résultat projet/final : ne pas y injecter l'état initial.
+    if(e.phase==='after'){
+      const map=[['cep_cooling','cooling'],['cep_lighting','lighting'],['cep_aux_dist','auxDist'],['cep_aux_vent','auxVent']];
+      for(const [field,key] of map) if(Number.isFinite(vals[key])) add(e.page,line,field,vals[key],`bao:primary-energy-post-${key}`,.999,'kWhEP/m².an',meta);
+      // Dans ce Bao, tous les postes du bilan sont électriques. Le total EP peut donc alimenter Cep électricité,
+      // mais uniquement si aucune autre énergie combustible/réseau n'est décrite dans le tableau de bilan.
+      const pageEnergyLow=normLower(e.page.text||'');
+      if(Number.isFinite(e.total)&&/electricit/.test(pageEnergyLow)&&!/(?:gaz\s+naturel|fuel\s+domestique|fioul|biomasse|reseau\s+de\s+chaleur)/.test(pageEnergyLow)) add(e.page,line,'cep_electricity',e.total,'bao:primary-energy-by-vector-electricity',.985,'kWhEP/m².an',{...meta,derivedFromDocument:true,provenanceNote:`${note} Cep électricité = total, car aucune autre énergie n’est portée par ce tableau de bilan.`});
+    }
+  }
+
+  // Nettoyage des propriétés temporaires placées sur les pages.
+  for(const page of doc.read.pages||[]) try{ delete page._docText; }catch{}
+  return out;
+}
+
 function parseThermalStudy(doc){
   const out=[];
   const add=(page,line,field,value,method,confidence=.98,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:doc.type===DOC_TYPES.RT_EXISTING?'RT Existant':'Étude thermique',...extra})); };
@@ -2015,9 +2285,10 @@ function parseProgram(doc){
   for(const page of doc.read.pages){ const lines=page.lines||[], pageTypes=[];
     for(let i=0;i<lines.length;i++){ const line=lines[i], s=normalizeText(line.text), ctx=lineWindow(page,i,1,1);
       const countPatterns=[/(?:nombre|nb\.?|nombre\s+total)\s*(?:de\s+)?logements?\s*[:=\-]?\s*(\d+)/i,/\bconstruction\s+de\s+(\d+)\s+logements?\b/i,/\bprogramme\s+(?:de|comprenant)\s+(\d+)\s+logements?\b/i,/\b(?:comprend|comprenant|comporte)\s+(\d+)\s+logements?\b/i,/\b(\d+)\s+logements?\b/i];
-      for(const re of countPatterns){ const m=s.match(re); if(m){ const n=parseInt(m[1],10); if(n>0&&n<10000){ push(out,occ(doc,page,line,'housing_count',n,'program:housing-count-explicit',0.88,'',{excerpt:normalizeText(ctx).slice(0,420)})); break; } } }
+      const repeatedThermalHeader=/(?:etude|étude)\s+(?:thermique|energetique|énergétique)\s+\d+\s+logements?/i.test(s)&&page.page>1;
+      if(!repeatedThermalHeader) for(const re of countPatterns){ const m=s.match(re); if(m){ const n=parseInt(m[1],10); if(n>0&&n<10000){ push(out,occ(doc,page,line,'housing_count',n,'program:housing-count-explicit',0.88,'',{excerpt:normalizeText(ctx).slice(0,420)})); break; } } }
       const yearPatterns=[/(?:annee\s+de\s+construction|année\s+de\s+construction|construit\s+en|construction\s+en|acheve\s+en|achevé\s+en|annee\s+d['’]achevement|année\s+d['’]achèvement)\D{0,20}(17\d{2}|18\d{2}|19\d{2}|20\d{2})/i,/(?:immeuble|batiment|bâtiment)\D{0,40}(?:de|en|construit\s+en)\s*(17\d{2}|18\d{2}|19\d{2}|20\d{2})/i];
-      for(const re of yearPatterns){ const m=s.match(re); if(m){ push(out,occ(doc,page,line,'construction_year',parseInt(m[1],10),'program:construction-year',0.90)); break; } }
+      for(const re of yearPatterns){ const m=s.match(re); if(m){ const around=normLower(s); if(/(?:entre|de)\s+(?:17|18|19|20)\d{2}\s+(?:et|a|à|-)\s+(?:17|18|19|20)\d{2}/.test(around)) break; push(out,occ(doc,page,line,'construction_year',parseInt(m[1],10),'program:construction-year',0.90)); break; } }
       if(![DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && [DOC_TYPES.PLAN,DOC_TYPES.SURFACE,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT].includes(doc.type)){ const found=s.match(/\b(?:studio|T1\s*bis|T[1-9]|F[1-9]|maison\s+individuelle|duplex|triplex)\b/ig)||[]; pageTypes.push(...found.map(x=>x.toUpperCase().replace(/\s+/g,' '))); }
     }
     const ty=unique(pageTypes); if(ty.length){ const line=lines.find(l=>/(?:studio|T1\s*bis|T[1-9]|F[1-9]|maison\s+individuelle|duplex|triplex)/i.test(l.text))||lines[0]; const conf=[DOC_TYPES.PLAN,DOC_TYPES.SURFACE].includes(doc.type)?0.88:0.94; push(out,occ(doc,page,line,'housing_typologies',ty.join(', '),'program:typologies-page',conf,'',{excerpt:`Typologies explicites détectées sur la page : ${ty.join(', ')}`})); }
@@ -2053,18 +2324,18 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const wm=findFirstMatch(ctx,WINDOW_MATERIALS), gl=normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS), sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS)):null, sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 
 function parseSystems(doc){
-  const out=[];
-  for(const page of doc.read.pages){ const lines=page.lines||[]; const pagePhase=phaseFromContext(page.text||'',doc); const resolvedPhase=ctx=>{ const p=phaseFromContext(ctx,doc); return p==='unknown'?pagePhase:p; }; for(let i=0;i<lines.length;i++){
+  const out=[]; let inheritedPhase='unknown';
+  for(const page of doc.read.pages){ const lines=page.lines||[]; const explicitPagePhase=phaseFromContext(page.text||'',doc); if(explicitPagePhase!=='unknown') inheritedPhase=explicitPagePhase; const pagePhase=inheritedPhase; const resolvedPhase=ctx=>{ const p=phaseFromContext(ctx,doc); return p==='unknown'?pagePhase:p; }; for(let i=0;i<lines.length;i++){
     const line=lines[i], base=normalizeText(line.text), next=normalizeText(lines[i+1]?.text||''); const baseLow=normLower(base);
     const makeCtx=(kindRe,matcher)=>{ if(!kindRe.test(baseLow)) return null; if(matcher(base)) return base; return normalizeText(`${base} | ${next}`); };
 
     const heatCtx=makeCtx(/chauffage|chaudiere|pac|pompe\s+a\s+chaleur|radiateur|convecteur|plancher\s+chauffant|vrv|drv|sous[- ]station/i,t=>!!(findFirstMatch(t,HVAC.heating)||findFirstMatch(t,HVAC.vectors)));
-    if(heatCtx){ const phase=resolvedPhase(heatCtx), mode=findFirstMatch(heatCtx,HVAC.heating), vec=findFirstMatch(heatCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
+    if(heatCtx){ const phase=resolvedPhase(heatCtx), mode=findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(normLower(heatCtx)); const vec=optionList?null:findFirstMatch(heatCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
 
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
     if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsCtx,HVAC.ecs), vec=findFirstMatch(ecsCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
@@ -2206,7 +2477,7 @@ function parseDocument(doc){
   if(doc.type!==DOC_TYPES.DPGF) out.push(...parseBuildingSurface(doc));
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
   if([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV].includes(doc.type)) out.push(...parseGenericRegulatory(doc));
-  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)) out.push(...parseThermalStudy(doc));
+  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ if(isBaoEvolutionDocument(doc)) out.push(...parseBaoEvolution(doc)); out.push(...parseThermalStudy(doc)); }
   out.push(...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
   if(doc.type===DOC_TYPES.DPE||/\bdpe\b/i.test(doc.read.text)) out.push(...parseDpe(doc));
   if([DOC_TYPES.CARBON,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV].includes(doc.type)||/ic\s*(?:composants?|composant|energie|énergie|construction|chantier)/i.test(doc.read.text)) out.push(...parseCarbon(doc));
@@ -2950,12 +3221,86 @@ Total Lot : 547,3`;
   // v1.1.8 : rapport Bao Evolution / rénovation.
   const baoClass=classifyDocument('Rapport Bao Evolution SED.pdf','ETAT INITIAL : CALCUL du COEFFICIENT UBAT\nEtat après travaux');
   assert('Bao Evolution classé en étude thermique',baoClass.type===DOC_TYPES.THERMAL,baoClass.type);
-  const baoBefore=parseDocument(mk('ETAT INITIAL : CALCUL du COEFFICIENT UBAT\nTempérature intérieure : 20 °C\nCOEFFICIENT UBAT = 0,428',DOC_TYPES.THERMAL));
+  const baoBefore=parseDocument(mk('Bao Evolution\nETAT INITIAL : CALCUL du COEFFICIENT UBAT\nTempérature intérieure : 20 °C\nCOEFFICIENT UBAT = 0,428',DOC_TYPES.THERMAL));
   assert('Bao Ubat état initial',baoBefore.some(o=>o.field==='ubat_before'&&Math.abs(o.value-.428)<1e-9),JSON.stringify(baoBefore.filter(o=>/ubat/.test(o.field))));
+  assert('Bao Ubat état initial utilise le parseur dédié',baoBefore.some(o=>o.field==='ubat_before'&&o.method==='bao:ubat-before-explicit'),JSON.stringify(baoBefore.filter(o=>/ubat/.test(o.field))));
   assert('Température intérieure Bao jamais confondue avec Tic',!baoBefore.some(o=>o.field==='tic'),JSON.stringify(baoBefore.filter(o=>o.field==='tic')));
-  const baoAfter=parseDocument(mk('Modification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux\nCOEFFICIENT UBAT = 0,526',DOC_TYPES.THERMAL));
+  const baoAfter=parseDocument(mk('Bao Evolution\nModification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux\nCOEFFICIENT UBAT = 0,526',DOC_TYPES.THERMAL));
   assert('Bao Ubat état après travaux',baoAfter.some(o=>o.field==='ubat_after'&&Math.abs(o.value-.526)<1e-9),JSON.stringify(baoAfter.filter(o=>/ubat/.test(o.field))));
+  assert('Bao Ubat après travaux utilise le parseur dédié',baoAfter.some(o=>o.field==='ubat_after'&&o.method==='bao:ubat-after-explicit'),JSON.stringify(baoAfter.filter(o=>/ubat/.test(o.field))));
   assert('Bao vitrage Double +15mm normalisé sans invention',normalizeGlazingType('Double +15mm')==='Double vitrage — lame 15 mm',String(normalizeGlazingType('Double +15mm')));
+
+
+  // v1.1.10 : Bao Evolution — bilan énergétique par poste, GES et garde-fous contextuels.
+  const baoEnergyBeforeText=`Bao Evolution
+ETAT INITIAL
+Système de refroidissement : Sans système de refroidissement
+Détails des consommations Energie finale Energie primaire Dépense
+CHAUFFAGE
+Electricité 2682,51 26,99 0,00
+REFROIDISSEMENT 0,00
+ECS
+Electricité 3979,14 40,04 0,00
+ECLAIRAGE 1466,61 14,76 0,00
+AUXILIAIRES 168,06 1,69 0,00
+VENTILATEURS 1243,92 12,52 0,00
+AUTRES USAGES
+Electrique 4899,79 49,30
+TOTAL 14 440,0 145,3 0,0
+Bilan Energétique Bilan CO2
+TOTAL MWhEP/an : 37,26 TOTAL (tonnes) : ,953
+TOTAL kWhEP/m².an : 145,3 TOTAL (kg/m²) : 3,72`;
+  const baoEnergyBefore=parseDocument(mk(baoEnergyBeforeText,DOC_TYPES.THERMAL));
+  const baoBeforeCep=baoEnergyBefore.find(o=>o.field==='cep_before'&&o.method==='bao:primary-energy-total-before');
+  assert('Bao Cep avant depuis bilan énergie primaire',Math.abs((baoBeforeCep?.value??0)-145.3)<.001,String(baoBeforeCep?.value));
+  assert('Bao chauffage/ECS/autres conservés dans le bilan par poste',Math.abs((baoBeforeCep?.baoBreakdown?.heating??0)-26.99)<.001&&Math.abs((baoBeforeCep?.baoBreakdown?.ecs??0)-40.04)<.001&&Math.abs((baoBeforeCep?.baoBreakdown?.other??0)-49.3)<.001,JSON.stringify(baoBeforeCep?.baoBreakdown));
+  assert('Bao GES surfacique conservé sans faux mapping DPE/IC',Math.abs((baoBeforeCep?.baoGes?.kgM2??0)-3.72)<.001&&!baoEnergyBefore.some(o=>/^dpe_|^ic_/.test(o.field)),JSON.stringify(baoBeforeCep?.baoGes));
+  assert('Bao contrôle somme des postes = total',baoBeforeCep?.baoChecks?.crossOk===true,JSON.stringify(baoBeforeCep?.baoChecks));
+
+  const baoEnergyAfterText=`Bao Evolution
+Etat après travaux
+Système de refroidissement : Sans système de refroidissement
+Détails des consommations Energie finale Energie primaire Dépense
+CHAUFFAGE
+Electricité 3670,89 36,94 0,00
+REFROIDISSEMENT 0,00
+ECS
+Electricité 3979,14 40,04 0,00
+ECLAIRAGE 1466,61 14,76 0,00
+AUXILIAIRES 96,75 0,97 0,00
+VENTILATEURS 1243,92 12,52 0,00
+AUTRES USAGES
+Electrique 4899,79 49,30
+TOTAL 15 357,1 154,53 0,0
+Bilan Energétique Bilan CO2
+TOTAL MWhEP/an : 39,62 TOTAL (tonnes) : 1,128
+TOTAL kWhEP/m².an : 154,53 TOTAL (kg/m²) : 4,4`;
+  const baoEnergyAfter=parseDocument(mk(baoEnergyAfterText,DOC_TYPES.THERMAL));
+  const baoAfterCep=baoEnergyAfter.find(o=>o.field==='cep_after_final'&&o.method==='bao:primary-energy-total-after');
+  assert('Bao Cep final depuis bilan énergie primaire',Math.abs((baoAfterCep?.value??0)-154.53)<.001,String(baoAfterCep?.value));
+  assert('Bao Cep détaillé éclairage/auxiliaires/ventilateurs',baoEnergyAfter.some(o=>o.field==='cep_lighting'&&Math.abs(o.value-14.76)<.001)&&baoEnergyAfter.some(o=>o.field==='cep_aux_dist'&&Math.abs(o.value-.97)<.001)&&baoEnergyAfter.some(o=>o.field==='cep_aux_vent'&&Math.abs(o.value-12.52)<.001),JSON.stringify(baoEnergyAfter.filter(o=>o.method?.startsWith('bao:primary-energy-post'))));
+  assert('Bao Cep électricité agrégé quand le bilan est mono-énergie',baoEnergyAfter.some(o=>o.field==='cep_electricity'&&Math.abs(o.value-154.53)<.001),JSON.stringify(baoEnergyAfter.filter(o=>o.field==='cep_electricity')));
+
+  const baoGlazing=parseDocument(mk(`Bao Evolution
+Etat après travaux
+Modification n° 1 : CATALOGUE DES VITRAGES
+FE1 Menuiserie 0.9x1.8 0,90 1,80 Volet Roulant Alu
++15mm
+Double`,DOC_TYPES.THERMAL));
+  assert('Bao vitrage scindé Double + 15 mm reconstitué',baoGlazing.some(o=>o.field==='window_glazing'&&o.value==='Double vitrage — lame 15 mm'),JSON.stringify(baoGlazing.filter(o=>o.field==='window_glazing')));
+  assert('Alu du volet Bao jamais pris pour matériau de menuiserie',!baoGlazing.some(o=>o.field==='window_material'&&o.value==='Aluminium'),JSON.stringify(baoGlazing.filter(o=>o.field==='window_material')));
+  const baoOptionList=parseDocument(mk(`Bao Evolution
+Etat après travaux
+Type de chauffage : Autre (Thermodynamique, Gaz, Fioul, Bois, Réseau,...)`,DOC_TYPES.THERMAL));
+  assert('Liste d’exemples Bao jamais interprétée comme vecteur chauffage',!baoOptionList.some(o=>o.field==='heating_vector_after'),JSON.stringify(baoOptionList.filter(o=>o.field==='heating_vector_after')));
+  const baoYearRange=parseDocument(mk(`Bao Evolution
+Année de construction : Entre 1948 et 1974`,DOC_TYPES.THERMAL));
+  assert('Période de construction Bao jamais convertie en année exacte',!baoYearRange.some(o=>o.field==='construction_year'),JSON.stringify(baoYearRange.filter(o=>o.field==='construction_year')));
+  const baoCritical=`Détails des consommations Energie finale Energie primaire Dépense\nCHAUFFAGE\nECS\nTOTAL`;
+  assert('OCR ciblé sur tableau Bao énergie primaire incomplet',shouldOcrPdfPage(baoCritical,richItems,'auto')===true);
+  assert('OCR ciblé sur page Ubat Bao sans valeur reconstruite',shouldOcrPdfPage('Modification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux',richItems,'auto')===true);
+  const baoCollective=parseDocument(mk(`Bao Evolution\nEtude thermique 4 logements Romorantin\nDONNEES TECHNIQUES\nType de bâtiment : Logements collectifs\nBATIMENT : Bâtiment n°1`,DOC_TYPES.THERMAL));
+  assert('Bao bâtiment collectif unique -> 1 bâtiment collectif',baoCollective.some(o=>o.field==='housing_collective_buildings'&&o.value===1),JSON.stringify(baoCollective.filter(o=>o.field==='housing_collective_buildings')));
 
   return {tests,passed:tests.filter(t=>t.ok).length,total:tests.length,ok:tests.every(t=>t.ok)};
 }
@@ -4073,7 +4418,8 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       d.analysisDurationMs=Math.round(performance.now()-started);
       await checkpointDocument(activeProject(),d);
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
-      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length},activeProject());
+      const baoEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
+      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length,...(baoEvidence.length?{baoEvidence}: {})},activeProject());
     }catch(e){
       const timedOut=timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout');
       if(timedOut){ d.status='timeout'; d.error='Analyse interrompue après 5 minutes. Relance manuelle disponible sans limite de temps.'; d.retryUnlimited=false; }
@@ -4256,6 +4602,17 @@ function decorateProjectSections(wrap,fields){
   $$('#summaryView [data-project-activate]').forEach(b=>b.onclick=()=>activateProject(b.dataset.projectActivate));
 }
 
+
+function baoSupplementHtml(result){
+  if(normalizedResultViewKey(activeProject().resultView)!=='thermal'||!result?.finals?.length) return '';
+  const before=result.finals.find(o=>o.field==='cep_before'&&o.baoBreakdown);
+  const after=result.finals.find(o=>o.field==='cep_after_final'&&o.baoBreakdown)||result.finals.find(o=>o.field==='cep'&&o.baoBreakdown);
+  if(!before&&!after) return '';
+  const cell=v=>Number.isFinite(v)?escapeHtml(formatValue(v)):'—';
+  const row=(label,o)=>{ const b=o?.baoBreakdown||{},g=o?.baoGes||{},checks=o?.baoChecks||{}; return `<tr><td class="strong">${label}</td><td>${cell(b.heating)}</td><td>${cell(b.ecs)}</td><td>${cell(b.other)}</td><td>${cell(g.kgM2)}</td><td>${cell(g.tonnesPerYear)}</td><td>${cell(g.kgPerYear)}</td><td>${checks.crossOk?'<span class="badge ok">Somme postes = total</span>':'<span class="badge warn">À contrôler</span>'}</td></tr>`; };
+  return `<section class="result-data-group bao-supplement"><div class="result-data-group-head"><div><h3>Compléments Bao Evolution</h3><small>Valeurs utiles sans colonne dédiée dans le schéma des 167 champs</small></div><span>Énergie primaire & GES</span></div><div class="table-scroll"><table><thead><tr><th>État</th><th>Chauffage<br><small>kWhEP/m².an</small></th><th>ECS<br><small>kWhEP/m².an</small></th><th>Autres usages<br><small>kWhEP/m².an</small></th><th>GES<br><small>kgCO₂e/m².an</small></th><th>GES<br><small>tCO₂e/an</small></th><th>GES évolution<br><small>kgCO₂e/an</small></th><th>Contrôle</th></tr></thead><tbody>${before?row('Avant travaux',before):''}${after?row('Après travaux',after):''}</tbody></table></div><div class="footnote">Ces valeurs sont conservées avec leur page et leur provenance. Elles ne sont pas injectées artificiellement dans une colonne DPE ou IC lorsqu’aucune colonne métier correspondante n’existe.</div></section>`;
+}
+
 function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs();
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; decorateProjectSections(wrap,fields); return; }
@@ -4269,7 +4626,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${baoSupplementHtml(r)}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   const selected=()=>$$('#summaryView .building-select:checked').map(x=>x.value);

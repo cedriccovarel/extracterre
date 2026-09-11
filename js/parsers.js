@@ -775,6 +775,243 @@ function thermalStudyPhase(text){
   if(/(?:^|\b)(?:etat|état)\s+(?:apres|après)\s+travaux\b|\b(?:variante|modification)\s*(?:n[°ºo]?\s*)?\d*[^\n]{0,60}(?:apres|après)\s+travaux\b|(?:^|\b)(?:etat|état)\s+(?:projete|projeté|scenario|scénario)\b|\bscenario\s+\d+\b|\bscénario\s+\d+\b/.test(low)) return 'after';
   return '';
 }
+
+
+function isBaoEvolutionDocument(doc){
+  const s=normLower(`${doc?.name||''}\n${doc?.read?.text||''}`);
+  return /bao\s*(?:evolution|evolution)|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|details\s+des\s+consommations[\s\S]{0,160}energie\s+primaire|bilan\s+energetique[\s\S]{0,80}bilan\s+co2/.test(s);
+}
+function baoNumber(value=''){
+  let t=String(value??'').replace(/\u00a0/g,' ').trim();
+  if(/^[-+]?[,.]\d+$/.test(t)) t=t.replace(/^([-+]?)\s*([,.])/,'$10$2');
+  return parseFrNumber(t);
+}
+function baoNumericTail(raw=''){
+  const cleaned=String(raw??'').replace(/(?<!\d)([-+]?),(?=\d)/g,'$10,');
+  return numbersIn(cleaned);
+}
+function baoPhaseFromPage(page){
+  const low=normLower(page?.text||'');
+  if(/etat\s+apres\s+travaux|modification\s+(?:prioritaire|n[°ºo]?\s*\d+)|variante\s+\d+/.test(low)) return 'after';
+  if(/etat\s+initial|etat\s+existant/.test(low)) return 'before';
+  return '';
+}
+function baoLineAfter(lines,index,max=2){
+  const parts=[];
+  for(let j=index;j<Math.min(lines.length,index+max+1);j++){
+    const t=normalizeText(lines[j]?.text||''); if(t) parts.push(t);
+  }
+  return normalizeText(parts.join(' | '));
+}
+function baoPrimaryFromRow(raw=''){
+  const ns=baoNumericTail(raw);
+  // Format Bao courant : Energie finale | Energie primaire | Dépense.
+  // La consommation primaire est donc l'avant-dernière valeur, jamais le montant en euros.
+  if(ns.length>=3) return ns.at(-2);
+  if(ns.length===2) return ns.at(-1);
+  return null;
+}
+function baoFinalEnergyFromRow(raw=''){
+  const ns=baoNumericTail(raw);
+  if(ns.length>=3) return ns.at(-3);
+  if(ns.length===2) return ns[0];
+  return null;
+}
+function baoEnergyPage(page){
+  const low=normLower(page?.text||'');
+  if(!/details\s+des\s+consommations/.test(low)||!/energie\s+primaire/.test(low)) return null;
+  const phase=baoPhaseFromPage(page); if(!phase) return null;
+  const lines=page.lines||[], values={}, finalEnergy={};
+  const defs=[
+    ['heating',/^chauffage\b/i],['cooling',/^refroidissement\b/i],['ecs',/^ecs\b|^eau\s+chaude\s+sanitaire\b/i],
+    ['lighting',/^eclairage\b|^éclairage\b/i],['auxDist',/^auxiliaires\b/i],['auxVent',/^ventilateurs\b|^ventilation\b/i],['other',/^autres\s+usages\b/i]
+  ];
+  const headingRe=/^(?:chauffage|refroidissement|ecs|eau\s+chaude\s+sanitaire|eclairage|éclairage|auxiliaires|ventilateurs|ventilation|autres\s+usages|total\b)/i;
+  let total=null,totalFinalEnergy=null, totalMwh=null,gesTonnes=null,gesKgM2=null;
+  for(let i=0;i<lines.length;i++){
+    const raw=normalizeText(lines[i].text), lowLine=normLower(raw);
+    for(const [key,re] of defs){
+      if(!re.test(raw)) continue;
+      let source=raw, primary=baoPrimaryFromRow(source), ef=baoFinalEnergyFromRow(source);
+      if(primary===null){
+        for(let j=i+1;j<Math.min(lines.length,i+3);j++){
+          const nraw=normalizeText(lines[j].text); if(!nraw) continue;
+          if(headingRe.test(nraw)) break;
+          const pv=baoPrimaryFromRow(nraw); if(pv!==null){ source=`${raw} | ${nraw}`; primary=pv; ef=baoFinalEnergyFromRow(nraw); break; }
+        }
+      }
+      // Bao laisse parfois les colonnes énergie vides pour un poste nul et n'imprime que « 0,00 » en dépense.
+      // On ne convertit ce zéro en énergie primaire que pour le refroidissement ET seulement si le rapport
+      // indique ailleurs qu'il n'y a pas de système de refroidissement.
+      if(key==='cooling'&&primary===null&&baoNumericTail(raw).length===1&&baoNumericTail(raw)[0]===0&&/sans\s+systeme\s+de\s+refroidissement/.test(normLower(page?._docText||''))){ primary=0; ef=0; }
+      if(primary!==null&&primary>=0&&primary<5000){ values[key]=primary; if(ef!==null) finalEnergy[key]=ef; }
+    }
+    if(/^total\b/i.test(raw)&&!/depense|abonnement/i.test(lowLine)){
+      const ns=baoNumericTail(raw); if(ns.length>=2){
+        if(ns.length>=3){ totalFinalEnergy=ns.at(-3); total=ns.at(-2); }
+        else total=ns.at(-1);
+      }
+    }
+    let m;
+    if((m=raw.match(/total\s+mwh\s*ep\s*\/\s*an\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) totalMwh=baoNumber(m[1]);
+    if((m=raw.match(/total\s*\(\s*tonnes?\s*\)\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) gesTonnes=baoNumber(m[1]);
+    if((m=raw.match(/total\s+kwh\s*ep\s*\/\s*m[²2]\s*\.?(?:an)?\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) total=baoNumber(m[1]);
+    if((m=raw.match(/total\s*\(\s*kg\s*\/\s*m[²2]\s*\)\s*:\s*([-+]?\s*\d*[,.]?\d+)/i))) gesKgM2=baoNumber(m[1]);
+  }
+  return {page,phase,values,finalEnergy,total,totalFinalEnergy,totalMwh,gesTonnes,gesKgM2};
+}
+function parseBaoEvolution(doc){
+  if(!isBaoEvolutionDocument(doc)) return [];
+  const out=[], allText=normLower(doc.read?.text||'');
+  const add=(page,line,field,value,method,confidence=.995,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:'Bao Evolution / étude thermique',...extra})); };
+  const energyPages=[], recap={}, gesAbsolute={};
+  let titleHousing=null, firstBuildingLine=null;
+
+  let activePhase='';
+  for(const page of doc.read.pages||[]){
+    // Permet au parseur de ligne de vérifier les systèmes annoncés ailleurs dans le rapport sans multiplier les recherches.
+    page._docText=allText;
+    const explicitPagePhase=baoPhaseFromPage(page); if(explicitPagePhase) activePhase=explicitPagePhase;
+    const phase=activePhase, lines=page.lines||[];
+    const ep=baoEnergyPage(page); if(ep) energyPages.push(ep);
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i], raw=normalizeText(line.text), low=normLower(raw), ctx=baoLineAfter(lines,i,2); let m;
+      const building=buildingForPosition(doc,page.page,line.index);
+      if(!firstBuildingLine&&/batiment\s+n[°ºo]?\s*1|bâtiment\s+n[°ºo]?\s*1/i.test(raw)) firstBuildingLine={page,line,building};
+      if(titleHousing===null&&(m=raw.match(/(?:etude\s+thermique\s+)?(\d+)\s+logements?\b/i))){ const n=parseInt(m[1],10); if(n>0&&n<10000) titleHousing={n,page,line,building}; }
+
+      if((m=raw.match(/numero\s+de\s+departement\s*:\s*(\d{1,3})/i))){ const d=m[1].padStart(2,'0'); add(page,line,'department',d,'bao:department-code',.999,'',{building:'Bâtiment unique',excerpt:ctx}); }
+      if((m=raw.match(/type\s+de\s+batiment\s*:\s*(.+)$/i))){ const v=normLower(m[1]); const work=/logements?\s+collectifs?/.test(v)?'Logement collectif':/maisons?\s+individuelles?|logements?\s+individuels?/.test(v)?'Maison individuelle':normalizeText(m[1]); add(page,line,'work_type',work,'bao:building-type',.995,'',{building:'Bâtiment unique',excerpt:ctx}); }
+      if((m=raw.match(/surface\s+habitable\s*:\s*([\d\s.,]+)\s*m[²2]/i))){ const v=parseFrNumber(m[1]); if(v&&v>20) add(page,line,'shab',v,'bao:shab',.999,'m²',{building,surfacePriority:100,excerpt:ctx,provenanceNote:'Surface habitable explicitement indiquée par Bao Evolution.'}); }
+      // Bao imprime une valeur Ubat explicite dans deux blocs distincts. On la rattache à la phase
+      // déterminée par les titres de section, et jamais à une valeur U de paroi voisine.
+      if((m=raw.match(/coefficient\s+ubat\s*=\s*([-+]?\d+(?:[,.]\d+)?)/i))){
+        const v=parseFrNumber(m[1]);
+        if(v!==null&&phase==='before') add(page,line,'ubat_before',v,'bao:ubat-before-explicit',.999,'W/m².K',{building,excerpt:ctx,provenanceNote:'Valeur lue sur la ligne « COEFFICIENT UBAT » du bloc ÉTAT INITIAL.'});
+        if(v!==null&&phase==='after') add(page,line,'ubat_after',v,'bao:ubat-after-explicit',.999,'W/m².K',{building,excerpt:ctx,provenanceNote:'Valeur lue sur la ligne « COEFFICIENT UBAT » du bloc ÉTAT APRÈS TRAVAUX.'});
+      }
+
+      // Systèmes avant/après : lecture des champs exacts Bao, sans interpréter les listes d'exemples entre parenthèses.
+      if((m=raw.match(/systeme\s+de\s+refroidissement\s*:\s*(.+)$/i))&&phase==='after'){
+        const v=/sans\s+systeme\s+de\s+refroidissement/i.test(m[1])?'Sans système de refroidissement':findFirstMatch(m[1],COOLING)||normalizeText(m[1]);
+        add(page,line,'cooling',v,'bao:cooling-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+de\s+chauffage\s*:\s*electrique\s+thermodynamique/i))){
+        if(phase==='before') add(page,line,'heating_vector_before','Électricité','bao:heating-vector-before',.999,'',{building,excerpt:ctx});
+        if(phase==='after') add(page,line,'heating_vector_after','Électricité','bao:heating-vector-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+de\s+generateur\s*:\s*(.+)$/i))&&phase==='after'){
+        const mode=findFirstMatch(m[1],HVAC.heating); if(mode) add(page,line,'heating_mode_after',mode,'bao:heating-generator-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+d['’]?energie\s+pour\s+la\s+production\s+de\s+chaud\s*:\s*(.+)$/i))){
+        const vec=findFirstMatch(m[1],HVAC.vectors); if(vec&&phase==='before') add(page,line,'heating_vector_before',vec,'bao:generator-energy-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'heating_vector_after',vec,'bao:generator-energy-after',.999,'',{building,excerpt:ctx});
+      }
+      if((m=raw.match(/type\s+d['’]?ecs\s*:\s*(.+)$/i))){ const vec=findFirstMatch(m[1],HVAC.vectors); if(vec&&phase==='before') add(page,line,'ecs_vector_before',vec,'bao:ecs-vector-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'ecs_vector_after',vec,'bao:ecs-vector-after',.999,'',{building,excerpt:ctx}); }
+      if((m=raw.match(/type\s+de\s+stockage\s*:\s*(.+)$/i))&&phase==='after'){
+        const mode=findFirstMatch(m[1],HVAC.ecs); if(mode){
+          const nearby=normalizeText(lines.slice(Math.max(0,i-2),Math.min(lines.length,i+4)).map(x=>x.text).join(' | '));
+          const vol=nearby.match(/volume\s+de\s+stockage\s*:\s*([\d.,]+)/i), count=nearby.match(/nombre\s*:\s*(\d+)/i);
+          const note=[count?`${count[1]} ballon(s)`:null,vol?`${String(vol[1]).replace('.',',')} L`:null].filter(Boolean).join(' · ');
+          add(page,line,'ecs',mode,'bao:ecs-storage-after',.999,'',{building,excerpt:ctx,provenanceNote:note?`Production ECS : ${note}.`:'Type de stockage explicitement indiqué.'});
+        }
+      }
+      if((m=raw.match(/systeme\s+de\s+ventilation\s*:\s*(.+)$/i))&&phase==='after'){
+        const vent=findFirstMatch(m[1],HVAC.ventilation)||normalizeText(m[1]); add(page,line,'ventilation',vent,'bao:ventilation-after',.999,'',{building,excerpt:ctx});
+      }
+
+      // Enveloppe : on privilégie l'état final quand le rapport est une rénovation.
+      if(phase==='after'){
+        if(/parois?\s+me\d*\s*\/\s*murs?\s+exterieurs?|murs?\s+exterieurs?/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+15)).map(x=>x.text).join(' | '));
+          if(/brique\s+creuse/i.test(block)) add(page,line,'wall_structure','Brique terre cuite','bao:wall-structure-after',.998,'',{building,excerpt:block.slice(0,420)});
+          const iso=block.match(/doublage\s+isover[^|]{0,80}?(?:r\s*=\s*([\d.,]+))?[^|]{0,80}?\b(\d{1,3}(?:[,.]\d+)?)\s*(?:cm\b)?/i);
+          const rr=block.match(/doublage\s+isover[^|]{0,80}?r\s*=\s*([\d.,]+)/i), th=block.match(/doublage\s+isover[^|]{0,120}?\b(\d{1,2}(?:[,.]\d+)?)\s*(?:cm)\b/i);
+          if(/doublage\s+isover/i.test(block)) add(page,line,'wall_insulation','Laine de verre','bao:wall-insulation-after',.93,'',{building,libraryDerived:true,excerpt:block.slice(0,420),provenanceNote:'Matériau déduit de la marque ISOVER et contrôlé par le couple épaisseur/R ; le rapport n’indique pas le nom produit exact.'});
+          const directIsoRow=block.match(/doublage\s+isover\s+r\s*=\s*([\d.,]+)\s+(\d{1,3}(?:[,.]\d+)?)\s+([\d.,]+)\s+100/i);
+          if(directIsoRow){ const rv=parseFrNumber(directIsoRow[1]), tv=parseFrNumber(directIsoRow[2]); if(tv) add(page,line,'wall_insulation_thickness',tv*10,'bao:wall-insulation-thickness-after',.999,'mm',{building,excerpt:block.slice(0,420),provenanceNote:'Épaisseur lue dans la ligne de composition Bao (colonne cm).'}); if(rv) add(page,line,'wall_insulation_r',rv,'bao:wall-insulation-r-after',.999,'m².K/W',{building,excerpt:block.slice(0,420)}); }
+          else { if(th){ const v=parseFrNumber(th[1]); if(v) add(page,line,'wall_insulation_thickness',v*10,'bao:wall-insulation-thickness-after',.998,'mm',{building,excerpt:block.slice(0,420)}); } if(rr){ const v=parseFrNumber(rr[1]); if(v) add(page,line,'wall_insulation_r',v,'bao:wall-insulation-r-after',.999,'m².K/W',{building,excerpt:block.slice(0,420)}); } }
+        }
+        if(/parois?\s+to\d*\s*\/\s*plafond|type\s+de\s+plafond/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+15)).map(x=>x.text).join(' | '));
+          if(/dalle\s+beton|plancher\s*-?\s*dalle\s+beton/i.test(normLower(block))) add(page,line,'roof_structure','Dalle béton','bao:roof-structure-after',.997,'',{building,excerpt:block.slice(0,420)});
+          if(/laine\s+de\s+verre/i.test(block)){ add(page,line,'roof_insulation','Laine de verre','bao:roof-insulation-after',.999,'',{building,excerpt:block.slice(0,420)}); const r=block.match(/laine\s+de\s+verre[^|]{0,100}?\b(\d{1,2}(?:[,.]\d+)?)\s+([\d.,]+)\s+100/i); if(r){ add(page,line,'roof_insulation_thickness',parseFrNumber(r[1])*10,'bao:roof-thickness-after',.997,'mm',{building,excerpt:block.slice(0,420)}); add(page,line,'roof_insulation_r',parseFrNumber(r[2]),'bao:roof-r-after',.997,'m².K/W',{building,excerpt:block.slice(0,420)}); } }
+        }
+        if(/parois?\s+pl\s*\/\s*plancher|type\s+de\s+plancher/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+18)).map(x=>x.text).join(' | '));
+          if(/dalle\s+beton|plancher\s*-?\s*dalle\s+beton/i.test(normLower(block))) add(page,line,'floor_structure','Dalle béton','bao:floor-structure-after',.997,'',{building,excerpt:block.slice(0,420)});
+          // Ne pas recopier l'isolant de l'état initial si Bao annonce « Paroi non rénovée » et qu'aucune couche isolante n'est présente dans le bloc final.
+          if(!/paroi\s+non\s+renovee/i.test(normLower(block))){
+            if(/laine\s+de\s+roche/i.test(block)) add(page,line,'floor_insulation','Laine de roche','bao:floor-insulation-after',.999,'',{building,excerpt:block.slice(0,420)});
+          }
+        }
+        if(/catalogue\s+des\s+vitrages|\bfe\d+\b.*\bdouble\b/i.test(raw)){
+          const block=normalizeText(lines.slice(i,Math.min(lines.length,i+18)).map(x=>x.text).join(' | '));
+          const lame=block.match(/\+\s*(\d{1,2}(?:[,.]\d+)?)\s*mm/i); const gl=/\bdouble\b/i.test(block)&&lame?`Double vitrage — lame ${String(parseFrNumber(lame[1])).replace('.',',')} mm`:normalizeGlazingType(block); if(gl) add(page,line,'window_glazing',gl,'bao:glazing-after',.999,'',{building,excerpt:block.slice(0,420),provenanceNote:'Bao indique la nature du vitrage et la largeur de lame, mais pas les épaisseurs des verres : aucune composition 4.x.4 n’est inventée.'});
+          if(/volet\s+roulant\s+alu/i.test(block)) add(page,line,'window_shading','Volet roulant','bao:shading-after',.999,'',{building,excerpt:block.slice(0,420),provenanceNote:'Fermeture indiquée par Bao : volet roulant aluminium.'});
+        }
+      }
+
+      // Récapitulatif : deuxième source indépendante de contrôle pour Cep total et GES surfacique.
+      if(/\betat\s+initial\b/i.test(raw)&&/\d/.test(raw)&&/recapitulatif/i.test(normLower(page.text||''))){ const ns=baoNumericTail(raw.replace(/^\s*\d+\s*/,'')); if(ns.length>=3) recap.before={mwh:ns[0],cep:ns[1],gesKgM2:ns[2]}; }
+      if(/\betat\s+apres\s+travaux\b/i.test(raw)&&/\d/.test(raw)&&/recapitulatif/i.test(normLower(page.text||''))){ const ns=baoNumericTail(raw.replace(/^\s*\d+\s*/,'')); if(ns.length>=3) recap.after={mwh:ns[0],cep:ns[1],gesKgM2:ns[2]}; }
+
+      if((m=raw.match(/emission\s+de\s+co2\s+avant\s+travaux\s*:\s*([\d\s.,-]+)\s*kg\s*co2/i))) gesAbsolute.before=baoNumber(m[1]);
+      if((m=raw.match(/emission\s+de\s+co2\s+apres\s+travaux\s*:\s*([\d\s.,-]+)\s*kg\s*co2/i))) gesAbsolute.after=baoNumber(m[1]);
+      if((m=raw.match(/emission\s+de\s+co2\s+des\s+travaux\s*:\s*([\d\s.,-]+)\s*kg\s*co2/i))) gesAbsolute.works=baoNumber(m[1]);
+      if((m=raw.match(/economie\s+realisee\s*:\s*([-+\d\s.,]+)\s*kg/i))) gesAbsolute.saving30y=baoNumber(m[1]);
+    }
+  }
+
+  if(titleHousing){
+    add(titleHousing.page,titleHousing.line,'housing_count',titleHousing.n,'bao:housing-count-title',.995,'',{building:titleHousing.building,provenanceNote:'Nombre de logements lu une seule fois dans le titre du rapport Bao.'});
+    if(/type\s+de\s+batiment\s*:\s*logements?\s+collectifs?/.test(allText)){
+      add(titleHousing.page,titleHousing.line,'housing_collective_units',titleHousing.n,'bao:collective-housing-count',.99,'',{building:'Bâtiment unique'});
+      add(titleHousing.page,titleHousing.line,'housing_total',titleHousing.n,'bao:housing-total',.99,'',{building:'Bâtiment unique'});
+    }
+  }
+  if(firstBuildingLine){
+    add(firstBuildingLine.page,firstBuildingLine.line,'building_total',1,'bao:single-building',.93,'',{building:'Bâtiment unique',derivedFromDocument:true,provenanceNote:'Un seul identifiant bâtiment est présent dans le rapport Bao analysé.'});
+    if(/type\s+de\s+batiment\s*:\s*logements?\s+collectifs?/.test(allText)) add(firstBuildingLine.page,firstBuildingLine.line,'housing_collective_buildings',1,'bao:single-collective-building',.93,'',{building:'Bâtiment unique',derivedFromDocument:true,provenanceNote:'Le rapport décrit un seul bâtiment et le qualifie de logements collectifs.'});
+  }
+
+  for(const e of energyPages){
+    const lines=e.page.lines||[], line=lines.find(l=>/^total\b/i.test(normalizeText(l.text))&&!/depense/i.test(normLower(l.text)))||lines.find(l=>/total\s+kwh\s*ep/i.test(normLower(l.text)))||lines[0];
+    const building=buildingForPosition(doc,e.page.page,line?.index||0);
+    const vals=e.values;
+    const sumKeys=['heating','cooling','ecs','lighting','auxDist','auxVent','other'];
+    const complete=sumKeys.every(k=>Number.isFinite(vals[k]));
+    const sum=complete?Math.round(sumKeys.reduce((a,k)=>a+vals[k],0)*1000)/1000:null;
+    const crossOk=Number.isFinite(e.total)&&Number.isFinite(sum)&&Math.abs(e.total-sum)<=0.12;
+    const summary=recap[e.phase]; const recapOk=Number.isFinite(summary?.cep)&&Number.isFinite(e.total)&&Math.abs(summary.cep-e.total)<=0.15;
+    const parts=[['Chauffage',vals.heating],['Refroidissement',vals.cooling],['ECS',vals.ecs],['Éclairage',vals.lighting],['Aux. distribution',vals.auxDist],['Aux. ventilation',vals.auxVent],['Autres usages',vals.other]].filter(([,v])=>Number.isFinite(v));
+    const breakdown=parts.map(([k,v])=>`${k} ${String(v).replace('.',',')}`).join(' ; ');
+    const gesParts=[];
+    if(Number.isFinite(e.gesKgM2)) gesParts.push(`${String(e.gesKgM2).replace('.',',')} kgCO₂e/m².an`);
+    if(Number.isFinite(e.gesTonnes)) gesParts.push(`${String(e.gesTonnes).replace('.',',')} tCO₂e/an`);
+    if(Number.isFinite(gesAbsolute[e.phase])) gesParts.push(`${String(gesAbsolute[e.phase]).replace('.',',')} kgCO₂e/an (évolution GES)`);
+    const discrepancy=Number.isFinite(e.gesTonnes)&&Number.isFinite(gesAbsolute[e.phase])&&Math.abs(e.gesTonnes*1000-gesAbsolute[e.phase])>Math.max(25,e.gesTonnes*1000*.03);
+    const note=`Consommations d’énergie primaire par poste : ${breakdown}${Number.isFinite(e.total)?` ; total ${String(e.total).replace('.',',')} kWhEP/m².an`:''}.${gesParts.length?` Bilan GES : ${gesParts.join(' ; ')}.`:''}${crossOk?' Somme des postes = total Bao : contrôle OK.':''}${recapOk?' Récapitulatif final cohérent avec le tableau détaillé.':''}${discrepancy?' Attention : les deux valeurs annuelles de GES imprimées dans le rapport ne sont pas strictement cohérentes ; elles sont conservées séparément sans fusion.':''}`;
+    const meta={building,excerpt:normalizeText(e.page.text||'').slice(0,420),provenanceNote:note,baoBreakdown:{...vals},baoEnergyFinal:{...e.finalEnergy},baoGes:{kgM2:e.gesKgM2,tonnesPerYear:e.gesTonnes,kgPerYear:gesAbsolute[e.phase],worksKgPerYear:gesAbsolute.works,saving30yKg:gesAbsolute.saving30y},baoChecks:{postSum:sum,crossOk,recapOk,recap:summary||null}};
+    if(Number.isFinite(e.total)){
+      if(e.phase==='before') add(e.page,line,'cep_before',e.total,'bao:primary-energy-total-before',(crossOk&&recapOk)?0.999:0.997,'kWhEP/m².an',meta);
+      else { add(e.page,line,'cep_after_final',e.total,'bao:primary-energy-total-after',(crossOk&&recapOk)?0.999:0.997,'kWhEP/m².an',meta); add(e.page,line,'cep',e.total,'bao:primary-energy-total-project',(crossOk&&recapOk)?0.999:0.997,'kWhEP/m².an',meta); }
+    }
+    // Les colonnes détaillées existantes du schéma décrivent le résultat projet/final : ne pas y injecter l'état initial.
+    if(e.phase==='after'){
+      const map=[['cep_cooling','cooling'],['cep_lighting','lighting'],['cep_aux_dist','auxDist'],['cep_aux_vent','auxVent']];
+      for(const [field,key] of map) if(Number.isFinite(vals[key])) add(e.page,line,field,vals[key],`bao:primary-energy-post-${key}`,.999,'kWhEP/m².an',meta);
+      // Dans ce Bao, tous les postes du bilan sont électriques. Le total EP peut donc alimenter Cep électricité,
+      // mais uniquement si aucune autre énergie combustible/réseau n'est décrite dans le tableau de bilan.
+      const pageEnergyLow=normLower(e.page.text||'');
+      if(Number.isFinite(e.total)&&/electricit/.test(pageEnergyLow)&&!/(?:gaz\s+naturel|fuel\s+domestique|fioul|biomasse|reseau\s+de\s+chaleur)/.test(pageEnergyLow)) add(e.page,line,'cep_electricity',e.total,'bao:primary-energy-by-vector-electricity',.985,'kWhEP/m².an',{...meta,derivedFromDocument:true,provenanceNote:`${note} Cep électricité = total, car aucune autre énergie n’est portée par ce tableau de bilan.`});
+    }
+  }
+
+  // Nettoyage des propriétés temporaires placées sur les pages.
+  for(const page of doc.read.pages||[]) try{ delete page._docText; }catch{}
+  return out;
+}
+
 function parseThermalStudy(doc){
   const out=[];
   const add=(page,line,field,value,method,confidence=.98,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:doc.type===DOC_TYPES.RT_EXISTING?'RT Existant':'Étude thermique',...extra})); };
@@ -848,9 +1085,10 @@ function parseProgram(doc){
   for(const page of doc.read.pages){ const lines=page.lines||[], pageTypes=[];
     for(let i=0;i<lines.length;i++){ const line=lines[i], s=normalizeText(line.text), ctx=lineWindow(page,i,1,1);
       const countPatterns=[/(?:nombre|nb\.?|nombre\s+total)\s*(?:de\s+)?logements?\s*[:=\-]?\s*(\d+)/i,/\bconstruction\s+de\s+(\d+)\s+logements?\b/i,/\bprogramme\s+(?:de|comprenant)\s+(\d+)\s+logements?\b/i,/\b(?:comprend|comprenant|comporte)\s+(\d+)\s+logements?\b/i,/\b(\d+)\s+logements?\b/i];
-      for(const re of countPatterns){ const m=s.match(re); if(m){ const n=parseInt(m[1],10); if(n>0&&n<10000){ push(out,occ(doc,page,line,'housing_count',n,'program:housing-count-explicit',0.88,'',{excerpt:normalizeText(ctx).slice(0,420)})); break; } } }
+      const repeatedThermalHeader=/(?:etude|étude)\s+(?:thermique|energetique|énergétique)\s+\d+\s+logements?/i.test(s)&&page.page>1;
+      if(!repeatedThermalHeader) for(const re of countPatterns){ const m=s.match(re); if(m){ const n=parseInt(m[1],10); if(n>0&&n<10000){ push(out,occ(doc,page,line,'housing_count',n,'program:housing-count-explicit',0.88,'',{excerpt:normalizeText(ctx).slice(0,420)})); break; } } }
       const yearPatterns=[/(?:annee\s+de\s+construction|année\s+de\s+construction|construit\s+en|construction\s+en|acheve\s+en|achevé\s+en|annee\s+d['’]achevement|année\s+d['’]achèvement)\D{0,20}(17\d{2}|18\d{2}|19\d{2}|20\d{2})/i,/(?:immeuble|batiment|bâtiment)\D{0,40}(?:de|en|construit\s+en)\s*(17\d{2}|18\d{2}|19\d{2}|20\d{2})/i];
-      for(const re of yearPatterns){ const m=s.match(re); if(m){ push(out,occ(doc,page,line,'construction_year',parseInt(m[1],10),'program:construction-year',0.90)); break; } }
+      for(const re of yearPatterns){ const m=s.match(re); if(m){ const around=normLower(s); if(/(?:entre|de)\s+(?:17|18|19|20)\d{2}\s+(?:et|a|à|-)\s+(?:17|18|19|20)\d{2}/.test(around)) break; push(out,occ(doc,page,line,'construction_year',parseInt(m[1],10),'program:construction-year',0.90)); break; } }
       if(![DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && [DOC_TYPES.PLAN,DOC_TYPES.SURFACE,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT].includes(doc.type)){ const found=s.match(/\b(?:studio|T1\s*bis|T[1-9]|F[1-9]|maison\s+individuelle|duplex|triplex)\b/ig)||[]; pageTypes.push(...found.map(x=>x.toUpperCase().replace(/\s+/g,' '))); }
     }
     const ty=unique(pageTypes); if(ty.length){ const line=lines.find(l=>/(?:studio|T1\s*bis|T[1-9]|F[1-9]|maison\s+individuelle|duplex|triplex)/i.test(l.text))||lines[0]; const conf=[DOC_TYPES.PLAN,DOC_TYPES.SURFACE].includes(doc.type)?0.88:0.94; push(out,occ(doc,page,line,'housing_typologies',ty.join(', '),'program:typologies-page',conf,'',{excerpt:`Typologies explicites détectées sur la page : ${ty.join(', ')}`})); }
@@ -886,18 +1124,18 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const wm=findFirstMatch(ctx,WINDOW_MATERIALS), gl=normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS), sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS)):null, sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 
 function parseSystems(doc){
-  const out=[];
-  for(const page of doc.read.pages){ const lines=page.lines||[]; const pagePhase=phaseFromContext(page.text||'',doc); const resolvedPhase=ctx=>{ const p=phaseFromContext(ctx,doc); return p==='unknown'?pagePhase:p; }; for(let i=0;i<lines.length;i++){
+  const out=[]; let inheritedPhase='unknown';
+  for(const page of doc.read.pages){ const lines=page.lines||[]; const explicitPagePhase=phaseFromContext(page.text||'',doc); if(explicitPagePhase!=='unknown') inheritedPhase=explicitPagePhase; const pagePhase=inheritedPhase; const resolvedPhase=ctx=>{ const p=phaseFromContext(ctx,doc); return p==='unknown'?pagePhase:p; }; for(let i=0;i<lines.length;i++){
     const line=lines[i], base=normalizeText(line.text), next=normalizeText(lines[i+1]?.text||''); const baseLow=normLower(base);
     const makeCtx=(kindRe,matcher)=>{ if(!kindRe.test(baseLow)) return null; if(matcher(base)) return base; return normalizeText(`${base} | ${next}`); };
 
     const heatCtx=makeCtx(/chauffage|chaudiere|pac|pompe\s+a\s+chaleur|radiateur|convecteur|plancher\s+chauffant|vrv|drv|sous[- ]station/i,t=>!!(findFirstMatch(t,HVAC.heating)||findFirstMatch(t,HVAC.vectors)));
-    if(heatCtx){ const phase=resolvedPhase(heatCtx), mode=findFirstMatch(heatCtx,HVAC.heating), vec=findFirstMatch(heatCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
+    if(heatCtx){ const phase=resolvedPhase(heatCtx), mode=findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(normLower(heatCtx)); const vec=optionList?null:findFirstMatch(heatCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
 
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
     if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsCtx,HVAC.ecs), vec=findFirstMatch(ecsCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
@@ -1039,7 +1277,7 @@ export function parseDocument(doc){
   if(doc.type!==DOC_TYPES.DPGF) out.push(...parseBuildingSurface(doc));
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
   if([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV].includes(doc.type)) out.push(...parseGenericRegulatory(doc));
-  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)) out.push(...parseThermalStudy(doc));
+  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ if(isBaoEvolutionDocument(doc)) out.push(...parseBaoEvolution(doc)); out.push(...parseThermalStudy(doc)); }
   out.push(...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
   if(doc.type===DOC_TYPES.DPE||/\bdpe\b/i.test(doc.read.text)) out.push(...parseDpe(doc));
   if([DOC_TYPES.CARBON,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV].includes(doc.type)||/ic\s*(?:composants?|composant|energie|énergie|construction|chantier)/i.test(doc.read.text)) out.push(...parseCarbon(doc));

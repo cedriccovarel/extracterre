@@ -1,3 +1,17 @@
+# v1.1.10
+
+- Parseur dédié Bao Evolution / étude thermique rénovation.
+- Lecture explicite Ubat avant/après depuis les blocs `COEFFICIENT UBAT`.
+- Lecture des consommations d’énergie primaire par poste avant/après : chauffage, refroidissement, ECS, éclairage, auxiliaires, ventilateurs, autres usages et total.
+- Mapping vers les colonnes 167 existantes quand une correspondance métier existe ; conservation séparée des postes sans colonne dédiée.
+- Bilan GES conservé sous plusieurs formes (kgCO2e/m².an, tCO2e/an, kgCO2e/an du bloc évolution) sans faux mapping DPE/IC.
+- Contrôles croisés : somme des postes vs total et récapitulatif final vs tableau détaillé.
+- Détection des incohérences internes du rapport sans fusion silencieuse.
+- Garde-fous : température intérieure ≠ Tic ; période de construction ≠ année exacte ; matériau du volet ≠ matériau de menuiserie ; listes d’exemples ≠ vecteur réel ; vitrage incomplet non inventé.
+- OCR ciblé renforcé sur bilans énergie/GES, Ubat, vitrages, parois et systèmes Bao incomplets.
+- Ajout du jeu de référence `data/bao-evolution-reference.json`.
+- 133 auto-tests métier.
+
 # v1.1.9
 
 - Ajout d’un bouton **👁 Aperçu** sur chaque fichier chargé.

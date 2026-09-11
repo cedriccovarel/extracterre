@@ -1,8 +1,19 @@
-# ExtracTerre v1.1.9
+# ExtracTerre v1.1.10
 
 Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
 
 
+
+
+## v1.1.10 — Parseur Bao Evolution approfondi
+
+Cette version traite les rapports Bao Evolution / études thermiques de rénovation comme un format structuré à part entière. Le moteur distingue explicitement **ÉTAT INITIAL** et **ÉTAT APRÈS TRAVAUX**, lit les coefficients Ubat, les systèmes, l’enveloppe et les tableaux de consommations d’énergie primaire par poste.
+
+Le tableau Bao « Détails des consommations » alimente le **Cep avant travaux**, le **Cep après travaux final**, le Cep projet et les colonnes détaillées déjà disponibles (refroidissement, éclairage, auxiliaires ventilation/distribution et énergie électrique lorsque le bilan est mono-énergie). Les postes Chauffage, ECS et Autres usages, ainsi que le bilan GES, sont conservés comme données complémentaires avec page, provenance et contrôles de cohérence, sans créer de nouvelles colonnes dans le schéma de 167 champs.
+
+Garde-fous ajoutés : `Température intérieure` n’est jamais une `Tic` ; une période de construction n’est pas convertie en année exacte ; le matériau d’un volet n’est pas celui de la menuiserie ; une liste d’exemples de vecteurs n’est pas interprétée comme une énergie réellement utilisée ; `Double +15mm` ne devient jamais artificiellement une composition `4.x.4`. L’OCR ciblé est renforcé sur les pages Bao Ubat, bilan énergétique, GES, vitrages, parois et systèmes lorsque la couche texte est incomplète.
+
+Le fichier `data/bao-evolution-reference.json` constitue le jeu de référence permanent pour cette famille de rapports.
 
 ## v1.1.9 — Aperçu intégré des documents
 

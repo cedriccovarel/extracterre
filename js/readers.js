@@ -95,6 +95,37 @@ function criticalTableNeedsOcr(text=''){
     const postRows=lines.filter(l=>/^(?:chauffage|refroidissement|ecs|eclairage|éclairage|auxiliaires|deplacement)/i.test(l)&&countNumericTokens(l)>=1).length;
     if(!structured&&postRows<3) return true;
   }
+  // Bao Evolution / audits de rénovation : ces pages portent des consommations d'énergie primaire
+  // par poste. Si l'en-tête existe mais que les lignes du tableau sont trop fragmentées, on OCRise
+  // uniquement cette page afin de sécuriser Cep avant/après et les postes détaillés.
+  if(/details\s+des\s+consommations/.test(low) && /energie\s+primaire/.test(low)){
+    const labels=['chauffage','refroidissement','ecs','eclairage','auxiliaires','ventilateurs','autres usages'];
+    const labelHits=labels.filter(label=>low.includes(label)).length;
+    const numericPostRows=lines.filter(l=>/^(?:chauffage|refroidissement|ecs|eau\s+chaude|eclairage|éclairage|auxiliaires|ventilateurs|autres\s+usages|electricit)/i.test(l)&&countNumericTokens(l)>=2).length;
+    const totalPrimary=lines.some(l=>/^total\b/i.test(l)&&countNumericTokens(l)>=2)||/total\s+kwh\s*ep\s*\/\s*m[²2]/i.test(low);
+    if(labelHits<6||numericPostRows<4||!totalPrimary) return true;
+  }
+  // Le bilan GES Bao est court mais essentiel : OCR ciblé si les libellés sont visibles sans leurs valeurs.
+  if(/evolution\s+emission\s+ges|emission\s+de\s+co2\s+avant\s+travaux/.test(low)){
+    const gesRows=lines.filter(l=>/emission\s+de\s+co2\s+(?:avant|apres|après|des\s+travaux)/i.test(l)&&countNumericTokens(l)>=1).length;
+    if(gesRows<2) return true;
+  }
+  // Bao : les pages Ubat, enveloppe et systèmes ont une structure stable. Si leur titre est lisible
+  // mais que la valeur/ligne métier manque dans la couche texte, on OCRise uniquement cette page.
+  if(/calcul\s+du\s+coefficient\s+ubat/.test(low) && !/coefficient\s+ubat\s*=\s*[-+]?\d+(?:[,.]\d+)?/.test(low)) return true;
+  if(/details\s+des\s+parois/.test(low)){
+    const compositionRows=lines.filter(l=>/(?:laine|isover|polysty|polyurethane|fibre\s+de\s+bois|ouate|brique|beton|béton)/i.test(l)&&countNumericTokens(l)>=1).length;
+    if(compositionRows<2) return true;
+  }
+  if(/catalogue\s+des\s+vitrages/.test(low)){
+    const vitrageRows=lines.filter(l=>/^fe\d+\b/i.test(l)&&countNumericTokens(l)>=2).length;
+    if(vitrageRows<2 || (!/\bdouble\b|\btriple\b/i.test(low) && !/\buw\b/i.test(low))) return true;
+  }
+  if(/saisie\s+de\s+la\s+ventilation|saisie\s+de\s+l['’]?ecs|saisie\s+des\s+generations/.test(low)){
+    const signals=['systeme de ventilation','type d ecs','type de stockage','type de generateur','type d energie pour la production de chaud'];
+    const hits=signals.filter(x=>low.includes(x)).length;
+    if(hits===0) return true;
+  }
   // ACV / RSENV : si le tableau résumé des lots est détecté mais ses totaux sont cassés,
   // l'OCR de secours est utile même quand la couche texte générale semble bonne.
   if(/(?:1\s*[-–—]\s*vrd|energie\s*\(\s*ce\s*\)|iccomposant|ic\s*composant)/.test(low) && /total\s*(?:lot)?\s*:/.test(low)){

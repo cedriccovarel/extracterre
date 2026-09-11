@@ -1,4 +1,4 @@
-# Tests — ExtracTerre v1.1.9
+# Tests — ExtracTerre v1.1.10
 
 Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
 
@@ -200,6 +200,13 @@ Les fichiers de test ne sont pas inclus dans le dépôt GitHub.
 - Vitrage « Double +15mm » normalisé sans inventer 4.x.4.
 - Régression globale : 117/117 tests.
 
+
+
+## Tests v1.1.10 — Bao Evolution approfondi
+
+Le moteur vérifie désormais les scénarios spécifiques suivants : Ubat avant/après via le parseur Bao dédié ; Cep total avant/après ; consommations d’énergie primaire par poste ; GES conservé sans faux mapping DPE/IC ; contrôle de somme des postes ; Cep électrique mono-énergie ; reconstitution `Double +15mm` sans invention de composition ; absence de confusion entre aluminium du volet et matériau de menuiserie ; rejet des listes d’exemples comme vecteur réel ; rejet d’une période de construction comme année exacte ; OCR ciblé d’un tableau énergie ou Ubat incomplet ; déduction d’un bâtiment collectif unique.
+
+Jeu de référence : `data/bao-evolution-reference.json`. Résultat attendu du lot d’auto-tests : **133/133**.
 
 ## Tests v1.1.9 — Aperçu intégré
 - bouton `👁 Aperçu` présent pour chaque fichier encore disponible en mémoire ;
