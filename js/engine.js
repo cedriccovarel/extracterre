@@ -81,11 +81,34 @@ function mappedBuilding(name,grouping){
 }
 
 export function consolidate(docs,occurrences,rules,operationName='',grouping=null){
-  const operation=operationName||operationNameFromFiles(docs); const detected=unique(docs.flatMap(d=>(d.buildings?.names||['Bâtiment unique']).map(b=>mappedBuilding(b,grouping)))); const fromOcc=unique(occurrences.map(o=>o.building)).filter(Boolean); const explicit=unique([...detected,...fromOcc]).filter(b=>b!=='Bâtiment unique'); const buildings=explicit.length?explicit:['Bâtiment unique'];
+  const operation=operationName||operationNameFromFiles(docs);
+  const detected=unique(docs.flatMap(d=>(d.buildings?.names||['Bâtiment unique']).map(b=>mappedBuilding(b,grouping))));
+  const fromOcc=unique(occurrences.map(o=>o.building)).filter(Boolean);
+  const explicit=unique([...detected,...fromOcc]).filter(b=>b!=='Bâtiment unique');
+  const buildings=explicit.length?explicit:['Bâtiment unique'];
   const finals=[]; const rows=[];
-  for(const building of buildings){ const row={building};
-    for(const f of FIELD_DEFS){ if(f.key==='building') continue;
-      const candidates=occurrences.filter(o=>o.field===f.key&&(o.building===building||o.building==='Bâtiment unique')&&o.sourceTier!=='forbidden');
+
+  // Index field+bâtiment : l'ancienne consolidation refiltrait toutes les occurrences pour chacun
+  // des 167 champs et chacun des bâtiments. Avec plusieurs centaines de dossiers cela pouvait
+  // bloquer le thread principal plusieurs secondes.
+  const byFieldBuilding=new Map();
+  for(const o of occurrences){
+    const key=`${o.field}|${o.building||'Bâtiment unique'}`;
+    const list=byFieldBuilding.get(key); if(list) list.push(o); else byFieldBuilding.set(key,[o]);
+  }
+  const candidatesFor=(field,building)=>{
+    const exact=byFieldBuilding.get(`${field}|${building}`)||[];
+    if(building==='Bâtiment unique') return exact;
+    const global=byFieldBuilding.get(`${field}|Bâtiment unique`)||[];
+    return global.length?exact.concat(global):exact;
+  };
+
+  for(const building of buildings){
+    const row={building};
+    for(const f of FIELD_DEFS){
+      if(f.key==='building') continue;
+      const candidates=candidatesFor(f.key,building).filter(o=>o.sourceTier!=='forbidden');
+      if(!candidates.length) continue;
       const eligible=candidates.filter(o=>o.confidence>=MIN_RETAINED_CONFIDENCE);
       const main=eligible.filter(o=>o.sourceTier==='main'); const secondary=eligible.filter(o=>o.sourceTier==='secondary'); const unrouted=eligible.filter(o=>o.sourceTier==='unrouted');
       let pool=main.length?main:(secondary.length?secondary:unrouted);
@@ -101,15 +124,26 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
-      if(f.key==='dh') { const rows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(rows.length?rows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+      if(f.key==='dh') { const dhRows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       row[f.key]=chosen.value; finals.push({...chosen,status:'retenu',operation});
     }
     if(row.operation===undefined) row.operation=operation;
     if(row.operation_name===undefined&&operationName) row.operation_name=operationName;
     rows.push(row);
   }
+
   const finalIds=new Set(finals.map(o=>[o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|')));
-  const detailed=occurrences.map(o=>{ const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|')); const directWinner=!retained&&o.libraryDerived&&finals.some(f=>f.field===o.field&&(f.building===o.building||f.building==='Bâtiment unique')&&!f.libraryDerived); return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')}; });
+  const directFinalExact=new Set(), directFinalGlobal=new Set();
+  for(const f of finals){
+    if(f.libraryDerived) continue;
+    if(f.building==='Bâtiment unique') directFinalGlobal.add(f.field);
+    else directFinalExact.add(`${f.field}|${f.building}`);
+  }
+  const detailed=occurrences.map(o=>{
+    const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|'));
+    const directWinner=!retained&&o.libraryDerived&&(directFinalGlobal.has(o.field)||directFinalExact.has(`${o.field}|${o.building}`));
+    return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
+  });
   return {operation,buildings,rows,finals,detailed,buildingAliases:grouping?.aliases||[],buildingSuggestions:grouping?.suggestions||[],authoritativeBuildings:grouping?.authoritative||[],buildingOverrides:grouping?.manualOverrides||{}};
 }
 

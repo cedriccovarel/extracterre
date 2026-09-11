@@ -1,3 +1,14 @@
+# v1.1.12 — stabilité CPU / interface réactive
+
+- Correction du blocage « page ne répond pas » lors du lancement d’analyse.
+- Regroupement des items PDF.js optimisé : suppression du parcours quadratique `lines.find()` par fragment.
+- Tags des 167 champs précompilés et indexés par préfixe au lieu de retraiter 167 définitions sur chaque ligne.
+- Recherche floue des isolants optimisée : fenêtres lexicales bornées au lieu d’un balayage Levenshtein de toutes les sous-chaînes.
+- Consolidation indexée par champ + bâtiment, adaptée aux lots de plusieurs centaines de fichiers.
+- Pauses coopératives entre lecture, classification, parsing et sauvegarde IndexedDB.
+- Aucun chapitre spécifique Bao dans les résultats : les règles restent génériques aux études thermiques structurées.
+- Cache-busting et numéro de version harmonisés en 1.1.12.
+
 # v1.1.11 — stabilité analyse & généralisation études thermiques rénovation
 
 - Suppression du bloc de résultats dédié « Compléments Bao Evolution » : aucune famille documentaire n'a désormais son propre chapitre d'affichage.

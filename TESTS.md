@@ -1,4 +1,4 @@
-# Tests — ExtracTerre v1.1.10
+# Tests — ExtracTerre v1.1.12
 
 Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
 
@@ -224,3 +224,11 @@ Jeu de référence : `data/bao-evolution-reference.json`. Résultat attendu du l
 - page courte propre => pas d’OCR automatique ;
 - page critique Ubat/énergie incomplète => OCR ciblé conservé ;
 - jeu Romorantin conservé comme fixture de non-régression uniquement.
+
+
+## Tests v1.1.12 — réactivité
+
+- Les 133 auto-tests métier existants doivent rester au vert.
+- Benchmark de référence sur le rapport thermique rénovation Romorantin : le parsing synchrone doit être réduit d’un ordre de grandeur par rapport à la v1.1.11, sans perte d’occurrences.
+- Test de charge de consolidation : 30 000 occurrences / 300 bâtiments doivent être consolidables sans blocage multi-secondes du thread principal.
+- Vérifier que le bundle et les ressources sont bien cache-bustés en `1.1.12`.

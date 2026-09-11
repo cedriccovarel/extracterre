@@ -66,14 +66,36 @@ export const INSULATION_ALIAS_CATALOG=[
   'Rockwool Rockmur','Rockwool Rockplus','Rockwool Rocksol','Rockwool Rockcomble','Rockwool Rockciel','Rockwool MB Rock','Rockwool Alpharock'
 ];
 
-function familyScore(text,f,target){
-  if(target && !f.applications.includes(target)) return null;
-  const n=libNorm(text), c=compact(text); let best=0;
-  for(const alias of f.aliases){
-    const an=libNorm(alias), ac=compact(alias); if(!ac) continue;
-    if(n.includes(an)||c.includes(ac)) best=Math.max(best,1);
-    else if(approxContains(c,ac)) best=Math.max(best,0.96);
+const FAMILY_ALIAS_CACHE=new WeakMap();
+function cachedAliases(f){
+  let entries=FAMILY_ALIAS_CACHE.get(f);
+  if(entries) return entries;
+  entries=(f.aliases||[]).map(alias=>{ const norm=libNorm(alias), compactAlias=compact(alias); return {alias,norm,compact:compactAlias,tokens:norm.split(/\s+/).filter(Boolean)}; }).filter(x=>x.compact);
+  FAMILY_ALIAS_CACHE.set(f,entries);
+  return entries;
+}
+function approxAliasInTokens(textTokens,entry){
+  if(!entry.compact||entry.compact.length<5||!textTokens.length) return false;
+  const wanted=entry.tokens.length, maxDist=entry.compact.length>=11?2:1;
+  const minWords=Math.max(1,wanted-1), maxWords=wanted+1;
+  for(let i=0;i<textTokens.length;i++){
+    // Préfiltre très bon marché : la première lettre doit rester cohérente pour une tolérance OCR de 1-2 caractères.
+    if(entry.tokens[0]&&textTokens[i]&&entry.tokens[0][0]!==textTokens[i][0]) continue;
+    for(let count=minWords;count<=maxWords&&i+count<=textTokens.length;count++){
+      const candidate=textTokens.slice(i,i+count).join('');
+      if(Math.abs(candidate.length-entry.compact.length)>maxDist) continue;
+      if(levenshtein(candidate,entry.compact)<=maxDist) return true;
+    }
   }
+  return false;
+}
+function familyScorePrepared(n,c,tokens,f,target){
+  if(target && !f.applications.includes(target)) return null;
+  const aliases=cachedAliases(f); let best=0;
+  // 1. Passage exact très rapide. Dans la grande majorité des CCTP/RSET, c'est suffisant.
+  for(const a of aliases) if(n.includes(a.norm)||c.includes(a.compact)){ best=1; break; }
+  // 2. Fuzzy seulement en secours, sur des fenêtres de mots et non sur chaque sous-chaîne caractère par caractère.
+  if(best===0){ for(const a of aliases){ if(approxAliasInTokens(tokens,a)){ best=.96; break; } } }
   if(best===0) return null;
   const brand=compact(f.brand.split('/')[0]); if(brand.length>=4 && c.includes(brand)) best=Math.min(1,best+0.01);
   return best;
@@ -91,8 +113,8 @@ function nearestVariant(f,thickness){
 }
 
 export function matchInsulationProduct(text,target=null,explicitThickness=null){
-  const matches=[];
-  for(const f of INSULATION_FAMILIES){ const score=familyScore(text,f,target); if(score!=null) matches.push({f,score}); }
+  const matches=[]; const n=libNorm(text), c=compact(text), tokens=n.split(/\s+/).filter(Boolean);
+  for(const f of INSULATION_FAMILIES){ const score=familyScorePrepared(n,c,tokens,f,target); if(score!=null) matches.push({f,score}); }
   if(!matches.length) return null;
   matches.sort((a,b)=>b.score-a.score || Math.max(...b.f.aliases.map(x=>compact(x).length))-Math.max(...a.f.aliases.map(x=>compact(x).length)));
   const {f,score}=matches[0]; let variant=nearestVariant(f,explicitThickness), thicknessEvidence=variant?'explicit':null;

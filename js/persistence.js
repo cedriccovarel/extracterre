@@ -62,7 +62,7 @@ function serializeRead(read){
     // PDF/XML : une seule chaîne par page suffit pour restaurer la recherche libre et les tags.
     // Excel : conserver les cellules, nécessaires au parseur économique DPGF lors d'une restauration.
     if(hasCells) base.lines=lines.map(serializeLine);
-    else base.text=lines.map(l=>String(l.text||'')).join('\n');
+    else base.text=String(page.text||lines.map(l=>String(l.text||'')).join('\n'));
     return base;
   });
   return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null)};

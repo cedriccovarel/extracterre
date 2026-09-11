@@ -465,6 +465,11 @@ function updateEtaUi(eta,done,total,active,profile){
   el.textContent=`Temps total estimé ≈ ${formatAnalysisDuration(eta.total)} · restant ≈ ${remaining} · fin vers ${formatEtaClock(eta.finishAt)}`;
   el.title=`Estimation dynamique fondée sur la vitesse réellement observée. Profil ${profile.label} : ${profile.description}.`;
 }
+async function yieldToBrowser(){
+  if(globalThis.scheduler?.yield){ try{ await globalThis.scheduler.yield(); return; }catch{} }
+  await new Promise(resolve=>setTimeout(resolve,0));
+}
+
 async function analyze(onlyIds=null,manualUnlimited=false){
   if(!state.docs.length&&!state.manualPasteRows.length){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
   $('#analyzeBtn').disabled=true;
@@ -489,7 +494,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const overall=(alreadyReady+work)/totalDocs;
     const pool=ocrPoolStatus();
     const page=meta?.page?` · p.${meta.page}${meta.totalPages?`/${meta.totalPages}`:''}`:'';
-    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':'lecture';
+    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':meta?.stage==='classification'?'classification':meta?.stage==='parsing'?'extraction métier':meta?.stage==='checkpoint'?'sauvegarde':'lecture';
     const latest=doc?` · ${doc.name} · ${stage}${page}`:'';
     setStatus(`${done}/${pendingDocs.length} terminés · ${activeIds.size} actifs · OCR ${pool.active}/${pool.max}${pool.waiting?` (+${pool.waiting} en file)`:''}${latest}`,Math.round(Math.max(0,Math.min(1,overall))*62));
     const eta=etaTracker.snapshot(forceEta);
@@ -508,14 +513,24 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       },{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
       if(noLimit) d.read=await readPromise;
       else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error('Analyse interrompue après 5 minutes.'); e.name='TimeoutError'; reject(e); },5*60*1000); })]);
+      progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
+      d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
       d.classification=classifyDocument(d.name,d.read.text,{kind:d.read.kind});
-      d.type=d.classification.type; d.buildings=detectBuildings(d); d.status='ready'; d.retryUnlimited=false;
+      d.type=d.classification.type;
+      d.buildings=detectBuildings(d);
+      await yieldToBrowser();
+      d.status='ready'; d.retryUnlimited=false;
       if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
       try{
+        progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.91));
+        d.liveStage='parsing'; updateParallelStatus(d,{stage:'parsing'},true); await yieldToBrowser();
         d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now();
+        await yieldToBrowser();
         d.read=compactReadForRetention(d.read);
       }catch(parseErr){ console.warn('Pré-extraction checkpoint impossible',parseErr); d.cachedOccurrences=null; }
       d.analysisDurationMs=Math.round(performance.now()-started);
+      progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.97));
+      d.liveStage='checkpoint'; updateParallelStatus(d,{stage:'checkpoint'},true); await yieldToBrowser();
       await checkpointDocument(activeProject(),d);
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
       const structuredThermalEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
@@ -553,9 +568,9 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     if(!valid.length && !state.result) throw new Error('Aucun document n’a pu être lu.');
     if(valid.length){
       const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Lecture terminée · consolidation des données…';
-      setStatus('Extraction métier et consolidation…',72); await new Promise(r=>setTimeout(r,25));
+      setStatus('Extraction métier et consolidation…',72); await yieldToBrowser();
       const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
-      setStatus('Contrôles de cohérence…',92); await new Promise(r=>setTimeout(r,20));
+      setStatus('Contrôles de cohérence…',92); await yieldToBrowser();
     }
     renderAll(); await checkpointWorkspace('analyse terminée',true); setStatus('Analyse terminée',100);
     const elapsed=(performance.now()-etaTracker.startedAt)/1000;

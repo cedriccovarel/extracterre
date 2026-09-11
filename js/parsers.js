@@ -1189,30 +1189,46 @@ function taggedValue(def,raw=''){
   }
   return text.replace(/^[:=|;\-–—\s]+/,'').trim()||null;
 }
-function taggedLineMatch(raw,def){
-  const src=String(raw??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim(), normalized=normalizeFieldHeader(src);
+// Index de tags précompilé : auparavant chaque ligne de chaque PDF reparcourait les 167 champs,
+// retriait leurs tags et les renormalisait. Sur un rapport dense cela pouvait monopoliser le thread
+// principal plusieurs secondes et déclencher « page ne répond pas ».
+const TAG_CACHE_BY_KEY=new Map();
+const TAG_PREFIX_INDEX=new Map();
+for(const def of FIELD_DEFS){
+  const tags=[...(def.tags||[])].map(tag=>({tag,norm:normalizeFieldHeader(tag)})).filter(x=>x.norm).sort((a,b)=>b.norm.length-a.norm.length);
+  TAG_CACHE_BY_KEY.set(def.key,tags);
+  for(const item of tags){
+    const first=item.norm.split(/\s+/)[0]; if(!first) continue;
+    let defs=TAG_PREFIX_INDEX.get(first); if(!defs){ defs=new Set(); TAG_PREFIX_INDEX.set(first,defs); }
+    defs.add(def);
+  }
+}
+const PRESENCE_DEFS=FIELD_DEFS.filter(def=>def.presence);
+function taggedCandidateDefs(normalized=''){
+  const first=String(normalized||'').split(/\s+/)[0];
+  return first?[...(TAG_PREFIX_INDEX.get(first)||[])]:[];
+}
+function taggedLineMatch(raw,def,normalizedInput=''){
+  const src=String(raw??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim(), normalized=normalizedInput||normalizeFieldHeader(src);
   if(!src||!normalized) return null;
-  const tags=[...(def.tags||[])].sort((a,b)=>normalizeFieldHeader(b).length-normalizeFieldHeader(a).length);
-  for(const tag of tags){
-    const nt=normalizeFieldHeader(tag); if(!nt) continue;
+  const tags=TAG_CACHE_BY_KEY.get(def.key)||[];
+  for(const {tag,norm:nt} of tags){
     if(normalized===nt) return {value:null,tag,exact:true};
     if(normalized.startsWith(nt)){
-      // Le libellé doit être suivi d'un vrai séparateur ou d'un espacement de tableau.
       const approx=src.slice(Math.min(src.length,tag.length));
       if(/^\s*(?::|=|\||;|\-|–|—)\s*/.test(approx)) return {value:taggedValue(def,approx.replace(/^\s*(?::|=|\||;|\-|–|—)\s*/,'')),tag,exact:true};
-      // Cas OCR : le séparateur peut disparaître mais le reste commence clairement par une valeur.
       if(def.type==='number'&&/^\s+[-+]?\d/.test(approx)) return {value:taggedValue(def,approx),tag,exact:true};
     }
   }
   return null;
 }
-function taggedPresence(raw,def){
+function taggedPresence(raw,def,normalizedInput=''){
   if(!def.presence) return null;
-  const n=normalizeFieldHeader(raw); if(!n) return null;
-  for(const tag of def.tags||[]){
-    const t=normalizeFieldHeader(tag); if(t.length<3||!n.includes(t)) continue;
+  const n=normalizedInput||normalizeFieldHeader(raw); if(!n) return null;
+  for(const {tag,norm:t} of TAG_CACHE_BY_KEY.get(def.key)||[]){
+    if(t.length<3||!n.includes(t)) continue;
     const explicitSelected=/(?:retenu|retenue|choisi|choisie|selection|sélection|mention|label|option|exigence)/i.test(raw);
-    const negated=new RegExp(`(?:non|sans|aucun(?:e)?|pas\\s+de|non\\s+retenu(?:e)?|non\\s+choisi(?:e)?)\\s+[^|;,]{0,28}${t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`,'i').test(normalizeFieldHeader(raw));
+    const negated=new RegExp(`(?:non|sans|aucun(?:e)?|pas\s+de|non\s+retenu(?:e)?|non\s+choisi(?:e)?)\s+[^|;,]{0,28}${t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`,'i').test(n);
     return {value:negated?'Non':'Oui',confidence:explicitSelected ? 0.90 : 0.82,tag};
   }
   return null;
@@ -1248,21 +1264,28 @@ function parseTaggedFields(doc){
   for(const page of doc.read?.pages||[]){ const lines=page.lines||[];
     for(let i=0;i<lines.length;i++){
       const line=lines[i], raw=String(line.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
-      for(const def of FIELD_DEFS){
+      if(!raw) continue;
+      const normalized=normalizeFieldHeader(raw), matched=new Set();
+      for(const def of taggedCandidateDefs(normalized)){
         if(def.key==='building') continue;
-        const hit=taggedLineMatch(raw,def);
-        if(hit){
-          let value=hit.value;
-          if(value===null && def.presence) value='Oui';
-          if(value===null){
-            // Valeur sur la ligne suivante, fréquent dans les formulaires PDF.
-            const next=String(lines[i+1]?.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
-            if(next && !FIELD_DEFS.some(f=>taggedLineMatch(next,f))) value=taggedValue(def,next);
+        const hit=taggedLineMatch(raw,def,normalized);
+        if(!hit) continue;
+        matched.add(def.key);
+        let value=hit.value;
+        if(value===null && def.presence) value='Oui';
+        if(value===null){
+          const next=String(lines[i+1]?.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
+          if(next){
+            const nextNorm=normalizeFieldHeader(next);
+            const nextIsLabel=taggedCandidateDefs(nextNorm).some(f=>!!taggedLineMatch(next,f,nextNorm));
+            if(!nextIsLabel) value=taggedValue(def,next);
           }
-          if(value!==null&&value!=='') push(out,occ(doc,page,line,def.key,value,'tags:label-value',.915,'',{origin:`${doc.type} — libellé structuré`,provenanceNote:`Champ reconnu par le tag « ${hit.tag} ».`}));
-          continue;
         }
-        const presence=taggedPresence(raw,def);
+        if(value!==null&&value!=='') push(out,occ(doc,page,line,def.key,value,'tags:label-value',.915,'',{origin:`${doc.type} — libellé structuré`,provenanceNote:`Champ reconnu par le tag « ${hit.tag} ».`}));
+      }
+      for(const def of PRESENCE_DEFS){
+        if(matched.has(def.key)) continue;
+        const presence=taggedPresence(raw,def,normalized);
         if(presence) push(out,occ(doc,page,line,def.key,presence.value,'tags:presence',presence.confidence,'',{origin:`${doc.type} — mention détectée`,provenanceNote:`Mention reconnue par le tag « ${presence.tag} »${presence.confidence<.9?' ; validation conseillée.':''}`}));
       }
     }

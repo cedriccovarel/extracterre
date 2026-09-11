@@ -39,13 +39,15 @@ export function ocrPoolStatus(){ return {active:OCR_ACTIVE,waiting:OCR_WAITING.l
 function groupItemsIntoLines(items, yTolerance=2.8) {
   const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,idx})).filter(i=>i.text.trim());
   enriched.sort((a,b)=>Math.abs(b.y-a.y)>yTolerance?b.y-a.y:a.x-b.x);
-  const lines=[];
+  // Parcours linéaire après tri. L'ancienne version faisait lines.find() pour chaque item,
+  // soit un coût quadratique sur les pages PDF très denses.
+  const lines=[]; let current=null;
   for(const item of enriched){
-    let line=lines.find(l=>Math.abs(l.y-item.y)<=yTolerance);
-    if(!line){ line={y:item.y,items:[]}; lines.push(line); }
-    line.items.push(item);
+    if(!current || Math.abs(current.y-item.y)>yTolerance){
+      current={y:item.y,items:[]}; lines.push(current);
+    }
+    current.items.push(item);
   }
-  lines.sort((a,b)=>b.y-a.y);
   return lines.map((line,index)=>{
     line.items.sort((a,b)=>a.x-b.x);
     let text=''; let prev=null;
@@ -277,21 +279,26 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
 
 export function compactReadForRetention(read){
   if(!read) return null;
-  const pages=(read.pages||[]).map(page=>({
-    page:page.page,
-    ...(page.sheet?{sheet:page.sheet}:{}),
-    lines:(page.lines||[]).map(line=>({
-      index:Number.isFinite(line.index)?line.index:0,
-      text:String(line.text||''),
-      ...(Array.isArray(line.cells)?{cells:line.cells.map(v=>v==null?'':String(v))}:{}),
-      ...(line.ocr?{ocr:true}:{})
-    })),
-    ...(page.textSource?{textSource:page.textSource}:{}),
-    ...(Number.isFinite(page.pdfTextQuality)?{pdfTextQuality:page.pdfTextQuality}:{}),
-    ...(Number.isFinite(page.ocrConfidence)?{ocrConfidence:page.ocrConfidence}:{}),
-  }));
-  const text=String(read.text||pages.map(p=>p.lines.map(l=>l.text).join('\n')).join('\n\f\n'));
-  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,text,ocr:read.ocr?{...read.ocr,warnings:[...(read.ocr.warnings||[])],pages:[...(read.ocr.pages||[])]}:null,retainedCompact:true};
+  if(read.retainedCompact) return read;
+  // Compactage en place : évite de dupliquer toutes les lignes d'un gros PDF juste après parsing.
+  // Les parseurs ont déjà consommé la géométrie PDF.js ; texte, cellules Excel et indicateurs OCR suffisent ensuite.
+  for(const page of read.pages||[]){
+    const compactLines=[];
+    for(const line of page.lines||[]){
+      const clean={index:Number.isFinite(line.index)?line.index:0,text:String(line.text||'')};
+      if(Array.isArray(line.cells)) clean.cells=line.cells.map(v=>v==null?'':String(v));
+      if(line.ocr) clean.ocr=true;
+      compactLines.push(clean);
+    }
+    page.lines=compactLines;
+    page.text=String(page.text||compactLines.map(l=>l.text).join('\n'));
+    // Ces propriétés sont les seules métadonnées de page conservées volontairement.
+    for(const key of Object.keys(page)) if(!['page','sheet','text','lines','textSource','pdfTextQuality','ocrConfidence'].includes(key)) delete page[key];
+  }
+  read.text=String(read.text||(read.pages||[]).map(p=>p.text||'').join('\n\f\n'));
+  read.pageCount=Number.isFinite(read.pageCount)?read.pageCount:(read.pages||[]).length;
+  read.retainedCompact=true;
+  return read;
 }
 
 export async function readXml(file){

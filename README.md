@@ -1,9 +1,14 @@
-# ExtracTerre v1.1.11
+# ExtracTerre v1.1.12
 
 Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
 
 
 
+
+
+## v1.1.12 — correctif « page ne répond pas »
+
+Cette version corrige les blocages CPU du thread principal pendant l’analyse. Le regroupement des fragments PDF.js est désormais linéaire après tri, le dictionnaire des 167 champs utilise un index de tags précompilé, la recherche floue d’isolants n’effectue plus de balayage Levenshtein caractère par caractère, et la consolidation est indexée par champ+bâtiment. Le navigateur récupère également explicitement la main entre lecture, classification, extraction métier et checkpoint. Les règles métier et les 167 colonnes restent inchangées.
 
 ## v1.1.11 — Parseur Bao Evolution approfondi
 

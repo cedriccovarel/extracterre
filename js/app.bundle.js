@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.11 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v1.1.12 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.10';
+const APP_VERSION = '1.1.12';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -566,14 +566,36 @@ const INSULATION_ALIAS_CATALOG=[
   'Rockwool Rockmur','Rockwool Rockplus','Rockwool Rocksol','Rockwool Rockcomble','Rockwool Rockciel','Rockwool MB Rock','Rockwool Alpharock'
 ];
 
-function familyScore(text,f,target){
-  if(target && !f.applications.includes(target)) return null;
-  const n=libNorm(text), c=compact(text); let best=0;
-  for(const alias of f.aliases){
-    const an=libNorm(alias), ac=compact(alias); if(!ac) continue;
-    if(n.includes(an)||c.includes(ac)) best=Math.max(best,1);
-    else if(approxContains(c,ac)) best=Math.max(best,0.96);
+const FAMILY_ALIAS_CACHE=new WeakMap();
+function cachedAliases(f){
+  let entries=FAMILY_ALIAS_CACHE.get(f);
+  if(entries) return entries;
+  entries=(f.aliases||[]).map(alias=>{ const norm=libNorm(alias), compactAlias=compact(alias); return {alias,norm,compact:compactAlias,tokens:norm.split(/\s+/).filter(Boolean)}; }).filter(x=>x.compact);
+  FAMILY_ALIAS_CACHE.set(f,entries);
+  return entries;
+}
+function approxAliasInTokens(textTokens,entry){
+  if(!entry.compact||entry.compact.length<5||!textTokens.length) return false;
+  const wanted=entry.tokens.length, maxDist=entry.compact.length>=11?2:1;
+  const minWords=Math.max(1,wanted-1), maxWords=wanted+1;
+  for(let i=0;i<textTokens.length;i++){
+    // Préfiltre très bon marché : la première lettre doit rester cohérente pour une tolérance OCR de 1-2 caractères.
+    if(entry.tokens[0]&&textTokens[i]&&entry.tokens[0][0]!==textTokens[i][0]) continue;
+    for(let count=minWords;count<=maxWords&&i+count<=textTokens.length;count++){
+      const candidate=textTokens.slice(i,i+count).join('');
+      if(Math.abs(candidate.length-entry.compact.length)>maxDist) continue;
+      if(levenshtein(candidate,entry.compact)<=maxDist) return true;
+    }
   }
+  return false;
+}
+function familyScorePrepared(n,c,tokens,f,target){
+  if(target && !f.applications.includes(target)) return null;
+  const aliases=cachedAliases(f); let best=0;
+  // 1. Passage exact très rapide. Dans la grande majorité des CCTP/RSET, c'est suffisant.
+  for(const a of aliases) if(n.includes(a.norm)||c.includes(a.compact)){ best=1; break; }
+  // 2. Fuzzy seulement en secours, sur des fenêtres de mots et non sur chaque sous-chaîne caractère par caractère.
+  if(best===0){ for(const a of aliases){ if(approxAliasInTokens(tokens,a)){ best=.96; break; } } }
   if(best===0) return null;
   const brand=compact(f.brand.split('/')[0]); if(brand.length>=4 && c.includes(brand)) best=Math.min(1,best+0.01);
   return best;
@@ -591,8 +613,8 @@ function nearestVariant(f,thickness){
 }
 
 function matchInsulationProduct(text,target=null,explicitThickness=null){
-  const matches=[];
-  for(const f of INSULATION_FAMILIES){ const score=familyScore(text,f,target); if(score!=null) matches.push({f,score}); }
+  const matches=[]; const n=libNorm(text), c=compact(text), tokens=n.split(/\s+/).filter(Boolean);
+  for(const f of INSULATION_FAMILIES){ const score=familyScorePrepared(n,c,tokens,f,target); if(score!=null) matches.push({f,score}); }
   if(!matches.length) return null;
   matches.sort((a,b)=>b.score-a.score || Math.max(...b.f.aliases.map(x=>compact(x).length))-Math.max(...a.f.aliases.map(x=>compact(x).length)));
   const {f,score}=matches[0]; let variant=nearestVariant(f,explicitThickness), thicknessEvidence=variant?'explicit':null;
@@ -913,13 +935,15 @@ function ocrPoolStatus(){ return {active:OCR_ACTIVE,waiting:OCR_WAITING.length,m
 function groupItemsIntoLines(items, yTolerance=2.8) {
   const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,idx})).filter(i=>i.text.trim());
   enriched.sort((a,b)=>Math.abs(b.y-a.y)>yTolerance?b.y-a.y:a.x-b.x);
-  const lines=[];
+  // Parcours linéaire après tri. L'ancienne version faisait lines.find() pour chaque item,
+  // soit un coût quadratique sur les pages PDF très denses.
+  const lines=[]; let current=null;
   for(const item of enriched){
-    let line=lines.find(l=>Math.abs(l.y-item.y)<=yTolerance);
-    if(!line){ line={y:item.y,items:[]}; lines.push(line); }
-    line.items.push(item);
+    if(!current || Math.abs(current.y-item.y)>yTolerance){
+      current={y:item.y,items:[]}; lines.push(current);
+    }
+    current.items.push(item);
   }
-  lines.sort((a,b)=>b.y-a.y);
   return lines.map((line,index)=>{
     line.items.sort((a,b)=>a.x-b.x);
     let text=''; let prev=null;
@@ -1151,21 +1175,26 @@ async function readPdf(file, onProgress=()=>{}, options={}) {
 
 function compactReadForRetention(read){
   if(!read) return null;
-  const pages=(read.pages||[]).map(page=>({
-    page:page.page,
-    ...(page.sheet?{sheet:page.sheet}:{}),
-    lines:(page.lines||[]).map(line=>({
-      index:Number.isFinite(line.index)?line.index:0,
-      text:String(line.text||''),
-      ...(Array.isArray(line.cells)?{cells:line.cells.map(v=>v==null?'':String(v))}:{}),
-      ...(line.ocr?{ocr:true}:{})
-    })),
-    ...(page.textSource?{textSource:page.textSource}:{}),
-    ...(Number.isFinite(page.pdfTextQuality)?{pdfTextQuality:page.pdfTextQuality}:{}),
-    ...(Number.isFinite(page.ocrConfidence)?{ocrConfidence:page.ocrConfidence}:{}),
-  }));
-  const text=String(read.text||pages.map(p=>p.lines.map(l=>l.text).join('\n')).join('\n\f\n'));
-  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,text,ocr:read.ocr?{...read.ocr,warnings:[...(read.ocr.warnings||[])],pages:[...(read.ocr.pages||[])]}:null,retainedCompact:true};
+  if(read.retainedCompact) return read;
+  // Compactage en place : évite de dupliquer toutes les lignes d'un gros PDF juste après parsing.
+  // Les parseurs ont déjà consommé la géométrie PDF.js ; texte, cellules Excel et indicateurs OCR suffisent ensuite.
+  for(const page of read.pages||[]){
+    const compactLines=[];
+    for(const line of page.lines||[]){
+      const clean={index:Number.isFinite(line.index)?line.index:0,text:String(line.text||'')};
+      if(Array.isArray(line.cells)) clean.cells=line.cells.map(v=>v==null?'':String(v));
+      if(line.ocr) clean.ocr=true;
+      compactLines.push(clean);
+    }
+    page.lines=compactLines;
+    page.text=String(page.text||compactLines.map(l=>l.text).join('\n'));
+    // Ces propriétés sont les seules métadonnées de page conservées volontairement.
+    for(const key of Object.keys(page)) if(!['page','sheet','text','lines','textSource','pdfTextQuality','ocrConfidence'].includes(key)) delete page[key];
+  }
+  read.text=String(read.text||(read.pages||[]).map(p=>p.text||'').join('\n\f\n'));
+  read.pageCount=Number.isFinite(read.pageCount)?read.pageCount:(read.pages||[]).length;
+  read.retainedCompact=true;
+  return read;
 }
 
 async function readXml(file){
@@ -2397,30 +2426,46 @@ function taggedValue(def,raw=''){
   }
   return text.replace(/^[:=|;\-–—\s]+/,'').trim()||null;
 }
-function taggedLineMatch(raw,def){
-  const src=String(raw??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim(), normalized=normalizeFieldHeader(src);
+// Index de tags précompilé : auparavant chaque ligne de chaque PDF reparcourait les 167 champs,
+// retriait leurs tags et les renormalisait. Sur un rapport dense cela pouvait monopoliser le thread
+// principal plusieurs secondes et déclencher « page ne répond pas ».
+const TAG_CACHE_BY_KEY=new Map();
+const TAG_PREFIX_INDEX=new Map();
+for(const def of FIELD_DEFS){
+  const tags=[...(def.tags||[])].map(tag=>({tag,norm:normalizeFieldHeader(tag)})).filter(x=>x.norm).sort((a,b)=>b.norm.length-a.norm.length);
+  TAG_CACHE_BY_KEY.set(def.key,tags);
+  for(const item of tags){
+    const first=item.norm.split(/\s+/)[0]; if(!first) continue;
+    let defs=TAG_PREFIX_INDEX.get(first); if(!defs){ defs=new Set(); TAG_PREFIX_INDEX.set(first,defs); }
+    defs.add(def);
+  }
+}
+const PRESENCE_DEFS=FIELD_DEFS.filter(def=>def.presence);
+function taggedCandidateDefs(normalized=''){
+  const first=String(normalized||'').split(/\s+/)[0];
+  return first?[...(TAG_PREFIX_INDEX.get(first)||[])]:[];
+}
+function taggedLineMatch(raw,def,normalizedInput=''){
+  const src=String(raw??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim(), normalized=normalizedInput||normalizeFieldHeader(src);
   if(!src||!normalized) return null;
-  const tags=[...(def.tags||[])].sort((a,b)=>normalizeFieldHeader(b).length-normalizeFieldHeader(a).length);
-  for(const tag of tags){
-    const nt=normalizeFieldHeader(tag); if(!nt) continue;
+  const tags=TAG_CACHE_BY_KEY.get(def.key)||[];
+  for(const {tag,norm:nt} of tags){
     if(normalized===nt) return {value:null,tag,exact:true};
     if(normalized.startsWith(nt)){
-      // Le libellé doit être suivi d'un vrai séparateur ou d'un espacement de tableau.
       const approx=src.slice(Math.min(src.length,tag.length));
       if(/^\s*(?::|=|\||;|\-|–|—)\s*/.test(approx)) return {value:taggedValue(def,approx.replace(/^\s*(?::|=|\||;|\-|–|—)\s*/,'')),tag,exact:true};
-      // Cas OCR : le séparateur peut disparaître mais le reste commence clairement par une valeur.
       if(def.type==='number'&&/^\s+[-+]?\d/.test(approx)) return {value:taggedValue(def,approx),tag,exact:true};
     }
   }
   return null;
 }
-function taggedPresence(raw,def){
+function taggedPresence(raw,def,normalizedInput=''){
   if(!def.presence) return null;
-  const n=normalizeFieldHeader(raw); if(!n) return null;
-  for(const tag of def.tags||[]){
-    const t=normalizeFieldHeader(tag); if(t.length<3||!n.includes(t)) continue;
+  const n=normalizedInput||normalizeFieldHeader(raw); if(!n) return null;
+  for(const {tag,norm:t} of TAG_CACHE_BY_KEY.get(def.key)||[]){
+    if(t.length<3||!n.includes(t)) continue;
     const explicitSelected=/(?:retenu|retenue|choisi|choisie|selection|sélection|mention|label|option|exigence)/i.test(raw);
-    const negated=new RegExp(`(?:non|sans|aucun(?:e)?|pas\\s+de|non\\s+retenu(?:e)?|non\\s+choisi(?:e)?)\\s+[^|;,]{0,28}${t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`,'i').test(normalizeFieldHeader(raw));
+    const negated=new RegExp(`(?:non|sans|aucun(?:e)?|pas\s+de|non\s+retenu(?:e)?|non\s+choisi(?:e)?)\s+[^|;,]{0,28}${t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`,'i').test(n);
     return {value:negated?'Non':'Oui',confidence:explicitSelected ? 0.90 : 0.82,tag};
   }
   return null;
@@ -2456,21 +2501,28 @@ function parseTaggedFields(doc){
   for(const page of doc.read?.pages||[]){ const lines=page.lines||[];
     for(let i=0;i<lines.length;i++){
       const line=lines[i], raw=String(line.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
-      for(const def of FIELD_DEFS){
+      if(!raw) continue;
+      const normalized=normalizeFieldHeader(raw), matched=new Set();
+      for(const def of taggedCandidateDefs(normalized)){
         if(def.key==='building') continue;
-        const hit=taggedLineMatch(raw,def);
-        if(hit){
-          let value=hit.value;
-          if(value===null && def.presence) value='Oui';
-          if(value===null){
-            // Valeur sur la ligne suivante, fréquent dans les formulaires PDF.
-            const next=String(lines[i+1]?.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
-            if(next && !FIELD_DEFS.some(f=>taggedLineMatch(next,f))) value=taggedValue(def,next);
+        const hit=taggedLineMatch(raw,def,normalized);
+        if(!hit) continue;
+        matched.add(def.key);
+        let value=hit.value;
+        if(value===null && def.presence) value='Oui';
+        if(value===null){
+          const next=String(lines[i+1]?.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
+          if(next){
+            const nextNorm=normalizeFieldHeader(next);
+            const nextIsLabel=taggedCandidateDefs(nextNorm).some(f=>!!taggedLineMatch(next,f,nextNorm));
+            if(!nextIsLabel) value=taggedValue(def,next);
           }
-          if(value!==null&&value!=='') push(out,occ(doc,page,line,def.key,value,'tags:label-value',.915,'',{origin:`${doc.type} — libellé structuré`,provenanceNote:`Champ reconnu par le tag « ${hit.tag} ».`}));
-          continue;
         }
-        const presence=taggedPresence(raw,def);
+        if(value!==null&&value!=='') push(out,occ(doc,page,line,def.key,value,'tags:label-value',.915,'',{origin:`${doc.type} — libellé structuré`,provenanceNote:`Champ reconnu par le tag « ${hit.tag} ».`}));
+      }
+      for(const def of PRESENCE_DEFS){
+        if(matched.has(def.key)) continue;
+        const presence=taggedPresence(raw,def,normalized);
         if(presence) push(out,occ(doc,page,line,def.key,presence.value,'tags:presence',presence.confidence,'',{origin:`${doc.type} — mention détectée`,provenanceNote:`Mention reconnue par le tag « ${presence.tag} »${presence.confidence<.9?' ; validation conseillée.':''}`}));
       }
     }
@@ -2641,11 +2693,34 @@ function mappedBuilding(name,grouping){
 }
 
 function consolidate(docs,occurrences,rules,operationName='',grouping=null){
-  const operation=operationName||operationNameFromFiles(docs); const detected=unique(docs.flatMap(d=>(d.buildings?.names||['Bâtiment unique']).map(b=>mappedBuilding(b,grouping)))); const fromOcc=unique(occurrences.map(o=>o.building)).filter(Boolean); const explicit=unique([...detected,...fromOcc]).filter(b=>b!=='Bâtiment unique'); const buildings=explicit.length?explicit:['Bâtiment unique'];
+  const operation=operationName||operationNameFromFiles(docs);
+  const detected=unique(docs.flatMap(d=>(d.buildings?.names||['Bâtiment unique']).map(b=>mappedBuilding(b,grouping))));
+  const fromOcc=unique(occurrences.map(o=>o.building)).filter(Boolean);
+  const explicit=unique([...detected,...fromOcc]).filter(b=>b!=='Bâtiment unique');
+  const buildings=explicit.length?explicit:['Bâtiment unique'];
   const finals=[]; const rows=[];
-  for(const building of buildings){ const row={building};
-    for(const f of FIELD_DEFS){ if(f.key==='building') continue;
-      const candidates=occurrences.filter(o=>o.field===f.key&&(o.building===building||o.building==='Bâtiment unique')&&o.sourceTier!=='forbidden');
+
+  // Index field+bâtiment : l'ancienne consolidation refiltrait toutes les occurrences pour chacun
+  // des 167 champs et chacun des bâtiments. Avec plusieurs centaines de dossiers cela pouvait
+  // bloquer le thread principal plusieurs secondes.
+  const byFieldBuilding=new Map();
+  for(const o of occurrences){
+    const key=`${o.field}|${o.building||'Bâtiment unique'}`;
+    const list=byFieldBuilding.get(key); if(list) list.push(o); else byFieldBuilding.set(key,[o]);
+  }
+  const candidatesFor=(field,building)=>{
+    const exact=byFieldBuilding.get(`${field}|${building}`)||[];
+    if(building==='Bâtiment unique') return exact;
+    const global=byFieldBuilding.get(`${field}|Bâtiment unique`)||[];
+    return global.length?exact.concat(global):exact;
+  };
+
+  for(const building of buildings){
+    const row={building};
+    for(const f of FIELD_DEFS){
+      if(f.key==='building') continue;
+      const candidates=candidatesFor(f.key,building).filter(o=>o.sourceTier!=='forbidden');
+      if(!candidates.length) continue;
       const eligible=candidates.filter(o=>o.confidence>=MIN_RETAINED_CONFIDENCE);
       const main=eligible.filter(o=>o.sourceTier==='main'); const secondary=eligible.filter(o=>o.sourceTier==='secondary'); const unrouted=eligible.filter(o=>o.sourceTier==='unrouted');
       let pool=main.length?main:(secondary.length?secondary:unrouted);
@@ -2661,15 +2736,26 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
-      if(f.key==='dh') { const rows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(rows.length?rows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+      if(f.key==='dh') { const dhRows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       row[f.key]=chosen.value; finals.push({...chosen,status:'retenu',operation});
     }
     if(row.operation===undefined) row.operation=operation;
     if(row.operation_name===undefined&&operationName) row.operation_name=operationName;
     rows.push(row);
   }
+
   const finalIds=new Set(finals.map(o=>[o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|')));
-  const detailed=occurrences.map(o=>{ const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|')); const directWinner=!retained&&o.libraryDerived&&finals.some(f=>f.field===o.field&&(f.building===o.building||f.building==='Bâtiment unique')&&!f.libraryDerived); return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')}; });
+  const directFinalExact=new Set(), directFinalGlobal=new Set();
+  for(const f of finals){
+    if(f.libraryDerived) continue;
+    if(f.building==='Bâtiment unique') directFinalGlobal.add(f.field);
+    else directFinalExact.add(`${f.field}|${f.building}`);
+  }
+  const detailed=occurrences.map(o=>{
+    const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|'));
+    const directWinner=!retained&&o.libraryDerived&&(directFinalGlobal.has(o.field)||directFinalExact.has(`${o.field}|${o.building}`));
+    return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
+  });
   return {operation,buildings,rows,finals,detailed,buildingAliases:grouping?.aliases||[],buildingSuggestions:grouping?.suggestions||[],authoritativeBuildings:grouping?.authoritative||[],buildingOverrides:grouping?.manualOverrides||{}};
 }
 
@@ -3482,7 +3568,7 @@ function serializeRead(read){
     // PDF/XML : une seule chaîne par page suffit pour restaurer la recherche libre et les tags.
     // Excel : conserver les cellules, nécessaires au parseur économique DPGF lors d'une restauration.
     if(hasCells) base.lines=lines.map(serializeLine);
-    else base.text=lines.map(l=>String(l.text||'')).join('\n');
+    else base.text=String(page.text||lines.map(l=>String(l.text||'')).join('\n'));
     return base;
   });
   return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null)};
@@ -4373,6 +4459,11 @@ function updateEtaUi(eta,done,total,active,profile){
   el.textContent=`Temps total estimé ≈ ${formatAnalysisDuration(eta.total)} · restant ≈ ${remaining} · fin vers ${formatEtaClock(eta.finishAt)}`;
   el.title=`Estimation dynamique fondée sur la vitesse réellement observée. Profil ${profile.label} : ${profile.description}.`;
 }
+async function yieldToBrowser(){
+  if(globalThis.scheduler?.yield){ try{ await globalThis.scheduler.yield(); return; }catch{} }
+  await new Promise(resolve=>setTimeout(resolve,0));
+}
+
 async function analyze(onlyIds=null,manualUnlimited=false){
   if(!state.docs.length&&!state.manualPasteRows.length){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
   $('#analyzeBtn').disabled=true;
@@ -4397,7 +4488,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const overall=(alreadyReady+work)/totalDocs;
     const pool=ocrPoolStatus();
     const page=meta?.page?` · p.${meta.page}${meta.totalPages?`/${meta.totalPages}`:''}`:'';
-    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':'lecture';
+    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':meta?.stage==='classification'?'classification':meta?.stage==='parsing'?'extraction métier':meta?.stage==='checkpoint'?'sauvegarde':'lecture';
     const latest=doc?` · ${doc.name} · ${stage}${page}`:'';
     setStatus(`${done}/${pendingDocs.length} terminés · ${activeIds.size} actifs · OCR ${pool.active}/${pool.max}${pool.waiting?` (+${pool.waiting} en file)`:''}${latest}`,Math.round(Math.max(0,Math.min(1,overall))*62));
     const eta=etaTracker.snapshot(forceEta);
@@ -4416,14 +4507,24 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       },{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
       if(noLimit) d.read=await readPromise;
       else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error('Analyse interrompue après 5 minutes.'); e.name='TimeoutError'; reject(e); },5*60*1000); })]);
+      progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
+      d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
       d.classification=classifyDocument(d.name,d.read.text,{kind:d.read.kind});
-      d.type=d.classification.type; d.buildings=detectBuildings(d); d.status='ready'; d.retryUnlimited=false;
+      d.type=d.classification.type;
+      d.buildings=detectBuildings(d);
+      await yieldToBrowser();
+      d.status='ready'; d.retryUnlimited=false;
       if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
       try{
+        progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.91));
+        d.liveStage='parsing'; updateParallelStatus(d,{stage:'parsing'},true); await yieldToBrowser();
         d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now();
+        await yieldToBrowser();
         d.read=compactReadForRetention(d.read);
       }catch(parseErr){ console.warn('Pré-extraction checkpoint impossible',parseErr); d.cachedOccurrences=null; }
       d.analysisDurationMs=Math.round(performance.now()-started);
+      progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.97));
+      d.liveStage='checkpoint'; updateParallelStatus(d,{stage:'checkpoint'},true); await yieldToBrowser();
       await checkpointDocument(activeProject(),d);
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
       const structuredThermalEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
@@ -4461,9 +4562,9 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     if(!valid.length && !state.result) throw new Error('Aucun document n’a pu être lu.');
     if(valid.length){
       const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Lecture terminée · consolidation des données…';
-      setStatus('Extraction métier et consolidation…',72); await new Promise(r=>setTimeout(r,25));
+      setStatus('Extraction métier et consolidation…',72); await yieldToBrowser();
       const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
-      setStatus('Contrôles de cohérence…',92); await new Promise(r=>setTimeout(r,20));
+      setStatus('Contrôles de cohérence…',92); await yieldToBrowser();
     }
     renderAll(); await checkpointWorkspace('analyse terminée',true); setStatus('Analyse terminée',100);
     const elapsed=(performance.now()-etaTracker.startedAt)/1000;
