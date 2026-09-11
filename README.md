@@ -1,11 +1,11 @@
-# ExtracTerre v1.1.10
+# ExtracTerre v1.1.11
 
 Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
 
 
 
 
-## v1.1.10 — Parseur Bao Evolution approfondi
+## v1.1.11 — Parseur Bao Evolution approfondi
 
 Cette version traite les rapports Bao Evolution / études thermiques de rénovation comme un format structuré à part entière. Le moteur distingue explicitement **ÉTAT INITIAL** et **ÉTAT APRÈS TRAVAUX**, lit les coefficients Ubat, les systèmes, l’enveloppe et les tableaux de consommations d’énergie primaire par poste.
 
@@ -194,3 +194,7 @@ Les projets peuvent être renommés depuis leur en-tête sans modifier le nom d�
 
 ## Profils d’analyse v1.1.3
 ExtracTerre propose trois niveaux de parallélisme : Sécurisé (1 document et 1 OCR), Équilibré (3 documents et 1 OCR, profil par défaut) et Rapide (5 documents et 2 OCR). Le parallélisme reste borné : l’application n’ouvre jamais l’ensemble d’un lot de centaines de PDF simultanément. Une ETA globale est recalculée en continu à partir du débit réellement observé et affiche la durée totale estimée, le temps restant et une heure de fin approximative.
+
+
+## v1.1.11 — études thermiques rénovation
+Les motifs observés dans le rapport Bao de référence sont utilisés comme cas de test et comme signatures structurelles génériques. L’interface ne contient aucun onglet ou chapitre propre à Bao Evolution. En mode OCR automatique, seules les pages sans couche texte exploitable ou les tableaux métier critiques réellement incomplets passent par Tesseract.

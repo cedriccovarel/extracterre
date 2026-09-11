@@ -1,3 +1,12 @@
+# v1.1.11 — stabilité analyse & généralisation études thermiques rénovation
+
+- Suppression du bloc de résultats dédié « Compléments Bao Evolution » : aucune famille documentaire n'a désormais son propre chapitre d'affichage.
+- Les règles apprises sur le rapport de référence sont intégrées aux parseurs génériques d'études thermiques de rénovation structurées.
+- OCR automatique fortement allégé : les pages courtes mais propres (titres, graphiques, pages de transition) ne déclenchent plus Tesseract.
+- OCR conservé sur les pages réellement critiques et incomplètes : Ubat, consommations par poste, GES, enveloppe, vitrages et systèmes.
+- Yield navigateur entre chaque page PDF afin de garder l'interface réactive pendant les gros documents.
+- Le fichier Bao Romorantin reste uniquement un jeu de non-régression, pas un chapitre ni un format de sortie spécial.
+
 # v1.1.10
 
 - Parseur dédié Bao Evolution / étude thermique rénovation.

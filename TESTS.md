@@ -217,3 +217,10 @@ Jeu de référence : `data/bao-evolution-reference.json`. Résultat attendu du l
 - Excel limité à 100 lignes × 40 colonnes avec sélection de feuille ;
 - aperçu désactivé après restauration IndexedDB tant que le fichier brut n’est pas redéposé ;
 - Crible fin, analyse et suppression du document restent fonctionnels.
+
+
+## Tests v1.1.11
+- aucune section de résultats dédiée Bao ;
+- page courte propre => pas d’OCR automatique ;
+- page critique Ubat/énergie incomplète => OCR ciblé conservé ;
+- jeu Romorantin conservé comme fixture de non-régression uniquement.

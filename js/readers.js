@@ -139,9 +139,15 @@ export function shouldOcrPdfPage(text='',items=[],mode='auto'){
   if(mode==='off') return false;
   if(mode==='always'||mode==='max') return true;
   const q=pdfTextQuality(text,items);
-  // Cas typiques : PDF scanné sans couche texte, texte minuscule, caractères cassés,
-  // extraction trop fragmentée ou tableau métier critique dont les lignes sont incomplètes.
-  return q.chars<OCR_DEFAULTS.minChars || (items?.length||0)<10 || q.score<0.56 || q.weirdRatio>0.025 || q.fragmentRatio>0.18 || criticalTableNeedsOcr(text);
+  // Priorité aux pages métier réellement incomplètes. Une page courte mais propre (titre,
+  // graphique, séparation de chapitre) ne doit plus déclencher Tesseract à elle seule.
+  if(criticalTableNeedsOcr(text)) return true;
+  if(q.chars===0 || (items?.length||0)===0) return true;
+  const cleanShortPage=q.chars>=24 && q.alnumRatio>=0.62 && q.weirdRatio<=0.012 && q.fragmentRatio<=0.12;
+  if(cleanShortPage) return false;
+  // OCR automatique seulement si la couche texte est réellement pauvre ou corrompue.
+  if(q.chars<45 || (items?.length||0)<3) return q.alnumRatio<0.48 || q.weirdRatio>0.02 || q.fragmentRatio>0.22;
+  return q.score<0.43 || q.weirdRatio>0.03 || q.fragmentRatio>0.24;
 }
 
 function mergePdfAndOcrLines(pdfLines=[],ocrLines=[],pdfQuality=null,ocrQuality=null){
@@ -247,6 +253,8 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
         // Pas de copie page.items ni de copie ocrText : ces objets doublaient/triplaient la RAM.
         pages.push({page:p,text,lines:finalLines,textSource,pdfTextQuality:pdfQuality.score,ocrConfidence});
         onProgress(p/pdf.numPages,{stage:'page-done',page:p,totalPages:pdf.numPages,message:`Page ${p}/${pdf.numPages} lue${textSource==='ocr'?' · OCR':textSource==='hybrid'?' · PDF + OCR':''}`});
+        // Rend la main à l'UI entre deux pages pour éviter le message « page ne répond pas ».
+        await new Promise(resolve=>setTimeout(resolve,0));
       } finally {
         if(canvas){ try{canvas.width=1; canvas.height=1; canvas.remove?.();}catch{} canvas=null; }
         if(content?.items){ try{content.items.length=0;}catch{} }

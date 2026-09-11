@@ -777,7 +777,7 @@ function thermalStudyPhase(text){
 }
 
 
-function isBaoEvolutionDocument(doc){
+function isStructuredRenovationThermalDocument(doc){
   const s=normLower(`${doc?.name||''}\n${doc?.read?.text||''}`);
   return /bao\s*(?:evolution|evolution)|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|details\s+des\s+consommations[\s\S]{0,160}energie\s+primaire|bilan\s+energetique[\s\S]{0,80}bilan\s+co2/.test(s);
 }
@@ -860,10 +860,10 @@ function baoEnergyPage(page){
   }
   return {page,phase,values,finalEnergy,total,totalFinalEnergy,totalMwh,gesTonnes,gesKgM2};
 }
-function parseBaoEvolution(doc){
-  if(!isBaoEvolutionDocument(doc)) return [];
+function parseStructuredRenovationThermal(doc){
+  if(!isStructuredRenovationThermalDocument(doc)) return [];
   const out=[], allText=normLower(doc.read?.text||'');
-  const add=(page,line,field,value,method,confidence=.995,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:'Bao Evolution / étude thermique',...extra})); };
+  const add=(page,line,field,value,method,confidence=.995,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:'Étude thermique rénovation structurée',...extra})); };
   const energyPages=[], recap={}, gesAbsolute={};
   let titleHousing=null, firstBuildingLine=null;
 
@@ -1277,7 +1277,7 @@ export function parseDocument(doc){
   if(doc.type!==DOC_TYPES.DPGF) out.push(...parseBuildingSurface(doc));
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
   if([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV].includes(doc.type)) out.push(...parseGenericRegulatory(doc));
-  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ if(isBaoEvolutionDocument(doc)) out.push(...parseBaoEvolution(doc)); out.push(...parseThermalStudy(doc)); }
+  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); }
   out.push(...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
   if(doc.type===DOC_TYPES.DPE||/\bdpe\b/i.test(doc.read.text)) out.push(...parseDpe(doc));
   if([DOC_TYPES.CARBON,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV].includes(doc.type)||/ic\s*(?:composants?|composant|energie|énergie|construction|chantier)/i.test(doc.read.text)) out.push(...parseCarbon(doc));
