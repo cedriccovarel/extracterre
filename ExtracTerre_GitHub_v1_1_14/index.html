@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07583f">
+  <title>ExtracTerre</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css?v=1.1.14">
+  <script defer src="js/journal-config.js?v=1.1.14"></script>
+  <script defer src="js/security.js?v=1.1.14"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script defer src="js/app.bundle.js?v=1.1.14"></script>
+</head>
+<body class="auth-locked">
+<noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
+<div class="app-shell ux-shell">
+  <header class="ux-header ux-header-clean">
+    <div class="ux-brand">
+      <img src="assets/extracterre-mark.png" alt="Logo ExtracTerre" class="ux-brand-mark">
+      <div class="ux-wordmark">
+        <span class="ux-wordmark-text">Extrac<span>Terre</span></span>
+        <span class="ux-cc" aria-label="monogramme CC"><i>C</i><i>C</i></span>
+      </div>
+    </div>
+    <div class="ux-header-center" aria-hidden="true">
+      <span class="ux-ribbon ribbon-one"></span>
+      <span class="ux-ribbon ribbon-two"></span>
+      <span class="ux-ribbon ribbon-three"></span>
+      <div class="ux-building-shape"><i></i><i></i><i></i></div>
+    </div>
+    <div class="ux-header-actions ux-header-actions-clean">
+      <span class="ux-app-label">Analyse documentaire bâtiment</span>
+      <span class="ux-version-chip" id="version">v1.1.14</span>
+    </div>
+  </header>
+
+  <div class="ux-body">
+    <aside class="ux-sidebar">
+      <nav class="ux-side-nav" aria-label="Navigation principale">
+        <button class="tab ux-nav-item active" data-tab="summary" type="button"><span class="nav-ico">⌂</span><span>Accueil</span></button>
+        <button class="ux-nav-item" id="newProjectBtn" type="button"><span class="nav-ico">＋</span><span>Nouveau projet</span></button>
+        <button class="tab ux-nav-item" data-tab="economics" type="button"><span class="nav-ico">€</span><span>Données économiques</span></button>
+        <button class="tab ux-nav-item" data-tab="occ" type="button"><span class="nav-ico">≡</span><span>Occurrences</span></button>
+        <button class="tab ux-nav-item" data-tab="search" type="button"><span class="nav-ico">⌕</span><span>Recherche libre</span></button>
+        <button class="tab ux-nav-item" data-tab="rules" type="button"><span class="nav-ico">◫</span><span>Modèles de données</span></button>
+        <button class="tab ux-nav-item" data-tab="diag" type="button"><span class="nav-ico">⌁</span><span>Diagnostics</span></button>
+        <button class="ux-nav-item" id="exportBtn" type="button" disabled><span class="nav-ico">⇩</span><span>Exporter Excel</span></button>
+        <button class="ux-nav-item danger-nav" id="clearBtn" type="button"><span class="nav-ico">×</span><span>Effacer la session</span></button>
+        <button class="ux-nav-item" id="lockBtn" type="button"><span class="nav-ico">⌑</span><span>Verrouiller</span></button>
+        <button class="ux-nav-item" id="helpBtn" type="button" onclick="document.getElementById('helpDialog').showModal()"><span class="nav-ico">?</span><span>Aide / FAQ</span></button>
+      </nav>
+      <div class="ux-sidebar-brand">
+        <img src="assets/extracterre-mark.png" alt="">
+        <div><strong>Extrac<span>Terre</span></strong><span class="ux-cc mini"><i>C</i><i>C</i></span></div>
+        <small>Analyse documentaire bâtiment</small>
+      </div>
+    </aside>
+
+    <main class="ux-main">
+      <div id="libWarning" class="warning" hidden></div>
+
+      <section class="ux-dashboard-grid ux-dashboard-grid-clean">
+        <div class="ux-primary-column">
+          <section class="card ux-import-card">
+            <div class="ux-card-head">
+              <div>
+                <span class="ux-eyebrow">Documents</span>
+                <h1>Importer les pièces du projet</h1>
+                <p>Déposez des fichiers unitaires ou un dossier complet avec ses sous-dossiers. Chaque document n’est analysé qu’une fois, sauf si vous lancez volontairement son Crible fin.</p>
+              </div>
+            </div>
+
+            <div id="dropzone" class="dropzone ux-dropzone" tabindex="0" role="button" aria-label="Ajouter des documents">
+              <div class="ux-drop-content">
+                <div class="ux-cloud">⇧</div>
+                <h2>Glissez-déposez vos fichiers ici</h2>
+                <p>ou cliquez dans la zone pour sélectionner des documents</p>
+                <small>PDF, XML, XLSX, XLS · OCR open source intégré</small>
+              </div>
+              <div class="ux-drop-actions drop-actions">
+                <label id="addFilesBtn" class="btn primary file-picker-label" for="fileInput">＋ Ajouter des fichiers</label>
+                <label id="addFolderBtn" class="btn light file-picker-label" for="folderInput">▱ Ajouter un dossier</label>
+              </div>
+              <input id="fileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple>
+              <input id="folderInput" class="file-input-native" type="file" webkitdirectory directory multiple>
+            </div>
+          </section>
+
+          <section class="card ux-analysis-card stable-analysis-card">
+            <div class="ux-analysis-head">
+              <div class="ux-analysis-title">
+                <span class="analysis-icon">▥</span>
+                <div><h2>Analyse du projet</h2><p>Extraction, OCR intelligent, croisement des sources et consolidation.</p></div>
+              </div>
+              <div class="ux-analysis-controls stable-analysis-controls">
+                <label class="ocr-control" title="Tesseract.js complète PDF.js sur les pages scannées, fragmentées ou sur les tableaux métier mal reconstruits">
+                  <span>OCR</span>
+                  <select id="ocrMode">
+                    <option value="auto" selected>Automatique intelligent</option>
+                    <option value="always">Renforcé · toutes les pages</option>
+                    <option value="off">Désactivé</option>
+                  </select>
+                </label>
+                <label class="ocr-control analysis-mode-control" title="Nombre maximum de documents et de workers OCR traités en parallèle">
+                  <span>Vitesse</span>
+                  <select id="analysisMode">
+                    <option value="safe">Sécurisé · 1 / 1</option>
+                    <option value="balanced" selected>Équilibré · 3 / 1</option>
+                    <option value="fast">Rapide · 5 / 2</option>
+                  </select>
+                </label>
+                <span id="statusText" class="badge doc stable-status" title="Prêt">Prêt</span>
+                <button id="analyzeBtn" class="btn primary stable-analyze-btn" type="button">▶ Lancer l’analyse</button>
+              </div>
+            </div>
+
+            <div class="ux-stepper" aria-hidden="true">
+              <span class="done"><i>✓</i><small>Préparation</small></span><b></b>
+              <span class="done"><i>✓</i><small>OCR</small></span><b></b>
+              <span class="current"><i>◌</i><small>Extraction</small></span><b></b>
+              <span><i>◇</i><small>Croisement</small></span><b></b>
+              <span><i>▤</i><small>Consolidation</small></span>
+            </div>
+
+            <div class="progress-wrap stable-progress" id="progress" hidden>
+              <div class="progress"><div id="progressBar" class="progress-bar"></div></div>
+            </div>
+
+            <div class="analysis-detail-block ux-analysis-detail stable-analysis-detail">
+              <div class="analysis-detail-title">
+                <strong>Détail de l’analyse</strong>
+                <small><span id="analysisModeDetail">Mode équilibré · 3 documents / 1 OCR</span> · <span id="analysisEtaDetail">Temps estimé : en attente du lancement</span> · deuxième passe ciblée sur SHAB, Cep et IC manquants</small>
+              </div>
+              <div id="fileList" class="file-list stable-file-list"></div>
+            </div>
+          </section>
+        </div>
+
+        <aside class="ux-right-rail ux-right-rail-clean">
+          <section class="card ux-side-card">
+            <div class="ux-side-card-head"><span>▦</span><h3>Projet actuel</h3></div>
+            <label class="ux-project-field">Nom de l’opération
+              <input id="operationName" placeholder="Nom de l’opération (facultatif)">
+            </label>
+            <div class="ux-meta-row"><span>Documents</span><strong id="projectMirrorDocs">0</strong></div>
+            <div class="ux-meta-row"><span>État</span><strong id="projectMirrorStatus" class="mirror-status">Prêt</strong></div>
+          </section>
+
+          <section class="card ux-side-card ux-manual-card">
+            <div class="ux-side-card-head"><span>⌨</span><h3>Données manuelles</h3></div>
+            <p class="ux-manual-copy">Copiez une zone Excel avec ses en-têtes : ExtracTerre reconnaît les colonnes et l’utilise comme source traçable.</p>
+            <button id="manualDataBtn" class="btn light ux-manual-btn" type="button">▦ Coller depuis Excel</button>
+            <div class="ux-meta-row"><span>Lignes intégrées</span><strong id="manualDataCount">0</strong></div>
+          </section>
+
+          <section class="card ux-side-card ux-local-save-card">
+            <div class="ux-side-card-head"><span>⛁</span><h3>Sauvegarde locale</h3></div>
+            <p class="ux-local-save-copy">Le texte extrait, les résultats et vos validations sont conservés sur ce navigateur. Les PDF bruts ne sont pas copiés.</p>
+            <div class="ux-meta-row"><span>État</span><strong id="localSaveStatus">Initialisation…</strong></div>
+            <div class="ux-meta-row"><span>Dernière sauvegarde</span><strong id="localSaveTime">—</strong></div>
+            <small id="localSaveDetail" class="ux-local-save-detail">Stockage local du navigateur</small>
+          </section>
+
+
+          <section class="card ux-side-card ux-kpi-card">
+            <div class="ux-side-card-head"><span>◉</span><h3>Informations extraites</h3></div>
+            <div class="ux-kpi-main">
+              <strong id="projectMirrorValues">0</strong><span>valeurs retenues</span>
+              <div class="ux-ring" id="projectMirrorRing"><span id="projectMirrorPct">0%</span></div>
+            </div>
+            <div class="ux-mini-grid">
+              <div><strong id="projectMirrorBuildings">0</strong><span>bâtiments</span></div>
+              <div><strong id="projectMirrorAlerts">0</strong><span>alertes</span></div>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="card ux-workspace" id="workspaceSection">
+        <div class="ux-workspace-head">
+          <div>
+            <span class="ux-eyebrow">Résultats consolidés</span>
+            <h2>Espace de résultats</h2>
+            <p>Les projets restent à la suite, peuvent être renommés, repliés, corrigés manuellement ou complétés par de nouveaux documents.</p>
+          </div>
+          <div class="ux-workspace-tools">
+            <div id="resultTabsWrap" class="result-tabs-wrap" aria-label="Répartition des résultats">
+              <button class="result-tab active" data-result-view="generic" type="button">Données générales</button>
+              <button class="result-tab" data-result-view="thermal" type="button">Thermique</button>
+              <button class="result-tab" data-result-view="carbon" type="button">Carbone</button>
+              <button class="result-tab" data-result-view="envelope" type="button">Structure & enveloppe</button>
+            </div>
+            <div id="rulesActionWrap" class="context-rule-actions" hidden>
+              <button class="btn secondary" id="saveRules" type="button">Enregistrer règles</button>
+              <button class="btn light" id="resetRules" type="button">Règles par défaut</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="summaryPanel" class="panel view"><div id="summaryView"></div></div>
+        <div id="economicsPanel" class="panel view" hidden><div id="economicView"></div></div>
+        <div id="occPanel" class="panel view" hidden>
+          <div class="occ-filters">
+            <input id="occSearch" placeholder="Filtrer les occurrences…">
+            <select id="occStatus"><option value="">Tous statuts</option><option value="retenu">Retenus</option><option value="rejeté">Rejetés</option></select>
+          </div>
+          <div id="occView"></div>
+        </div>
+        <div id="searchPanel" class="panel view" hidden>
+          <div class="search-row expanded-search-row">
+            <input id="freeSearchInput" placeholder="Rechercher librement dans tous les documents : SHAB, IC composants, Cep refroidissement, isolant, équipement…">
+            <button id="freeSearchBtn" class="btn primary" type="button">Rechercher</button>
+          </div>
+          <div id="searchResults"></div>
+        </div>
+        <div id="rulesPanel" class="panel view" hidden><div id="rulesView"></div></div>
+        <div id="diagPanel" class="panel view" hidden><div id="diagView"></div></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+
+<dialog id="filePreviewDialog" class="file-preview-dialog">
+  <div class="file-preview-shell">
+    <div class="file-preview-head">
+      <div class="file-preview-title-wrap"><span class="ux-eyebrow">Aperçu du document</span><h3 id="filePreviewTitle">Fichier</h3><p id="filePreviewMeta"></p></div>
+      <button id="filePreviewClose" class="icon-btn" type="button" aria-label="Fermer l’aperçu">×</button>
+    </div>
+    <div id="filePreviewBody" class="file-preview-body"></div>
+  </div>
+</dialog>
+
+<dialog id="manualDataDialog" class="targeted-dialog manual-data-dialog">
+  <div class="targeted-dialog-shell manual-data-shell">
+    <div class="targeted-dialog-head">
+      <div><h3>Données manuelles — copier-coller Excel</h3><p>Copiez les en-têtes et les valeurs directement depuis Excel ou Google Sheets. Les intitulés exacts ExtracTerre sont reconnus en priorité, puis leurs tags/synonymes.</p></div>
+      <button id="manualDataClose" class="icon-btn targeted-close" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="manual-data-body">
+      <div class="manual-data-info"><strong>Principe</strong><span>1 ligne = 1 bâtiment/opération. Les données manuelles complètent les documents selon la hiérarchie de sources définie. Une correction faite directement dans une cellule reste, elle, prioritaire.</span></div>
+      <label class="manual-paste-label">Zone copiée depuis Excel
+        <textarea id="manualDataPaste" spellcheck="false" placeholder="Code interne&#9;Nom opération&#9;Bâtiment&#9;Nombre de logements&#10;OPE-000123&#9;Résidence Exemple&#9;Bâtiment A&#9;24"></textarea>
+      </label>
+      <div id="manualDataPreview" class="manual-data-preview"><div class="empty-small">Collez au minimum une ligne d’en-têtes puis une ligne de données.</div></div>
+    </div>
+    <div class="targeted-dialog-foot manual-data-foot">
+      <button id="manualDataClear" class="btn light" type="button">Effacer les données manuelles</button>
+      <div><button id="manualDataApply" class="btn primary" type="button">Intégrer au projet</button></div>
+    </div>
+  </div>
+</dialog>
+
+
+<dialog id="targetedReviewDialog" class="targeted-dialog">
+  <div class="targeted-dialog-shell">
+    <div class="targeted-dialog-head">
+      <div><h3 id="targetedReviewTitle">Crible fin</h3><p id="targetedReviewSub"></p></div>
+      <button id="targetedReviewClose" class="icon-btn targeted-close" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div id="targetedReviewList" class="targeted-review-list"></div>
+    <div class="targeted-dialog-foot">
+      <span id="targetedReviewCount">0 proposition</span>
+      <div><button id="targetedReviewApply" class="btn primary" type="button" disabled>Appliquer les valeurs acceptées</button></div>
+    </div>
+  </div>
+</dialog>
+
+
+<dialog id="uncertainReviewDialog" class="targeted-dialog">
+  <div class="targeted-dialog-shell">
+    <div class="targeted-dialog-head">
+      <div><h3>Données à vérifier</h3><p>Valeurs détectées avec une confiance intermédiaire. Elles ne sont jamais intégrées automatiquement.</p></div>
+      <button id="uncertainReviewClose" class="icon-btn targeted-close" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div id="uncertainReviewList" class="targeted-review-list"></div>
+    <div class="targeted-dialog-foot">
+      <span id="uncertainReviewCount">0 proposition</span>
+      <div><button id="uncertainReviewApply" class="btn primary" type="button" disabled>Appliquer les décisions</button></div>
+    </div>
+  </div>
+</dialog>
+
+
+<dialog id="searchIntegrateDialog" class="search-integrate-dialog">
+  <div class="search-integrate-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Recherche libre</span><h3>Intégrer l’information au résultat</h3><p>Choisissez le champ et le bâtiment. La valeur sera considérée comme validée manuellement.</p></div>
+      <button id="searchIntegrateClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="search-integrate-form">
+      <label>Champ de destination<select id="searchIntegrateField"></select></label>
+      <label>Bâtiment<select id="searchIntegrateBuilding"></select></label>
+      <label>Valeur<input id="searchIntegrateValue" inputmode="decimal"></label>
+    </div>
+    <div id="searchIntegrateSource" class="search-integrate-source"></div>
+    <div class="search-integrate-foot"><button id="searchIntegrateApply" class="btn primary" type="button">✓ Intégrer au résultat</button></div>
+  </div>
+</dialog>
+
+
+<dialog id="betaErrorDialog" class="search-integrate-dialog beta-error-dialog">
+  <div class="search-integrate-shell beta-error-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Mode bêta propriétaire</span><h3>Signaler un résultat erroné</h3><p>Le signalement est ajouté au journal d’amélioration avec la source et le contexte utilisés par ExtracTerre.</p></div>
+      <button id="betaErrorClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="beta-error-body">
+      <div class="beta-error-summary">
+        <div><span>Champ</span><strong id="betaErrorField">—</strong></div>
+        <div><span>Bâtiment</span><strong id="betaErrorBuilding">—</strong></div>
+        <div><span>Valeur détectée</span><strong id="betaErrorDetected">—</strong></div>
+        <div><span>Source retenue</span><strong id="betaErrorSource">—</strong></div>
+      </div>
+      <div class="beta-error-excerpt"><span>Contexte source</span><p id="betaErrorExcerpt">—</p></div>
+      <div class="beta-error-form">
+        <label>Type d’erreur
+          <select id="betaErrorReason">
+            <option value="wrong_value">Valeur fausse</option>
+            <option value="wrong_source">Mauvaise source</option>
+            <option value="wrong_building">Mauvais bâtiment</option>
+            <option value="before_after_inverted">Avant / après inversé</option>
+            <option value="wrong_unit">Unité incorrecte</option>
+            <option value="false_positive">Donnée absente du document / faux positif</option>
+            <option value="normalization">Normalisation incorrecte</option>
+            <option value="other">Autre</option>
+          </select>
+        </label>
+        <label>Bonne valeur <small>facultatif</small><input id="betaErrorCorrectValue" type="text" autocomplete="off" placeholder="Laisser vide si aucune valeur ne doit être retournée"></label>
+        <label>Commentaire <small>facultatif</small><textarea id="betaErrorComment" rows="3" placeholder="Ex. la valeur correcte est dans le tableau récapitulatif p. 42"></textarea></label>
+        <label class="beta-apply-row"><input id="betaApplyCorrection" type="checkbox" checked> Appliquer aussi la bonne valeur au résultat courant lorsqu’elle est renseignée</label>
+        <div id="betaErrorFeedback" class="auth-error" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="search-integrate-foot"><button id="betaErrorCancel" class="btn light" type="button">Annuler</button><button id="betaErrorSubmit" class="btn primary" type="button">Ajouter au journal</button></div>
+  </div>
+</dialog>
+
+<dialog id="journalConfigDialog" class="search-integrate-dialog journal-config-dialog">
+  <div class="search-integrate-shell journal-config-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Journal partagé</span><h3>Connexion multi-ordinateurs</h3><p>Connectez ExtracTerre à la base Supabase préparée pour agréger le journal entre plusieurs ordinateurs. L’URL et la clé anonyme Supabase ne sont pas des mots de passe.</p></div>
+      <button id="journalConfigClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="journal-config-form">
+      <label>URL du projet Supabase<input id="journalSupabaseUrl" type="url" placeholder="https://…supabase.co" autocomplete="off"></label>
+      <label>Clé publishable / anon legacy<input id="journalSupabaseKey" type="password" placeholder="Clé publishable du projet" autocomplete="off"></label>
+      <div id="journalConfigFeedback" class="journal-config-feedback">La configuration locale surcharge le fichier <code>js/journal-config.js</code>. Pour tous les ordinateurs, renseignez ensuite ces mêmes valeurs dans ce fichier sur GitHub.</div>
+    </div>
+    <div class="search-integrate-foot journal-config-foot">
+      <button id="journalConfigClear" class="btn light" type="button">Utiliser la configuration du site</button>
+      <div><button id="journalConfigTest" class="btn light" type="button">Tester</button><button id="journalConfigSave" class="btn primary" type="button">Enregistrer</button></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="journalPackPasswordDialog" class="search-integrate-dialog journal-pack-password-dialog">
+  <div class="search-integrate-shell journal-pack-password-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Pack d’amélioration</span><h3>Autorisation requise</h3><p>Ce profil d’accès nécessite la clé dédiée avant de pouvoir extraire le journal complet.</p></div>
+      <button id="journalPackPasswordClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="journal-config-form">
+      <label>Clé du pack<input id="journalPackPassword" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false"></label>
+      <div id="journalPackPasswordError" class="auth-error" aria-live="polite"></div>
+    </div>
+    <div class="search-integrate-foot"><button id="journalPackPasswordSubmit" class="btn primary" type="button">Télécharger le pack</button></div>
+  </div>
+</dialog>
+
+<dialog id="helpDialog" class="ux-help-dialog">
+  <div class="ux-help-shell">
+    <div class="ux-help-head"><div><span class="ux-eyebrow">ExtracTerre</span><h2>Aide rapide</h2></div><button id="helpDialogClose" class="icon-btn" type="button" onclick="document.getElementById('helpDialog').close()">×</button></div>
+    <div class="ux-help-grid">
+      <div><strong>1. Ajouter les pièces</strong><p>Déposez des PDF/XML/Excel ou un dossier complet. L’analyse fonctionne projet par projet.</p></div>
+      <div><strong>2. Lancer l’analyse</strong><p>L’OCR intervient en secours, y compris sur les tableaux SHAB, Cep et IC dont la couche texte est mal reconstruite.</p></div>
+      <div><strong>3. Compléter</strong><p>Ajoutez de nouveaux documents sans retraiter les anciens, ou utilisez le bouton « 🔎 Crible fin » sur le PDF à approfondir.</p></div>
+      <div><strong>4. Vérifier</strong><p>Corrigez manuellement les cellules avant export et validez ou refusez les propositions issues du crible fin.</p></div>
+      <div><strong>5. Reprendre après interruption</strong><p>ExtracTerre sauvegarde localement chaque document analysé, les résultats et vos validations. À la réouverture, la session est restaurée automatiquement ; redéposez un PDF uniquement si vous souhaitez refaire sa lecture ou son OCR.</p></div>
+      <div><strong>Confidentialité locale</strong><p>Les fichiers PDF bruts ne sont pas enregistrés dans IndexedDB. « Effacer la session » supprime les checkpoints et résultats du projet, sans modifier les règles de sources ni le journal d’amélioration. Le journal peut être synchronisé entre plusieurs ordinateurs lorsqu’une base partagée est configurée.</p></div>
+      <div class="ux-help-journal ux-journal-card">
+        <div class="ux-side-card-head"><span>🧠</span><h3>Journal d’amélioration</h3></div>
+        <p class="ux-journal-copy">Les corrections, validations/rejets, champs manquants, erreurs et performances alimentent un journal séparé de la session de travail.</p>
+        <div class="ux-help-journal-stats">
+          <div class="ux-meta-row"><span>Observations locales</span><strong id="journalEventCount">0</strong></div>
+          <div class="ux-meta-row"><span>Journal partagé</span><strong id="journalRemoteStatus">Local uniquement</strong></div>
+          <div class="ux-meta-row"><span>Dernière synchro</span><strong id="journalSyncTime">—</strong></div>
+          <div id="betaJournalStat" class="ux-meta-row beta-owner-only" hidden><span>Erreurs bêta signalées</span><strong id="betaErrorCount">0</strong></div>
+        </div>
+        <div class="ux-journal-actions">
+          <button id="journalSyncBtn" class="btn light" type="button">↻ Synchroniser</button>
+          <button id="journalPackBtn" class="btn primary" type="button">⇩ Pack d’amélioration</button>
+          <button id="journalConfigBtn" class="btn light ux-journal-config" type="button">⚙ Journal partagé</button>
+        </div>
+        <small class="ux-journal-note">« Effacer la session » ne supprime jamais ce journal. Le partage multi-ordinateurs nécessite une connexion distante configurée.</small>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<div id="toasts" class="toasts"></div>
+</body>
+</html>
