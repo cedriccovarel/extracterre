@@ -6,14 +6,14 @@
   <meta name="theme-color" content="#07583f">
   <title>ExtracTerre</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=1.1.12">
-  <script defer src="js/journal-config.js?v=1.1.12"></script>
-  <script defer src="js/security.js?v=1.1.12"></script>
+  <link rel="stylesheet" href="styles.css?v=1.1.15">
+  <script defer src="js/journal-config.js?v=1.1.15"></script>
+  <script defer src="js/security.js?v=1.1.15"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script defer src="js/app.bundle.js?v=1.1.12"></script>
+  <script defer src="js/app.bundle.js?v=1.1.15"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -34,7 +34,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v1.1.12</span>
+      <span class="ux-version-chip" id="version">v1.1.15</span>
     </div>
   </header>
 
@@ -303,6 +303,43 @@
 </dialog>
 
 
+<dialog id="betaErrorDialog" class="search-integrate-dialog beta-error-dialog">
+  <div class="search-integrate-shell beta-error-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Mode bêta propriétaire</span><h3>Signaler un résultat erroné</h3><p>Le signalement est ajouté au journal d’amélioration avec la source et le contexte utilisés par ExtracTerre.</p></div>
+      <button id="betaErrorClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div class="beta-error-body">
+      <div class="beta-error-summary">
+        <div><span>Champ</span><strong id="betaErrorField">—</strong></div>
+        <div><span>Bâtiment</span><strong id="betaErrorBuilding">—</strong></div>
+        <div><span>Valeur détectée</span><strong id="betaErrorDetected">—</strong></div>
+        <div><span>Source retenue</span><strong id="betaErrorSource">—</strong></div>
+      </div>
+      <div class="beta-error-excerpt"><span>Contexte source</span><p id="betaErrorExcerpt">—</p></div>
+      <div class="beta-error-form">
+        <label>Type d’erreur
+          <select id="betaErrorReason">
+            <option value="wrong_value">Valeur fausse</option>
+            <option value="wrong_source">Mauvaise source</option>
+            <option value="wrong_building">Mauvais bâtiment</option>
+            <option value="before_after_inverted">Avant / après inversé</option>
+            <option value="wrong_unit">Unité incorrecte</option>
+            <option value="false_positive">Donnée absente du document / faux positif</option>
+            <option value="normalization">Normalisation incorrecte</option>
+            <option value="other">Autre</option>
+          </select>
+        </label>
+        <label>Bonne valeur <small>facultatif</small><input id="betaErrorCorrectValue" type="text" autocomplete="off" placeholder="Laisser vide si aucune valeur ne doit être retournée"></label>
+        <label>Commentaire <small>facultatif</small><textarea id="betaErrorComment" rows="3" placeholder="Ex. la valeur correcte est dans le tableau récapitulatif p. 42"></textarea></label>
+        <label class="beta-apply-row"><input id="betaApplyCorrection" type="checkbox" checked> Appliquer aussi la bonne valeur au résultat courant lorsqu’elle est renseignée</label>
+        <div id="betaErrorFeedback" class="auth-error" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="search-integrate-foot"><button id="betaErrorCancel" class="btn light" type="button">Annuler</button><button id="betaErrorSubmit" class="btn primary" type="button">Ajouter au journal</button></div>
+  </div>
+</dialog>
+
 <dialog id="journalConfigDialog" class="search-integrate-dialog journal-config-dialog">
   <div class="search-integrate-shell journal-config-shell">
     <div class="search-integrate-head">
@@ -352,6 +389,7 @@
           <div class="ux-meta-row"><span>Observations locales</span><strong id="journalEventCount">0</strong></div>
           <div class="ux-meta-row"><span>Journal partagé</span><strong id="journalRemoteStatus">Local uniquement</strong></div>
           <div class="ux-meta-row"><span>Dernière synchro</span><strong id="journalSyncTime">—</strong></div>
+          <div id="betaJournalStat" class="ux-meta-row beta-owner-only" hidden><span>Erreurs bêta signalées</span><strong id="betaErrorCount">0</strong></div>
         </div>
         <div class="ux-journal-actions">
           <button id="journalSyncBtn" class="btn light" type="button">↻ Synchroniser</button>

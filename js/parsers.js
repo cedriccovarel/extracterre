@@ -9,7 +9,7 @@ function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
 }
 function push(out,o){ if(o) out.push(o); }
 function lineWindow(page,i,before=2,after=2){ const ls=page.lines||[]; return ls.slice(Math.max(0,i-before),Math.min(ls.length,i+after+1)).map(x=>x.text).join(' | '); }
-function firstValueAfterLabel(text,labelRe){ const flags=labelRe.flags.includes('i')?'i':''; const clean=normalizeText(maskNonDataNumerics(text)); const m=clean.match(new RegExp(`${labelRe.source}[^0-9+-]{0,90}([-+]?\\d+(?:[\\s.]\\d{3})*(?:[,.]\\d+)?)`,flags)); return m?parseFrNumber(m[1]):null; }
+function firstValueAfterLabel(text,labelRe){ const flags=labelRe.flags.includes('i')?'i':''; const clean=normalizeText(maskNonDataNumerics(text)); const m=clean.match(new RegExp(`(?:${labelRe.source})[^0-9+-]{0,90}([-+]?\\d+(?:[\\s.]\\d{3})*(?:[,.]\\d+)?)`,flags)); return m?parseFrNumber(m[1]):null; }
 function phaseFromContext(text,doc){
   const s=normLower(`${doc.name} ${text}`);
   if(/\b(?:avant\s+travaux|etat\s+initial|etat\s+existant|existant|initial|avant\s+renovation|situation\s+initiale)\b/.test(s)) return 'before';
@@ -690,6 +690,11 @@ export function parseRset(doc){
         let vals=numbersIn(s).filter(x=>x>=-100); if(vals.length<2) vals=numbersIn(lineWindow(page,i,0,2)).filter(x=>x>=-100);
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:rt2012-cep-table',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:rt2012-cep-table',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:rt2012-cep-table',0.99,'%')); }
       }
+      // Récapitulatifs logiciels compacts : « Bbio 43,2 65,9 34,45 ».
+      if(/^bbio\b/i.test(s) && !/^bbio\s*(?:max|maxi|maximal|_max)\b/i.test(s)){
+        const vals=numbersIn(s).filter(x=>x>=-100&&x<5000);
+        if(vals.length>=2){ push(out,occ(doc,page,line,'bbio',vals[0],'rset:bbio-summary-row',0.997,'points')); push(out,occ(doc,page,line,'bbio_max',vals[1],'rset:bbio-summary-row',0.997,'points')); if(vals.length>=3) push(out,occ(doc,page,line,'bbio_gain',vals[2],'rset:bbio-summary-row',0.995,'%')); }
+      }
       // Récapitulatifs logiciels compacts : « Cep 45,5 80,5 43,48 » / « Cep,nr 45,5 59 22,88 ».
       if(/^cep\s*[,._-]?\s*nr\b/i.test(s) && !/coefficient/i.test(s)){
         const vals=numbersIn(s).filter(x=>x>=-100&&x<5000);
@@ -736,9 +741,23 @@ export function parseRset(doc){
 
 function fallbackRset(doc,current){
   const have=new Set(current.map(o=>`${o.building}|${o.field}`)); const out=[...current];
-  for(const page of doc.read.pages){ for(const line of page.lines||[]){ const s=normalizeText(line.text), building=buildingForPosition(doc,page.page,line.index); const patterns={bbio:/\bbbio\b(?!\s*max)/i,bbio_max:/\bbbio\s*max\b/i,cep:/\bcep\b(?!\s*,?\s*nr|\s*max)/i,cep_max:/\bcep\s*max\b/i,cepnr:/\bcep\s*,?\s*nr\b(?!\s*max)/i,cepnr_max:/\bcep\s*,?\s*nr\s*max\b/i,dh:/\bdh\b|degres?[- ]heures?/i};
+  for(const page of doc.read.pages){ for(const line of page.lines||[]){ const s=normalizeText(line.text), building=buildingForPosition(doc,page.page,line.index); if(/certification|referentiel|référentiel|performance|niveau|label|objectif|seuil|article|\bart\.?\s*\d+|représente|represente/i.test(normLower(s))) continue; const patterns={bbio:/\bbbio\b(?!\s*max)/i,bbio_max:/\bbbio\s*max\b/i,cep:/\bcep\b(?!\s*,?\s*nr|\s*max)/i,cep_max:/\bcep\s*max\b/i,cepnr:/\bcep\s*,?\s*nr\b(?!\s*max)/i,cepnr_max:/\bcep\s*,?\s*nr\s*max\b/i,dh:/\bdh\b|degres?[- ]heures?/i};
     for(const [field,re] of Object.entries(patterns)){ const key=`${building}|${field}`; if(have.has(key)||!re.test(s)) continue; const val=firstValueAfterLabel(s,re); if(val!==null){ push(out,occ(doc,page,line,field,val,'rset:fallback-label',0.87,'',{building})); have.add(key); } }
   }} return out;
+}
+
+function isRegulatoryNarrativeNoise(text=''){
+  const low=normLower(text);
+  return /(?:^|\b)(?:article|art\.?\s*\d+|rappel|definition|définition|objectif|critere|critère|cible|exigence|reglementation|réglementation|methode|méthode)(?:\b|\s)/i.test(low)
+    || /(?:est|doit\s+etre|doit\s+être)\s+(?:inferieur|inférieur|superieur|supérieur|egal|égal)|\brepresente\b|\breprésente\b|\bconforme\b/i.test(low);
+}
+function explicitMetricCarrier(line='',re){
+  const raw=normalizeText(line), low=normLower(raw);
+  if(!re.test(raw)) return false;
+  // Refuse les phrases réglementaires/descriptives : une métrique doit être portée par une ligne de résultat,
+  // un couple libellé-valeur ou un tableau compact.
+  if(isRegulatoryNarrativeNoise(raw) && !/^(?:coefficient\s+)?(?:bbio|cep(?:\s*[,._-]?\s*nr)?|dh|degres?[- ]heures?|tic|ubat)\b/i.test(raw)) return false;
+  return /[:=|]|\d[,.]\d|\b\d{2,}(?:[,.]\d+)?\b/.test(raw) || /^(?:coefficient\s+)?(?:bbio|cep|dh|tic|ubat)\b/i.test(low);
 }
 
 function parseGenericRegulatory(doc){
@@ -757,8 +776,8 @@ function parseGenericRegulatory(doc){
     ['cep_gas',/\bcep\b[^|]{0,45}\bgaz\b/i],['cep_district',/\bcep\b[^|]{0,55}(?:reseau\s+de\s+chaleur|réseau\s+de\s+chaleur|rcu)/i],['cep_biomass',/\bcep\b[^|]{0,55}(?:bois|biomasse|granules|granulés)/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], s=normalizeText(line.text), ctx=lineWindow(page,i,1,2);
-    for(const [field,re,unit] of specs){ if(re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
-    for(const [field,re] of breakdown){ if(re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:cep-breakdown',0.90,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); } }
+    for(const [field,re,unit] of specs){ if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
+    for(const [field,re] of breakdown){ if(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:cep-breakdown',0.90,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); } }
     const phase=phaseFromContext(ctx,doc);
     if(/\bubat\b/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bubat\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)})); }
     if(/\bcep\b/i.test(ctx) && !/cep\s*[,._-]?\s*nr/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bcep\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'cep_before',v,'renovation:cep-before',0.91,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after' && /final|reception|apres\s+travaux/i.test(normLower(`${doc.name} ${ctx}`))) push(out,occ(doc,page,line,'cep_after_final',v,'renovation:cep-after-final',0.92,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); }
@@ -1040,6 +1059,12 @@ function parseThermalStudy(doc){
       if((m=raw.match(/coefficient\s+cep\s+projet[^0-9]{0,80}(\d+(?:[,.]\d+)?)/i))){ const v=parseFrNumber(m[1]); add(page,line,'cep',v,'thermal:cep-project-structured',.995,'kWhEP/m².an',{building,excerpt:ctx.slice(0,420)}); add(page,line,'cep_after_final',v,'thermal:cep-after-structured',.995,'kWhEP/m².an',{building,excerpt:ctx.slice(0,420)}); }
       if((m=raw.match(/coefficient\s+cep\s+(?:r[eé]f\.?|reference|référence|max)[^0-9]{0,80}(\d+(?:[,.]\d+)?)/i))) add(page,line,'cep_max',parseFrNumber(m[1]),'thermal:cep-reference',.995,'kWhEP/m².an',{building,excerpt:ctx.slice(0,420)});
       if((m=raw.match(/coefficient\s+cep\s+gain[^0-9]{0,50}(\d+(?:[,.]\d+)?)/i))) add(page,line,'cep_gain',parseFrNumber(m[1]),'thermal:cep-gain',.995,'%',{building,excerpt:ctx.slice(0,420)});
+      // RT existant : ligne de tableau « Groupe 001 °C 25.02 28.44 -3.42 ».
+      if(/tic\s*\(a\)|tic\s+ref\s*\(b\)|temp[eé]ratures?\s+d['’]?ete/i.test(pageLow)){
+        const tm=raw.match(/(?:groupe|zone)[^°]{0,80}°c\s+([-+]?\d+(?:[,.]\d+)?)\s+([-+]?\d+(?:[,.]\d+)?)/i);
+        if(tm){ add(page,line,'tic',parseFrNumber(tm[1]),'thermal:tic-table',.995,'°C',{building,excerpt:ctx.slice(0,420)}); add(page,line,'tic_ref',parseFrNumber(tm[2]),'thermal:tic-ref-table',.995,'°C',{building,excerpt:ctx.slice(0,420)}); }
+      }
+
 
       // État courant du tableau de consommations par poste.
       if(/^chauffage\b/i.test(raw)) currentPost='heating';
@@ -1131,20 +1156,20 @@ function parseEnvelope(doc){
 function parseSystems(doc){
   const out=[]; let inheritedPhase='unknown';
   for(const page of doc.read.pages){ const lines=page.lines||[]; const explicitPagePhase=phaseFromContext(page.text||'',doc); if(explicitPagePhase!=='unknown') inheritedPhase=explicitPagePhase; const pagePhase=inheritedPhase; const resolvedPhase=ctx=>{ const p=phaseFromContext(ctx,doc); return p==='unknown'?pagePhase:p; }; for(let i=0;i<lines.length;i++){
-    const line=lines[i], base=normalizeText(line.text), next=normalizeText(lines[i+1]?.text||''); const baseLow=normLower(base);
+    const line=lines[i], base=normalizeText(line.text), next=normalizeText(lines[i+1]?.text||''); const baseLow=normLower(base); const envInventoryNoise=/(?:\binies\b|fiche\s+de\s+donn[eé]es\s+environnementales|mise\s+[aà]\s+disposition\s+d['’]?un\s+kwh|impact\s+environnemental|contribution\s+composant)/i.test(baseLow);
     const makeCtx=(kindRe,matcher)=>{ if(!kindRe.test(baseLow)) return null; if(matcher(base)) return base; return normalizeText(`${base} | ${next}`); };
 
     const heatCtx=makeCtx(/chauffage|chaudiere|pac|pompe\s+a\s+chaleur|radiateur|convecteur|plancher\s+chauffant|vrv|drv|sous[- ]station/i,t=>!!(findFirstMatch(t,HVAC.heating)||findFirstMatch(t,HVAC.vectors)));
-    if(heatCtx){ const phase=resolvedPhase(heatCtx), mode=findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(normLower(heatCtx)); const vec=optionList?null:findFirstMatch(heatCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
+    if(heatCtx){ const phase=resolvedPhase(heatCtx), heatLow=normLower(heatCtx); const heatNoise=envInventoryNoise||/(?:taux\s+de\s+couverture|si\s+chauffage|dont\s+chauffage|exigence|rappel|exemple|scenario\s+non\s+retenu|scénario\s+non\s+retenu|hypoth[eè]se)/i.test(heatLow)||(/\bsolaire\b/i.test(heatLow)&&/(?:^|\s)0(?:[,.]0+)?(?:\s+0(?:[,.]0+)?)*\s*$/.test(heatLow)); const mode=heatNoise?null:findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(heatLow); const strongVector=/^(?:type\s+d['’]?energie|type\s+d['’]?énergie|energie|énergie|combustible|vecteur|alimentation)\s*[:=-]/i.test(heatCtx)||/(?:chaudi[eè]re|pac|pompe\s+[aà]\s+chaleur|sous[- ]station|r[eé]seau\s+de\s+chaleur|convecteur|radiateur|plancher\s+chauffant)/i.test(heatLow); const vec=(!heatNoise&&!optionList&&strongVector)?findFirstMatch(heatCtx,HVAC.vectors):null; if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
 
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
     if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsCtx,HVAC.ecs), vec=findFirstMatch(ecsCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
 
     let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent && ventPhase!=='before') push(out,occ(doc,page,line,'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
-    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
+    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie/i.test(coolLow)) cool='Aucun'; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
-    let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } if(enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(normLower(enrCtx))){ push(out,occ(doc,page,line,'enr','Oui','enr:context',0.90,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-context',0.90,'',{excerpt:enrCtx.slice(0,420)})); }
+    let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
     let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
@@ -1152,25 +1177,43 @@ function parseSystems(doc){
 
 function parseDpe(doc){
   const out=[]; const name=normLower(doc.name);
-  for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], ctx=normalizeText(lineWindow(page,i,1,2)); if(!/dpe|classe\s+(?:energie|energetique|ges|climat)|etiquette\s+(?:energie|climat)|performance\s+energetique/i.test(normLower(ctx))) continue;
-    const explicit=ctx.match(/(?:classe|etiquette)\s*(?:dpe\s*)?(?:energie|energetique|climat|ges)?\s*[:=\-]?\s*([A-G])\b/i)||ctx.match(/\b(?:energie|energetique|ges|climat)\s*[:=\-]\s*([A-G])\b/i); if(!explicit) continue;
-    const letter=explicit[1].toUpperCase(), ges=/ges|climat|gaz\s+a\s+effet/i.test(normLower(ctx)), before=/avant|initial|existant|audit/.test(normLower(`${name} ${ctx}`)), after=/apres|final|reception|post[- ]travaux/.test(normLower(`${name} ${ctx}`)); if(!before&&!after) continue;
-    const field=after?(ges?'dpe_ges_after':'dpe_energy_after'):(ges?'dpe_ges_before':'dpe_energy_before'); push(out,occ(doc,page,line,field,letter,'dpe:explicit-class-phase',0.94,'',{excerpt:ctx.slice(0,420)}));
+  for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
+    const line=lines[i], ctx=normalizeText(lineWindow(page,i,1,2)), low=normLower(ctx);
+    if(!/dpe|classe\s+(?:energie|energetique|énergie|énergétique|ges|climat)|etiquette\s+(?:energie|énergie|climat)|performance\s+energetique|performance\s+énergétique/i.test(low)) continue;
+    const narrative=/(?:classe\s+[a-g]\s+minimum|etiquette\s+[a-g]\s*\(|doivent?\s+parvenir|passoires?|crit[eè]res?|eco[- ]?pret|éco[- ]?prêt|sup[eé]rieur|inf[eé]rieur|peuvent?\s+b[eé]n[eé]ficier|obligation\s+de\s+r[eé]sultat)/i.test(low);
+    const explicitSection=doc.type===DOC_TYPES.DPE||/(?:[eé]tiquettes?\s+(?:[eé]tat|sc[eé]nario)|dpe\s+(?:avant|apr[eè]s)|classe\s+(?:energie|énergie|ges)\s+(?:avant|apr[eè]s))/i.test(low);
+    if(narrative||!explicitSection) continue;
+    const explicit=ctx.match(/(?:classe|etiquette|étiquette)\s*(?:dpe\s*)?(?:energie|énergie|energetique|énergétique|climat|ges)?\s*[:=\-]?\s*([A-G])\b/i)||ctx.match(/\b(?:energie|énergie|energetique|énergétique|ges|climat)\s*[:=\-]\s*([A-G])\b/i); if(!explicit) continue;
+    const letter=explicit[1].toUpperCase(), ges=/ges|climat|gaz\s+a\s+effet|gaz\s+à\s+effet/i.test(low), before=/avant|initial|existant|audit/.test(normLower(`${name} ${ctx}`)), after=/apres|après|final|reception|réception|post[- ]travaux|scenario|scénario|projet/.test(normLower(`${name} ${ctx}`));
+    // Un DPE neuf/final isolé est une donnée après travaux/finale.
+    const finalAfter=after||(doc.type===DOC_TYPES.DPE&&!before&&/(?:\bneuf\b|dpe[-_ ]?2021)/i.test(normLower(`${name} ${page.text||''}`)));
+    if(!before&&!finalAfter) continue;
+    const field=finalAfter?(ges?'dpe_ges_after':'dpe_energy_after'):(ges?'dpe_ges_before':'dpe_energy_before'); push(out,occ(doc,page,line,field,letter,'dpe:explicit-class-phase',0.96,'',{excerpt:ctx.slice(0,420)}));
   }} return out;
 }
 
 function parseCarbon(doc){
   const out=[]; const mappings=[
-    ['ic_energy_heating',/ic\s*energie[^|]{0,45}chauffage/i],['ic_energy_cooling',/ic\s*energie[^|]{0,45}(?:refroid|froid)/i],['ic_energy_ecs',/ic\s*energie[^|]{0,45}(?:ecs|eau\s+chaude)/i],
-    ['ic_energy_aux_vent',/ic\s*energie[^|]{0,60}auxiliaires?[^|]{0,25}ventil/i],['ic_energy_aux_dist',/ic\s*energie[^|]{0,60}auxiliaires?[^|]{0,25}distribution/i],['ic_energy_mobility',/ic\s*energie[^|]{0,60}(?:deplacements?|ascenseurs?|escalators?|parking)/i],
+    ['ic_energy_heating',/ic\s*[eé]nergie[^|]{0,45}chauffage/i],['ic_energy_cooling',/ic\s*[eé]nergie[^|]{0,45}(?:refroid|froid)/i],['ic_energy_ecs',/ic\s*[eé]nergie[^|]{0,45}(?:ecs|eau\s+chaude)/i],
+    ['ic_energy_aux_vent',/ic\s*[eé]nergie[^|]{0,60}auxiliaires?[^|]{0,25}ventil/i],['ic_energy_aux_dist',/ic\s*[eé]nergie[^|]{0,60}auxiliaires?[^|]{0,25}distribution/i],['ic_energy_mobility',/ic\s*[eé]nergie[^|]{0,60}(?:deplacements?|déplacements?|ascenseurs?|escalators?|parking)/i],
     ['ic_components',/ic\s*composants?(?:\s+batiment)?/i],['ic_site',/ic\s*chantier/i],['ic_energy',/ic\s*[eé]nergie(?:\s+batiment)?/i]
   ];
-  for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], ctx=normalizeText(lineWindow(page,i,1,2));
-    for(const [f,re] of mappings){ if(re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); const n=v!==null?v:numbersIn(ctx).at(-1); if(n!==null&&n!==undefined) push(out,occ(doc,page,line,f,n,'carbon:label-context',0.90,'kgCO2e/m²',{excerpt:ctx.slice(0,420)})); } }
-    const lot=ctx.match(/(?:ic\s+composants?[^|]{0,25})?\blot\s*(1[0-3]|[1-9])\b/i); if(lot&&/ic|carbone|kg\s*co2/i.test(ctx)){ const n=numbersIn(ctx); if(n.length) push(out,occ(doc,page,line,`ic_lot_${lot[1]}`,n[n.length-1],'carbon:lot-context',0.90,'kgCO2e/m²',{excerpt:ctx.slice(0,420)})); }
+  for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], raw=normalizeText(line.text||''), ctx=normalizeText(lineWindow(page,i,1,2));
+    // Une occurrence carbone générique doit porter elle-même le libellé ET une valeur.
+    // Les titres de chapitres, n° de lot et tableaux d'autres indicateurs ne sont jamais utilisés ici.
+    const strongCarrier=/kg\s*(?:eq|éq)?\.?\s*co2|kgco2|[:=]/i.test(raw);
+    if(strongCarrier){
+      for(const [f,re] of mappings){
+        if(!re.test(raw)) continue;
+        const v=firstValueAfterLabel(raw,re);
+        if(v!==null) push(out,occ(doc,page,line,f,v,'carbon:explicit-label',0.94,'kgCO2e/m²',{excerpt:ctx.slice(0,420)}));
+      }
+    }
+    // Forme autorisée : « IC composants lot 8 = 39,09 ». Un simple « LOT : 08 - CVC » est un titre.
+    const lot=raw.match(/ic\s+composants?\s+lot\s*(1[0-3]|[1-9])\s*(?:[:=|-])\s*([-+]?\d+(?:[,.]\d+)?)/i);
+    if(lot){ const v=parseFrNumber(lot[2]); if(v!==null) push(out,occ(doc,page,line,`ic_lot_${lot[1]}`,v,'carbon:explicit-lot-label',0.96,'kgCO2e/m²',{excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
-
 
 
 // Dictionnaire central des 167 colonnes ExtracTerre.
@@ -1258,6 +1301,13 @@ function parseTaggedSpreadsheet(doc){
   }
   return out;
 }
+const TECHNICAL_DOC_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.DPE]);
+const SAFE_TECH_TAG_KEYS=new Set(['internal_code','operation_name','owner_company','work_type','housing_count','housing_total','building_total','reference_name','reference_version','department','construction_year']);
+function taggedFieldAllowedForDocument(doc,def){
+  if(!TECHNICAL_DOC_TYPES.has(doc.type)) return true;
+  return SAFE_TECH_TAG_KEYS.has(def.key);
+}
+
 function parseTaggedFields(doc){
   if(doc.read?.kind==='spreadsheet') return parseTaggedSpreadsheet(doc);
   const out=[];
@@ -1267,7 +1317,7 @@ function parseTaggedFields(doc){
       if(!raw) continue;
       const normalized=normalizeFieldHeader(raw), matched=new Set();
       for(const def of taggedCandidateDefs(normalized)){
-        if(def.key==='building') continue;
+        if(def.key==='building'||!taggedFieldAllowedForDocument(doc,def)) continue;
         const hit=taggedLineMatch(raw,def,normalized);
         if(!hit) continue;
         matched.add(def.key);
@@ -1284,7 +1334,7 @@ function parseTaggedFields(doc){
         if(value!==null&&value!=='') push(out,occ(doc,page,line,def.key,value,'tags:label-value',.915,'',{origin:`${doc.type} — libellé structuré`,provenanceNote:`Champ reconnu par le tag « ${hit.tag} ».`}));
       }
       for(const def of PRESENCE_DEFS){
-        if(matched.has(def.key)) continue;
+        if(!taggedFieldAllowedForDocument(doc,def)||matched.has(def.key)) continue;
         const presence=taggedPresence(raw,def,normalized);
         if(presence) push(out,occ(doc,page,line,def.key,presence.value,'tags:presence',presence.confidence,'',{origin:`${doc.type} — mention détectée`,provenanceNote:`Mention reconnue par le tag « ${presence.tag} »${presence.confidence<.9?' ; validation conseillée.':''}`}));
       }
@@ -1299,9 +1349,12 @@ export function parseDocument(doc){
   // Surface bâtiment générique : SHAB, Sref/SRéf, surface habitable, surface du bâtiment, SU/SURT/SRT.
   if(doc.type!==DOC_TYPES.DPGF) out.push(...parseBuildingSurface(doc));
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
-  if([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV].includes(doc.type)) out.push(...parseGenericRegulatory(doc));
+  if(doc.type===DOC_TYPES.THERMAL) out.push(...parseGenericRegulatory(doc));
   if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); }
-  out.push(...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
+  out.push(...parseProgram(doc),...parseEnvelope(doc));
+  // Un DPE contient de nombreuses recommandations et exemples (PAC, biomasse, climatisation, ENR).
+  // Ils ne décrivent pas nécessairement les équipements réellement en place : pas de parseur systèmes générique sur DPE.
+  if(doc.type!==DOC_TYPES.DPE) out.push(...parseSystems(doc));
   if(doc.type===DOC_TYPES.DPE||/\bdpe\b/i.test(doc.read.text)) out.push(...parseDpe(doc));
   if([DOC_TYPES.CARBON,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV].includes(doc.type)||/ic\s*(?:composants?|composant|energie|énergie|construction|chantier)/i.test(doc.read.text)) out.push(...parseCarbon(doc));
   // Un RSENV/ACV peut être classé « Étude carbone / ACV » tout en utilisant exactement

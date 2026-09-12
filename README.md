@@ -1,3 +1,14 @@
+# ExtracTerre v1.1.15
+
+## Mode bêta propriétaire
+
+Quand la session est ouverte avec le profil propriétaire, chaque résultat non vide affiche une petite croix ✕. Elle permet de signaler une erreur au journal d’amélioration avec la source, la page, l’extrait, le motif et une bonne valeur facultative. Les profils équipe ne voient pas ce mode.
+
+
+## Bibliothèque documentaire stricte — v1.1.13
+
+ExtracTerre ne repose plus sur un mot-clé isolé pour les champs sensibles. Le moteur combine désormais type de document, section, libellé, unité, phase avant/après et source autorisée. Une occurrence issue d'une source non routée n'est jamais injectée automatiquement dans le tableau final : elle reste proposée à la validation. Les signatures documentaires auditées sont décrites dans `data/document-signatures.json`.
+
 # ExtracTerre v1.1.12
 
 Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
