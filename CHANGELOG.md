@@ -1,28 +1,3 @@
-# v1.1.14 — Mode bêta propriétaire et remontée d’erreurs champ par champ
-
-- Mode bêta visible uniquement pour le rôle propriétaire.
-- Ajout d’une croix ✕ sur chaque résultat renseigné pour signaler un résultat erroné.
-- Fenêtre de retour avec valeur détectée, source/page/confiance, extrait source, type d’erreur, bonne valeur facultative et commentaire.
-- La bonne valeur peut être appliquée immédiatement au résultat courant et enregistrée comme correction manuelle.
-- Nouvel événement `beta_result_error` synchronisé dans le journal local/distant.
-- Le pack d’amélioration contient désormais `erreurs_beta_proprietaire.json` et son prompt demande de traiter ces retours en priorité.
-- Compteur des erreurs bêta ajouté dans Aide / FAQ uniquement pour le propriétaire.
-
-# v1.1.13 — Bibliothèque documentaire stricte et réduction des faux positifs
-
-- Routage strict : une source non autorisée ne peut plus remplir automatiquement un champ ; elle reste disponible dans « À vérifier ».
-- Bibliothèque de signatures documentaires ajoutée (`data/document-signatures.json`) avec familles RSET RT2012, RE2020/RSEE, RSENV/ACV, RT Existant, études thermiques rénovation, Bao-like, DPE 2021 et tableaux de surfaces.
-- Audit corpus multi-familles ajouté (`data/corpus-audit-v1.1.13.json`).
-- Classification corrigée : une étude thermique contenant Q4Pa/perméabilité n'est plus classée comme rapport d'imperméabilité ; « Réglementation Thermique Existante » est reconnue comme RT Existant.
-- Parseur de tags générique limité dans les documents techniques : les champs thermiques/carbone/systèmes sont réservés aux parseurs métier spécialisés.
-- RSET/RE2020 : lecture compacte `Bbio / Bbio Max / Gain` renforcée ; `DH / DH max` corrigé.
-- RT Existant : lecture Tic/TicRef depuis les lignes de tableau `Groupe ... °C`.
-- Carbone : un simple titre `LOT : 08 - CVC` ne peut plus devenir une valeur `IC composants lot 8`.
-- DPE : recommandations et critères (« étiquette D minimum », « si climatisation », exemples ENR) exclus des résultats.
-- RSENV/ACV : lignes INIES de mise à disposition d'énergie exclues de la détection de systèmes.
-- Vitrage : les numéros de section/date (`7.1.1`, `20.1.4`, `05-20-15`) ne sont plus interprétés comme compositions de vitrage.
-- 141 tests moteur.
-
 # v1.1.12 — stabilité CPU / interface réactive
 
 - Correction du blocage « page ne répond pas » lors du lancement d’analyse.

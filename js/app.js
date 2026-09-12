@@ -58,24 +58,18 @@ function syncResultTabs(){ const key=normalizedResultViewKey(activeProject().res
 
 let persistenceReady=false,restoringWorkspace=false,workspaceSaveChain=Promise.resolve(),workspaceSaveTimer=null,lastLocalSaveAt=null;
 let lastJournalSyncAt=null,journalUiTimer=null;
+function accessRole(){ return globalThis.__extracterreGetAccessContext?.()?.role||''; }
 function learningPayloadBase(project=activeProject()){ return {operation:project?.operationName||project?.result?.operation||'',projectLabel:projectTitle(project)}; }
 function learn(type,payload={},project=activeProject()){
   recordLearningEvent(type,{...learningPayloadBase(project),...payload},project).then(()=>scheduleJournalUiRefresh()).catch(err=>console.warn('Learning journal event failed',err));
 }
 function scheduleJournalUiRefresh(delay=250){ if(journalUiTimer) clearTimeout(journalUiTimer); journalUiTimer=setTimeout(()=>{journalUiTimer=null;refreshJournalUi();},delay); }
-function accessRole(){ try{return globalThis.__extracterreGetAccessContext?.()?.role||'';}catch{return '';} }
-function ownerBetaEnabled(){ return accessRole()==='owner'; }
-function betaSourceFor(building,field){ const r=state.result; if(!r) return null; return r.finals.find(x=>x.field===field&&(x.building===building||x.building==='Bâtiment unique'))||null; }
-function betaResultContext(building,field){ const row=state.result?.rows?.find(r=>r.building===building); return {row,source:betaSourceFor(building,field),value:row?.[field]}; }
 async function refreshJournalUi(){
   try{
     const stats=await getLearningJournalOverview(),status=$('#journalRemoteStatus'),count=$('#journalEventCount'),syncTime=$('#journalSyncTime');
     if(count) count.textContent=String(stats.total||0);
     if(status){ status.textContent=stats.remoteConfigured?(stats.unsynced?`Partagé · ${stats.unsynced} à synchroniser`:'Partagé · à jour'):'Local uniquement'; status.className=stats.remoteConfigured?'ok':'warn'; }
     if(syncTime) syncTime.textContent=lastJournalSyncAt?new Date(lastJournalSyncAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'—';
-    const betaStat=$('#betaJournalStat'),betaCount=$('#betaErrorCount');
-    if(betaStat) betaStat.hidden=!ownerBetaEnabled();
-    if(betaCount) betaCount.textContent=String(stats.byType?.beta_result_error||0);
   }catch(err){ const status=$('#journalRemoteStatus'); if(status){status.textContent='Journal indisponible';status.className='warn';} }
 }
 async function syncLearningJournalNow(showToast=true){
@@ -738,10 +732,9 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()&&v!==undefined?`<button class="cell-beta-error" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Signaler ce résultat comme erroné" aria-label="Signaler une erreur">✕</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
-  $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
   const selected=()=>$$('#summaryView .building-select:checked').map(x=>x.value);
   const refreshMergeButton=()=>{ const b=$('#mergeBuildingsBtn'); if(b) b.disabled=selected().length<2; };
   $$('#summaryView .building-select').forEach(cb=>cb.onchange=refreshMergeButton);
@@ -753,56 +746,6 @@ function renderSummary(){
   const addTagBtn=$('#addProjectTagBtn'); if(addTagBtn) addTagBtn.onclick=addTag;
   const tagInp=$('#projectTagInput'); if(tagInp) tagInp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addTag();}});
   $$('#summaryView .remove-project-tag').forEach(b=>b.onclick=()=>{ const t=state.projectTags[Number(b.dataset.tagIndex)]; if(t?.manual) state.manualTags=state.manualTags.filter(x=>x!==t.label); state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); renderSummary(); scheduleWorkspaceCheckpoint('suppression tag'); }); const reviewBtn=$('#reviewUncertainBtn'); if(reviewBtn) reviewBtn.onclick=showUncertainReview; decorateProjectSections(wrap,fields);
-}
-
-
-function openBetaErrorDialog(building,field){
-  if(!ownerBetaEnabled()||!state.result) return;
-  const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog');
-  if(!def||!ctx.row||!dlg) return;
-  const src=ctx.source||{};
-  $('#betaErrorField').textContent=def.label||field;
-  $('#betaErrorBuilding').textContent=building||'Bâtiment unique';
-  $('#betaErrorDetected').textContent=formatValue(ctx.value);
-  $('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Source non déterminée';
-  $('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';
-  $('#betaErrorCorrectValue').value='';
-  $('#betaErrorReason').value='wrong_value';
-  $('#betaErrorComment').value='';
-  $('#betaApplyCorrection').checked=true;
-  $('#betaErrorFeedback').textContent='';
-  dlg.dataset.building=building; dlg.dataset.field=field;
-  dlg.showModal();
-  setTimeout(()=>$('#betaErrorCorrectValue')?.focus(),60);
-}
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); }
-async function submitBetaError(){
-  if(!ownerBetaEnabled()) return;
-  const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field];
-  const ctx=betaResultContext(building,field); if(!dlg||!def||!ctx.row) return;
-  const raw=($('#betaErrorCorrectValue')?.value||'').trim();
-  let correctedValue=null,hasCorrection=!!raw;
-  if(hasCorrection){
-    if(def.type==='number'){
-      const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; }
-      correctedValue=n;
-    } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;
-  }
-  const src=ctx.source||{},reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
-  const payload={beta:true,field,fieldLabel:def.label||field,building,detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
-  try{
-    await recordLearningEvent('beta_result_error',payload,activeProject());
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){
-      const key=`${building}|${field}`,previous=ctx.value;
-      state.manualValues[key]=correctedValue;
-      state.manualSources[key]={docId:src.docId||'',fileName:src.fileName||'Correction bêta',page:src.page||1,excerpt:src.excerpt||'',method:'manual:beta-error-correction',provenanceNote:`Correction bêta propriétaire — ${reason}`};
-      applyManualValues();
-      learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'beta_error_feedback',reason},activeProject());
-      refreshEconomic(); scheduleWorkspaceCheckpoint('correction bêta',80);
-    }
-    closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh();
-    toast(hasCorrection?'Erreur enregistrée et correction appliquée.':'Erreur enregistrée dans le journal d’amélioration.','success');
-  }catch(err){ $('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`; }
 }
 
 
@@ -964,7 +907,6 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};

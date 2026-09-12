@@ -110,10 +110,8 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       const candidates=candidatesFor(f.key,building).filter(o=>o.sourceTier!=='forbidden');
       if(!candidates.length) continue;
       const eligible=candidates.filter(o=>o.confidence>=MIN_RETAINED_CONFIDENCE);
-      const main=eligible.filter(o=>o.sourceTier==='main'); const secondary=eligible.filter(o=>o.sourceTier==='secondary');
-      // v1.1.13 : une source non routée ne remplit plus automatiquement le tableau final.
-      // Elle reste disponible dans la file « À vérifier » pour éviter les faux positifs.
-      let pool=main.length?main:secondary;
+      const main=eligible.filter(o=>o.sourceTier==='main'); const secondary=eligible.filter(o=>o.sourceTier==='secondary'); const unrouted=eligible.filter(o=>o.sourceTier==='unrouted');
+      let pool=main.length?main:(secondary.length?secondary:unrouted);
       if(!pool.length) continue;
       const insulationField=/^(?:wall|floor|roof)_insulation(?:_|$)/.test(f.key);
       const directRset=insulationField?pool.filter(o=>!o.libraryDerived&&[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020].includes(o.docType)):[];
@@ -144,7 +142,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
   const detailed=occurrences.map(o=>{
     const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|'));
     const directWinner=!retained&&o.libraryDerived&&(directFinalGlobal.has(o.field)||directFinalExact.has(`${o.field}|${o.building}`));
-    return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
+    return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
   });
   return {operation,buildings,rows,finals,detailed,buildingAliases:grouping?.aliases||[],buildingSuggestions:grouping?.suggestions||[],authoritativeBuildings:grouping?.authoritative||[],buildingOverrides:grouping?.manualOverrides||{}};
 }
@@ -198,10 +196,7 @@ function buildCompleteness(docs,finals,grouping){
 function buildUncertain(detailed=[]){
   const best=new Map();
   for(const o of detailed){
-    if(o.sourceTier==='forbidden'||o.confidence<MIN_REVIEW_CONFIDENCE) continue;
-    // Les candidats non routés restent à vérifier même au-dessus de 90 % :
-    // une bonne ressemblance textuelle ne remplace pas une source métier autorisée.
-    if(o.sourceTier!=='unrouted'&&o.confidence>=MIN_RETAINED_CONFIDENCE) continue;
+    if(o.sourceTier==='forbidden'||o.confidence<MIN_REVIEW_CONFIDENCE||o.confidence>=MIN_RETAINED_CONFIDENCE) continue;
     const k=`${o.building}|${o.field}`; const prev=best.get(k);
     const rank=o.sourceRank??999, prevRank=prev?.sourceRank??999;
     if(!prev||rank<prevRank||(rank===prevRank&&o.confidence>prev.confidence)) best.set(k,o);
@@ -788,25 +783,6 @@ Année de construction : Entre 1948 et 1974`,DOC_TYPES.THERMAL));
   assert('OCR ciblé sur page Ubat Bao sans valeur reconstruite',shouldOcrPdfPage('Modification n° 1 : CALCUL du COEFFICIENT UBAT\nEtat après travaux',richItems,'auto')===true);
   const baoCollective=parseDocument(mk(`Bao Evolution\nEtude thermique 4 logements Romorantin\nDONNEES TECHNIQUES\nType de bâtiment : Logements collectifs\nBATIMENT : Bâtiment n°1`,DOC_TYPES.THERMAL));
   assert('Bao bâtiment collectif unique -> 1 bâtiment collectif',baoCollective.some(o=>o.field==='housing_collective_buildings'&&o.value===1),JSON.stringify(baoCollective.filter(o=>o.field==='housing_collective_buildings')));
-  // v1.1.13 - bibliothèque documentaire stricte / anti-faux-positifs.
-  const rtNarrative=mk("Article 7 Respect des exigences\nl - 2° Le Coefficient Bbio du bâtiment est inférieur ou égal au coefficient maximal Bbiomax Conforme\nCoefficient Bbio 53,6 72 25,6\nl - 3° la température Tic est inférieure ou égale à Ticréf Conforme\nZone : Z / Groupe : G 673,8 26 30,8 -4,8 Conforme",DOC_TYPES.RT2012);
-  const rtNarrativeParsed=parseDocument(rtNarrative);
-  assert('RT2012 : numéro d’article jamais pris pour Bbio',!rtNarrativeParsed.some(o=>o.field==='bbio'&&o.value===2),JSON.stringify(rtNarrativeParsed.filter(o=>o.field==='bbio')));
-  assert('RT2012 : tableau Bbio explicite conservé',rtNarrativeParsed.some(o=>o.field==='bbio'&&o.value===53.6),JSON.stringify(rtNarrativeParsed.filter(o=>o.field==='bbio')));
-  const dpeRecommendations=mk("DPE NEUF diagnostic de performance énergétique\nProduction d’énergies renouvelables\nD'autres solutions d'énergies renouvelables existent : pompe à chaleur chauffe eau thermodynamique panneaux solaires thermiques chauffage au bois réseau de chaleur vertueux géothermie\nSi climatisation, température recommandée en été -> 28°C",DOC_TYPES.DPE);
-  const dpeNoiseParsed=parseDocument(dpeRecommendations);
-  assert('DPE : recommandations ENR jamais prises pour installation réelle',!dpeNoiseParsed.some(o=>o.field==='enr'||o.field==='enr_type'),JSON.stringify(dpeNoiseParsed.filter(o=>/^enr/.test(o.field))));
-  assert('DPE : recommandation climatisation jamais prise pour refroidissement',!dpeNoiseParsed.some(o=>o.field==='cooling'),JSON.stringify(dpeNoiseParsed.filter(o=>o.field==='cooling')));
-  const carbonHeading=mk("Indicateurs principaux, à l'échelle du bâtiment, contribution Composant, par lot\nLOT : 08 - CVC\nIndicateur CO Dynamique kg CO2 39,09",DOC_TYPES.CARBON);
-  const carbonHeadingParsed=parseDocument(carbonHeading);
-  assert('Carbone : titre LOT 08 jamais pris pour IC lot 8',!carbonHeadingParsed.some(o=>o.field==='ic_lot_8'),JSON.stringify(carbonHeadingParsed.filter(o=>o.field==='ic_lot_8')));
-  const carbonExplicit=mk("IC composants lot 8 = 39,09 kg eq.CO2/m²",DOC_TYPES.CARBON);
-  assert('Carbone : libellé IC lot explicite accepté',parseDocument(carbonExplicit).some(o=>o.field==='ic_lot_8'&&Math.abs(o.value-39.09)<.001));
-  const unroutedDoc={id:'unrouted-test',name:'DPE.pdf',type:DOC_TYPES.DPE,read:{pages:[],text:''},buildings:{names:['Bâtiment A']}};
-  const unroutedResult=analyzeDocuments([unroutedDoc],structuredClone(DEFAULT_SOURCE_RULES),'Strict',{},[{field:'cep',value:777,building:'Bâtiment A',docId:'unrouted-test',fileName:'DPE.pdf',docType:DOC_TYPES.DPE,page:1,excerpt:'Cep 777',confidence:.99,method:'test'}]);
-  assert('Source non routée : jamais injectée au résultat final',unroutedResult.rows[0]?.cep===undefined,String(unroutedResult.rows[0]?.cep));
-  assert('Source non routée : candidate conservée À vérifier',unroutedResult.uncertain.some(o=>o.field==='cep'&&o.value===777),JSON.stringify(unroutedResult.uncertain));
-
 
   return {tests,passed:tests.filter(t=>t.ok).length,total:tests.length,ok:tests.every(t=>t.ok)};
 }

@@ -13,7 +13,7 @@ export function normalizeGlazingType(value='') {
     return '';
   };
   const n=v=>String(v).replace(',', '.').replace(/\.0+$/,'');
-  const plausible=parts=>parts.every((x,i)=>{ const v=Number(String(x).replace(',','.')); return Number.isFinite(v)&&v>0&&(i%2===1?(v>=6&&v<=40):(v>=2&&v<=12)); });
+  const plausible=parts=>parts.every((x,i)=>{ const v=Number(String(x).replace(',','.')); return Number.isFinite(v)&&v>0&&(i%2===1?v<=40:v<=80); });
   // Triple vitrage, ex. 4/12/4/12/4 Ar.
   let m=raw.match(/(?<!\d)(\d{1,3}(?:[,.]\d)?)\s*(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*(?:(Ar(?:gon)?|Kr(?:ypton)?|air)\s*)?(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*(?:(Ar(?:gon)?|Kr(?:ypton)?|air)\s*)?(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)(?!\d)/i);
   if(m){ const parts=[m[1],m[2],m[4],m[5],m[7]]; if(plausible(parts)){ const gas=gasFrom(`${m[3]||''} ${m[6]||''} ${raw}`); return `${parts.map(n).join('.')}${gas?` ${gas}`:''}`; } }

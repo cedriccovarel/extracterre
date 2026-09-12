@@ -1,17 +1,3 @@
-# v1.1.14 — tests mode bêta propriétaire
-
-- Vérifier que la croix ✕ est rendue uniquement avec `role=owner`.
-- Vérifier qu’un profil équipe ne voit aucun contrôle bêta.
-- Vérifier qu’un signalement sans bonne valeur crée un événement `beta_result_error`.
-- Vérifier qu’un signalement avec bonne valeur peut appliquer la correction au tableau.
-- Vérifier que la source, la page, la confiance et l’extrait sont enregistrés dans le journal.
-- Vérifier que le pack contient `erreurs_beta_proprietaire.json`.
-- Vérifier que le journal partagé reçoit les événements via le même mécanisme de synchronisation.
-
-# v1.1.13 — tests anti-faux-positifs
-
-Le banc interne contient désormais 141 tests, notamment : numéro d'article RT2012 ≠ Bbio, recommandations DPE ≠ ENR/refroidissement installé, titre de lot ACV ≠ IC lot, source non routée ≠ résultat final, Bbio Max compact, DH/DH Max, Tic/TicRef RT Existant et compositions vitrage plausibles.
-
 # Tests — ExtracTerre v1.1.12
 
 Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
