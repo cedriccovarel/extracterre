@@ -1,0 +1,31 @@
+{
+  "schema":"extracterre-regression-reference/v1",
+  "id":"rt2012-menton-22658",
+  "family":"RT2012 / Climawin / RSET 8100",
+  "documents":[
+    "22658.cw - Chemin du Suillet - MENTON - RTC V1.6 - RAPPORT.pdf",
+    "22658.cw - Chemin du Suillet - MENTON-8100 V1.6.pdf"
+  ],
+  "expected":{
+    "department":"06",
+    "housing_count":33,
+    "regulatory_surface":2341.9,
+    "zones":[
+      {"name":"CAGE SOCIAL","surface":830.6,"shab_or_su":653.5,"housing":11},
+      {"name":"CAGE ACCESSION","surface":1511.2,"shab_or_su":1203.2,"housing":22}
+    ],
+    "bbio":36.6,"bbio_max":51.0,"bbio_gain":28.2,
+    "cep":41.3,"cep_max":55.0,"cep_gain":24.9,
+    "tic":28.6,"tic_ref":30.1,
+    "cep_breakdown_primary":{"heating":10.9,"cooling":5.7,"ecs":19.3,"lighting":4.2,"aux_vent":1.2,"aux_dist":0.0,"total":41.3},
+    "cep_by_energy_primary":{"gas":23.3,"electricity":18.0,"total":41.3},
+    "systems":{"ventilation":"VMC simple flux hygroréglable B","heating":"Mixte : chaudière gaz condensation + PAC air/air + sèche-serviettes électriques","cooling":"PAC air/air / rafraîchissement zone accession","ecs":"Production individuelle instantanée par chaudière"},
+    "glazing":["8/16(argon)/44.2 Si","44.2/16(argon)/4"],
+    "false_positive_guards":[
+      "Les articles réglementaires 23 à 30 ne décrivent pas à eux seuls les équipements installés.",
+      "La mention refroidissement dans les exigences de moyens n'est pas une preuve de climatisation.",
+      "Les valeurs mensuelles servent au contrôle mais ne doivent pas remplacer le tableau annuel réglementaire en cas d'écart d'arrondi.",
+      "Une énergie est considérée comme réellement utilisée uniquement si sa colonne est non nulle dans le tableau détaillé ou si un système du projet la confirme."
+    ]
+  }
+}

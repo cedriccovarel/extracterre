@@ -2,6 +2,7 @@ import {DOC_TYPES,FIELD_DEFS,FIELD_MAP,normalizeFieldHeader,matchFieldByHeader,M
 import {normalizeText,normLower,numbersIn,parseFrNumber,findFirstMatch,unique,clamp,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
 import {buildingForPosition,canonicalBuilding} from './buildings.js';
 import {matchInsulationProduct,libraryNote} from './insulation-library.js';
+import {parsePatchOccurrences} from './patches.js';
 
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
   if(value===null||value===undefined||value==='') return null;
@@ -1360,5 +1361,7 @@ export function parseDocument(doc){
   // Un RSENV/ACV peut être classé « Étude carbone / ACV » tout en utilisant exactement
   // les tableaux détaillés RSEE (lots 1 à 13 + Énergie CE). On applique donc le même parseur.
   if([DOC_TYPES.CARBON,DOC_TYPES.RSENV].includes(doc.type)) addRsetCarbonBreakdown(doc,out);
+  // Patches déclaratifs : uniquement des règles de bibliothèque validées, sans eval/JS externe.
+  out.push(...parsePatchOccurrences(doc));
   return out.filter(Boolean);
 }

@@ -1,5 +1,6 @@
 import {DOC_TYPES} from './config.js';
 import {normLower} from './utils.js';
+import {patchClassifierScores} from './patches.js';
 
 export function classifyDocument(fileName, text='', meta={}) {
   const n=normLower(fileName), t=normLower(text).slice(0,120000);
@@ -47,6 +48,9 @@ export function classifyDocument(fileName, text='', meta={}) {
   if (/etude\s+(?:thermique|energetique|énergétique)|etude\s+reglementaire|thermique\s+reglementaire|rapport\s+(?:d['’])?etude\s+(?:thermique|energetique|énergétique)/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,/(?:rapport|etude|étude)[^\n]{0,30}(?:thermique|energetique|énergétique)/i.test(n)?20:10);
   if (/bao\s*evolution|bao\s*[eé]volution|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|calcul\s+du\s+coefficient\s+ubat/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,18);
   if(meta?.kind==='spreadsheet' && /(?:code\s+interne|nom\s+operation|maitre\s+d.?ouvrage|referentiel|total\s+logements|surface\s+batiment|ic\s+composants)/i.test(t)) add(DOC_TYPES.MANUAL,11);
+
+  // Règles documentaires versionnées (patches) : elles renforcent la classification sans exécuter de code arbitraire.
+  for(const [k,v] of Object.entries(patchClassifierScores(fileName,text))) add(k,v);
 
   // Règle anti-faux-positif : Th-BCE 2012 peut être cité dans un RSET RE2020, mais un RSET
   // explicitement titré « Réglementation Thermique 2012 » doit rester classé RT2012.

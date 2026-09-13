@@ -382,6 +382,14 @@
       <div><strong>4. Vérifier</strong><p>Corrigez manuellement les cellules avant export et validez ou refusez les propositions issues du crible fin.</p></div>
       <div><strong>5. Reprendre après interruption</strong><p>ExtracTerre sauvegarde localement chaque document analysé, les résultats et vos validations. À la réouverture, la session est restaurée automatiquement ; redéposez un PDF uniquement si vous souhaitez refaire sa lecture ou son OCR.</p></div>
       <div><strong>Confidentialité locale</strong><p>Les fichiers PDF bruts ne sont pas enregistrés dans IndexedDB. « Effacer la session » supprime les checkpoints et résultats du projet, sans modifier les règles de sources ni le journal d’amélioration. Le journal peut être synchronisé entre plusieurs ordinateurs lorsqu’une base partagée est configurée.</p></div>
+      <div class="ux-help-patches ux-patch-card">
+        <div class="ux-side-card-head"><span>🧩</span><h3>Patchs d’amélioration</h3></div>
+        <p>Chargez un patch JSON ExtracTerre pour enrichir la bibliothèque documentaire sans remplacer le site. Les patchs sont déclaratifs : aucun JavaScript externe n’est exécuté.</p>
+        <div class="ux-meta-row"><span>Bibliothèque active</span><strong id="patchStatus">0 patch actif</strong></div>
+        <div id="patchList" class="patch-list"><div class="patch-empty">Chargement…</div></div>
+        <div class="ux-journal-actions"><button id="patchLoadBtn" class="btn primary" type="button">＋ Charger un patch</button><input id="patchFileInput" type="file" accept="application/json,.json" hidden></div>
+        <small>Un patch chargé localement est mémorisé dans ce navigateur. Pour le déployer à toute l’équipe, il pourra ensuite être intégré au manifeste GitHub.</small>
+      </div>
       <div class="ux-help-journal ux-journal-card">
         <div class="ux-side-card-head"><span>🧠</span><h3>Journal d’amélioration</h3></div>
         <p class="ux-journal-copy">Les corrections, validations/rejets, champs manquants, erreurs et performances alimentent un journal séparé de la session de travail.</p>

@@ -1,4 +1,4 @@
-# v1.1.15 — tests mode bêta propriétaire
+# v1.1.14 — tests mode bêta propriétaire
 
 - Vérifier que la croix ✕ est rendue uniquement avec `role=owner`.
 - Vérifier qu’un profil équipe ne voit aucun contrôle bêta.
@@ -10,7 +10,7 @@
 
 # v1.1.13 — tests anti-faux-positifs
 
-Le banc interne contient désormais 141 tests, notamment : numéro d'article RT2012 ≠ Bbio, recommandations DPE ≠ ENR/refroidissement installé, titre de lot ACV ≠ IC lot, source non routée ≠ résultat final, Bbio Max compact, DH/DH Max, Tic/TicRef RT Existant et compositions vitrage plausibles.
+Le banc interne contient désormais 143 tests, notamment : numéro d'article RT2012 ≠ Bbio, recommandations DPE ≠ ENR/refroidissement installé, titre de lot ACV ≠ IC lot, source non routée ≠ résultat final, Bbio Max compact, DH/DH Max, Tic/TicRef RT Existant et compositions vitrage plausibles.
 
 # Tests — ExtracTerre v1.1.12
 

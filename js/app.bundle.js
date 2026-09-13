@@ -436,7 +436,11 @@ function normalizeGlazingType(value='') {
     return '';
   };
   const n=v=>String(v).replace(',', '.').replace(/\.0+$/,'');
-  const plausible=parts=>parts.every((x,i)=>{ const v=Number(String(x).replace(',','.')); return Number.isFinite(v)&&v>0&&(i%2===1?(v>=6&&v<=40):(v>=2&&v<=12)); });
+  const plausiblePane=x=>{ const raw=String(x).replace(',','.'); const v=Number(raw); if(!Number.isFinite(v)||v<=0) return false; if(v>=2&&v<=12) return true; /* verre feuilleté : 33.2, 44.2, 55.2, 66.2… */ return /^(?:22|33|44|55|66|77|88|99)\.[1-4]$/.test(raw); };
+  const plausible=parts=>parts.every((x,i)=>i%2===1?(()=>{const v=Number(String(x).replace(',','.'));return Number.isFinite(v)&&v>=6&&v<=40;})():plausiblePane(x));
+  // Composition avec gaz écrit entre parenthèses, fréquente dans Climawin : 8/16(argon)/44.2.
+  let pg=raw.match(/(?<!\d)(\d{1,3}(?:[,.]\d)?)\s*(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*\(\s*(argon|krypton|air)\s*\)\s*(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)(?!\d)/i);
+  if(pg){ const parts=[pg[1],pg[2],pg[4]]; if(plausible(parts)){ const gas=gasFrom(pg[3]); return `${parts.map(n).join('.')}${gas?` ${gas}`:''}`; } }
   // Triple vitrage, ex. 4/12/4/12/4 Ar.
   let m=raw.match(/(?<!\d)(\d{1,3}(?:[,.]\d)?)\s*(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*(?:(Ar(?:gon)?|Kr(?:ypton)?|air)\s*)?(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)\s*(?:(Ar(?:gon)?|Kr(?:ypton)?|air)\s*)?(?:\/|-|x)\s*(\d{1,3}(?:[,.]\d)?)(?!\d)/i);
   if(m){ const parts=[m[1],m[2],m[4],m[5],m[7]]; if(plausible(parts)){ const gas=gasFrom(`${m[3]||''} ${m[6]||''} ${raw}`); return `${parts.map(n).join('.')}${gas?` ${gas}`:''}`; } }
@@ -838,6 +842,77 @@ function operationNameFromFiles(docs){
   return s||'Opération';
 }
 
+/* ---- patches.js ---- */
+const STORAGE_KEY='extracterre-improvement-patches-v1';
+const SCHEMA='extracterre-improvement-patch/v1';
+let registry=[];
+const safeArray=v=>Array.isArray(v)?v:[];
+const safeText=v=>String(v??'').slice(0,5000);
+
+function validPatch(p){
+  if(!p||p.schema!==SCHEMA||typeof p.id!=='string'||!p.id.trim()) throw new Error('Patch ExtracTerre invalide ou incompatible.');
+  if(safeArray(p.extractionRules).length>120) throw new Error('Patch refusé : trop de règles.');
+  for(const r of safeArray(p.extractionRules)){
+    if(!r.field||!FIELD_MAP[r.field]) throw new Error(`Champ de patch inconnu : ${r.field||'—'}`);
+    if(typeof r.regex!=='string'||r.regex.length>700) throw new Error(`Expression régulière invalide : ${r.id||r.field}`);
+    try{ new RegExp(r.regex,'im'); }catch{ throw new Error(`Expression régulière invalide : ${r.id||r.field}`); }
+  }
+  return true;
+}
+function uniqueById(items){ const m=new Map(); for(const x of items){ if(x?.id) m.set(x.id,x); } return [...m.values()]; }
+function readLocal(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return []} }
+function writeLocal(items){ localStorage.setItem(STORAGE_KEY,JSON.stringify(items)); }
+async function initializeImprovementPatches(){
+  let site=[];
+  try{
+    const res=await fetch(`./data/patches/manifest.json?ts=${Date.now()}`,{cache:'no-store'});
+    if(res.ok){ const manifest=await res.json(); for(const entry of safeArray(manifest.patches)){ try{ validPatch(entry); site.push({...entry,_origin:'site'}); }catch(e){ console.warn('Patch site ignoré',e); } } }
+  }catch(e){ console.warn('Manifest patches indisponible',e); }
+  const local=[]; for(const p of readLocal()){ try{validPatch(p); local.push({...p,_origin:'local'});}catch(e){console.warn('Patch local ignoré',e);} }
+  registry=uniqueById([...site,...local]); return registry;
+}
+function getImprovementPatches(){return registry.map(p=>({id:p.id,title:p.title||p.id,version:p.version||'1.0.0',origin:p._origin||'site',description:p.description||''}));}
+function importImprovementPatchObject(p){ validPatch(p); const clean=JSON.parse(JSON.stringify(p)); const local=readLocal().filter(x=>x?.id!==clean.id); local.push(clean); writeLocal(local); registry=uniqueById([...registry.filter(x=>x.id!==clean.id),{...clean,_origin:'local'}]); return clean; }
+async function importImprovementPatchFile(file){ const txt=await file.text(); return importImprovementPatchObject(JSON.parse(txt)); }
+function removeLocalImprovementPatch(id){ const local=readLocal().filter(x=>x?.id!==id); writeLocal(local); registry=registry.filter(x=>!(x.id===id&&x._origin==='local')); }
+
+function patchClassifierScores(fileName,text=''){
+  const n=normLower(fileName),t=normLower(text).slice(0,180000),scores={};
+  for(const p of registry) for(const s of safeArray(p.documentSignatures)){
+    const all=safeArray(s.all).every(x=>t.includes(normLower(x))||n.includes(normLower(x)));
+    const any=!safeArray(s.any).length||safeArray(s.any).some(x=>t.includes(normLower(x))||n.includes(normLower(x)));
+    const none=safeArray(s.none).some(x=>t.includes(normLower(x))||n.includes(normLower(x)));
+    if(all&&any&&!none){ const k=s.docType; if(k) scores[k]=(scores[k]||0)+(Number(s.weight)||8); }
+  }
+  return scores;
+}
+function patchOccurrence(doc,page,line,r,value,p){
+  return {field:r.field,value,building:r.building||'Bâtiment unique',docId:doc.id,fileName:doc.name,docType:doc.type,page:page?.page||1,excerpt:normalizeText(line?.text||r.label||'').slice(0,420),confidence:clamp(Number(r.confidence)||.91),method:`patch:${p.id}:${r.id||r.field}`,unit:r.unit||'',origin:`Patch ${p.title||p.id}`,provenanceNote:r.note||'Règle documentaire versionnée issue de la bibliothèque ExtracTerre.',patchId:p.id};
+}
+function parsePatchOccurrences(doc){
+  const out=[], text=String(doc?.read?.text||''), low=normLower(text);
+  for(const p of registry){
+    for(const r of safeArray(p.extractionRules)){
+      if(safeArray(r.docTypes).length&&!r.docTypes.includes(doc.type)) continue;
+      if(safeArray(r.requireAny).length&&!safeArray(r.requireAny).some(x=>low.includes(normLower(x)))) continue;
+      if(safeArray(r.forbidAny).some(x=>low.includes(normLower(x)))) continue;
+      let re; try{re=new RegExp(r.regex,'gim')}catch{continue;} let m,count=0;
+      while((m=re.exec(text))&&count++<(Number(r.maxMatches)||4)){
+        const raw=m[Number(r.valueGroup)||1]; if(raw==null) continue;
+        let value=r.valueType==='number'?parseFrNumber(raw):normalizeText(raw);
+        if(value==null||value==='') continue;
+        const before=text.slice(0,m.index), pageNum=(before.match(/<PARSED TEXT FOR PAGE:/g)||[]).length||1;
+        const page=doc.read.pages?.find(x=>x.page===pageNum)||doc.read.pages?.[0]||{page:pageNum,lines:[]};
+        const line=page.lines?.find(x=>normalizeText(x.text).includes(normalizeText(String(raw)).slice(0,22)))||page.lines?.[0]||{text:m[0],index:0};
+        out.push(patchOccurrence(doc,page,line,r,value,p));
+        if(!r.allowMultiple) break;
+      }
+    }
+  }
+  return out;
+}
+const PATCH_SCHEMA=SCHEMA;
+
 /* ---- classifier.js ---- */
 function classifyDocument(fileName, text='', meta={}) {
   const n=normLower(fileName), t=normLower(text).slice(0,120000);
@@ -885,6 +960,9 @@ function classifyDocument(fileName, text='', meta={}) {
   if (/etude\s+(?:thermique|energetique|énergétique)|etude\s+reglementaire|thermique\s+reglementaire|rapport\s+(?:d['’])?etude\s+(?:thermique|energetique|énergétique)/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,/(?:rapport|etude|étude)[^\n]{0,30}(?:thermique|energetique|énergétique)/i.test(n)?20:10);
   if (/bao\s*evolution|bao\s*[eé]volution|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|calcul\s+du\s+coefficient\s+ubat/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,18);
   if(meta?.kind==='spreadsheet' && /(?:code\s+interne|nom\s+operation|maitre\s+d.?ouvrage|referentiel|total\s+logements|surface\s+batiment|ic\s+composants)/i.test(t)) add(DOC_TYPES.MANUAL,11);
+
+  // Règles documentaires versionnées (patches) : elles renforcent la classification sans exécuter de code arbitraire.
+  for(const [k,v] of Object.entries(patchClassifierScores(fileName,text))) add(k,v);
 
   // Règle anti-faux-positif : Th-BCE 2012 peut être cité dans un RSET RE2020, mais un RSET
   // explicitement titré « Réglementation Thermique 2012 » doit rester classé RT2012.
@@ -2597,6 +2675,8 @@ function parseDocument(doc){
   // Un RSENV/ACV peut être classé « Étude carbone / ACV » tout en utilisant exactement
   // les tableaux détaillés RSEE (lots 1 à 13 + Énergie CE). On applique donc le même parseur.
   if([DOC_TYPES.CARBON,DOC_TYPES.RSENV].includes(doc.type)) addRsetCarbonBreakdown(doc,out);
+  // Patches déclaratifs : uniquement des règles de bibliothèque validées, sans eval/JS externe.
+  out.push(...parsePatchOccurrences(doc));
   return out.filter(Boolean);
 }
 
@@ -3042,6 +3122,8 @@ function runSelfTests(){
   assert('RSET Bbio',get('bbio')===43.8,`obtenu ${get('bbio')}`); assert('RSET Bbio Max',get('bbio_max')===65.9); assert('RSET Cep',get('cep')===65); assert('RSET Cep Max',get('cep_max')===82.3); assert('RSET Cepnr',get('cepnr')===65); assert('RSET Cepnr Max',get('cepnr_max')===67.8); assert('RSET DH',get('dh')===988.2);
   const t=parseDocument(mk('Bâtiment A\nT2 T3 T4',DOC_TYPES.RSET_RE2020)); assert('Typologies interdites dans parseur RSET',!t.some(o=>o.field==='housing_typologies'));
   assert('Colonnes numériques non concaténées',JSON.stringify(numbersIn('505 212 162 116'))===JSON.stringify([505,212,162,116]));
+  assert('Vitrage Climawin feuilleté 8/16(argon)/44.2',normalizeGlazingType('8/16(argon)/44.2 Si')==='8.16.44.2 Ar');
+  assert('Vitrage Climawin feuilleté 44.2/16(argon)/4',normalizeGlazingType('44.2/16(argon)/4')==='44.2.16.4 Ar');
   const dhTable=parseDocument(mk('Bâtiment A\nZone / Groupes SRef Indicateur degrés-heures (DH) en °C.h\nNb heures inconfort\nOui | 663,4 | 505 | 212 | 162 | 116 | Conforme\nNon | 475,1 | 791,4 | 266 | 211 | 164 | Conforme',DOC_TYPES.RSET_RE2020)); assert('Tableau DH réel',dhTable.some(o=>o.field==='dh'&&o.value===791.4)); assert('SHAB jamais calculée depuis le tableau DH',!dhTable.some(o=>o.field==='shab'));
   const shabDoc=mk('Bâtiment : Batiment A\nZone(s) du bâtiment Usage zone S (m²) Surface utile SU ou surf. hab. SHAB Nombre de groupes\nZone traversante\n604,1 604,1 1\nZone non traversante\n914,1 914,1 1\nNombre de logements 25',DOC_TYPES.RSET_RE2020); const shabParsed=parseDocument(shabDoc); assert('SHAB Chapitre 2 = somme colonne SHAB',shabParsed.some(o=>o.field==='shab'&&Math.abs(o.value-1518.2)<0.001),String(shabParsed.find(o=>o.field==='shab')?.value));
   const namedBuilding=mk('Bâtiment : BAT Fa - Bat de 3 MI accolés\nIdentifiant Bâtiment \"BAT Fa - Bat de 3 MI accolés\"',DOC_TYPES.RSET_RE2020); namedBuilding.buildings=detectBuildings(namedBuilding); assert('Nom bâtiment RSET descriptif conservé',namedBuilding.buildings.names.includes('Bâtiment FA - BAT DE 3 MI ACCOLES'),namedBuilding.buildings.names.join(', '));
@@ -4802,13 +4884,6 @@ function decorateProjectSections(wrap,fields){
 function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs();
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; decorateProjectSections(wrap,fields); return; }
-  const betaMode=ownerBetaEnabled();
-  const finalByCell=new Map();
-  for(const o of (r.finals||[])){
-    const key=`${o.building||'Bâtiment unique'}|${o.field}`;
-    if(!finalByCell.has(key)||((finalByCell.get(key)?.confidence||0)<(o.confidence||0))) finalByCell.set(key,o);
-  }
-  const sourceForCell=(building,field)=>finalByCell.get(`${building}|${field}`)||finalByCell.get(`Bâtiment unique|${field}`)||null;
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
   const suggestions=(r.buildingSuggestions||[]).slice(0,8);
@@ -4819,19 +4894,10 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${betaMode?' <span class="beta-owner-hint">Mode bêta propriétaire : cliquez sur la petite ✕ d’une valeur pour signaler une erreur.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=sourceForCell(row.building,f.key); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${betaMode&&v!==undefined?'beta-error-enabled':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()&&v!==undefined?`<button class="cell-beta-error" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Signaler ce résultat comme erroné" aria-label="Signaler une erreur">✕</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
-  if(betaMode){
-    wrap.onclick=e=>{
-      const td=e.target.closest?.('.summary-value.beta-error-enabled');
-      if(!td||!wrap.contains(td)) return;
-      const rect=td.getBoundingClientRect();
-      if(e.clientX>=rect.right-24 && e.clientY<=rect.top+24){
-        e.preventDefault(); e.stopPropagation(); openBetaErrorDialog(td.dataset.building,td.dataset.field);
-      }
-    };
-  } else wrap.onclick=null;
+  $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
   const selected=()=>$$('#summaryView .building-select:checked').map(x=>x.value);
   const refreshMergeButton=()=>{ const b=$('#mergeBuildingsBtn'); if(b) b.disabled=selected().length<2; };
   $$('#summaryView .building-select').forEach(cb=>cb.onchange=refreshMergeButton);
@@ -5013,6 +5079,19 @@ function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCo
 function renderAll(){ renderFiles(); renderSummary(); renderOccurrences(); renderDiagnostics(); renderEconomic(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
 function switchTab(name){ state.activeTab=name; $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); if(name==='economics') renderEconomic(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
+function renderPatchUi(){
+  const list=$('#patchList'), status=$('#patchStatus'); if(!list) return;
+  const patches=getImprovementPatches();
+  if(status) status.textContent=`${patches.length} patch${patches.length>1?'s':''} actif${patches.length>1?'s':''}`;
+  list.innerHTML=patches.length?patches.map(p=>`<div class="patch-row"><div><strong>${escapeHtml(p.title)}</strong><small>${escapeHtml(p.version)} · ${p.origin==='local'?'chargé localement':'fourni par le site'}</small></div>${p.origin==='local'?`<button class="btn light patch-remove" data-patch-id="${escapeHtml(p.id)}" type="button">Retirer</button>`:''}</div>`).join(''):'<div class="patch-empty">Aucun patch actif.</div>';
+  list.querySelectorAll('.patch-remove').forEach(b=>b.onclick=()=>{removeLocalImprovementPatch(b.dataset.patchId);renderPatchUi();toast('Patch local retiré.','info');});
+}
+async function handlePatchFile(file){
+  if(!file) return;
+  try{const p=await importImprovementPatchFile(file);renderPatchUi();toast(`Patch « ${p.title||p.id} » chargé. Il sera utilisé aux prochaines analyses.`,'success');}
+  catch(err){toast(`Patch refusé : ${err.message||err}`,'error');}
+}
+
 function wire(){
   const dz=$('#dropzone'), fi=$('#fileInput'), folderInput=$('#folderInput');
   // Les labels ouvrent nativement les sélecteurs Finder. Le clic sur le fond de la dropzone
@@ -5071,12 +5150,15 @@ function wire(){
     analysisMode.onchange=()=>{ localStorage.setItem('extracterre-analysis-mode',analysisMode.value); syncModeInfo(); const p=ANALYSIS_MODES[analysisMode.value]; toast(p.key==='fast'?`Mode rapide : ${p.description}. Consommation mémoire plus élevée.`:`Mode ${p.label.toLowerCase()} : ${p.description}.`,'info'); };
     syncModeInfo();
   }
+  const patchBtn=$('#patchLoadBtn'), patchInput=$('#patchFileInput'); if(patchBtn&&patchInput){patchBtn.onclick=()=>patchInput.click();patchInput.onchange=async()=>{await handlePatchFile(patchInput.files?.[0]);patchInput.value='';};}
+  renderPatchUi();
   $('#version').textContent=`v${APP_VERSION}`; syncProjectInput(); libraryCheck();
 }
 
 async function initializeApp(){
   if(!globalThis.__extracterreAccessPromise) throw new Error('Le contrôle d’accès ExtracTerre n’a pas été initialisé.');
   await globalThis.__extracterreAccessPromise;
+  await initializeImprovementPatches();
   wire(); setLocalSaveUi('Recherche de session…');
   try{
     const restored=await loadWorkspaceSnapshot();

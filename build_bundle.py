@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 root=Path(__file__).parent
-order=['config.js','utils.js','insulation-library.js','buildings.js','classifier.js','readers.js','routing.js','parsers.js','tags.js','engine.js','economics.js','exporter.js','persistence.js','journal.js','app.js']
+order=['config.js','utils.js','insulation-library.js','buildings.js','patches.js','classifier.js','readers.js','routing.js','parsers.js','tags.js','engine.js','economics.js','exporter.js','persistence.js','journal.js','app.js']
 version=(root/'VERSION').read_text().strip()
 parts=[f"/* ExtracTerre bundled runtime v{version} - compatible file:// and GitHub Pages */\n(function(){{\n'use strict';\n"]
 for name in order:

@@ -1,4 +1,4 @@
-# ExtracTerre v1.1.15
+# ExtracTerre v1.1.14
 
 ## Mode bêta propriétaire
 
@@ -214,3 +214,6 @@ ExtracTerre propose trois niveaux de parallélisme : Sécurisé (1 document et 1
 
 ## v1.1.11 — études thermiques rénovation
 Les motifs observés dans le rapport Bao de référence sont utilisés comme cas de test et comme signatures structurelles génériques. L’interface ne contient aucun onglet ou chapitre propre à Bao Evolution. En mode OCR automatique, seules les pages sans couche texte exploitable ou les tableaux métier critiques réellement incomplets passent par Tesseract.
+
+### Patchs d’amélioration
+Depuis v1.1.15, ExtracTerre accepte des patchs JSON déclaratifs (`extracterre-improvement-patch/v1`). Ils peuvent être chargés depuis Aide > Patchs d’amélioration et restent mémorisés localement. Pour un déploiement global, ajoutez le patch au manifeste `data/patches/manifest.json`. Aucun code JavaScript contenu dans un patch n’est exécuté.

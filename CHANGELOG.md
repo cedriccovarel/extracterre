@@ -1,11 +1,4 @@
-# v1.1.15 — Correctif stabilité mode bêta
-
-- La croix bêta n'est plus un bouton DOM ajouté dans chaque cellule : elle est dessinée en CSS.
-- Un seul gestionnaire délégué remplace potentiellement des milliers de gestionnaires par cellule.
-- Les sources finales sont indexées une seule fois lors du rendu du tableau au lieu d'un `find()` répété dans toute la grille.
-- Aucun changement du moteur d'extraction ni du schéma des 167 colonnes.
-
-# v1.1.15 — Mode bêta propriétaire et remontée d’erreurs champ par champ
+# v1.1.14 — Mode bêta propriétaire et remontée d’erreurs champ par champ
 
 - Mode bêta visible uniquement pour le rôle propriétaire.
 - Ajout d’une croix ✕ sur chaque résultat renseigné pour signaler un résultat erroné.
@@ -310,3 +303,11 @@ Test réel sur `Xml_RSET_EC183200 BREUILLET V8.pdf` : 4 bâtiments annoncés →
 - Ajout du bouton « Intégrer au résultat » dans chaque résultat de recherche libre, avec choix du champ, du bâtiment, correction de la valeur et traçabilité document/page/extrait.
 - Déduplication des valeurs validées manuellement dans l’onglet Occurrences.
 - Bundle navigateur régénéré à partir des sources v1.0.20.
+
+## v1.1.15 — Bibliothèque RT2012 & patchs d’amélioration
+- Ajout d’un système de patchs JSON déclaratifs versionnés, sans exécution de JavaScript externe.
+- Bouton « Charger un patch » dans Aide : import local persistant, liste et retrait des patchs locaux.
+- Manifeste `data/patches/manifest.json` pour déployer des règles à toute l’équipe via GitHub.
+- Premier patch `RT2012 Climawin / RSET 8100`, construit à partir du corpus Menton.
+- Renforcement des signatures RT2012, Bbio/Bbiomax, Cep/Cepmax et nombre de logements.
+- Conservation du parseur structuré des tableaux détaillés : Cep par poste et par énergie, avec priorité au tableau annuel réglementaire.
