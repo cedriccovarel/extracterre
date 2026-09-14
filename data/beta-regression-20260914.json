@@ -1,0 +1,20 @@
+{
+  "schema": "extracterre-beta-regression/v1",
+  "source": "ExtracTerre_Journal_Amelioration_20260914",
+  "appTarget": "1.1.16",
+  "observedBetaErrors": 18,
+  "mainCorrections": [
+    "Tic/Ticref: exclure le millésime RT2012 comme valeur",
+    "RT2012 Bbio: exclure numéros d'article et phrases de conformité",
+    "RT2012 Cep: exclure les titres/sommaires et identifiants Bât.1",
+    "Ubat: exclure index, numéros de chapitre et intitulés sans valeur",
+    "Préserver les corrections fortes des patchs RT2012/RE2020/RT Existant"
+  ],
+  "integratedPatchIds": [
+    "rt2012-climawin-8100-v1",
+    "re2020-rset-rsee-structured-v1",
+    "re2020-rsenv-acv-structured-v1",
+    "prestaterre-contrat-certification-v1",
+    "rt-existant-cypecad-chapitres-v1"
+  ]
+}

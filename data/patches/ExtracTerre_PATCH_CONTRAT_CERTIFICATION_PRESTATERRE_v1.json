@@ -1,0 +1,329 @@
+{
+  "schema": "extracterre-improvement-patch/v1",
+  "id": "prestaterre-contrat-certification-v1",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.15",
+  "title": "Contrat de certification Prestaterre — structure générique",
+  "description": "Signatures et extractions strictes pour les contrats de certification Prestaterre. Le patch se base sur la structure métier (Contrat de certification, Demande de certification, Objet de la certification, Référentiel, Mention(s), Ouvrage, Montant) et non sur le nom du fichier, le client ou l'opération. Compatible avec PDF texte ou PDF scanné après OCR.",
+  "documentSignatures": [
+    {
+      "docType": "Contrat",
+      "weight": 45,
+      "all": [
+        "contrat de certification"
+      ],
+      "any": [
+        "demande de certification",
+        "objet de la certification",
+        "organisme certificateur",
+        "candidat à la certification"
+      ]
+    },
+    {
+      "docType": "Contrat",
+      "weight": 28,
+      "all": [
+        "article 1",
+        "référentiel"
+      ],
+      "any": [
+        "mention(s) et niveau(x)",
+        "profil",
+        "niveau(x) énergie"
+      ]
+    },
+    {
+      "docType": "Contrat",
+      "weight": 24,
+      "all": [
+        "article 2",
+        "nom de l'opération"
+      ],
+      "any": [
+        "ouvrage",
+        "adresse de l'opération",
+        "parcelle(s)"
+      ]
+    }
+  ],
+  "extractionRules": [
+    {
+      "id": "contract-owner-candidate",
+      "field": "owner_company",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "(?:^|\\n)\\s*Et\\s*:\\s*(?:\\r?\\n\\s*)?([^\\n\\r]{2,120})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.995,
+      "maxMatches": 1,
+      "requireAny": [
+        "candidat à la certification"
+      ],
+      "note": "Le cocontractant/candidat figurant après « Et : » est utilisé comme maître d'ouvrage/candidat, uniquement dans un document classé Contrat."
+    },
+    {
+      "id": "contract-reference-name",
+      "field": "reference_name",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "R[eé]f[eé]rentiel\\s*:\\s*([^\\n\\r]{3,140}?)(?:\\s*[–—-]\\s*Version\\s+([A-Za-z0-9._-]+))?\\s*(?:\\r?$)",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "demande de certification"
+      ]
+    },
+    {
+      "id": "contract-reference-version",
+      "field": "reference_version",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "R[eé]f[eé]rentiel\\s*:\\s*([^\\n\\r]{3,140}?)[–—-]\\s*Version\\s+([A-Za-z0-9._-]+)\\s*(?:\\r?$)",
+      "valueGroup": 2,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "demande de certification"
+      ]
+    },
+    {
+      "id": "contract-mentions-full",
+      "field": "mentions",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Mention\\s*\\(s\\)\\s*et\\s*niveau\\s*\\(x\\)\\s*:\\s*([\\s\\S]{3,320}?)\\s*Profil\\s*:",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "requireAny": [
+        "demande de certification"
+      ]
+    },
+    {
+      "id": "contract-effinergie-mention",
+      "field": "mention_effinergie",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Mention\\s*\\(s\\)\\s*et\\s*niveau\\s*\\(x\\)\\s*:\\s*[\\s\\S]{0,80}?(Label\\s+Effinergie[^▷>►→\\n\\r]{0,150})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "requireAny": [
+        "effinergie"
+      ]
+    },
+    {
+      "id": "contract-performance-after-separator",
+      "field": "performance",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Mention\\s*\\(s\\)\\s*et\\s*niveau\\s*\\(x\\)\\s*:[\\s\\S]{0,260}?(?:▷|►|→|>)\\s*([\\s\\S]{2,140}?)\\s*Profil\\s*:",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-selected-profile",
+      "field": "selected_profile",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Profil\\s*:\\s*([^\\n\\r]{2,140})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "requireAny": [
+        "demande de certification"
+      ]
+    },
+    {
+      "id": "contract-energy-level",
+      "field": "energy_level",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Niveau\\s*\\(x\\)\\s*[ÉE]nergie\\s*:\\s*([\\s\\S]{2,180}?)\\s*Article\\s*2\\b",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.997,
+      "maxMatches": 1,
+      "requireAny": [
+        "demande de certification"
+      ]
+    },
+    {
+      "id": "contract-operation-name",
+      "field": "operation_name",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Article\\s*2[\\s\\S]{0,1400}?Nom\\s+de\\s+l['’]op[eé]ration\\s*:\\s*([\\s\\S]{2,220}?)\\s*Adresse\\s+de\\s+l['’]op[eé]ration\\s*:",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "objet de la certification"
+      ]
+    },
+    {
+      "id": "contract-operation",
+      "field": "operation",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Article\\s*2[\\s\\S]{0,1400}?Nom\\s+de\\s+l['’]op[eé]ration\\s*:\\s*([\\s\\S]{2,220}?)\\s*Adresse\\s+de\\s+l['’]op[eé]ration\\s*:",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "requireAny": [
+        "objet de la certification"
+      ]
+    },
+    {
+      "id": "contract-work-type",
+      "field": "work_type",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:\\s*([\\s\\S]{2,180}?)\\s*Parcelle\\s*\\(s\\)\\s*:",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "objet de la certification"
+      ]
+    },
+    {
+      "id": "contract-collective-units",
+      "field": "housing_collective_units",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,160}?([0-9]{1,5})\\s*logement(?:\\(s\\)|s)?\\s*collectif(?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-collective-buildings",
+      "field": "housing_collective_buildings",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,220}?([0-9]{1,4})\\s*b[aâ]timent(?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "requireAny": [
+        "collectif"
+      ]
+    },
+    {
+      "id": "contract-total-housing-collective",
+      "field": "housing_total",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,160}?([0-9]{1,5})\\s*logement(?:\\(s\\)|s)?\\s*collectif(?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-building-total",
+      "field": "building_total",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,220}?([0-9]{1,4})\\s*b[aâ]timent(?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-grouped-units",
+      "field": "housing_grouped_units",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,180}?([0-9]{1,5})\\s*logement(?:\\(s\\)|s)?\\s*(?:individuel(?:\\(s\\)|s)?\\s*)?group[eé](?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-grouped-buildings",
+      "field": "housing_grouped_buildings",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,260}?(?:individuel(?:\\(s\\)|s)?\\s*)?group[eé](?:\\(s\\)|s)?[\\s\\S]{0,120}?([0-9]{1,4})\\s*b[aâ]timent(?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.992,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-community-units",
+      "field": "housing_community_units",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,180}?([0-9]{1,5})\\s*logement(?:\\(s\\)|s)?\\s*(?:d['’]habitat\\s+)?communautaire(?:\\(s\\)|s)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-individual-scattered",
+      "field": "housing_individual_scattered",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "Ouvrage\\s*:[\\s\\S]{0,180}?([0-9]{1,5})\\s*(?:maison(?:\\(s\\)|s)?\\s+individuelle(?:\\(s\\)|s)?|logement(?:\\(s\\)|s)?\\s+individuel(?:\\(s\\)|s)?\\s+diffus)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "contract-amount-ht",
+      "field": "order_amount_ht",
+      "docTypes": [
+        "Contrat"
+      ],
+      "regex": "montant\\s+total\\s+du\\s+contrat\\s+de\\s+certification\\s+s['’]?[eé]l[eè]ve\\s+[aà]\\s*([0-9][0-9 \\u00a0.,]*)\\s*€?\\s*H\\.?\\s*T\\.?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "€ HT",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "montant de la certification"
+      ]
+    }
+  ]
+}

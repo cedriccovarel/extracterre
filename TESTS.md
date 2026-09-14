@@ -1,3 +1,9 @@
+# v1.1.16 — retours bêta du 14/09/2026
+
+- 147/147 auto-tests métier.
+- Régressions ajoutées : RT2012/Tic=2012 interdit, identifiant Bât.1 ≠ Cep, numéro de chapitre Ubat ≠ valeur Ubat, maintien de la vraie ligne Cep RT2012.
+- Validation des 5 patchs intégrés au manifeste : 68 règles déclaratives au total.
+
 # v1.1.14 — tests mode bêta propriétaire
 
 - Vérifier que la croix ✕ est rendue uniquement avec `role=owner`.

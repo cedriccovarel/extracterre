@@ -1,0 +1,179 @@
+{
+  "schema": "extracterre-improvement-patch/v1",
+  "id": "re2020-rsenv-acv-structured-v1",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.15",
+  "title": "RE2020 RSENV / ACV structuré — Pleiades",
+  "description": "Signatures et extractions strictes pour les parties environnementales RSEnv/RSENV/ACV RE2020. Renforce l’identification des documents et les indicateurs IC du niveau bâtiment. Les indicateurs numériques sont volontairement limités aux études mono-bâtiment afin d’éviter de mélanger les résultats de plusieurs bâtiments/zones.",
+  "documentSignatures": [
+    {
+      "docType": "RSENV / RSNV",
+      "weight": 40,
+      "all": [
+        "réglementation environnementale 2020",
+        "partie « etude environnementale »"
+      ],
+      "any": [
+        "version rsenv",
+        "rsee/rsenv",
+        "sorties de l’analyse de cycle de vie environnementale"
+      ]
+    },
+    {
+      "docType": "Étude carbone / ACV",
+      "weight": 30,
+      "all": [
+        "ic construction",
+        "ic energie"
+      ],
+      "any": [
+        "ic composant",
+        "ic chantier",
+        "indicateurs de performance"
+      ]
+    },
+    {
+      "docType": "RSENV / RSNV",
+      "weight": 20,
+      "all": [
+        "contribution : composant"
+      ],
+      "any": [
+        "contribution : consommation d’énergie",
+        "contribution : chantier",
+        "inies"
+      ]
+    }
+  ],
+  "extractionRules": [
+    {
+      "id": "rsenv-op-name",
+      "field": "operation_name",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "Opération\\s*[:：]\\s*([^\\n\\r<]{3,180})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "rsenv-operation",
+      "field": "operation",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "Opération\\s*[:：]\\s*([^\\n\\r<]{3,180})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.997,
+      "maxMatches": 1
+    },
+    {
+      "id": "rsenv-department",
+      "field": "department",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "Département\\s+([0-9]{1,3}\\s*-\\s*[^\\n\\r]{2,70})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rsenv-building-total-a",
+      "field": "building_total",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+(?:du\\s+projet|modélisé\\s+dans\\s+le\\s+RSEnv)\\s+([0-9]{1,3})",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rsenv-single-shab",
+      "field": "shab",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "(?:Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+(?:du\\s+projet|modélisé\\s+dans\\s+le\\s+RSEnv)\\s+1\\b|Nombre\\s+de\\s+bâtiments\\s+1\\b)[\\s\\S]{0,14000}?Surface\\s+de\\s+Référence\\s*\\[?m[^\\]]*\\]?\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "m²",
+      "confidence": 0.996,
+      "maxMatches": 1,
+      "requireAny": [
+        "données techniques, niveau bâtiment et zone"
+      ]
+    },
+    {
+      "id": "rsenv-single-ic-construction",
+      "field": "ic_components",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "(?:Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+(?:du\\s+projet|modélisé\\s+dans\\s+le\\s+RSEnv)\\s+1\\b|Nombre\\s+de\\s+bâtiments\\s+1\\b)[\\s\\S]{0,300000}?Composant\\s*-\\s*Ic[_ ]composant\\s*\\[?kg\\s+CO[^\\]]*\\]?\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "kgCO2e/m²",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "ic construction"
+      ]
+    },
+    {
+      "id": "rsenv-single-ic-site",
+      "field": "ic_site",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "(?:Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+(?:du\\s+projet|modélisé\\s+dans\\s+le\\s+RSEnv)\\s+1\\b|Nombre\\s+de\\s+bâtiments\\s+1\\b)[\\s\\S]{0,300000}?Chantier\\s*-\\s*Ic[_ ]chantier\\s*\\[?kg\\s+CO[^\\]]*\\]?\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "kgCO2e/m²",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rsenv-single-ic-energy",
+      "field": "ic_energy",
+      "docTypes": [
+        "RSENV / RSNV",
+        "Étude carbone / ACV"
+      ],
+      "regex": "(?:Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+(?:du\\s+projet|modélisé\\s+dans\\s+le\\s+RSEnv)\\s+1\\b|Nombre\\s+de\\s+bâtiments\\s+1\\b)[\\s\\S]{0,300000}?Ic[_ ]energie\\s*\\[?kg\\s+CO[^\\]]*\\]?\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "kgCO2e/m²",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rsenv-single-network-heating",
+      "field": "heating_vector_after",
+      "docTypes": [
+        "RSENV / RSNV"
+      ],
+      "regex": "(?:Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+(?:du\\s+projet|modélisé\\s+dans\\s+le\\s+RSEnv)\\s+1\\b|Nombre\\s+de\\s+bâtiments\\s+1\\b)[\\s\\S]{0,18000}?Nom\\s+du\\s+réseau\\s+de\\s+chaleur\\s+urbain\\s+([^\\n\\r]{3,120})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.995,
+      "maxMatches": 1,
+      "requireAny": [
+        "réseau de chaleur urbain"
+      ]
+    }
+  ]
+}

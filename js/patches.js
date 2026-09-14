@@ -1,5 +1,6 @@
 import {DOC_TYPES,FIELD_MAP} from './config.js';
 import {normalizeText,normLower,parseFrNumber,clamp} from './utils.js';
+import {canonicalBuilding} from './buildings.js';
 
 const STORAGE_KEY='extracterre-improvement-patches-v1';
 const SCHEMA='extracterre-improvement-patch/v1';
@@ -7,13 +8,19 @@ let registry=[];
 const safeArray=v=>Array.isArray(v)?v:[];
 const safeText=v=>String(v??'').slice(0,5000);
 
+function validateRegex(raw,label,max=1200){
+  if(raw==null) return;
+  if(typeof raw!=='string'||raw.length>max) throw new Error(`Expression régulière invalide : ${label}`);
+  try{ new RegExp(raw,'im'); }catch{ throw new Error(`Expression régulière invalide : ${label}`); }
+}
 function validPatch(p){
   if(!p||p.schema!==SCHEMA||typeof p.id!=='string'||!p.id.trim()) throw new Error('Patch ExtracTerre invalide ou incompatible.');
-  if(safeArray(p.extractionRules).length>120) throw new Error('Patch refusé : trop de règles.');
+  if(safeArray(p.extractionRules).length>160) throw new Error('Patch refusé : trop de règles.');
   for(const r of safeArray(p.extractionRules)){
     if(!r.field||!FIELD_MAP[r.field]) throw new Error(`Champ de patch inconnu : ${r.field||'—'}`);
-    if(typeof r.regex!=='string'||r.regex.length>700) throw new Error(`Expression régulière invalide : ${r.id||r.field}`);
-    try{ new RegExp(r.regex,'im'); }catch{ throw new Error(`Expression régulière invalide : ${r.id||r.field}`); }
+    validateRegex(r.regex,r.id||r.field,900);
+    validateRegex(r.sectionStartRegex,`${r.id||r.field}: sectionStartRegex`);
+    validateRegex(r.sectionEndRegex,`${r.id||r.field}: sectionEndRegex`);
   }
   return true;
 }
@@ -44,8 +51,52 @@ export function patchClassifierScores(fileName,text=''){
   }
   return scores;
 }
-function patchOccurrence(doc,page,line,r,value,p){
-  return {field:r.field,value,building:r.building||'Bâtiment unique',docId:doc.id,fileName:doc.name,docType:doc.type,page:page?.page||1,excerpt:normalizeText(line?.text||r.label||'').slice(0,420),confidence:clamp(Number(r.confidence)||.91),method:`patch:${p.id}:${r.id||r.field}`,unit:r.unit||'',origin:`Patch ${p.title||p.id}`,provenanceNote:r.note||'Règle documentaire versionnée issue de la bibliothèque ExtracTerre.',patchId:p.id};
+function patchOccurrence(doc,page,line,r,value,p,buildingOverride=null){
+  return {field:r.field,value,building:buildingOverride||r.building||'Bâtiment unique',docId:doc.id,fileName:doc.name,docType:doc.type,page:page?.page||1,excerpt:normalizeText(line?.text||r.label||'').slice(0,420),confidence:clamp(Number(r.confidence)||.91),method:`patch:${p.id}:${r.id||r.field}`,unit:r.unit||'',origin:`Patch ${p.title||p.id}`,provenanceNote:r.note||'Règle documentaire versionnée issue de la bibliothèque ExtracTerre.',patchId:p.id};
+}
+function pageLineForAbsoluteIndex(doc,text,absoluteIndex,raw,matchText=''){
+  const before=text.slice(0,Math.max(0,absoluteIndex)), pageNum=(before.match(/<PARSED TEXT FOR PAGE:/g)||[]).length||1;
+  const page=doc.read.pages?.find(x=>x.page===pageNum)||doc.read.pages?.[0]||{page:pageNum,lines:[]};
+  const needle=normalizeText(String(raw??'')).slice(0,22);
+  const line=page.lines?.find(x=>needle&&normalizeText(x.text).includes(needle))||page.lines?.find(x=>normalizeText(matchText).includes(normalizeText(x.text).slice(0,22)))||page.lines?.[0]||{text:matchText,index:0};
+  return {page,line};
+}
+function ruleValue(r,m){
+  if(Object.prototype.hasOwnProperty.call(r,'constantValue')) return r.constantValue;
+  const raw=m[Number(r.valueGroup)||1]; if(raw==null) return null;
+  return r.valueType==='number'?parseFrNumber(raw):normalizeText(raw);
+}
+function selectMatches(matches,r){
+  if(!matches.length) return [];
+  const mode=String(r.selection||'').toLowerCase();
+  if(!mode) return r.allowMultiple?matches:matches.slice(0,1);
+  const g=Number(r.selectionGroup)||Number(r.valueGroup)||1;
+  const scored=matches.map(x=>({x,v:parseFrNumber(x.m[g])})).filter(z=>Number.isFinite(z.v));
+  if(!scored.length) return matches.slice(0,1);
+  scored.sort((a,b)=>mode==='min'?a.v-b.v:b.v-a.v);
+  return [scored[0].x];
+}
+function sectionSlices(text,r){
+  if(!r.sectionStartRegex) return [{text,start:0,building:r.building||null}];
+  let sr; try{sr=new RegExp(r.sectionStartRegex,'gim')}catch{return []}
+  const starts=[]; let sm;
+  while((sm=sr.exec(text))){
+    let building=r.building||null;
+    const bg=Number(r.sectionBuildingGroup)||0;
+    if(bg&&sm[bg]) building=canonicalBuilding(sm[bg]);
+    starts.push({match:sm,start:sm.index,contentStart:sm.index+sm[0].length,building});
+    if(sr.lastIndex===sm.index) sr.lastIndex++;
+  }
+  const out=[];
+  for(let i=0;i<starts.length;i++){
+    const cur=starts[i], hardEnd=i+1<starts.length?starts[i+1].start:text.length;
+    let end=hardEnd;
+    if(r.sectionEndRegex){
+      try{ const er=new RegExp(r.sectionEndRegex,'im'), em=er.exec(text.slice(cur.contentStart,hardEnd)); if(em) end=cur.contentStart+em.index; }catch{}
+    }
+    out.push({text:text.slice(cur.contentStart,end),start:cur.contentStart,building:cur.building});
+  }
+  return out;
 }
 export function parsePatchOccurrences(doc){
   const out=[], text=String(doc?.read?.text||''), low=normLower(text);
@@ -54,16 +105,20 @@ export function parsePatchOccurrences(doc){
       if(safeArray(r.docTypes).length&&!r.docTypes.includes(doc.type)) continue;
       if(safeArray(r.requireAny).length&&!safeArray(r.requireAny).some(x=>low.includes(normLower(x)))) continue;
       if(safeArray(r.forbidAny).some(x=>low.includes(normLower(x)))) continue;
-      let re; try{re=new RegExp(r.regex,'gim')}catch{continue;} let m,count=0;
-      while((m=re.exec(text))&&count++<(Number(r.maxMatches)||4)){
-        const raw=m[Number(r.valueGroup)||1]; if(raw==null) continue;
-        let value=r.valueType==='number'?parseFrNumber(raw):normalizeText(raw);
-        if(value==null||value==='') continue;
-        const before=text.slice(0,m.index), pageNum=(before.match(/<PARSED TEXT FOR PAGE:/g)||[]).length||1;
-        const page=doc.read.pages?.find(x=>x.page===pageNum)||doc.read.pages?.[0]||{page:pageNum,lines:[]};
-        const line=page.lines?.find(x=>normalizeText(x.text).includes(normalizeText(String(raw)).slice(0,22)))||page.lines?.[0]||{text:m[0],index:0};
-        out.push(patchOccurrence(doc,page,line,r,value,p));
-        if(!r.allowMultiple) break;
+      const slices=sectionSlices(text,r);
+      for(const section of slices){
+        let re; try{re=new RegExp(r.regex,'gim')}catch{continue;} let m,count=0; const matches=[];
+        while((m=re.exec(section.text))&&count++<(Number(r.maxMatches)||20)){
+          matches.push({m,index:m.index});
+          if(re.lastIndex===m.index) re.lastIndex++;
+        }
+        for(const hit of selectMatches(matches,r)){
+          const value=ruleValue(r,hit.m); if(value==null||value==='') continue;
+          const absoluteIndex=section.start+hit.index;
+          const raw=Object.prototype.hasOwnProperty.call(r,'constantValue')?String(r.constantValue):hit.m[Number(r.valueGroup)||1];
+          const {page,line}=pageLineForAbsoluteIndex(doc,text,absoluteIndex,raw,hit.m[0]);
+          out.push(patchOccurrence(doc,page,line,r,value,p,section.building));
+        }
       }
     }
   }

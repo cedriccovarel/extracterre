@@ -677,7 +677,12 @@ export function parseRset(doc){
     for(let i=0;i<lines.length;i++){
       const line=lines[i], s=normalizeText(line.text), win=lineWindow(page,i,0,4);
       if(/coefficient\s+bbio/i.test(s)){
-        let vals=numbersIn(s).filter(x=>x>=0); if(vals.length<2 && /^coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0);
+        // Ne jamais lire les numéros d'article / de bâtiment comme des valeurs Bbio.
+        // Ex.: « 1-2° Le coefficient Bbio ... Conforme » ou « ... - Bât.1 ».
+        const narrative=/\b(?:article|art\.?|conforme|inferieur|inférieur|egal|égal|exigence)\b/i.test(s) || /-\s*b[aâ]t\.?\s*\d+\s*$/i.test(s);
+        let vals=[];
+        if(!narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(s).filter(x=>x>=0&&x<1000);
+        if(vals.length<2 && !narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0&&x<1000);
         if(vals.length>=2){ push(out,occ(doc,page,line,'bbio',vals[0],'rset:bbio-table',0.99)); push(out,occ(doc,page,line,'bbio_max',vals[1],'rset:bbio-table',0.99)); if(vals.length>=3) push(out,occ(doc,page,line,'bbio_gain',vals[2],'rset:bbio-table',0.98,'%')); }
       }
       if(/coefficients?\s+cep\s*\/\s*cep\s*(?:max)?/i.test(s)){
@@ -688,7 +693,11 @@ export function parseRset(doc){
           if(vals.length>=5) push(out,occ(doc,page,line,'cep_gain',vals[4],'rset:cep-table',0.99,'%')); if(vals.length>=6) push(out,occ(doc,page,line,'cepnr_gain',vals[5],'rset:cep-table',0.99,'%'));
         }
       } else if(/^coefficient\s+cep\b/i.test(s)){
-        let vals=numbersIn(s).filter(x=>x>=-100); if(vals.length<2) vals=numbersIn(lineWindow(page,i,0,2)).filter(x=>x>=-100);
+        // Une ligne de sommaire telle que « Coefficient Cep max du bâtiment - Bât.1 »
+        // ne porte aucune valeur de résultat. On exige une vraie ligne de tableau numérique.
+        const headingOnly=/du\s+b[aâ]timent|b[aâ]t\.?\s*\d+|sommaire/i.test(s) && !/[=:]|\d+[,.]\d+/.test(s);
+        let vals=headingOnly?[]:numbersIn(s).filter(x=>x>=-100&&x<5000);
+        if(vals.length<2 && !headingOnly && /[=:]|\d+[,.]\d+/.test(s)) vals=numbersIn(lineWindow(page,i,0,2)).filter(x=>x>=-100&&x<5000);
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:rt2012-cep-table',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:rt2012-cep-table',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:rt2012-cep-table',0.99,'%')); }
       }
       // Récapitulatifs logiciels compacts : « Bbio 43,2 65,9 34,45 ».
@@ -777,10 +786,27 @@ function parseGenericRegulatory(doc){
     ['cep_gas',/\bcep\b[^|]{0,45}\bgaz\b/i],['cep_district',/\bcep\b[^|]{0,55}(?:reseau\s+de\s+chaleur|réseau\s+de\s+chaleur|rcu)/i],['cep_biomass',/\bcep\b[^|]{0,55}(?:bois|biomasse|granules|granulés)/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], s=normalizeText(line.text), ctx=lineWindow(page,i,1,2);
-    for(const [field,re,unit] of specs){ if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
+    for(const [field,re,unit] of specs){ if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re);
+      // Garde-fous issus du journal bêta : « RT2012 » ne doit jamais devenir Tic=2012/Ticref=2012.
+      // Les températures réglementaires Tic/Ticref plausibles sont exprimées en °C.
+      if(v!==null && ((field==='tic'||field==='tic_ref') && (v<5||v>60))) continue;
+      // Les autres indicateurs ne doivent pas capturer un millésime isolé après un libellé.
+      if(v!==null && v>=1900 && v<=2100) continue;
+      if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
     for(const [field,re] of breakdown){ if(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:cep-breakdown',0.90,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); } }
     const phase=phaseFromContext(ctx,doc);
-    if(/\bubat\b/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bubat\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)})); }
+    if(/\bubat\b/i.test(ctx)){
+      // Le mot Ubat dans un index, un intitulé de chapitre ou une formule n'est pas une valeur.
+      // On ne conserve le fallback générique que si le voisinage porte explicitement une valeur plausible.
+      const lowCtx=normLower(ctx);
+      const structuralHeading=/\b(?:index|sommaire|justification\s+du\s+calcul|coefficient\s+moyen.*ubat\s*$)\b/i.test(lowCtx);
+      const m=ctx.match(/\bubat\b[^\n|]{0,45}?(?:[:=]|\bprojet\b|\binitial\b|\bavant\b|\bapres\b|\baprès\b)?\s*(-?\d+(?:[,.]\d+)?)/i);
+      const v=m?parseFrNumber(m[1]):null;
+      if(!structuralHeading && v!==null && v>0.02 && v<8){
+        if(phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
+        if(phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
+      }
+    }
     if(/\bcep\b/i.test(ctx) && !/cep\s*[,._-]?\s*nr/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bcep\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'cep_before',v,'renovation:cep-before',0.91,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after' && /final|reception|apres\s+travaux/i.test(normLower(`${doc.name} ${ctx}`))) push(out,occ(doc,page,line,'cep_after_final',v,'renovation:cep-after-final',0.92,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); }
   }} return out;
 }

@@ -1,0 +1,104 @@
+{
+  "schema": "extracterre-improvement-patch/v1",
+  "id": "rt2012-climawin-8100-v1",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.15",
+  "title": "RT2012 Climawin / RSET 8100",
+  "description": "Signatures et garde-fous issus des rapports RT2012 Climawin et RSET 8100. Renforce Bbio, Cep, Tic/Ticref et la reconnaissance du format sans modifier le schéma 167 colonnes.",
+  "documentSignatures": [
+    {
+      "docType": "RT2012",
+      "weight": 26,
+      "all": [
+        "récapitulatif standardisé d'etude thermique"
+      ],
+      "any": [
+        "th-bce 2012",
+        "climawin",
+        "8100"
+      ]
+    },
+    {
+      "docType": "RT2012",
+      "weight": 18,
+      "all": [
+        "réglementation thermique 2012"
+      ],
+      "any": [
+        "coefficient bbio",
+        "coefficient cep"
+      ]
+    }
+  ],
+  "extractionRules": [
+    {
+      "id": "rt2012-bbio",
+      "field": "bbio",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Bbio\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "requireAny": [
+        "résultats du besoin bioclimatique"
+      ]
+    },
+    {
+      "id": "rt2012-bbiomax",
+      "field": "bbio_max",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Bbio\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.998,
+      "requireAny": [
+        "résultats du besoin bioclimatique"
+      ]
+    },
+    {
+      "id": "rt2012-cep",
+      "field": "cep",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Cep\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "kWhEP/m².an",
+      "confidence": 0.998,
+      "requireAny": [
+        "consommation conventionnelle d'énergie cep"
+      ]
+    },
+    {
+      "id": "rt2012-cepmax",
+      "field": "cep_max",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Cep\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 2,
+      "valueType": "number",
+      "unit": "kWhEP/m².an",
+      "confidence": 0.998,
+      "requireAny": [
+        "consommation conventionnelle d'énergie cep"
+      ]
+    },
+    {
+      "id": "rt2012-housing-count",
+      "field": "housing_count",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Nombre\\s+de\\s+logements\\s+([0-9]{1,5})",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.997
+    }
+  ]
+}

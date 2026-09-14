@@ -1,0 +1,348 @@
+{
+  "schema": "extracterre-improvement-patch/v1",
+  "id": "re2020-rset-rsee-structured-v1",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.15",
+  "title": "RE2020 RSET/RSEE structuré — Pleiades & U22Win",
+  "description": "Signatures et extractions strictes pour RSET/RSEE RE2020 (Pleiades, U22Win/Perrenoud). Priorise les tableaux réglementaires Bbio/Cep/Cep,nr et les données administratives structurées. Les extractions de performance détaillées sont volontairement limitées au cas mono-bâtiment pour éviter les mélanges entre bâtiments.",
+  "documentSignatures": [
+    {
+      "docType": "RSET RE2020",
+      "weight": 34,
+      "all": [
+        "réglementation environnementale 2020",
+        "partie « etude thermique »"
+      ],
+      "any": [
+        "date de génération du rset",
+        "résultats du calcul de la consommation conventionnelle d’énergie cep et cep,nr"
+      ]
+    },
+    {
+      "docType": "RSEE RE2020",
+      "weight": 30,
+      "all": [
+        "récapitulatif standardisé energie environnement",
+        "partie « etude thermique »"
+      ],
+      "any": [
+        "rsee/rset",
+        "rsee_rset",
+        "feuillets bâtiments"
+      ]
+    },
+    {
+      "docType": "RSET RE2020",
+      "weight": 18,
+      "all": [
+        "th-dbc"
+      ],
+      "any": [
+        "pleiades",
+        "u22win",
+        "logiciels perrenoud"
+      ]
+    }
+  ],
+  "extractionRules": [
+    {
+      "id": "re2020-op-name",
+      "field": "operation_name",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Opération\\s*[:：]\\s*([^\\n\\r<]{3,180})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-operation",
+      "field": "operation",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Opération\\s*[:：]\\s*([^\\n\\r<]{3,180})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.997,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-department",
+      "field": "department",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Département\\s+([0-9]{1,3}\\s*-\\s*[^\\n\\r]{2,70})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-building-total",
+      "field": "building_total",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+([0-9]{1,3})",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-housing-total",
+      "field": "housing_total",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,9000}?Nombre\\s+de\\s+logements\\s+([0-9]{1,5})",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-surface",
+      "field": "shab",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,9000}?S\\s*/\\s*usage\\s+principal\\s+([0-9][0-9 \\u00a0.,]*)\\s*m",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "m²",
+      "confidence": 0.996,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-bbio",
+      "field": "bbio",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,13000}?Coefficient\\s+Bbio\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "besoins bioclimatique"
+      ]
+    },
+    {
+      "id": "re2020-single-bbiomax",
+      "field": "bbio_max",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,13000}?Coefficient\\s+Bbio\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "besoins bioclimatique"
+      ]
+    },
+    {
+      "id": "re2020-single-bbio-gain",
+      "field": "bbio_gain",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,13000}?Coefficient\\s+Bbio\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 3,
+      "valueType": "number",
+      "unit": "%",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-cep",
+      "field": "cep",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,15000}?Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "unit": "kWhEP/m².an",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "consommations en énergie primaire et énergie primaire non"
+      ]
+    },
+    {
+      "id": "re2020-single-cepmax",
+      "field": "cep_max",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,15000}?Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 2,
+      "valueType": "number",
+      "unit": "kWhEP/m².an",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-cepnr",
+      "field": "cepnr",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,15000}?Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 3,
+      "valueType": "number",
+      "unit": "kWhEP/m².an",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-cepnrmax",
+      "field": "cepnr_max",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,15000}?Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 4,
+      "valueType": "number",
+      "unit": "kWhEP/m².an",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-cep-gain",
+      "field": "cep_gain",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,15000}?Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 5,
+      "valueType": "number",
+      "unit": "%",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-cepnr-gain",
+      "field": "cepnr_gain",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,15000}?Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 6,
+      "valueType": "number",
+      "unit": "%",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-structure",
+      "field": "structure",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,11000}?Matériau\\s+principal\\s+de\\s+la\\s+structure\\s+([^\\n\\r]{2,80})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-window-material",
+      "field": "window_material",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,11000}?Type\\s+de\\s+menuiseries\\s+([^\\n\\r]{2,80})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-window-shading",
+      "field": "window_shading",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,11000}?Type\\s+de\\s+protections\\s+mobiles\\s+des\\s+menuiseries\\s+([^\\n\\r]{2,100})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.995,
+      "maxMatches": 1
+    },
+    {
+      "id": "re2020-single-heating-vector",
+      "field": "heating_vector_after",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,120000}?Vecteur\\s+d.énergie\\s+principal\\s+Type\\s+Chaud\\s+([^\\n\\r]{2,60})\\s+Froid\\s+([^\\n\\r]{2,60})\\s+ECS\\s+([^\\n\\r]{2,60})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.997,
+      "maxMatches": 1,
+      "requireAny": [
+        "vecteurs énergie et générateurs principaux"
+      ]
+    },
+    {
+      "id": "re2020-single-cooling-vector",
+      "field": "cooling",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,120000}?Vecteur\\s+d.énergie\\s+principal\\s+Type\\s+Chaud\\s+([^\\n\\r]{2,60})\\s+Froid\\s+([^\\n\\r]{2,60})\\s+ECS\\s+([^\\n\\r]{2,60})",
+      "valueGroup": 2,
+      "valueType": "text",
+      "confidence": 0.992,
+      "maxMatches": 1,
+      "requireAny": [
+        "vecteurs énergie et générateurs principaux"
+      ]
+    },
+    {
+      "id": "re2020-single-ecs-vector",
+      "field": "ecs_vector_after",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020"
+      ],
+      "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+1\\b[\\s\\S]{0,120000}?Vecteur\\s+d.énergie\\s+principal\\s+Type\\s+Chaud\\s+([^\\n\\r]{2,60})\\s+Froid\\s+([^\\n\\r]{2,60})\\s+ECS\\s+([^\\n\\r]{2,60})",
+      "valueGroup": 3,
+      "valueType": "text",
+      "confidence": 0.997,
+      "maxMatches": 1,
+      "requireAny": [
+        "vecteurs énergie et générateurs principaux"
+      ]
+    }
+  ]
+}

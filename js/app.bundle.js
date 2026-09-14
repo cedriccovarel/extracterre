@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.15 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v1.1.16 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.15';
+const APP_VERSION = '1.1.16';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -849,13 +849,19 @@ let registry=[];
 const safeArray=v=>Array.isArray(v)?v:[];
 const safeText=v=>String(v??'').slice(0,5000);
 
+function validateRegex(raw,label,max=1200){
+  if(raw==null) return;
+  if(typeof raw!=='string'||raw.length>max) throw new Error(`Expression régulière invalide : ${label}`);
+  try{ new RegExp(raw,'im'); }catch{ throw new Error(`Expression régulière invalide : ${label}`); }
+}
 function validPatch(p){
   if(!p||p.schema!==SCHEMA||typeof p.id!=='string'||!p.id.trim()) throw new Error('Patch ExtracTerre invalide ou incompatible.');
-  if(safeArray(p.extractionRules).length>120) throw new Error('Patch refusé : trop de règles.');
+  if(safeArray(p.extractionRules).length>160) throw new Error('Patch refusé : trop de règles.');
   for(const r of safeArray(p.extractionRules)){
     if(!r.field||!FIELD_MAP[r.field]) throw new Error(`Champ de patch inconnu : ${r.field||'—'}`);
-    if(typeof r.regex!=='string'||r.regex.length>700) throw new Error(`Expression régulière invalide : ${r.id||r.field}`);
-    try{ new RegExp(r.regex,'im'); }catch{ throw new Error(`Expression régulière invalide : ${r.id||r.field}`); }
+    validateRegex(r.regex,r.id||r.field,900);
+    validateRegex(r.sectionStartRegex,`${r.id||r.field}: sectionStartRegex`);
+    validateRegex(r.sectionEndRegex,`${r.id||r.field}: sectionEndRegex`);
   }
   return true;
 }
@@ -886,8 +892,52 @@ function patchClassifierScores(fileName,text=''){
   }
   return scores;
 }
-function patchOccurrence(doc,page,line,r,value,p){
-  return {field:r.field,value,building:r.building||'Bâtiment unique',docId:doc.id,fileName:doc.name,docType:doc.type,page:page?.page||1,excerpt:normalizeText(line?.text||r.label||'').slice(0,420),confidence:clamp(Number(r.confidence)||.91),method:`patch:${p.id}:${r.id||r.field}`,unit:r.unit||'',origin:`Patch ${p.title||p.id}`,provenanceNote:r.note||'Règle documentaire versionnée issue de la bibliothèque ExtracTerre.',patchId:p.id};
+function patchOccurrence(doc,page,line,r,value,p,buildingOverride=null){
+  return {field:r.field,value,building:buildingOverride||r.building||'Bâtiment unique',docId:doc.id,fileName:doc.name,docType:doc.type,page:page?.page||1,excerpt:normalizeText(line?.text||r.label||'').slice(0,420),confidence:clamp(Number(r.confidence)||.91),method:`patch:${p.id}:${r.id||r.field}`,unit:r.unit||'',origin:`Patch ${p.title||p.id}`,provenanceNote:r.note||'Règle documentaire versionnée issue de la bibliothèque ExtracTerre.',patchId:p.id};
+}
+function pageLineForAbsoluteIndex(doc,text,absoluteIndex,raw,matchText=''){
+  const before=text.slice(0,Math.max(0,absoluteIndex)), pageNum=(before.match(/<PARSED TEXT FOR PAGE:/g)||[]).length||1;
+  const page=doc.read.pages?.find(x=>x.page===pageNum)||doc.read.pages?.[0]||{page:pageNum,lines:[]};
+  const needle=normalizeText(String(raw??'')).slice(0,22);
+  const line=page.lines?.find(x=>needle&&normalizeText(x.text).includes(needle))||page.lines?.find(x=>normalizeText(matchText).includes(normalizeText(x.text).slice(0,22)))||page.lines?.[0]||{text:matchText,index:0};
+  return {page,line};
+}
+function ruleValue(r,m){
+  if(Object.prototype.hasOwnProperty.call(r,'constantValue')) return r.constantValue;
+  const raw=m[Number(r.valueGroup)||1]; if(raw==null) return null;
+  return r.valueType==='number'?parseFrNumber(raw):normalizeText(raw);
+}
+function selectMatches(matches,r){
+  if(!matches.length) return [];
+  const mode=String(r.selection||'').toLowerCase();
+  if(!mode) return r.allowMultiple?matches:matches.slice(0,1);
+  const g=Number(r.selectionGroup)||Number(r.valueGroup)||1;
+  const scored=matches.map(x=>({x,v:parseFrNumber(x.m[g])})).filter(z=>Number.isFinite(z.v));
+  if(!scored.length) return matches.slice(0,1);
+  scored.sort((a,b)=>mode==='min'?a.v-b.v:b.v-a.v);
+  return [scored[0].x];
+}
+function sectionSlices(text,r){
+  if(!r.sectionStartRegex) return [{text,start:0,building:r.building||null}];
+  let sr; try{sr=new RegExp(r.sectionStartRegex,'gim')}catch{return []}
+  const starts=[]; let sm;
+  while((sm=sr.exec(text))){
+    let building=r.building||null;
+    const bg=Number(r.sectionBuildingGroup)||0;
+    if(bg&&sm[bg]) building=canonicalBuilding(sm[bg]);
+    starts.push({match:sm,start:sm.index,contentStart:sm.index+sm[0].length,building});
+    if(sr.lastIndex===sm.index) sr.lastIndex++;
+  }
+  const out=[];
+  for(let i=0;i<starts.length;i++){
+    const cur=starts[i], hardEnd=i+1<starts.length?starts[i+1].start:text.length;
+    let end=hardEnd;
+    if(r.sectionEndRegex){
+      try{ const er=new RegExp(r.sectionEndRegex,'im'), em=er.exec(text.slice(cur.contentStart,hardEnd)); if(em) end=cur.contentStart+em.index; }catch{}
+    }
+    out.push({text:text.slice(cur.contentStart,end),start:cur.contentStart,building:cur.building});
+  }
+  return out;
 }
 function parsePatchOccurrences(doc){
   const out=[], text=String(doc?.read?.text||''), low=normLower(text);
@@ -896,16 +946,20 @@ function parsePatchOccurrences(doc){
       if(safeArray(r.docTypes).length&&!r.docTypes.includes(doc.type)) continue;
       if(safeArray(r.requireAny).length&&!safeArray(r.requireAny).some(x=>low.includes(normLower(x)))) continue;
       if(safeArray(r.forbidAny).some(x=>low.includes(normLower(x)))) continue;
-      let re; try{re=new RegExp(r.regex,'gim')}catch{continue;} let m,count=0;
-      while((m=re.exec(text))&&count++<(Number(r.maxMatches)||4)){
-        const raw=m[Number(r.valueGroup)||1]; if(raw==null) continue;
-        let value=r.valueType==='number'?parseFrNumber(raw):normalizeText(raw);
-        if(value==null||value==='') continue;
-        const before=text.slice(0,m.index), pageNum=(before.match(/<PARSED TEXT FOR PAGE:/g)||[]).length||1;
-        const page=doc.read.pages?.find(x=>x.page===pageNum)||doc.read.pages?.[0]||{page:pageNum,lines:[]};
-        const line=page.lines?.find(x=>normalizeText(x.text).includes(normalizeText(String(raw)).slice(0,22)))||page.lines?.[0]||{text:m[0],index:0};
-        out.push(patchOccurrence(doc,page,line,r,value,p));
-        if(!r.allowMultiple) break;
+      const slices=sectionSlices(text,r);
+      for(const section of slices){
+        let re; try{re=new RegExp(r.regex,'gim')}catch{continue;} let m,count=0; const matches=[];
+        while((m=re.exec(section.text))&&count++<(Number(r.maxMatches)||20)){
+          matches.push({m,index:m.index});
+          if(re.lastIndex===m.index) re.lastIndex++;
+        }
+        for(const hit of selectMatches(matches,r)){
+          const value=ruleValue(r,hit.m); if(value==null||value==='') continue;
+          const absoluteIndex=section.start+hit.index;
+          const raw=Object.prototype.hasOwnProperty.call(r,'constantValue')?String(r.constantValue):hit.m[Number(r.valueGroup)||1];
+          const {page,line}=pageLineForAbsoluteIndex(doc,text,absoluteIndex,raw,hit.m[0]);
+          out.push(patchOccurrence(doc,page,line,r,value,p,section.building));
+        }
       }
     }
   }
@@ -1991,7 +2045,12 @@ function parseRset(doc){
     for(let i=0;i<lines.length;i++){
       const line=lines[i], s=normalizeText(line.text), win=lineWindow(page,i,0,4);
       if(/coefficient\s+bbio/i.test(s)){
-        let vals=numbersIn(s).filter(x=>x>=0); if(vals.length<2 && /^coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0);
+        // Ne jamais lire les numéros d'article / de bâtiment comme des valeurs Bbio.
+        // Ex.: « 1-2° Le coefficient Bbio ... Conforme » ou « ... - Bât.1 ».
+        const narrative=/\b(?:article|art\.?|conforme|inferieur|inférieur|egal|égal|exigence)\b/i.test(s) || /-\s*b[aâ]t\.?\s*\d+\s*$/i.test(s);
+        let vals=[];
+        if(!narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(s).filter(x=>x>=0&&x<1000);
+        if(vals.length<2 && !narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0&&x<1000);
         if(vals.length>=2){ push(out,occ(doc,page,line,'bbio',vals[0],'rset:bbio-table',0.99)); push(out,occ(doc,page,line,'bbio_max',vals[1],'rset:bbio-table',0.99)); if(vals.length>=3) push(out,occ(doc,page,line,'bbio_gain',vals[2],'rset:bbio-table',0.98,'%')); }
       }
       if(/coefficients?\s+cep\s*\/\s*cep\s*(?:max)?/i.test(s)){
@@ -2002,7 +2061,11 @@ function parseRset(doc){
           if(vals.length>=5) push(out,occ(doc,page,line,'cep_gain',vals[4],'rset:cep-table',0.99,'%')); if(vals.length>=6) push(out,occ(doc,page,line,'cepnr_gain',vals[5],'rset:cep-table',0.99,'%'));
         }
       } else if(/^coefficient\s+cep\b/i.test(s)){
-        let vals=numbersIn(s).filter(x=>x>=-100); if(vals.length<2) vals=numbersIn(lineWindow(page,i,0,2)).filter(x=>x>=-100);
+        // Une ligne de sommaire telle que « Coefficient Cep max du bâtiment - Bât.1 »
+        // ne porte aucune valeur de résultat. On exige une vraie ligne de tableau numérique.
+        const headingOnly=/du\s+b[aâ]timent|b[aâ]t\.?\s*\d+|sommaire/i.test(s) && !/[=:]|\d+[,.]\d+/.test(s);
+        let vals=headingOnly?[]:numbersIn(s).filter(x=>x>=-100&&x<5000);
+        if(vals.length<2 && !headingOnly && /[=:]|\d+[,.]\d+/.test(s)) vals=numbersIn(lineWindow(page,i,0,2)).filter(x=>x>=-100&&x<5000);
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:rt2012-cep-table',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:rt2012-cep-table',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:rt2012-cep-table',0.99,'%')); }
       }
       // Récapitulatifs logiciels compacts : « Bbio 43,2 65,9 34,45 ».
@@ -2091,10 +2154,27 @@ function parseGenericRegulatory(doc){
     ['cep_gas',/\bcep\b[^|]{0,45}\bgaz\b/i],['cep_district',/\bcep\b[^|]{0,55}(?:reseau\s+de\s+chaleur|réseau\s+de\s+chaleur|rcu)/i],['cep_biomass',/\bcep\b[^|]{0,55}(?:bois|biomasse|granules|granulés)/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], s=normalizeText(line.text), ctx=lineWindow(page,i,1,2);
-    for(const [field,re,unit] of specs){ if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
+    for(const [field,re,unit] of specs){ if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re);
+      // Garde-fous issus du journal bêta : « RT2012 » ne doit jamais devenir Tic=2012/Ticref=2012.
+      // Les températures réglementaires Tic/Ticref plausibles sont exprimées en °C.
+      if(v!==null && ((field==='tic'||field==='tic_ref') && (v<5||v>60))) continue;
+      // Les autres indicateurs ne doivent pas capturer un millésime isolé après un libellé.
+      if(v!==null && v>=1900 && v<=2100) continue;
+      if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
     for(const [field,re] of breakdown){ if(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:cep-breakdown',0.90,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); } }
     const phase=phaseFromContext(ctx,doc);
-    if(/\bubat\b/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bubat\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)})); }
+    if(/\bubat\b/i.test(ctx)){
+      // Le mot Ubat dans un index, un intitulé de chapitre ou une formule n'est pas une valeur.
+      // On ne conserve le fallback générique que si le voisinage porte explicitement une valeur plausible.
+      const lowCtx=normLower(ctx);
+      const structuralHeading=/\b(?:index|sommaire|justification\s+du\s+calcul|coefficient\s+moyen.*ubat\s*$)\b/i.test(lowCtx);
+      const m=ctx.match(/\bubat\b[^\n|]{0,45}?(?:[:=]|\bprojet\b|\binitial\b|\bavant\b|\bapres\b|\baprès\b)?\s*(-?\d+(?:[,.]\d+)?)/i);
+      const v=m?parseFrNumber(m[1]):null;
+      if(!structuralHeading && v!==null && v>0.02 && v<8){
+        if(phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
+        if(phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
+      }
+    }
     if(/\bcep\b/i.test(ctx) && !/cep\s*[,._-]?\s*nr/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bcep\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'cep_before',v,'renovation:cep-before',0.91,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after' && /final|reception|apres\s+travaux/i.test(normLower(`${doc.name} ${ctx}`))) push(out,occ(doc,page,line,'cep_after_final',v,'renovation:cep-after-final',0.92,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); }
   }} return out;
 }
@@ -3540,6 +3620,23 @@ Année de construction : Entre 1948 et 1974`,DOC_TYPES.THERMAL));
   const rtNarrativeParsed=parseDocument(rtNarrative);
   assert('RT2012 : numéro d’article jamais pris pour Bbio',!rtNarrativeParsed.some(o=>o.field==='bbio'&&o.value===2),JSON.stringify(rtNarrativeParsed.filter(o=>o.field==='bbio')));
   assert('RT2012 : tableau Bbio explicite conservé',rtNarrativeParsed.some(o=>o.field==='bbio'&&o.value===53.6),JSON.stringify(rtNarrativeParsed.filter(o=>o.field==='bbio')));
+  const betaTicNoise=mk(`Synthese Tic :
+Tic Projet TIC Max RT2012
+Tic Projet < Tic Max RT2012`,DOC_TYPES.THERMAL);
+  const betaTicNoiseParsed=parseDocument(betaTicNoise);
+  assert('Journal bêta : RT2012 jamais interprété comme Tic=2012',!betaTicNoiseParsed.some(o=>(o.field==='tic'||o.field==='tic_ref')&&o.value===2012),JSON.stringify(betaTicNoiseParsed.filter(o=>/^tic/.test(o.field))));
+  const betaCepHeading=mk(`Récapitulatif Standardisé d'Etude Thermique
+Coefficient Cep max du bâtiment -Bat.1
+Coefficient Cep 41,30 55,00 24,91`,DOC_TYPES.RT2012);
+  const betaCepHeadingParsed=parseDocument(betaCepHeading);
+  assert('Journal bêta : identifiant Bât.1 jamais interprété comme Cep',!betaCepHeadingParsed.some(o=>o.field==='cep'&&o.value===1),JSON.stringify(betaCepHeadingParsed.filter(o=>/^cep/.test(o.field))));
+  assert('Journal bêta : vraie ligne Cep RT2012 conservée',betaCepHeadingParsed.some(o=>o.field==='cep'&&Math.abs(o.value-41.3)<.001),JSON.stringify(betaCepHeadingParsed.filter(o=>/^cep/.test(o.field))));
+  const betaUbatToc=mk(`INDEX
+1.6.- Justification du calcul des Coefficients de déperdition par transmission à travers les parois du bâtiment
+1.6.1.- Coefficient moyen de déperdition par transmission à travers les parois du bâtiment, Ubât 6
+Etat initial`,DOC_TYPES.THERMAL);
+  const betaUbatTocParsed=parseDocument(betaUbatToc);
+  assert('Journal bêta : numéro de chapitre Ubat jamais interprété comme Ubat avant',!betaUbatTocParsed.some(o=>o.field==='ubat_before'&&o.value===6),JSON.stringify(betaUbatTocParsed.filter(o=>/^ubat/.test(o.field))));
   const dpeRecommendations=mk("DPE NEUF diagnostic de performance énergétique\nProduction d’énergies renouvelables\nD'autres solutions d'énergies renouvelables existent : pompe à chaleur chauffe eau thermodynamique panneaux solaires thermiques chauffage au bois réseau de chaleur vertueux géothermie\nSi climatisation, température recommandée en été -> 28°C",DOC_TYPES.DPE);
   const dpeNoiseParsed=parseDocument(dpeRecommendations);
   assert('DPE : recommandations ENR jamais prises pour installation réelle',!dpeNoiseParsed.some(o=>o.field==='enr'||o.field==='enr_type'),JSON.stringify(dpeNoiseParsed.filter(o=>/^enr/.test(o.field))));

@@ -1,3 +1,11 @@
+## v1.1.16 — Retours bêta + bibliothèque de patchs intégrée
+
+- Intègre par défaut les patchs RT2012 Climawin, RSET/RSEE RE2020, RSENV/ACV, contrat Prestaterre et RT Existant CYPECAD par chapitres.
+- Corrige les faux positifs Tic/Ticref = 2012 signalés dans le journal bêta.
+- Durcit Bbio/Cep RT2012 pour ignorer numéros d’article, sommaires et identifiants Bât.1.
+- Durcit le fallback Ubat pour ne plus lire un numéro de chapitre comme valeur.
+- Conserve le moteur de patchs multi-bâtiments par section/chapter.
+
 # v1.1.14 — Mode bêta propriétaire et remontée d’erreurs champ par champ
 
 - Mode bêta visible uniquement pour le rôle propriétaire.

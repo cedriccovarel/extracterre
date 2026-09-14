@@ -795,6 +795,23 @@ Année de construction : Entre 1948 et 1974`,DOC_TYPES.THERMAL));
   const rtNarrativeParsed=parseDocument(rtNarrative);
   assert('RT2012 : numéro d’article jamais pris pour Bbio',!rtNarrativeParsed.some(o=>o.field==='bbio'&&o.value===2),JSON.stringify(rtNarrativeParsed.filter(o=>o.field==='bbio')));
   assert('RT2012 : tableau Bbio explicite conservé',rtNarrativeParsed.some(o=>o.field==='bbio'&&o.value===53.6),JSON.stringify(rtNarrativeParsed.filter(o=>o.field==='bbio')));
+  const betaTicNoise=mk(`Synthese Tic :
+Tic Projet TIC Max RT2012
+Tic Projet < Tic Max RT2012`,DOC_TYPES.THERMAL);
+  const betaTicNoiseParsed=parseDocument(betaTicNoise);
+  assert('Journal bêta : RT2012 jamais interprété comme Tic=2012',!betaTicNoiseParsed.some(o=>(o.field==='tic'||o.field==='tic_ref')&&o.value===2012),JSON.stringify(betaTicNoiseParsed.filter(o=>/^tic/.test(o.field))));
+  const betaCepHeading=mk(`Récapitulatif Standardisé d'Etude Thermique
+Coefficient Cep max du bâtiment -Bat.1
+Coefficient Cep 41,30 55,00 24,91`,DOC_TYPES.RT2012);
+  const betaCepHeadingParsed=parseDocument(betaCepHeading);
+  assert('Journal bêta : identifiant Bât.1 jamais interprété comme Cep',!betaCepHeadingParsed.some(o=>o.field==='cep'&&o.value===1),JSON.stringify(betaCepHeadingParsed.filter(o=>/^cep/.test(o.field))));
+  assert('Journal bêta : vraie ligne Cep RT2012 conservée',betaCepHeadingParsed.some(o=>o.field==='cep'&&Math.abs(o.value-41.3)<.001),JSON.stringify(betaCepHeadingParsed.filter(o=>/^cep/.test(o.field))));
+  const betaUbatToc=mk(`INDEX
+1.6.- Justification du calcul des Coefficients de déperdition par transmission à travers les parois du bâtiment
+1.6.1.- Coefficient moyen de déperdition par transmission à travers les parois du bâtiment, Ubât 6
+Etat initial`,DOC_TYPES.THERMAL);
+  const betaUbatTocParsed=parseDocument(betaUbatToc);
+  assert('Journal bêta : numéro de chapitre Ubat jamais interprété comme Ubat avant',!betaUbatTocParsed.some(o=>o.field==='ubat_before'&&o.value===6),JSON.stringify(betaUbatTocParsed.filter(o=>/^ubat/.test(o.field))));
   const dpeRecommendations=mk("DPE NEUF diagnostic de performance énergétique\nProduction d’énergies renouvelables\nD'autres solutions d'énergies renouvelables existent : pompe à chaleur chauffe eau thermodynamique panneaux solaires thermiques chauffage au bois réseau de chaleur vertueux géothermie\nSi climatisation, température recommandée en été -> 28°C",DOC_TYPES.DPE);
   const dpeNoiseParsed=parseDocument(dpeRecommendations);
   assert('DPE : recommandations ENR jamais prises pour installation réelle',!dpeNoiseParsed.some(o=>o.field==='enr'||o.field==='enr_type'),JSON.stringify(dpeNoiseParsed.filter(o=>/^enr/.test(o.field))));
