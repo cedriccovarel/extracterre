@@ -1,6 +1,6 @@
 {
   "schema": "extracterre-patch-manifest/v1",
-  "generatedFor": "1.1.17",
+  "generatedFor": "1.1.18",
   "patches": [
     {
       "schema": "extracterre-improvement-patch/v1",
@@ -965,8 +965,8 @@
     {
       "schema": "extracterre-improvement-patch/v1",
       "id": "rt-existant-cypecad-chapitres-v1",
-      "version": "1.0.0",
-      "minAppVersion": "1.1.16",
+      "version": "1.0.1",
+      "minAppVersion": "1.1.18",
       "title": "RT Existant globale CYPECAD — lecture par bâtiment et chapitre",
       "description": "Patch générique pour les études thermiques réglementaires RT Existant globale produites par CYPECAD MEP / moteur THCEX. Chaque chapitre BÂTIMENT est isolé avant extraction afin d'éviter tout mélange entre bâtiments, quel que soit leur nombre. Extrait prioritairement Ubat projet, Cep projet, Tic/Ticref du groupe le plus défavorable et la décomposition Cep disponible dans le schéma ExtracTerre.",
       "documentSignatures": [
@@ -1197,7 +1197,10 @@
           "valueType": "text",
           "confidence": 0.995,
           "maxMatches": 8,
-          "note": "Vecteur de chauffage issu du tableau de consommations du système de chauffage ; aucune énergie listée sans valeur n'est retenue."
+          "note": "Vecteur de chauffage issu du tableau de consommations du système de chauffage ; aucune énergie listée sans valeur n'est retenue.",
+          "requireAny": [
+            "chauffage"
+          ]
         },
         {
           "id": "rtex-ecs-vector-project",
@@ -1212,7 +1215,10 @@
           "valueType": "text",
           "confidence": 0.995,
           "maxMatches": 8,
-          "note": "Vecteur ECS issu du tableau de production d'eau chaude sanitaire ; les lignes sans consommation ne sont jamais interprétées comme vecteurs actifs."
+          "note": "Vecteur ECS issu du tableau de production d'eau chaude sanitaire ; les lignes sans consommation ne sont jamais interprétées comme vecteurs actifs.",
+          "requireAny": [
+            "eau chaude sanitaire"
+          ]
         }
       ]
     }

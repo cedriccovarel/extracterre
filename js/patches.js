@@ -41,6 +41,18 @@ export function importImprovementPatchObject(p){ validPatch(p); const clean=JSON
 export async function importImprovementPatchFile(file){ const txt=await file.text(); return importImprovementPatchObject(JSON.parse(txt)); }
 export function removeLocalImprovementPatch(id){ const local=readLocal().filter(x=>x?.id!==id); writeLocal(local); registry=registry.filter(x=>!(x.id===id&&x._origin==='local')); }
 
+function signatureMatchesDocument(signature,fileName,text){
+  const n=normLower(fileName),t=normLower(text).slice(0,180000);
+  const all=safeArray(signature?.all).every(x=>t.includes(normLower(x))||n.includes(normLower(x)));
+  const any=!safeArray(signature?.any).length||safeArray(signature?.any).some(x=>t.includes(normLower(x))||n.includes(normLower(x)));
+  const none=safeArray(signature?.none).some(x=>t.includes(normLower(x))||n.includes(normLower(x)));
+  return all&&any&&!none;
+}
+function patchMatchesDocument(p,doc,text){
+  const sigs=safeArray(p?.documentSignatures).filter(s=>!s?.docType||s.docType===doc.type);
+  if(!sigs.length) return true;
+  return sigs.some(s=>signatureMatchesDocument(s,doc.name||'',text));
+}
 export function patchClassifierScores(fileName,text=''){
   const n=normLower(fileName),t=normLower(text).slice(0,180000),scores={};
   for(const p of registry) for(const s of safeArray(p.documentSignatures)){
@@ -101,6 +113,7 @@ function sectionSlices(text,r){
 export function parsePatchOccurrences(doc){
   const out=[], text=String(doc?.read?.text||''), low=normLower(text);
   for(const p of registry){
+    if(!patchMatchesDocument(p,doc,text)) continue;
     for(const r of safeArray(p.extractionRules)){
       if(safeArray(r.docTypes).length&&!r.docTypes.includes(doc.type)) continue;
       if(safeArray(r.requireAny).length&&!safeArray(r.requireAny).some(x=>low.includes(normLower(x)))) continue;

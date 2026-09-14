@@ -786,7 +786,9 @@ function parseGenericRegulatory(doc){
     ['cep_gas',/\bcep\b[^|]{0,45}\bgaz\b/i],['cep_district',/\bcep\b[^|]{0,55}(?:reseau\s+de\s+chaleur|réseau\s+de\s+chaleur|rcu)/i],['cep_biomass',/\bcep\b[^|]{0,55}(?:bois|biomasse|granules|granulés)/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], s=normalizeText(line.text), ctx=lineWindow(page,i,1,2);
-    for(const [field,re,unit] of specs){ if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re);
+    const ticTableContext=/\btic\b/i.test(ctx)&&/\btic\s*(?:ref|réf|reference|référence|max)\b/i.test(ctx)&&/\bCE[12]\b/i.test(ctx);
+    if(ticTableContext){ const temps=numbersIn(ctx).filter(v=>v>=15&&v<=50); if(temps.length>=2){ const tic=temps[temps.length-2],ref=temps[temps.length-1],building=buildingForPosition(doc,page.page,line.index); push(out,occ(doc,page,line,'tic',tic,'generic:tic-table-paired',0.97,'°C',{building,excerpt:normalizeText(ctx).slice(0,420),provenanceNote:'Tic lue avec TicRef sur la même ligne de tableau ; identifiants de groupe ignorés.'})); push(out,occ(doc,page,line,'tic_ref',ref,'generic:tic-table-paired',0.97,'°C',{building,excerpt:normalizeText(ctx).slice(0,420),provenanceNote:'TicRef associée à la Tic de la même ligne de tableau.'})); } }
+    for(const [field,re,unit] of specs){ if(ticTableContext&&(field==='tic'||field==='tic_ref')) continue; if(explicitMetricCarrier(s,re)||(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx))){ const carrier=explicitMetricCarrier(s,re)?s:ctx; const v=firstValueAfterLabel(carrier,re);
       // Garde-fous issus du journal bêta : « RT2012 » ne doit jamais devenir Tic=2012/Ticref=2012.
       // Les températures réglementaires Tic/Ticref plausibles sont exprimées en °C.
       if(v!==null && ((field==='tic'||field==='tic_ref') && (v<5||v>60))) continue;

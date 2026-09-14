@@ -254,7 +254,7 @@ Jeu de référence : `data/bao-evolution-reference.json`. Résultat attendu du l
 - Vérifier que le bundle et les ressources sont bien cache-bustés en `1.1.12`.
 
 
-## v1.1.17 — parseur hiérarchique RT2012 / RE2020 / RSENV
+## v1.1.18 — parseur hiérarchique RT2012 / RE2020 / RSENV
 - Branches réglementaires parallèles : RT2012/RT Existant et RE2020/RSET-RSEE/RSENV.
 - Priorité par type de document puis chapitre/sous-chapitre/niveau (bâtiment, zone, lot).
 - RT2012 : Chapitre 2 prioritaire pour Bbio/Cep/Tic ; sorties détaillées pour Cep par poste ; Chapitre 4 pour enveloppe et systèmes.

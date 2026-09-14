@@ -1,3 +1,12 @@
+# v1.1.18 — 14/09/2026
+
+- Nouvelle UX résultats : barre sticky fine, navigateur projet latéral fixe, vue synthèse multi-projets et fiche détaillée d’un seul projet.
+- Drop rapide dans le panneau résultats et navigation projet précédent/suivant sans remonter la page.
+- Candidats : dès qu’une valeur est validée pour un champ/bâtiment, les candidats concurrents disparaissent immédiatement.
+- Journal bêta v1.1.17 intégré comme corpus de non-régression.
+- Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
+- Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
+
 ## v1.1.16 — Retours bêta + bibliothèque de patchs intégrée
 
 - Intègre par défaut les patchs RT2012 Climawin, RSET/RSEE RE2020, RSENV/ACV, contrat Prestaterre et RT Existant CYPECAD par chapitres.

@@ -827,6 +827,12 @@ Etat initial`,DOC_TYPES.THERMAL);
   const unroutedResult=analyzeDocuments([unroutedDoc],structuredClone(DEFAULT_SOURCE_RULES),'Strict',{},[{field:'cep',value:777,building:'Bâtiment A',docId:'unrouted-test',fileName:'DPE.pdf',docType:DOC_TYPES.DPE,page:1,excerpt:'Cep 777',confidence:.99,method:'test'}]);
   assert('Source non routée : jamais injectée au résultat final',unroutedResult.rows[0]?.cep===undefined,String(unroutedResult.rows[0]?.cep));
   assert('Source non routée : candidate conservée À vérifier',unroutedResult.uncertain.some(o=>o.field==='cep'&&o.value===777),JSON.stringify(unroutedResult.uncertain));
+  const ticGroupTable=mk(`ZONE 1 Logement collectif 3790,80
+Groupe Refroidissement Categorie Tic Tic Ref.
+9 Groupe non refroidi CE1 24,76 30,92`,DOC_TYPES.THERMAL);
+  const ticGroupParsed=parseDocument(ticGroupTable);
+  assert('Journal bêta v1.1.17 : numéro de groupe ignoré dans tableau Tic',ticGroupParsed.some(o=>o.field==='tic'&&Math.abs(o.value-24.76)<.001)&&!ticGroupParsed.some(o=>o.field==='tic'&&o.value===9),JSON.stringify(ticGroupParsed.filter(o=>/^tic/.test(o.field))));
+  assert('Journal bêta v1.1.17 : TicRef appariée à la même ligne',ticGroupParsed.some(o=>o.field==='tic_ref'&&Math.abs(o.value-30.92)<.001),JSON.stringify(ticGroupParsed.filter(o=>/^tic/.test(o.field))));
 
 
   return {tests,passed:tests.filter(t=>t.ok).length,total:tests.length,ok:tests.every(t=>t.ok)};
