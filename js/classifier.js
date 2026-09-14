@@ -3,20 +3,22 @@ import {normLower} from './utils.js';
 import {patchClassifierScores} from './patches.js';
 
 export function classifyDocument(fileName, text='', meta={}) {
-  const n=normLower(fileName), t=normLower(text).slice(0,120000);
+  const n=normLower(fileName), t=normLower(text).slice(0,120000), head=normLower(text).slice(0,18000);
   const has=(re)=>re.test(n)||re.test(t);
   const score={}; const add=(k,v)=>score[k]=(score[k]||0)+v;
 
   const isStdRset=/recapitulatif\s+standardise\s+d['’]?etude\s+thermique|r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique/i.test(t);
   const explicitRT2012=/reglementation\s+thermique\s+2012|r[eé]glementation\s+thermique\s+2012|rset[^\n]{0,80}rt2012|th[- ]?bce\s*2012/i.test(t);
+  const titleRT2012=/r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique[\s\S]{0,500}r[eé]glementation\s+thermique\s+2012|r[eé]glementation\s+thermique\s+2012[\s\S]{0,500}r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique/i.test(head);
   const explicitRE2020=/reglementation\s+environnementale\s+2020|r[eé]glementation\s+environnementale\s+2020|\bre\s*2020\b|cep\s*,?\s*nr|degres[- ]?heures|\bdh\b/i.test(t);
   const explicitRSEE=/(?:^|[^a-z0-9])rsee(?:[^a-z0-9]|$)|recapitulatif\s+standardise\s+d['’]?etude\s+(?:energetique|[eé]nerg[eé]tique)\s+et\s+environnementale/i.test(n+' '+t);
+  const explicitRSENV=/(?:^|[^a-z0-9])rsenv(?:[^a-z0-9]|$)|rse[_ -]?env|partie\s+[«\"]?etude\s+environnementale|partie\s+[«\"]?[eé]tude\s+environnementale/i.test(n+' '+head);
 
   // « RSET » désigne le format standardisé, pas nécessairement la RE2020.
   // La réglementation contenue dans le document prime sur le nom du fichier.
   if (/rt\s*2012/i.test(n)) add(DOC_TYPES.RT2012,10);
-  if (explicitRT2012) add(DOC_TYPES.RT2012,isStdRset?22:12);
-  if (/(?:^|[^a-z0-9])(?:rsenv|rsnv|rsen)(?:[^a-z0-9]|$)|rse[_ -]?env/i.test(n+' '+t)) add(DOC_TYPES.RSENV,18);
+  if (explicitRT2012) add(DOC_TYPES.RT2012,titleRT2012?50:(isStdRset?22:12));
+  if (explicitRSENV) add(DOC_TYPES.RSENV,/rsenv|rse[_ -]?env/i.test(n)?55:32);
   if (explicitRSEE) add(DOC_TYPES.RSEE_RE2020,20);
   if (/(?:^|[^a-z0-9])rset(?:[^a-z0-9]|$)|rse[_ -]?t\b/i.test(n)) {
     if(explicitRT2012&&!explicitRE2020) add(DOC_TYPES.RT2012,12);
@@ -54,8 +56,19 @@ export function classifyDocument(fileName, text='', meta={}) {
 
   // Règle anti-faux-positif : Th-BCE 2012 peut être cité dans un RSET RE2020, mais un RSET
   // explicitement titré « Réglementation Thermique 2012 » doit rester classé RT2012.
-  if (explicitRE2020&&!explicitRT2012&&(score[DOC_TYPES.RSET_RE2020]||0)>=12) score[DOC_TYPES.RT2012]=(score[DOC_TYPES.RT2012]||0)*0.2;
-  if (explicitRT2012&&!explicitRE2020) score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.15;
+  if (titleRT2012){
+    score[DOC_TYPES.RT2012]=(score[DOC_TYPES.RT2012]||0)+30;
+    score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.05;
+    score[DOC_TYPES.RSEE_RE2020]=(score[DOC_TYPES.RSEE_RE2020]||0)*0.05;
+  } else {
+    if (explicitRE2020&&!explicitRT2012&&(score[DOC_TYPES.RSET_RE2020]||0)>=12) score[DOC_TYPES.RT2012]=(score[DOC_TYPES.RT2012]||0)*0.2;
+    if (explicitRT2012&&!explicitRE2020) score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.15;
+  }
+  if(explicitRSENV && /rsenv|rse[_ -]?env/i.test(n)){
+    score[DOC_TYPES.RSENV]=(score[DOC_TYPES.RSENV]||0)+25;
+    score[DOC_TYPES.RSEE_RE2020]=(score[DOC_TYPES.RSEE_RE2020]||0)*0.25;
+    score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.25;
+  }
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
   const confidence=ranked.length ? Math.min(0.99,0.45+(ranked[0][1]/22)) : 0.25;

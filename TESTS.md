@@ -252,3 +252,13 @@ Jeu de référence : `data/bao-evolution-reference.json`. Résultat attendu du l
 - Benchmark de référence sur le rapport thermique rénovation Romorantin : le parsing synchrone doit être réduit d’un ordre de grandeur par rapport à la v1.1.11, sans perte d’occurrences.
 - Test de charge de consolidation : 30 000 occurrences / 300 bâtiments doivent être consolidables sans blocage multi-secondes du thread principal.
 - Vérifier que le bundle et les ressources sont bien cache-bustés en `1.1.12`.
+
+
+## v1.1.17 — parseur hiérarchique RT2012 / RE2020 / RSENV
+- Branches réglementaires parallèles : RT2012/RT Existant et RE2020/RSET-RSEE/RSENV.
+- Priorité par type de document puis chapitre/sous-chapitre/niveau (bâtiment, zone, lot).
+- RT2012 : Chapitre 2 prioritaire pour Bbio/Cep/Tic ; sorties détaillées pour Cep par poste ; Chapitre 4 pour enveloppe et systèmes.
+- RE2020 : Chapitre 2 prioritaire pour Bbio/Cep/Cep,nr/DH ; sorties détaillées pour postes énergie ; résultats carbone structurés séparément.
+- RSENV : Chapitre 5 niveau bâtiment prioritaire pour Ic composant / chantier / énergie ; lots séparés du global.
+- Une ACV libre qui recopie Bbio/Cep/Tic reste une source secondaire de contrôle.
+- La consolidation tient désormais compte de `hierarchyRank` avant la confiance brute.

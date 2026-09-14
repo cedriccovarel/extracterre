@@ -1,6 +1,6 @@
 {
   "schema": "extracterre-patch-manifest/v1",
-  "generatedFor": "1.1.16",
+  "generatedFor": "1.1.17",
   "patches": [
     {
       "schema": "extracterre-improvement-patch/v1",

@@ -122,6 +122,8 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       pool=[...pool].sort((a,b)=>{
         const ar=Number.isFinite(a.sourceRank)?a.sourceRank:sourceRank(f.key,a.docType,rules), br=Number.isFinite(b.sourceRank)?b.sourceRank:sourceRank(f.key,b.docType,rules);
         if(ar!==br) return ar-br;
+        const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
+        if(ah!==bh) return ah-bh;
         if(f.key==='shab'){ const ap=Number(a.surfacePriority)||0, bp=Number(b.surfacePriority)||0; if(ap!==bp) return bp-ap; }
         return b.confidence-a.confidence;
       });

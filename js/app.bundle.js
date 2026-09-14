@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.16 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v1.1.17 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.16';
+const APP_VERSION = '1.1.17';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -230,7 +230,7 @@ const SOURCE_PROGRAM=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.P
 const SOURCE_PROJECT_META=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL];
 const SOURCE_ENVELOPE=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.MANUAL];
 const SOURCE_SYSTEMS=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL];
-const SOURCE_UBAT_CEP=[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL];
+const SOURCE_UBAT_CEP=[DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL];
 const SOURCE_ENR=[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL];
 const ordered=(types,secondary=[])=>({main:[...types],secondary:[...secondary],forbidden:[]});
 const DEFAULT_SOURCE_RULES={};
@@ -252,7 +252,7 @@ DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPE
 for(const key of ['dh','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
-for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
+for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON,DOC_TYPES.DIAGNOSTIC]);
 for(const key of ['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL],[DOC_TYPES.DIAGNOSTIC]);
 for(const key of ['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
@@ -969,20 +969,22 @@ const PATCH_SCHEMA=SCHEMA;
 
 /* ---- classifier.js ---- */
 function classifyDocument(fileName, text='', meta={}) {
-  const n=normLower(fileName), t=normLower(text).slice(0,120000);
+  const n=normLower(fileName), t=normLower(text).slice(0,120000), head=normLower(text).slice(0,18000);
   const has=(re)=>re.test(n)||re.test(t);
   const score={}; const add=(k,v)=>score[k]=(score[k]||0)+v;
 
   const isStdRset=/recapitulatif\s+standardise\s+d['’]?etude\s+thermique|r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique/i.test(t);
   const explicitRT2012=/reglementation\s+thermique\s+2012|r[eé]glementation\s+thermique\s+2012|rset[^\n]{0,80}rt2012|th[- ]?bce\s*2012/i.test(t);
+  const titleRT2012=/r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique[\s\S]{0,500}r[eé]glementation\s+thermique\s+2012|r[eé]glementation\s+thermique\s+2012[\s\S]{0,500}r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique/i.test(head);
   const explicitRE2020=/reglementation\s+environnementale\s+2020|r[eé]glementation\s+environnementale\s+2020|\bre\s*2020\b|cep\s*,?\s*nr|degres[- ]?heures|\bdh\b/i.test(t);
   const explicitRSEE=/(?:^|[^a-z0-9])rsee(?:[^a-z0-9]|$)|recapitulatif\s+standardise\s+d['’]?etude\s+(?:energetique|[eé]nerg[eé]tique)\s+et\s+environnementale/i.test(n+' '+t);
+  const explicitRSENV=/(?:^|[^a-z0-9])rsenv(?:[^a-z0-9]|$)|rse[_ -]?env|partie\s+[«\"]?etude\s+environnementale|partie\s+[«\"]?[eé]tude\s+environnementale/i.test(n+' '+head);
 
   // « RSET » désigne le format standardisé, pas nécessairement la RE2020.
   // La réglementation contenue dans le document prime sur le nom du fichier.
   if (/rt\s*2012/i.test(n)) add(DOC_TYPES.RT2012,10);
-  if (explicitRT2012) add(DOC_TYPES.RT2012,isStdRset?22:12);
-  if (/(?:^|[^a-z0-9])(?:rsenv|rsnv|rsen)(?:[^a-z0-9]|$)|rse[_ -]?env/i.test(n+' '+t)) add(DOC_TYPES.RSENV,18);
+  if (explicitRT2012) add(DOC_TYPES.RT2012,titleRT2012?50:(isStdRset?22:12));
+  if (explicitRSENV) add(DOC_TYPES.RSENV,/rsenv|rse[_ -]?env/i.test(n)?55:32);
   if (explicitRSEE) add(DOC_TYPES.RSEE_RE2020,20);
   if (/(?:^|[^a-z0-9])rset(?:[^a-z0-9]|$)|rse[_ -]?t\b/i.test(n)) {
     if(explicitRT2012&&!explicitRE2020) add(DOC_TYPES.RT2012,12);
@@ -1020,8 +1022,19 @@ function classifyDocument(fileName, text='', meta={}) {
 
   // Règle anti-faux-positif : Th-BCE 2012 peut être cité dans un RSET RE2020, mais un RSET
   // explicitement titré « Réglementation Thermique 2012 » doit rester classé RT2012.
-  if (explicitRE2020&&!explicitRT2012&&(score[DOC_TYPES.RSET_RE2020]||0)>=12) score[DOC_TYPES.RT2012]=(score[DOC_TYPES.RT2012]||0)*0.2;
-  if (explicitRT2012&&!explicitRE2020) score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.15;
+  if (titleRT2012){
+    score[DOC_TYPES.RT2012]=(score[DOC_TYPES.RT2012]||0)+30;
+    score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.05;
+    score[DOC_TYPES.RSEE_RE2020]=(score[DOC_TYPES.RSEE_RE2020]||0)*0.05;
+  } else {
+    if (explicitRE2020&&!explicitRT2012&&(score[DOC_TYPES.RSET_RE2020]||0)>=12) score[DOC_TYPES.RT2012]=(score[DOC_TYPES.RT2012]||0)*0.2;
+    if (explicitRT2012&&!explicitRE2020) score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.15;
+  }
+  if(explicitRSENV && /rsenv|rse[_ -]?env/i.test(n)){
+    score[DOC_TYPES.RSENV]=(score[DOC_TYPES.RSENV]||0)+25;
+    score[DOC_TYPES.RSEE_RE2020]=(score[DOC_TYPES.RSEE_RE2020]||0)*0.25;
+    score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.25;
+  }
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
   const confidence=ranked.length ? Math.min(0.99,0.45+(ranked[0][1]/22)) : 0.25;
@@ -2544,7 +2557,7 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS)):null, sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 
@@ -2562,7 +2575,7 @@ function parseSystems(doc){
 
     let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent && ventPhase!=='before') push(out,occ(doc,page,line,'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
-    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie/i.test(coolLow)) cool='Aucun'; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
+    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|pas\s+de\s+climatisation\s+active|absence\s+de\s+climatisation/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
     let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
@@ -2738,12 +2751,153 @@ function parseTaggedFields(doc){
   return out;
 }
 
+
+
+// v1.1.17 — lecture hiérarchique des familles réglementaires.
+// Le but n'est plus de laisser toutes les occurrences d'un mot-clé se concurrencer à égalité :
+// on encode la position fonctionnelle de la donnée (résultat réglementaire, sortie détaillée,
+// récapitulatif, annexe, lot, zone...) afin que la consolidation puisse privilégier la bonne couche.
+function semanticHierarchyRank(doc,o){
+  const m=String(o?.method||'');
+  const e=normLower(`${o?.origin||''} ${o?.excerpt||''}`);
+  if(o?.userValidated) return 0;
+
+  if(doc.type===DOC_TYPES.RT2012){
+    if(/rt2012:chapter2-|rset:chapter2-|rset:rt2012-cep-table|rset:bbio-table|rset:chapter2-tic-worst-group/.test(m)) return 5;
+    if(/rset:coefficient-direct|rset:detailed-output-primary|rset:detailed-output-cep/.test(m)) return 10;
+    if(/rset:chapter4-|rset:equipment-|rset:generation-/.test(m)) return 15;
+    if(/rset:(?:bbio|cep|cepnr)-summary-row/.test(m)) return 25;
+    if(/annexe|valeurs\s+cles|synthese/.test(e)) return 35;
+    if(/generic:|tags:/.test(m)) return 80;
+    return 45;
+  }
+  if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(doc.type)){
+    if(/rset:chapter2-|rset:cep-table|rset:bbio-table|rset:dh-row|rset:dh-explicit/.test(m)) return 5;
+    if(/rset:coefficient-direct|rset:detailed-output-primary|rset:detailed-output-cep/.test(m)) return 10;
+    if(/rset:chapter4-|rset:equipment-|rset:generation-/.test(m)) return 15;
+    if(/rset:carbon-(?:components|energy|site|lot|energy-post)-total|rsenv:building-summary|rsenv:lot-summary/.test(m)) return 8;
+    if(/rset:(?:bbio|cep|cepnr)-summary-row/.test(m)) return 25;
+    if(/generic:|tags:/.test(m)) return 80;
+    return 45;
+  }
+  if(doc.type===DOC_TYPES.RSENV){
+    if(/rsenv:building-summary/.test(m)) return 5;
+    if(/rsenv:lot-summary|rset:carbon-lot-/.test(m)) return 10;
+    if(/rset:carbon-(?:components|energy|site)-total/.test(m)) return 8;
+    if(/parse-carbon|carbon:|generic:|tags:/.test(m)) return 70;
+    return 40;
+  }
+  if(doc.type===DOC_TYPES.CARBON){
+    // Une ACV libre est une bonne source carbone, mais une éventuelle reprise Bbio/Cep/Tic
+    // reste une source de contrôle et ne doit pas concurrencer un RSET/RSEE primaire.
+    if(/ic_|carbon|acv/.test(e+m)) return 25;
+    return 75;
+  }
+  if(doc.type===DOC_TYPES.RT_EXISTING){
+    if(/patch:|rt-existing|cype|therm/.test(m+e)) return 10;
+    if(/generic:/.test(m)) return 70;
+    return 35;
+  }
+  return Number.isFinite(o?.hierarchyRank)?o.hierarchyRank:50;
+}
+
+function annotateSemanticHierarchy(doc,out){
+  return out.map(o=>({...o,hierarchyRank:semanticHierarchyRank(doc,o)}));
+}
+
+
+function parseRt2012Hierarchical(doc){
+  if(doc.type!==DOC_TYPES.RT2012) return [];
+  const out=[];
+  let inChapter2=false;
+  for(const page of doc.read?.pages||[]){
+    const pageLow=normLower(page.text||'');
+    if(/chapitre\s*2\s*:/.test(pageLow)) inChapter2=true;
+    if(/chapitre\s*[34]\s*:/.test(pageLow) && !/chapitre\s*2\s*:/.test(pageLow)) inChapter2=false;
+    if(!inChapter2 && !/(?:coefficient\s+bbio|coefficient\s+cep|tic\s+en\s*°?c)/i.test(page.text||'')) continue;
+    const lines=page.lines||[];
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i], t=normalizeText(line.text||'');
+      if(/^coefficient\s+bbio\b/i.test(t)){
+        const v=numbersIn(t).filter(x=>x>=0&&x<1000); if(v.length>=2){
+          push(out,occ(doc,page,line,'bbio',v[0],'rt2012:chapter2-bbio',0.999,'points',{origin:'RT2012 — Chapitre 2 résultats réglementaires'}));
+          push(out,occ(doc,page,line,'bbio_max',v[1],'rt2012:chapter2-bbio',0.999,'points',{origin:'RT2012 — Chapitre 2 résultats réglementaires'}));
+          if(v.length>=3) push(out,occ(doc,page,line,'bbio_gain',v[2],'rt2012:chapter2-bbio',0.998,'%',{origin:'RT2012 — Chapitre 2 résultats réglementaires'}));
+        }
+      }
+      if(/^coefficient\s+cep\b/i.test(t)){
+        const v=numbersIn(t).filter(x=>x>=-100&&x<5000); if(v.length>=2){
+          push(out,occ(doc,page,line,'cep',v[0],'rt2012:chapter2-cep',0.999,'kWhEP/m².an',{origin:'RT2012 — Chapitre 2 résultats réglementaires'}));
+          push(out,occ(doc,page,line,'cep_max',v[1],'rt2012:chapter2-cep',0.999,'kWhEP/m².an',{origin:'RT2012 — Chapitre 2 résultats réglementaires'}));
+          if(v.length>=3) push(out,occ(doc,page,line,'cep_gain',v[2],'rt2012:chapter2-cep',0.998,'%',{origin:'RT2012 — Chapitre 2 résultats réglementaires'}));
+        }
+      }
+      if(/conforme/i.test(t)){
+        const m=t.match(/(\d+(?:[,.]\d+)?)\s+(\d+(?:[,.]\d+)?)\s+(-?\d+(?:[,.]\d+)?)\s+conforme/i);
+        if(m){ const tic=parseFrNumber(m[1]), ref=parseFrNumber(m[2]); if(tic>=5&&tic<=60&&ref>=5&&ref<=60){
+          const building=buildingForPosition(doc,page.page,line.index);
+          push(out,occ(doc,page,line,'tic',tic,'rt2012:chapter2-tic',0.999,'°C',{building,origin:'RT2012 — Chapitre 2 résultats réglementaires',provenanceNote:'Tic lue sur la ligne de groupe du tableau réglementaire.'}));
+          push(out,occ(doc,page,line,'tic_ref',ref,'rt2012:chapter2-tic',0.999,'°C',{building,origin:'RT2012 — Chapitre 2 résultats réglementaires',provenanceNote:'TicRef lue sur la même ligne que la Tic du groupe.'}));
+        }}
+      }
+    }
+  }
+  return out;
+}
+
+function parseRsenvHierarchical(doc){
+  if(doc.type!==DOC_TYPES.RSENV) return [];
+  const out=[];
+  let chapter=0, currentLot=null, building='Bâtiment unique';
+  for(const page of doc.read?.pages||[]){
+    const lines=page.lines||[];
+    const pageLow=normLower(page.text||'');
+    const bmLine=(page.lines||[]).map(x=>normalizeText(x.text||'')).find(x=>/^B[aâ]timent\s+[A-Za-z0-9._-]+(?:\s|$)/i.test(x)); const bm=bmLine?bmLine.match(/^B[aâ]timent[ \t]+([A-Za-z0-9._-]+)/i):null; if(bm) building=canonicalBuilding(`Bâtiment ${bm[1]}`);
+    if(/chapitre\s*5\s*:/.test(pageLow)) chapter=5;
+    else if(/chapitre\s*6\s*:/.test(pageLow)) chapter=6;
+    else if(/chapitre\s*7\s*:/.test(pageLow)) chapter=7;
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i], t=normalizeText(line.text||''), low=normLower(t);
+      const lot=t.match(/^\s*(?:lot\s*)?(1[0-3]|0?[1-9])\s*[-–—:]\s*(.+)$/i);
+      if(lot && /vrd|fondation|infrastructure|superstructure|maçon|macon|couverture|charpente|cloison|doublage|menuiser|façade|facade|revêtement|revetement|cvc|chauffage|ecs|ventilation|sanitaire|réseaux?|reseaux?|communication|élévateur|elevateur|photovolta|production\s+locale/i.test(normLower(lot[2]))) currentLot=parseInt(lot[1],10);
+      if(chapter===5){
+        const defs=[
+          ['ic_components',/^ic\s+composant(?:s)?\b(?![^|]{0,40}\blot\b)/i],
+          ['ic_site',/^ic\s+chantier\b/i],
+          ['ic_energy',/^ic\s+[eé]nergie\b(?![^|]{0,40}annualis)/i]
+        ];
+        for(const [field,re] of defs){ if(re.test(t) && !/\blot\b/i.test(t) && !/annualis/i.test(t)){
+          const nums=numbersIn(t).filter(v=>v>=0&&v<10000); if(nums.length) push(out,occ(doc,page,line,field,nums[0],'rsenv:building-summary',0.999,'kgCO2e/m²',{building,origin:'RSENV — Chapitre 5 niveau bâtiment',provenanceNote:'Indicateur lu dans les sorties ACV au niveau bâtiment, prioritaires sur les quantitatifs, zones et annexes.'}));
+        }}
+        if(currentLot && /(?:ic\s+(?:composant\s+)?dynamique\s+du\s+lot|ic\s+dynamique\s+lot)/i.test(t)){
+          const nums=numbersIn(t).filter(v=>v>=0&&v<10000); if(nums.length) push(out,occ(doc,page,line,`ic_lot_${currentLot}`,nums[0],'rsenv:lot-summary',0.999,'kgCO2e/m²',{building,origin:'RSENV — Chapitre 5 contribution Composant / lot',provenanceNote:`Valeur carbone du lot ${currentLot} lue dans la sortie ACV niveau bâtiment.`}));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+
+function pruneHierarchicalShadowed(doc,out){
+  if(doc.type===DOC_TYPES.RSENV){
+    const strongFields=new Set(out.filter(o=>/^rsenv:(?:building|lot)-summary/.test(String(o.method||''))).map(o=>o.field));
+    if(strongFields.size) out=out.filter(o=>!strongFields.has(o.field) || /^rsenv:(?:building|lot)-summary/.test(String(o.method||'')) || o.userValidated);
+  }
+  if(doc.type===DOC_TYPES.RT2012){
+    const strong=new Set(out.filter(o=>/^rt2012:chapter2-|rset:chapter2-|rset:bbio-table|rset:rt2012-cep-table/.test(String(o.method||''))).map(o=>o.field));
+    if(strong.size) out=out.filter(o=>!strong.has(o.field) || !/rset:(?:bbio|cep|cepnr)-summary-row|generic:regulatory-label/.test(String(o.method||'')) || o.userValidated);
+  }
+  return out;
+}
+
 function parseDocument(doc){
   let out=[];
   out.push(...parseTaggedFields(doc));
   // Surface bâtiment générique : SHAB, Sref/SRéf, surface habitable, surface du bâtiment, SU/SURT/SRT.
   if(doc.type!==DOC_TYPES.DPGF) out.push(...parseBuildingSurface(doc));
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
+  out.push(...parseRt2012Hierarchical(doc));
   if(doc.type===DOC_TYPES.THERMAL) out.push(...parseGenericRegulatory(doc));
   if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); }
   out.push(...parseProgram(doc),...parseEnvelope(doc));
@@ -2755,9 +2909,11 @@ function parseDocument(doc){
   // Un RSENV/ACV peut être classé « Étude carbone / ACV » tout en utilisant exactement
   // les tableaux détaillés RSEE (lots 1 à 13 + Énergie CE). On applique donc le même parseur.
   if([DOC_TYPES.CARBON,DOC_TYPES.RSENV].includes(doc.type)) addRsetCarbonBreakdown(doc,out);
+  out.push(...parseRsenvHierarchical(doc));
   // Patches déclaratifs : uniquement des règles de bibliothèque validées, sans eval/JS externe.
   out.push(...parsePatchOccurrences(doc));
-  return out.filter(Boolean);
+  out=pruneHierarchicalShadowed(doc,out.filter(Boolean));
+  return annotateSemanticHierarchy(doc,out);
 }
 
 /* ---- tags.js ---- */
@@ -2947,6 +3103,8 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
       pool=[...pool].sort((a,b)=>{
         const ar=Number.isFinite(a.sourceRank)?a.sourceRank:sourceRank(f.key,a.docType,rules), br=Number.isFinite(b.sourceRank)?b.sourceRank:sourceRank(f.key,b.docType,rules);
         if(ar!==br) return ar-br;
+        const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
+        if(ah!==bh) return ah-bh;
         if(f.key==='shab'){ const ap=Number(a.surfacePriority)||0, bp=Number(b.surfacePriority)||0; if(ap!==bp) return bp-ap; }
         return b.confidence-a.confidence;
       });

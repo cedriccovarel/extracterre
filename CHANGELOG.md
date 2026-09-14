@@ -319,3 +319,13 @@ Test réel sur `Xml_RSET_EC183200 BREUILLET V8.pdf` : 4 bâtiments annoncés →
 - Premier patch `RT2012 Climawin / RSET 8100`, construit à partir du corpus Menton.
 - Renforcement des signatures RT2012, Bbio/Bbiomax, Cep/Cepmax et nombre de logements.
 - Conservation du parseur structuré des tableaux détaillés : Cep par poste et par énergie, avec priorité au tableau annuel réglementaire.
+
+
+## v1.1.17 — parseur hiérarchique RT2012 / RE2020 / RSENV
+- Branches réglementaires parallèles : RT2012/RT Existant et RE2020/RSET-RSEE/RSENV.
+- Priorité par type de document puis chapitre/sous-chapitre/niveau (bâtiment, zone, lot).
+- RT2012 : Chapitre 2 prioritaire pour Bbio/Cep/Tic ; sorties détaillées pour Cep par poste ; Chapitre 4 pour enveloppe et systèmes.
+- RE2020 : Chapitre 2 prioritaire pour Bbio/Cep/Cep,nr/DH ; sorties détaillées pour postes énergie ; résultats carbone structurés séparément.
+- RSENV : Chapitre 5 niveau bâtiment prioritaire pour Ic composant / chantier / énergie ; lots séparés du global.
+- Une ACV libre qui recopie Bbio/Cep/Tic reste une source secondaire de contrôle.
+- La consolidation tient désormais compte de `hierarchyRank` avant la confiance brute.
