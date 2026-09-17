@@ -1,3 +1,10 @@
+# v1.1.21
+
+- Correctif moteur des patchs : un patch chargé est désormais réappliqué immédiatement aux documents déjà analysés à partir du texte conservé, sans relire ni OCRiser les PDF.
+- Reclassification et reparsing des documents prêts lors du chargement d’un patch, puis reconsolidation immédiate des résultats.
+- Correctif du patch RSET Surface : détection stricte de `Identifiant Bâtiment` et `S / usage principal` / `SRef / usage principal`; suppression de la détection trop large du mot « bâtiment ».
+- Patch Surface RSET v2 intégré à la bibliothèque.
+
 # v1.1.20 — analyse progressive + U22Win/Perrenoud multi-bâtiments
 
 - Ajout des contrôles compacts ⏸ Pause / ⏹ Arrêt dans la barre sticky.

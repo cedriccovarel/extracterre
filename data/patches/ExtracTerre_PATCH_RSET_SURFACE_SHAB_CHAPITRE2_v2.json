@@ -1,0 +1,92 @@
+{
+  "schema": "extracterre-improvement-patch/v1",
+  "id": "rset-surface-shab-chapitre2-v2",
+  "version": "2.0.0",
+  "minAppVersion": "1.1.21",
+  "title": "RSET — Surface bâtiment depuis Chapitre 2 / S usage principal",
+  "description": "Règle générique stricte RT2012/RE2020 : la surface au niveau bâtiment portée par S / usage principal ou SRef / usage principal dans Chapitre 2 > Données générales sur le bâtiment alimente Surface bâtiment (SHAB / Sref / SU / SURT / SRT). Rattachement au bâtiment identifié par la ligne Identifiant Bâtiment.",
+  "documentSignatures": [
+    {
+      "docType": "RSET RE2020",
+      "weight": 70,
+      "all": [
+        "récapitulatif standardisé energie environnement",
+        "partie « etude thermique »"
+      ],
+      "any": [
+        "données générales sur le bâtiment",
+        "sref / usage principal",
+        "s / usage principal"
+      ]
+    },
+    {
+      "docType": "RSEE RE2020",
+      "weight": 60,
+      "all": [
+        "récapitulatif standardisé energie environnement"
+      ],
+      "any": [
+        "données générales sur le bâtiment",
+        "sref / usage principal"
+      ]
+    },
+    {
+      "docType": "RT2012",
+      "weight": 70,
+      "all": [
+        "récapitulatif standardisé d'etude thermique",
+        "réglementation thermique 2012"
+      ],
+      "any": [
+        "données générales sur le bâtiment",
+        "srt",
+        "s / usage principal"
+      ]
+    }
+  ],
+  "extractionRules": [
+    {
+      "id": "rset-ch2-building-surface",
+      "field": "shab",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020",
+        "RT2012"
+      ],
+      "sectionStartRegex": "^\\s*Identifiant\\s+B[âa]timent\\s*[\\\"“]?([^\\\"”\\r\\n]+?)(?:[\\\"”]\\s*)?$",
+      "sectionBuildingGroup": 1,
+      "regex": "S(?:ref|RT)?\\s*/\\s*usage\\s+principal\\s*[:\\-]?\\s*([0-9][0-9\\s\\u00a0.,]*)\\s*m(?:²|2)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 1.0,
+      "maxMatches": 2,
+      "unit": "m²",
+      "requireAny": [
+        "données générales sur le bâtiment"
+      ],
+      "note": "Source primaire RSET Chapitre 2. La valeur est la surface au niveau bâtiment et ne doit pas être remplacée par une surface de zone, de paroi ou de déperdition."
+    },
+    {
+      "id": "rset-ch2-building-surface-layout-fallback",
+      "field": "shab",
+      "docTypes": [
+        "RSET RE2020",
+        "RSEE RE2020",
+        "RT2012"
+      ],
+      "sectionStartRegex": "^\\s*B[âa]timent\\s*:\\s*([^\\r\\n]+?)\\s*$",
+      "sectionBuildingGroup": 1,
+      "sectionEndRegex": "^\\s*B[âa]timent\\s*:",
+      "regex": "(?:SRef|SRT|S)\\s*/\\s*usage\\s+principal\\s*[:\\-]?\\s*([0-9][0-9\\s\\u00a0.,]*)\\s*m(?:²|2)?",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 2,
+      "unit": "m²",
+      "requireAny": [
+        "données générales sur le bâtiment"
+      ],
+      "note": "Fallback pour les RSET où le titre Bâtiment précède la table Données générales et où la ligne Identifiant Bâtiment est mal restituée par PDF.js/OCR."
+    }
+  ]
+}

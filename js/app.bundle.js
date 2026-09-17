@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.20 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v1.1.21 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.20';
+const APP_VERSION = '1.1.21';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -5491,10 +5491,44 @@ function renderPatchUi(){
   list.innerHTML=patches.length?patches.map(p=>`<div class="patch-row"><div><strong>${escapeHtml(p.title)}</strong><small>${escapeHtml(p.version)} · ${p.origin==='local'?'chargé localement':'fourni par le site'}</small></div>${p.origin==='local'?`<button class="btn light patch-remove" data-patch-id="${escapeHtml(p.id)}" type="button">Retirer</button>`:''}</div>`).join(''):'<div class="patch-empty">Aucun patch actif.</div>';
   list.querySelectorAll('.patch-remove').forEach(b=>b.onclick=()=>{removeLocalImprovementPatch(b.dataset.patchId);renderPatchUi();toast('Patch local retiré.','info');});
 }
+async function reapplyPatchesToReadyDocuments(){
+  const project=activeProject();
+  const ready=(project.docs||[]).filter(d=>d.status==='ready'&&d.read?.text);
+  if(!ready.length) return 0;
+  let count=0;
+  for(const d of ready){
+    try{
+      d.classification=classifyDocument(d.name,d.read.text,{kind:d.read.kind});
+      d.type=d.classification.type;
+      d.buildings=detectBuildings(d);
+      d.cachedOccurrences=parseDocument(d);
+      d.analysisCachedAt=Date.now();
+      await checkpointDocument(project,d);
+      count++;
+      await yieldToBrowser();
+    }catch(err){ console.warn('Réapplication patch impossible',d?.name,err); }
+  }
+  if(count){
+    const valid=(project.docs||[]).filter(d=>d.status==='ready');
+    const operation=$('#operationName')?.value?.trim?.()||project.operationName||'';
+    project.operationName=operation;
+    project.result=analyzeDocuments(valid,state.rules,operation,project.buildingOverrides,manualPasteOccurrences(project));
+    applyDeletedBuildings(project);
+    project.result.documentsCount=valid.length;
+    applyManualValues(); refreshEconomic(); project.projectTags=buildProjectTags(valid,project.result,project.manualTags);
+    renderAll();
+    await checkpointWorkspace('réapplication patch',true);
+  }
+  return count;
+}
 async function handlePatchFile(file){
   if(!file) return;
-  try{const p=await importImprovementPatchFile(file);renderPatchUi();toast(`Patch « ${p.title||p.id} » chargé. Il sera utilisé aux prochaines analyses.`,'success');}
-  catch(err){toast(`Patch refusé : ${err.message||err}`,'error');}
+  try{
+    const p=await importImprovementPatchFile(file);
+    renderPatchUi();
+    const reapplied=await reapplyPatchesToReadyDocuments();
+    toast(reapplied?`Patch « ${p.title||p.id} » chargé et appliqué immédiatement à ${reapplied} document(s) déjà analysé(s).`:`Patch « ${p.title||p.id} » chargé. Il sera utilisé à la prochaine analyse.`,'success');
+  }catch(err){toast(`Patch refusé : ${err.message||err}`,'error');}
 }
 
 function wire(){
