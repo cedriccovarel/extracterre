@@ -117,6 +117,7 @@ function serializeProject(project={}){
     // Ne pas le dupliquer ici évite une copie mémoire potentiellement massive à chaque sauvegarde.
     result:null,
     buildingOverrides:safeJsonClone(project.buildingOverrides,{}),
+    deletedBuildings:safeJsonClone(project.deletedBuildings,[]),
     manualTags:safeJsonClone(project.manualTags,[]),
     projectTags:safeJsonClone(project.projectTags,[]),
     manualValues:safeJsonClone(project.manualValues,{}),

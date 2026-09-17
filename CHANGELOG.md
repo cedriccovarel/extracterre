@@ -1,3 +1,12 @@
+# v1.1.20 — analyse progressive + U22Win/Perrenoud multi-bâtiments
+
+- Ajout des contrôles compacts ⏸ Pause / ⏹ Arrêt dans la barre sticky.
+- Arrêt conservatif : les documents déjà terminés et leurs résultats restent disponibles.
+- Remplissage progressif : consolidation/rendu des tableaux après chaque document terminé, pendant que les autres continuent.
+- Nouveau patch générique RE2020 U22Win/Perrenoud pour RSET/RSEE, note de calcul et RSEnv multi-bâtiments.
+- DH et DHmax : sélection du maximum (cas le plus défavorable) à l’échelle de chaque bâtiment.
+- RSENV : mapping Bâtiment 1/2/... vers les noms réels détectés et lecture des IC composants lots 1 à 13 depuis la ligne Indicateur CO dynamique au niveau bâtiment.
+
 # v1.1.18 — 14/09/2026
 
 - Nouvelle UX résultats : barre sticky fine, navigateur projet latéral fixe, vue synthèse multi-projets et fiche détaillée d’un seul projet.

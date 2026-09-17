@@ -1469,14 +1469,25 @@ function parseRt2012Hierarchical(doc){
 function parseRsenvHierarchical(doc){
   if(doc.type!==DOC_TYPES.RSENV) return [];
   const out=[];
+  const knownBuildings=(doc.buildings?.names||[]).map(canonicalBuilding).filter((x,i,a)=>x&&x!=='Bâtiment unique'&&a.indexOf(x)===i);
+  const buildingByIndex=n=>knownBuildings[n-1]||canonicalBuilding(`Bâtiment ${n}`);
   let chapter=0, currentLot=null, building='Bâtiment unique';
   for(const page of doc.read?.pages||[]){
     const lines=page.lines||[];
-    const pageLow=normLower(page.text||'');
-    const bmLine=(page.lines||[]).map(x=>normalizeText(x.text||'')).find(x=>/^B[aâ]timent\s+[A-Za-z0-9._-]+(?:\s|$)/i.test(x)); const bm=bmLine?bmLine.match(/^B[aâ]timent[ \t]+([A-Za-z0-9._-]+)/i):null; if(bm) building=canonicalBuilding(`Bâtiment ${bm[1]}`);
+    const pageText=normalizeText(page.text||lines.map(x=>x.text||'').join(' '));
+    const pageLow=normLower(pageText);
+    const indexed=pageText.match(/(?:[eé]chelle\s+du\s+b[aâ]timent|Contribution\s+B[aâ]t\.)\s*(\d+)/i);
+    if(indexed) building=buildingByIndex(parseInt(indexed[1],10));
+    const bmLine=(page.lines||[]).map(x=>normalizeText(x.text||'')).find(x=>/^B[aâ]timent\s+[A-Za-z0-9._-]+(?:\s|$)/i.test(x)); const bm=bmLine?bmLine.match(/^B[aâ]timent[ \t]+([A-Za-z0-9._-]+)/i):null; if(bm && !/^\d+$/.test(bm[1])) building=canonicalBuilding(`Bâtiment ${bm[1]}`);
     if(/chapitre\s*5\s*:/.test(pageLow)) chapter=5;
     else if(/chapitre\s*6\s*:/.test(pageLow)) chapter=6;
     else if(/chapitre\s*7\s*:/.test(pageLow)) chapter=7;
+    if(chapter===5 && /[eé]chelle\s+du\s+b[aâ]timent[\s\S]{0,180}contribution\s+[\"“]?composant/i.test(pageLow) && /par\s+lot/i.test(pageLow)){
+      const lotLine=lines.find(x=>/indicateur\s+co\s*(?:2\s*)?dynamique/i.test(normLower(x.text||'')));
+      let vals=lotLine?numbersIn(lotLine.text||''):[];
+      if(vals.length<10){ const m=pageText.match(/Indicateur\s+CO\s*(?:2\s*)?Dynamique[^\d-]*([\s\S]{0,420})/i); if(m) vals=numbersIn(m[1]); }
+      if(vals.length>=12){ const lotVals=vals.slice(-13); for(let n=1;n<=Math.min(13,lotVals.length);n++){ const v=lotVals[n-1]; if(!Number.isFinite(v)||v<0||v>5000) continue; const line=lotLine||lines[0]||{text:'Indicateur CO dynamique par lot',index:0}; push(out,occ(doc,page,line,`ic_lot_${n}`,v,'rsenv:lot-summary',0.999,'kgCO2e/m²',{building,origin:'RSENV — Chapitre 5 contribution Composant / lot',provenanceNote:`Indicateur CO dynamique du lot ${n}, lu dans le tableau au niveau bâtiment.`})); } }
+    }
     for(let i=0;i<lines.length;i++){
       const line=lines[i], t=normalizeText(line.text||''), low=normLower(t);
       const lot=t.match(/^\s*(?:lot\s*)?(1[0-3]|0?[1-9])\s*[-–—:]\s*(.+)$/i);

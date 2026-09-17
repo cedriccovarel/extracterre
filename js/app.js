@@ -14,12 +14,80 @@ import {initializeImprovementPatches,getImprovementPatches,importImprovementPatc
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack} from './journal.js';
 
-function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
+function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
+
+// v1.1.20 — contrôle coopératif de l'analyse + remplissage progressif
+const analysisControl={running:false,paused:false,stopRequested:false,controllers:new Map(),pauseWaiters:[]};
+function syncAnalysisControlUi(){
+  const pause=$('#analysisPauseBtn'), stop=$('#analysisStopBtn');
+  if(pause){ pause.hidden=!analysisControl.running; pause.textContent=analysisControl.paused?'▶':'⏸'; pause.title=analysisControl.paused?'Reprendre l’analyse':'Mettre l’analyse en pause'; pause.classList.toggle('active',analysisControl.paused); }
+  if(stop){ stop.hidden=!analysisControl.running; stop.disabled=!analysisControl.running; }
+}
+function resolveAnalysisPause(){ const waits=analysisControl.pauseWaiters.splice(0); for(const r of waits) try{r();}catch{} }
+async function waitForAnalysisGate(){
+  while(analysisControl.running&&analysisControl.paused&&!analysisControl.stopRequested){
+    setStatus('Analyse en pause — résultats déjà trouvés conservés');
+    await new Promise(resolve=>analysisControl.pauseWaiters.push(resolve));
+  }
+  return !analysisControl.stopRequested;
+}
+function toggleAnalysisPause(){
+  if(!analysisControl.running) return;
+  analysisControl.paused=!analysisControl.paused;
+  if(!analysisControl.paused){ resolveAnalysisPause(); toast('Analyse reprise.','info'); }
+  else toast('Pause demandée : les étapes en cours se figent au prochain point sûr.','info');
+  syncAnalysisControlUi();
+}
+function stopAnalysis(){
+  if(!analysisControl.running) return;
+  analysisControl.stopRequested=true; analysisControl.paused=false; resolveAnalysisPause();
+  for(const c of analysisControl.controllers.values()) try{c.abort('analysis-stop');}catch{}
+  setStatus('Arrêt demandé — conservation des résultats déjà trouvés'); syncAnalysisControlUi();
+}
+
 state.projects.push(createProject(1)); state.activeProjectId=state.projects[0].id;
 function activeProject(){ return state.projects.find(p=>p.id===state.activeProjectId)||state.projects[0]; }
-for(const key of ['docs','result','buildingOverrides','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
+for(const key of ['docs','result','buildingOverrides','deletedBuildings','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
 function projectTitle(p){ return (p.customTitle||p.operationName||p.result?.operation||p.label||'Projet').trim(); }
+function applyDeletedBuildings(project=activeProject()){
+  const r=project?.result, deleted=new Set(project?.deletedBuildings||[]); if(!r||!deleted.size) return;
+  const isDeleted=o=>deleted.has(o?.building)||deleted.has(o?.originalBuilding);
+  if(Array.isArray(r.rows)) r.rows=r.rows.filter(x=>!deleted.has(x?.building));
+  if(Array.isArray(r.finals)) r.finals=r.finals.filter(o=>!isDeleted(o));
+  if(Array.isArray(r.detailed)) r.detailed=r.detailed.filter(o=>!isDeleted(o));
+  if(Array.isArray(r.uncertain)) r.uncertain=r.uncertain.filter(o=>!isDeleted(o));
+  if(Array.isArray(r.buildings)) r.buildings=r.buildings.filter(b=>!deleted.has(typeof b==='string'?b:(b?.building||b?.name)));
+  if(Array.isArray(r.authoritativeBuildings)) r.authoritativeBuildings=r.authoritativeBuildings.filter(b=>!deleted.has(b));
+  if(Array.isArray(r.buildingAliases)) r.buildingAliases=r.buildingAliases.filter(a=>!deleted.has(a?.source)&&!deleted.has(a?.target));
+  if(Array.isArray(r.buildingSuggestions)) r.buildingSuggestions=r.buildingSuggestions.filter(x=>!deleted.has(x?.a)&&!deleted.has(x?.b));
+  if(Array.isArray(r.alerts)) r.alerts=r.alerts.filter(a=>!deleted.has(a?.building));
+}
+let pendingBuildingDeletion=null;
+function showBuildingDeletionUndo(names,previousDeleted){
+  if(pendingBuildingDeletion?.timer) clearTimeout(pendingBuildingDeletion.timer);
+  const el=document.createElement('div'); el.className='toast success building-undo-toast';
+  el.innerHTML=`<span>${names.length} bâtiment${names.length>1?'s':''} supprimé${names.length>1?'s':''} de l’analyse.</span><button type="button">Annuler</button>`;
+  $('#toasts').appendChild(el);
+  const timer=setTimeout(()=>{el.remove(); if(pendingBuildingDeletion?.el===el) pendingBuildingDeletion=null;},8000);
+  pendingBuildingDeletion={el,timer,projectId:activeProject().id,names:[...names],previousDeleted:[...previousDeleted]};
+  el.querySelector('button').onclick=()=>{
+    const info=pendingBuildingDeletion; if(!info) return; clearTimeout(info.timer); el.remove(); pendingBuildingDeletion=null;
+    const project=state.projects.find(p=>p.id===info.projectId); if(!project) return;
+    project.deletedBuildings=[...info.previousDeleted];
+    if(project.id===state.activeProjectId) rerunWithBuildingLinks('Suppression annulée : bâtiments restaurés.');
+    else { rebuildProjectFromCheckpoints(project); renderAll(); scheduleWorkspaceCheckpoint('annulation suppression bâtiments',50); }
+  };
+}
+function deleteSelectedBuildings(names){
+  names=[...new Set((names||[]).filter(Boolean))]; if(!names.length){ toast('Sélectionnez au moins un bâtiment.','warn'); return; }
+  if(!confirm(`Supprimer ${names.length} bâtiment${names.length>1?'s':''} de l’analyse ?
+
+Les fichiers sources resteront chargés.`)) return;
+  const project=activeProject(), previous=[...(project.deletedBuildings||[])];
+  project.deletedBuildings=[...new Set([...previous,...names])]; applyDeletedBuildings(project); renderAll(); scheduleWorkspaceCheckpoint('suppression bâtiments',40); showBuildingDeletionUndo(names,previous);
+}
+
 function syncProjectInput(){ const p=activeProject(); const el=$('#operationName'); if(el) el.value=p.operationName||p.result?.operation||''; }
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -377,7 +445,7 @@ function manualPasteOccurrences(project=activeProject()){
 function recomputeProject(message='Consolidation recalculée.'){
   const valid=state.docs.filter(d=>d.status==='ready');
   const operation=$('#operationName').value.trim(); activeProject().operationName=operation;
-  state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences());
+  state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject());
   state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('consolidation',80); if(message) toast(message,'success');
 }
 function openManualDataDialog(){
@@ -499,9 +567,24 @@ async function yieldToBrowser(){
   await new Promise(resolve=>setTimeout(resolve,0));
 }
 
+async function refreshProgressiveResults(reason='progression'){
+  const valid=state.docs.filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
+  if(!valid.length) return;
+  const operation=$('#operationName')?.value?.trim?.()||activeProject().operationName||'';
+  activeProject().operationName=operation;
+  state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences());
+  applyDeletedBuildings(activeProject());
+  state.result.documentsCount=valid.length;
+  applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
+  renderSummary(); renderResultWorkspaceControls(); updateUxMirrors();
+  scheduleWorkspaceCheckpoint(`résultats progressifs · ${reason}`,350);
+  await yieldToBrowser();
+}
+
 async function analyze(onlyIds=null,manualUnlimited=false){
   if(!state.docs.length&&!state.manualPasteRows.length){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
   $('#analyzeBtn').disabled=true;
+  analysisControl.running=true; analysisControl.paused=false; analysisControl.stopRequested=false; analysisControl.controllers.clear(); resolveAnalysisPause(); syncAnalysisControlUi();
   const previouslyAnalyzed=state.docs.filter(d=>Array.isArray(d.cachedOccurrences)).length;
   const pendingDocs=state.docs.filter(d=>!!d.file&&d.status!=='ready'&&d.status!=='timeout'&&(!onlyIds||onlyIds.includes(d.id)));
   const alreadyReady=state.docs.length-pendingDocs.length;
@@ -532,7 +615,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
 
   const processDocument=async d=>{
     activeIds.add(d.id); d.status='reading'; d.error=null; renderFiles(); updateParallelStatus(d,null,true);
-    const controller=new AbortController();
+    const controller=new AbortController(); analysisControl.controllers.set(d.id,controller);
     const noLimit=manualUnlimited||d.retryUnlimited===true; let timeoutTriggered=false, timeoutId=null;
     const started=performance.now();
     try{
@@ -543,11 +626,13 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       if(noLimit) d.read=await readPromise;
       else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error('Analyse interrompue après 5 minutes.'); e.name='TimeoutError'; reject(e); },5*60*1000); })]);
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
+      if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
       d.classification=classifyDocument(d.name,d.read.text,{kind:d.read.kind});
       d.type=d.classification.type;
       d.buildings=detectBuildings(d);
       await yieldToBrowser();
+      if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.status='ready'; d.retryUnlimited=false;
       if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
       try{
@@ -564,13 +649,18 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
       const structuredThermalEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
       learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length,...(structuredThermalEvidence.length?{structuredThermalEvidence}: {})},activeProject());
+      // Les champs de ce document sont visibles immédiatement pendant que les autres continuent.
+      await refreshProgressiveResults(d.name);
     }catch(e){
-      const timedOut=timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout');
-      if(timedOut){ d.status='timeout'; d.error='Analyse interrompue après 5 minutes. Relance manuelle disponible sans limite de temps.'; d.retryUnlimited=false; }
+      const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||analysisControl.stopRequested;
+      const timedOut=!stopped&&(timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout'));
+      if(stopped){ d.status=Array.isArray(d.cachedOccurrences)?'ready':'pending'; d.error=null; }
+      else if(timedOut){ d.status='timeout'; d.error='Analyse interrompue après 5 minutes. Relance manuelle disponible sans limite de temps.'; d.retryUnlimited=false; }
       else { d.status='error'; d.error=e?.message||String(e); }
       learn('analysis_error',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,status:d.status,error:d.error||e?.message||String(e),ocrMode,elapsedMs:Math.round(performance.now()-started)},activeProject());
     }finally{
       if(timeoutId) clearTimeout(timeoutId);
+      analysisControl.controllers.delete(d.id);
       progressByDoc.set(d.id,1); delete d.liveStage; activeIds.delete(d.id); done++; renderFiles();
       if(d.status!=='ready') await checkpointWorkspace(`état ${d.name}`,true);
       updateParallelStatus(d,{stage:d.status==='ready'?'done':'error'},true);
@@ -585,13 +675,14 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       // Promise.all global, seuls ces workers ouvrent simultanément des PDF.js/ArrayBuffer.
       const worker=async()=>{
         while(true){
+          if(!(await waitForAnalysisGate())) return;
           const i=cursor++;
-          if(i>=pendingDocs.length) return;
+          if(i>=pendingDocs.length||analysisControl.stopRequested) return;
           await processDocument(pendingDocs[i]);
         }
       };
       await Promise.all(Array.from({length:documentConcurrency},()=>worker()));
-      etaTracker.persist(pendingDocs.length);
+      if(!analysisControl.stopRequested) etaTracker.persist(pendingDocs.length);
     }
     const valid=state.docs.filter(d=>d.status==='ready');
     if(!valid.length && !state.result) throw new Error('Aucun document n’a pu être lu.');
@@ -601,17 +692,19 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
       setStatus('Contrôles de cohérence…',92); await yieldToBrowser();
     }
-    renderAll(); await checkpointWorkspace('analyse terminée',true); setStatus('Analyse terminée',100);
+    renderAll();
+    if(analysisControl.stopRequested){ await checkpointWorkspace('analyse arrêtée',true); setStatus('Analyse arrêtée — résultats trouvés conservés'); }
+    else { await checkpointWorkspace('analyse terminée',true); setStatus('Analyse terminée',100); }
     const elapsed=(performance.now()-etaTracker.startedAt)/1000;
     const completeness=state.result?.completeness||null;
     const missingFields=[...new Set((completeness?.checks||[]).flatMap(c=>c.missing||[]))];
     learn('analysis_batch',{documents:state.docs.length,readyDocuments:state.docs.filter(d=>d.status==='ready').length,newDocuments:pendingDocs.length,durationMs:Math.round(elapsed*1000),analysisMode:profile.key,analysisProfile:profile.description,ocrMode,completeness:completeness?{percent:completeness.percent,found:completeness.found,expected:completeness.expected}:null,missingFields,missingLabels:missingFields.map(k=>FIELD_MAP[k]?.label||k),alerts:state.result?.alerts?.map(a=>({level:a.level,message:a.message,fileName:a.fileName||''})).slice(0,100)||[]},activeProject());
-    const eta=$('#analysisEtaDetail'); if(eta) eta.textContent=`Analyse terminée en ${formatAnalysisDuration(elapsed)}`;
-    setTimeout(()=>$('#progress').hidden=true,900);
+    const eta=$('#analysisEtaDetail'); if(eta) eta.textContent=analysisControl.stopRequested?`Analyse arrêtée après ${formatAnalysisDuration(elapsed)} · résultats partiels conservés`:`Analyse terminée en ${formatAnalysisDuration(elapsed)}`;
+    if(!analysisControl.stopRequested) setTimeout(()=>$('#progress').hidden=true,900);
     const timedOut=state.docs.filter(d=>d.status==='timeout').length;
     toast(`${state.result?.newlyParsedCount||0} nouveau${state.result?.newlyParsedCount===1?'':'x'} document${state.result?.newlyParsedCount===1?'':'s'} analysé${state.result?.newlyParsedCount===1?'':'s'} ; ${state.result?.reusedParsedCount||previouslyAnalyzed} document(s) réutilisé(s)${timedOut?` ; ${timedOut} fichier(s) mis de côté après 5 min`:''}.`,timedOut?'warn':'success');
   }catch(e){ toast(e.message||String(e),'error'); setStatus('Analyse interrompue'); const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Estimation interrompue'; }
-  finally{ $('#analyzeBtn').disabled=false; }
+  finally{ analysisControl.running=false; analysisControl.paused=false; resolveAnalysisPause(); analysisControl.controllers.clear(); syncAnalysisControlUi(); $('#analyzeBtn').disabled=false; }
 }
 
 function retryTimedOutDocument(id){ const d=state.docs.find(x=>x.id===id); if(!d)return; d.status='pending'; d.error=null; d.retryUnlimited=true; toast(`Relance sans limite : ${d.name}`,'info'); analyze([id],true); }
@@ -689,7 +782,7 @@ function showTargetedReview(doc,candidates,ocrMeta){
       for(const a of additions){ const k=[a.field,a.building,String(a.value),a.page,a.method].join('|'); if(!seen.has(k)){ existing.push(a); seen.add(k); } }
       doc.cachedOccurrences=existing;
       const valid=state.docs.filter(x=>x.status==='ready');
-      state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests();
+      state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests();
       toast(`${accepted.length} nouvelle${accepted.length>1?'s':''} valeur${accepted.length>1?'s':''} validée${accepted.length>1?'s':''} et ajoutée${accepted.length>1?'s':''} au tableau.`,'success');
       renderAll(); await checkpointDocument(activeProject(),doc);
     }else scheduleWorkspaceCheckpoint('décisions réanalyse ciblée',80);
@@ -762,15 +855,16 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()&&v!==undefined?`<button class="cell-beta-error" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Signaler ce résultat comme erroné" aria-label="Signaler une erreur">✕</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()&&v!==undefined?`<button class="cell-beta-error" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Signaler ce résultat comme erroné" aria-label="Signaler une erreur">✕</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
   const selected=()=>$$('#summaryView .building-select:checked').map(x=>x.value);
-  const refreshMergeButton=()=>{ const b=$('#mergeBuildingsBtn'); if(b) b.disabled=selected().length<2; };
-  $$('#summaryView .building-select').forEach(cb=>cb.onchange=refreshMergeButton);
-  const all=$('#selectAllBuildings'); if(all) all.onchange=()=>{ $$('#summaryView .building-select').forEach(cb=>cb.checked=all.checked); refreshMergeButton(); };
+  const refreshBuildingActionButtons=()=>{ const n=selected().length, merge=$('#mergeBuildingsBtn'), del=$('#deleteBuildingsBtn'); if(merge) merge.disabled=n<2; if(del) del.disabled=n<1; };
+  $$('#summaryView .building-select').forEach(cb=>cb.onchange=refreshBuildingActionButtons);
+  const all=$('#selectAllBuildings'); if(all) all.onchange=()=>{ $$('#summaryView .building-select').forEach(cb=>cb.checked=all.checked); refreshBuildingActionButtons(); };
   const merge=$('#mergeBuildingsBtn'); if(merge) merge.onclick=()=>mergeSelectedBuildings(selected());
+  const del=$('#deleteBuildingsBtn'); if(del) del.onclick=()=>deleteSelectedBuildings(selected());
   const reset=$('#resetBuildingLinksBtn'); if(reset) reset.onclick=resetBuildingLinks;
   $$('#summaryView .building-suggestion').forEach(b=>b.onclick=()=>mergeSelectedBuildings([b.dataset.a,b.dataset.b]));
   const addTag=()=>{ const inp=$('#projectTagInput'); const label=(inp?.value||'').trim(); if(!label) return; if(!state.manualTags.some(x=>x.toLowerCase()===label.toLowerCase())) state.manualTags.push(label); if(inp) inp.value=''; state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); renderSummary(); scheduleWorkspaceCheckpoint('tag manuel'); };
@@ -832,7 +926,7 @@ async function submitBetaError(){
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
   const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length)||!state.result) return;
-  state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('regroupement bâtiments',80); toast(message,'success');
+  state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('regroupement bâtiments',80); toast(message,'success');
 }
 
 function mergeSelectedBuildings(names){
@@ -879,7 +973,7 @@ function rebuildProjectFromCheckpoints(project){
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
   if(!valid.length&&!(project.manualPasteRows||[]).length){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
-  project.result.documentsCount=valid.length; applyManualValuesToProject(project);
+  applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
   // automatiquement dès qu'un document est relu ou qu'une donnée est modifiée.
 }
@@ -1009,7 +1103,7 @@ function wire(){
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});
   const searchApply=$('#searchIntegrateApply'); if(searchApply) searchApply.onclick=applySearchIntegration; const searchClose=$('#searchIntegrateClose'); if(searchClose) searchClose.onclick=()=>$('#searchIntegrateDialog')?.close();
-  $('#saveRules').onclick=()=>{ $$('#rulesView input[data-rule]').forEach(inp=>{ const k=inp.dataset.rule,p=inp.dataset.part; state.rules[k][p]=inp.value.split(';').map(s=>s.trim()).filter(Boolean); }); saveSourceRules(state.rules); toast('Règles de sources enregistrées.','success'); if(state.result){ const valid=state.docs.filter(d=>d.status==='ready'); state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); } renderAll(); scheduleWorkspaceCheckpoint('règles de sources',80); };
+  $('#saveRules').onclick=()=>{ $$('#rulesView input[data-rule]').forEach(inp=>{ const k=inp.dataset.rule,p=inp.dataset.part; state.rules[k][p]=inp.value.split(';').map(s=>s.trim()).filter(Boolean); }); saveSourceRules(state.rules); toast('Règles de sources enregistrées.','success'); if(state.result){ const valid=state.docs.filter(d=>d.status==='ready'); state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); } renderAll(); scheduleWorkspaceCheckpoint('règles de sources',80); };
   $('#resetRules').onclick=()=>{state.rules=resetSourceRules();renderRules();scheduleWorkspaceCheckpoint('règles par défaut',80);toast('Règles par défaut restaurées.','success');};
   const ocrMode=$('#ocrMode'); if(ocrMode){ const saved=localStorage.getItem('prestaterre-ocr-mode'); if(['auto','always','off'].includes(saved)) ocrMode.value=saved; ocrMode.onchange=()=>{localStorage.setItem('prestaterre-ocr-mode',ocrMode.value); const msg=ocrMode.value==='always'?'OCR renforcé : toutes les pages PDF seront vérifiées par Tesseract (plus lent).':ocrMode.value==='off'?'OCR désactivé pour les prochains documents.':'OCR automatique : Tesseract intervient seulement sur les pages difficiles.'; toast(msg,'info');}; }
   const analysisMode=$('#analysisMode'); if(analysisMode){

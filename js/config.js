@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.1.17';
+export const APP_VERSION = '1.1.20';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({

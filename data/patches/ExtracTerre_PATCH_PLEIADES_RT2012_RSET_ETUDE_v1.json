@@ -1,0 +1,534 @@
+{
+  "schema": "extracterre-improvement-patch/v1",
+  "id": "pleiades-rt2012-rset-etude-structured-v1",
+  "version": "1.0.0",
+  "minAppVersion": "1.1.18",
+  "title": "Pleiades RT2012 — RSET + étude thermique structurée",
+  "description": "Lecture générique des RSET RT2012 Pleiades/8100 et des études thermiques Pleiades associées. Extrait par tableaux réglementaires Bbio/Bbiomax, Cep/Cepmax, Tic/Ticref, surfaces, logements et consommations Cep par poste, sans se baser sur le nom du projet.",
+  "documentSignatures": [
+    {
+      "docType": "RT2012",
+      "weight": 44,
+      "all": [
+        "récapitulatif standardisé d'etude thermique",
+        "réglementation thermique 2012"
+      ],
+      "any": [
+        "th-bce 2012",
+        "pleiades",
+        "8100"
+      ]
+    },
+    {
+      "docType": "Étude thermique",
+      "weight": 38,
+      "all": [
+        "pleiades"
+      ],
+      "any": [
+        "résultats rt2012",
+        "exigence de résultat : tic",
+        "version du moteur rt2012"
+      ]
+    }
+  ],
+  "extractionRules": [
+    {
+      "id": "rt12-rset-operation",
+      "field": "operation_name",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Opération\\s*[:：]\\s*([^\\n\\r]{3,180})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rt12-rset-owner",
+      "field": "owner_company",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Ma[iî]tre\\s+d['’]ouvrage[\\s\\S]{0,160}?Nom(?:\\s+ou\\s+raison\\s+sociale)?\\s+([^\\n\\r]{3,140})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.998,
+      "maxMatches": 1
+    },
+    {
+      "id": "rt12-rset-dept",
+      "field": "department",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Département\\s+([0-9]{1,3}\\s*[-,]\\s*[^\\n\\r]{2,60})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rt12-rset-building",
+      "field": "building",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Identifiant\\s+Bâtiment\\s+[\\\"“]?([^\\\"”\\n\\r]{1,80})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rt12-rset-housing",
+      "field": "housing_count",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Nombre\\s+de\\s+logements\\s+([0-9]{1,5})",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1
+    },
+    {
+      "id": "rt12-rset-shab",
+      "field": "shab",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Zone\\s+1[\\s\\S]{0,220}?logement\\s+collectif\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+0\\s+0\\s+1",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.997,
+      "maxMatches": 1,
+      "unit": "m²",
+      "requireAny": [
+        "surface utile surt"
+      ]
+    },
+    {
+      "id": "rt12-rset-bbio",
+      "field": "bbio",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "résultats du besoin bioclimatique"
+      ]
+    },
+    {
+      "id": "rt12-rset-bbiomax",
+      "field": "bbio_max",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "résultats du besoin bioclimatique"
+      ]
+    },
+    {
+      "id": "rt12-rset-bbiogain",
+      "field": "bbio_gain",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+      "valueGroup": 3,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "unit": "%",
+      "requireAny": [
+        "résultats du besoin bioclimatique"
+      ]
+    },
+    {
+      "id": "rt12-rset-cep",
+      "field": "cep",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats du calcul de la consommation conventionnelle d'énergie cep"
+      ]
+    },
+    {
+      "id": "rt12-rset-cepmax",
+      "field": "cep_max",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats du calcul de la consommation conventionnelle d'énergie cep"
+      ]
+    },
+    {
+      "id": "rt12-rset-cepgain",
+      "field": "cep_gain",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Coefficient\\s+Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+      "valueGroup": 3,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "unit": "%",
+      "requireAny": [
+        "résultats du calcul de la consommation conventionnelle d'énergie cep"
+      ]
+    },
+    {
+      "id": "rt12-rset-tic",
+      "field": "tic",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Zone\\s*:\\s*[^\\n\\r]{1,80}?/\\s*Groupe\\s*:\\s*[^\\n\\r]{1,80}?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+-?[0-9][0-9 \\u00a0.,]*\\s+Conforme",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "°C",
+      "requireAny": [
+        "tic réf"
+      ]
+    },
+    {
+      "id": "rt12-rset-ticref",
+      "field": "tic_ref",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Zone\\s*:\\s*[^\\n\\r]{1,80}?/\\s*Groupe\\s*:\\s*[^\\n\\r]{1,80}?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+-?[0-9][0-9 \\u00a0.,]*\\s+Conforme",
+      "valueGroup": 3,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "°C",
+      "requireAny": [
+        "tic réf"
+      ]
+    },
+    {
+      "id": "rt12-rset-cool",
+      "field": "cep_cooling",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Refroidissement\\s+0\\s+0\\s+0\\s+0\\s+([0-9][0-9 \\u00a0.,]*)\\s+0",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+      "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+    },
+    {
+      "id": "rt12-rset-light",
+      "field": "cep_lighting",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Eclairage\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+      "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+    },
+    {
+      "id": "rt12-rset-vent",
+      "field": "cep_aux_vent",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Auxiliaires\\s+VMC\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+      "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+    },
+    {
+      "id": "rt12-rset-dist",
+      "field": "cep_aux_dist",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Auxiliaires[\\s\\r\\n]+distribution\\s+([0-9][0-9 \\u00a0.,]*)",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.998,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+      "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+    },
+    {
+      "id": "rt12-rset-electricity",
+      "field": "cep_electricity",
+      "docTypes": [
+        "RT2012"
+      ],
+      "regex": "Bâtiment\\s*\\(Bâtiment[^\\)]*\\)\\s+[0-9][0-9 \\u00a0.,]*\\s+0\\s+0\\s+0\\s+0\\s+([0-9][0-9 \\u00a0.,]*)\\s+0",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.997,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+type\\s+d['’]énergie\\s+pour\\s+le\\s+bâtiment",
+      "sectionEndRegex": "Résultats\\s+détaillés\\s+du\\s+coefficient\\s+Cep"
+    },
+    {
+      "id": "rt12-study-dept",
+      "field": "department",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Département\\s*:\\s*([0-9]{1,3}\\s*[-,]\\s*[^\\n\\r]{2,60})",
+      "valueGroup": 1,
+      "valueType": "text",
+      "confidence": 0.997,
+      "maxMatches": 1,
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-housing",
+      "field": "housing_count",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Nombre\\s+de\\s+logement[s]?\\s+([0-9]{1,5})",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.996,
+      "maxMatches": 1,
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-shab",
+      "field": "shab",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Surface\\s+utile\\s+du\\s+groupe\\s*\\(SHAB\\s*/\\s*SURT\\)\\s*([0-9][0-9 \\u00a0.,]*)\\s*m",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "m²",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-bbio",
+      "field": "bbio",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Besoins\\s+Bioclimatique\\s+([0-9][0-9 \\u00a0.,]*)\\s*points\\s+([0-9][0-9 \\u00a0.,]*)\\s*points",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-bbiomax",
+      "field": "bbio_max",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Besoins\\s+Bioclimatique\\s+([0-9][0-9 \\u00a0.,]*)\\s*points\\s+([0-9][0-9 \\u00a0.,]*)\\s*points",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-cep",
+      "field": "cep",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Consommation\\s+énergie\\s+Primaire\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-cepmax",
+      "field": "cep_max",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Consommation\\s+énergie\\s+Primaire\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-tic",
+      "field": "tic",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Groupe\\s+\\d+\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "°C",
+      "requireAny": [
+        "exigence de résultat : tic"
+      ]
+    },
+    {
+      "id": "rt12-study-ticref",
+      "field": "tic_ref",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Groupe\\s+\\d+\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C",
+      "valueGroup": 2,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "°C",
+      "requireAny": [
+        "exigence de résultat : tic"
+      ]
+    },
+    {
+      "id": "rt12-study-cool",
+      "field": "cep_cooling",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Consommations?\\s+(?:des?\\s+)?climatisation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-light",
+      "field": "cep_lighting",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Consommations?\\s+(?:des?\\s+)?éclairage\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-vent",
+      "field": "cep_aux_vent",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Consommations?\\s+(?:des?\\s+)?auxiliaires de ventilation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-dist",
+      "field": "cep_aux_dist",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Consommations?\\s+(?:des?\\s+)?auxiliaires hydrauliques\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+      "valueGroup": 1,
+      "valueType": "number",
+      "confidence": 0.999,
+      "maxMatches": 1,
+      "unit": "kWhEP/m².an",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    },
+    {
+      "id": "rt12-study-enr",
+      "field": "enr",
+      "docTypes": [
+        "Étude thermique"
+      ],
+      "regex": "Utilisation\\s+des\\s+ENR\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh",
+      "valueGroup": 0,
+      "valueType": "text",
+      "confidence": 0.996,
+      "maxMatches": 1,
+      "constantValue": "Oui",
+      "requireAny": [
+        "résultats rt2012"
+      ]
+    }
+  ]
+}

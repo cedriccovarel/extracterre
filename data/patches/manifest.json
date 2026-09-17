@@ -1,6 +1,6 @@
 {
   "schema": "extracterre-patch-manifest/v1",
-  "generatedFor": "1.1.18",
+  "generatedFor": "1.1.20",
   "patches": [
     {
       "schema": "extracterre-improvement-patch/v1",
@@ -1218,6 +1218,1912 @@
           "note": "Vecteur ECS issu du tableau de production d'eau chaude sanitaire ; les lignes sans consommation ne sont jamais interprétées comme vecteurs actifs.",
           "requireAny": [
             "eau chaude sanitaire"
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "extracterre-improvement-patch/v1",
+      "id": "u22win-perrenoud-re2020-multibuilding-v1",
+      "version": "1.0.0",
+      "minAppVersion": "1.1.20",
+      "title": "RE2020 U22Win / Perrenoud — multi-bâtiments et multi-zones",
+      "description": "Lecture générique des RSET/RSEE, notes de calcul RE2020 et RSEnv issus de U22Win/Perrenoud. Les valeurs sont rattachées au bâtiment. Pour DH et DHmax, le moteur retient la valeur la plus défavorable (maximum) à l’échelle du bâtiment.",
+      "documentSignatures": [
+        {
+          "docType": "RSET RE2020",
+          "weight": 42,
+          "all": [
+            "récapitulatif standardisé energie environnement",
+            "partie « etude thermique »"
+          ],
+          "any": [
+            "u22win",
+            "logiciels perrenoud",
+            "version moteur cstb"
+          ]
+        },
+        {
+          "docType": "RSEE RE2020",
+          "weight": 38,
+          "all": [
+            "récapitulatif standardisé energie environnement",
+            "etude thermique"
+          ],
+          "any": [
+            "u22win",
+            "logiciels perrenoud"
+          ]
+        },
+        {
+          "docType": "Étude thermique",
+          "weight": 34,
+          "all": [
+            "rapport de l'etude"
+          ],
+          "any": [
+            "u22win",
+            "bbio max",
+            "cep max",
+            "dh max"
+          ]
+        },
+        {
+          "docType": "RSENV / RSNV",
+          "weight": 45,
+          "all": [
+            "récapitulatif standardisé energie environnement",
+            "partie « etude environnementale »"
+          ],
+          "any": [
+            "u22win",
+            "logiciels perrenoud",
+            "chapitre 5 : sorties de l’analyse de cycle de vie environnementale"
+          ]
+        }
+      ],
+      "extractionRules": [
+        {
+          "id": "u22-rset-surface",
+          "field": "shab",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "S\\s*/\\s*usage\\s+principal\\s+([0-9][0-9\\s\\u00a0.,]*)\\s*m",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Surface réglementaire/Sref du bâtiment dans les données générales.",
+          "unit": "m²"
+        },
+        {
+          "id": "u22-rset-housing",
+          "field": "housing_count",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Nombre\\s+de\\s+logements?\\s+([0-9]{1,5})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Nombre de logements du bâtiment."
+        },
+        {
+          "id": "u22-rset-bbio",
+          "field": "bbio",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Bbio du bâtiment."
+        },
+        {
+          "id": "u22-rset-bbio_max",
+          "field": "bbio_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Bbio du bâtiment."
+        },
+        {
+          "id": "u22-rset-bbio_gain",
+          "field": "bbio_gain",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Bbio du bâtiment.",
+          "unit": "%"
+        },
+        {
+          "id": "u22-rset-cep",
+          "field": "cep",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficients?\\s+Cep\\s*/\\s*Cep[^\\n\\r]{0,120}?([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Cep/Cep,nr du bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-rset-cep_max",
+          "field": "cep_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficients?\\s+Cep\\s*/\\s*Cep[^\\n\\r]{0,120}?([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Cep/Cep,nr du bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-rset-cepnr",
+          "field": "cepnr",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficients?\\s+Cep\\s*/\\s*Cep[^\\n\\r]{0,120}?([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Cep/Cep,nr du bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-rset-cepnr_max",
+          "field": "cepnr_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficients?\\s+Cep\\s*/\\s*Cep[^\\n\\r]{0,120}?([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 4,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Cep/Cep,nr du bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-rset-cep_gain",
+          "field": "cep_gain",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficients?\\s+Cep\\s*/\\s*Cep[^\\n\\r]{0,120}?([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 5,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Cep/Cep,nr du bâtiment.",
+          "unit": "%"
+        },
+        {
+          "id": "u22-rset-cepnr_gain",
+          "field": "cepnr_gain",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Coefficients?\\s+Cep\\s*/\\s*Cep[^\\n\\r]{0,120}?([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 6,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Tableau réglementaire Cep/Cep,nr du bâtiment.",
+          "unit": "%"
+        },
+        {
+          "id": "u22-rset-dh-worst",
+          "field": "dh",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "sectionStartRegex": "Identifiant\\s+B[âa]timent\\s+[\"“]?([^\\n\\r\"”]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "(?:Oui|Non)\\s+[0-9][0-9\\s\\u00a0.,]*\\s+([0-9]{2,4}(?:[.,][0-9]+)?)\\s+[0-9]{1,5}\\s+[0-9]{1,5}\\s+[0-9]{1,5}\\s+Conforme",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "DH le plus défavorable parmi les zones/groupes du bâtiment.",
+          "unit": "°C.h",
+          "selection": "max",
+          "selectionGroup": 1
+        },
+        {
+          "id": "u22-note-sref",
+          "field": "shab",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "(?:Sref|Surface\\s+Sref)\\s*:\\s*([0-9][0-9\\s\\u00a0.,]*)\\s*m",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Sref du bâtiment dans le récapitulatif U22Win.",
+          "unit": "m²"
+        },
+        {
+          "id": "u22-note-bbio",
+          "field": "bbio",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Bbio\\s+Bbio\\s+Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment."
+        },
+        {
+          "id": "u22-note-bbio_max",
+          "field": "bbio_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Bbio\\s+Bbio\\s+Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment."
+        },
+        {
+          "id": "u22-note-bbio_gain",
+          "field": "bbio_gain",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Bbio\\s+Bbio\\s+Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "%"
+        },
+        {
+          "id": "u22-note-cep",
+          "field": "cep",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Cep\\s+Cep\\s+Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-note-cep_max",
+          "field": "cep_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Cep\\s+Cep\\s+Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-note-cep_gain",
+          "field": "cep_gain",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Cep\\s+Cep\\s+Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "%"
+        },
+        {
+          "id": "u22-note-cepnr",
+          "field": "cepnr",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Cep\\s*,?nr\\s+Cep\\s*,?nr[_ ]?Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Cep\\s*,?nr\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-note-cepnr_max",
+          "field": "cepnr_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Cep\\s*,?nr\\s+Cep\\s*,?nr[_ ]?Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Cep\\s*,?nr\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "u22-note-cepnr_gain",
+          "field": "cepnr_gain",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Cep\\s*,?nr\\s+Cep\\s*,?nr[_ ]?Max\\s+Gain\\s+en\\s*%[\\s\\S]{0,100}?Cep\\s*,?nr\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "Récapitulatif RE2020 U22Win par bâtiment.",
+          "unit": "%"
+        },
+        {
+          "id": "u22-note-dh-worst",
+          "field": "dh",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Groupe\\s+non\\s+refroidi\\s+Cat[eé]gorie\\s+\\d+\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "DH maximal observé parmi les groupes du bâtiment.",
+          "unit": "°C.h",
+          "selection": "max",
+          "selectionGroup": 1
+        },
+        {
+          "id": "u22-note-dhmax-worst",
+          "field": "dh_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "sectionStartRegex": "(?:^|\\n)\\s*\\d+(?:\\.\\d+)?\\.\\s*B[âa]timent\\s*:\\s*([^\\n\\r]+)",
+          "sectionBuildingGroup": 1,
+          "regex": "Groupe\\s+non\\s+refroidi\\s+Cat[eé]gorie\\s+\\d+\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 20,
+          "note": "DHmax le plus défavorable observé parmi les groupes du bâtiment.",
+          "unit": "°C.h",
+          "selection": "max",
+          "selectionGroup": 2
+        }
+      ]
+    },
+    {
+      "schema": "extracterre-improvement-patch/v1",
+      "id": "pleiades-re2020-rset-etude-structured-v1",
+      "version": "1.0.0",
+      "minAppVersion": "1.1.18",
+      "title": "Pleiades RE2020 — RSET/RSEE + étude thermique structurée",
+      "description": "Lecture générique des RSET/RSEE thermiques RE2020 et des études thermiques Pleiades associées. Priorise les tableaux réglementaires et les synthèses de résultats, avec extraction stricte Bbio, Cep, Cep,nr, DH, Ic énergie, surfaces, logements, enveloppe, vitrage et systèmes. Aucun nom de projet ou de bâtiment n'est codé en dur.",
+      "documentSignatures": [
+        {
+          "docType": "RSET RE2020",
+          "weight": 42,
+          "all": [
+            "réglementation environnementale 2020",
+            "récapitulatif standardisé energie environnement"
+          ],
+          "any": [
+            "partie « etude thermique »",
+            "date de génération du rset",
+            "th-dbc"
+          ]
+        },
+        {
+          "docType": "RSEE RE2020",
+          "weight": 38,
+          "all": [
+            "récapitulatif standardisé energie environnement"
+          ],
+          "any": [
+            "partie « etude thermique »",
+            "feuillets bâtiments",
+            "résultats sorties détaillées"
+          ]
+        },
+        {
+          "docType": "Étude thermique",
+          "weight": 38,
+          "all": [
+            "pleiades"
+          ],
+          "any": [
+            "résultats re2020 energie",
+            "synthese de resultats",
+            "exigence de résultat : ic energie",
+            "moteur de calcul : 2022"
+          ]
+        }
+      ],
+      "extractionRules": [
+        {
+          "id": "re20-rset-operation",
+          "field": "operation_name",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Opération\\s*[:：]\\s*([^\\n\\r]{3,180})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-owner",
+          "field": "owner_company",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Ma[iî]tre\\s+d['’]ouvrage[\\s\\S]{0,160}?Nom(?:\\s+ou\\s+raison\\s+sociale)?\\s+([^\\n\\r]{3,140})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.998,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-dept",
+          "field": "department",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Département\\s+([0-9]{1,3}\\s*[-,]\\s*[^\\n\\r]{2,60})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-building",
+          "field": "building",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Identifiant\\s+Bâtiment\\s+[\\\"“]?([^\\\"”\\n\\r]{1,80})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-buildings",
+          "field": "building_total",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Nombre\\s+de\\s+bâtiments(?:/zones)?\\s+du\\s+projet\\s+([0-9]{1,3})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-housing",
+          "field": "housing_count",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Nombre\\s+de\\s+logements\\s+([0-9]{1,5})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-housing-total",
+          "field": "housing_total",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Nombre\\s+de\\s+logements\\s+([0-9]{1,5})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-surface-usage",
+          "field": "shab",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "S\\s*/\\s*usage\\s+principal\\s+([0-9][0-9 \\u00a0.,]*)\\s*m",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "m²"
+        },
+        {
+          "id": "re20-rset-bbio",
+          "field": "bbio",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats du besoin bioclimatique"
+          ]
+        },
+        {
+          "id": "re20-rset-bbiomax",
+          "field": "bbio_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-bbiogain",
+          "field": "bbio_gain",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "%"
+        },
+        {
+          "id": "re20-rset-cep",
+          "field": "cep",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "re20-rset-cepmax",
+          "field": "cep_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "re20-rset-cepnr",
+          "field": "cepnr",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "re20-rset-cepnrmax",
+          "field": "cepnr_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 4,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an"
+        },
+        {
+          "id": "re20-rset-cepgain",
+          "field": "cep_gain",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 5,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "%"
+        },
+        {
+          "id": "re20-rset-cepnrgain",
+          "field": "cepnr_gain",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Coefficients\\s+Cep\\s*/\\s*Cep(?:max)?\\s*-\\s*Cep,nr\\s*/\\s*Cep,nr(?:max)?\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 6,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "%"
+        },
+        {
+          "id": "re20-rset-dh",
+          "field": "dh",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Zone\\s*\\d+\\s*/\\s*Groupe\\s*\\d+[\\s\\S]{0,90}?(?:Oui|Non)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+[0-9][0-9 \\u00a0.,]*\\s+[0-9][0-9 \\u00a0.,]*\\s+[0-9][0-9 \\u00a0.,]*\\s+Conforme",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "°C.h",
+          "requireAny": [
+            "indicateur degrés-heures"
+          ]
+        },
+        {
+          "id": "re20-rset-dhmax",
+          "field": "dh_max",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "DH\\s+max\\s+est\\s+de\\s+([0-9][0-9 \\u00a0.,]*)\\s*°?C\\.?h",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "°C.h"
+        },
+        {
+          "id": "re20-rset-window-material",
+          "field": "window_material",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Type\\s+de\\s+menuiseries\\s+([^\\n\\r]{2,80})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.996,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-window-shading",
+          "field": "window_shading",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Type\\s+de\\s+protections\\s+mobiles[\\s\\S]{0,120}?\\n?\\s*([^\\n\\r]{2,80})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.994,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-wall-insulation",
+          "field": "wall_insulation",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Nature\\s+de\\s+l['’]isolation\\s+des\\s+parois\\s+verticales\\s+extérieures\\s+([^\\n\\r]{2,100})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-floor-insulation",
+          "field": "floor_insulation",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Nature\\s+de\\s+l['’]isolation\\s+des\\s+planchers\\s+([^\\n\\r]{2,100})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.996,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-rset-roof-insulation",
+          "field": "roof_insulation",
+          "docTypes": [
+            "RSET RE2020",
+            "RSEE RE2020"
+          ],
+          "regex": "Nature\\s+de\\s+l['’]isolation\\s+des\\s+toitures\\s+([^\\n\\r]{2,100})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.996,
+          "maxMatches": 1
+        },
+        {
+          "id": "re20-study-owner",
+          "field": "owner_company",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Ma[iî]tre\\s+d['’]Ouvrage\\s+([^\\n\\r]{3,140})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.996,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-dept",
+          "field": "department",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Département\\s*[:：]\\s*([0-9]{1,3}\\s*[-,]\\s*[^\\n\\r]{2,60})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-housing",
+          "field": "housing_count",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Nombre\\s+de\\s+logement[s]?\\s+([0-9]{1,5})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.996,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-shab",
+          "field": "shab",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Surface\\s+utile\\s+du\\s+groupe\\s*\\(SHAB\\s*/\\s*SURT\\)\\s*([0-9][0-9 \\u00a0.,]*)\\s*m",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "m²",
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-bbio",
+          "field": "bbio",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-bbiomax",
+          "field": "bbio_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Bbio,max\\s+([0-9]+(?:[.,][0-9]+)?)\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-bbiogain",
+          "field": "bbio_gain",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Gain\\s+Bbio\\s*/\\s*Bbio,max\\s+([0-9]+(?:[.,][0-9]+)?)\\s*%",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "%",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-cep",
+          "field": "cep",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+kWhep/m²\\.an\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-cepmax",
+          "field": "cep_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Cep,Max\\s+([0-9]+(?:[.,][0-9]+)?)\\s+kWhep/m²\\.an\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-cepgain",
+          "field": "cep_gain",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Gain\\s+Cep\\s*/\\s*Cep(?:,|\\s*)max\\s+([0-9][0-9 \\u00a0.,]*)\\s*%",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "%",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-cepnr",
+          "field": "cepnr",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Cep\\s+nr\\s+([0-9]+(?:[.,][0-9]+)?)\\s+kWhep/m²\\.an\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-cepnrmax",
+          "field": "cepnr_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Cep\\s+nr,Max\\s+([0-9]+(?:[.,][0-9]+)?)\\s+kWhep/m²\\.an\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-icenergy",
+          "field": "ic_energy",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*Ic\\s+énergie\\s+([0-9]+(?:[.,][0-9]+)?)\\s+kg\\s+eq\\s+CO2/m²\\s*$",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-dh",
+          "field": "dh",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*DH\\s+([0-9]+(?:[.,][0-9]+)?)\\s*<\\s*([0-9]+(?:[.,][0-9]+)?)\\s*°C/h",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "°C.h",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-dhmax",
+          "field": "dh_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "^\\s*DH\\s+([0-9]+(?:[.,][0-9]+)?)\\s*<\\s*([0-9]+(?:[.,][0-9]+)?)\\s*°C/h",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "°C.h",
+          "requireAny": [
+            "synthese de resultats"
+          ]
+        },
+        {
+          "id": "re20-study-cep-cool",
+          "field": "cep_cooling",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?climatisation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-cep-light",
+          "field": "cep_lighting",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?éclairage\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-cep-vent",
+          "field": "cep_aux_vent",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?auxiliaires de ventilation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-cep-dist",
+          "field": "cep_aux_dist",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?auxiliaires hydrauliques\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-cep-mob",
+          "field": "cep_mobility",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?mobilité interne\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats re2020 energie"
+          ]
+        },
+        {
+          "id": "re20-study-ic-heat",
+          "field": "ic_energy_heating",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "IC\\s+chauffage\\s+([0-9][0-9 \\u00a0.,]*)\\s*kg",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "décomposition de ic énergie"
+          ]
+        },
+        {
+          "id": "re20-study-ic-cool",
+          "field": "ic_energy_cooling",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "IC\\s+climatisation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kg",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "décomposition de ic énergie"
+          ]
+        },
+        {
+          "id": "re20-study-ic-ecs",
+          "field": "ic_energy_ecs",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "IC\\s+ECS\\s+([0-9][0-9 \\u00a0.,]*)\\s*kg",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "décomposition de ic énergie"
+          ]
+        },
+        {
+          "id": "re20-study-ic-vent",
+          "field": "ic_energy_aux_vent",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "IC\\s+auxiliaires\\s+de\\s+ventilation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kg",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "décomposition de ic énergie"
+          ]
+        },
+        {
+          "id": "re20-study-ic-dist",
+          "field": "ic_energy_aux_dist",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "IC\\s+auxiliaires\\s+hydrauliques\\s+([0-9][0-9 \\u00a0.,]*)\\s*kg",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "décomposition de ic énergie"
+          ]
+        },
+        {
+          "id": "re20-study-ic-mob",
+          "field": "ic_energy_mobility",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "IC\\s+mobilité\\s+interne\\s+([0-9][0-9 \\u00a0.,]*)\\s*kg",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kgCO₂e/m²",
+          "requireAny": [
+            "décomposition de ic énergie"
+          ]
+        },
+        {
+          "id": "re20-study-window-glazing",
+          "field": "window_glazing",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Fen[eê]tre\\s+[^\\n\\r]{0,40}?\\s+(4[./_]16[./_]4)",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "requireAny": [
+            "performance des menuiseries"
+          ]
+        },
+        {
+          "id": "re20-study-window-material",
+          "field": "window_material",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Fen[eê]tre\\s+(PVC|Aluminium|Alu|Bois|Mixte(?:\\s*\\([^\\)]*\\))?)",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "requireAny": [
+            "performance des menuiseries"
+          ]
+        },
+        {
+          "id": "re20-study-window-shading",
+          "field": "window_shading",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Volet\\s+roulant",
+          "valueGroup": 0,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "constantValue": "Volet roulant",
+          "requireAny": [
+            "performance des menuiseries"
+          ]
+        },
+        {
+          "id": "re20-study-ventilation",
+          "field": "ventilation",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "(ventilation[\\s\\S]{0,260}?hygroréglable[^\\n\\r]{0,80})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.994,
+          "maxMatches": 1,
+          "requireAny": [
+            "ventilation"
+          ]
+        },
+        {
+          "id": "re20-study-ecs-system",
+          "field": "ecs",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "production\\s+de\\s+l['’]eau\\s+chaude\\s+sanitaire[\\s\\S]{0,300}?(pompe\\s+à\\s+chaleur\\s+collective)",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "requireAny": [
+            "production ecs"
+          ]
+        },
+        {
+          "id": "re20-study-ecs-vector",
+          "field": "ecs_vector_after",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "production\\s+de\\s+l['’]eau\\s+chaude\\s+sanitaire[\\s\\S]{0,300}?pompe\\s+à\\s+chaleur",
+          "valueGroup": 0,
+          "valueType": "text",
+          "confidence": 0.996,
+          "maxMatches": 1,
+          "constantValue": "Électricité",
+          "requireAny": [
+            "production ecs"
+          ]
+        },
+        {
+          "id": "re20-study-heating-mode",
+          "field": "heating_mode_after",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "(Panneaux\\s+rayonnants\\s+électriques)",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "requireAny": [
+            "emissions chauffage"
+          ]
+        },
+        {
+          "id": "re20-study-heating-vector",
+          "field": "heating_vector_after",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Panneaux\\s+rayonnants\\s+électriques",
+          "valueGroup": 0,
+          "valueType": "text",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "constantValue": "Électricité",
+          "requireAny": [
+            "emissions chauffage"
+          ]
+        }
+      ]
+    },
+    {
+      "schema": "extracterre-improvement-patch/v1",
+      "id": "pleiades-rt2012-rset-etude-structured-v1",
+      "version": "1.0.0",
+      "minAppVersion": "1.1.18",
+      "title": "Pleiades RT2012 — RSET + étude thermique structurée",
+      "description": "Lecture générique des RSET RT2012 Pleiades/8100 et des études thermiques Pleiades associées. Extrait par tableaux réglementaires Bbio/Bbiomax, Cep/Cepmax, Tic/Ticref, surfaces, logements et consommations Cep par poste, sans se baser sur le nom du projet.",
+      "documentSignatures": [
+        {
+          "docType": "RT2012",
+          "weight": 44,
+          "all": [
+            "récapitulatif standardisé d'etude thermique",
+            "réglementation thermique 2012"
+          ],
+          "any": [
+            "th-bce 2012",
+            "pleiades",
+            "8100"
+          ]
+        },
+        {
+          "docType": "Étude thermique",
+          "weight": 38,
+          "all": [
+            "pleiades"
+          ],
+          "any": [
+            "résultats rt2012",
+            "exigence de résultat : tic",
+            "version du moteur rt2012"
+          ]
+        }
+      ],
+      "extractionRules": [
+        {
+          "id": "rt12-rset-operation",
+          "field": "operation_name",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Opération\\s*[:：]\\s*([^\\n\\r]{3,180})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "rt12-rset-owner",
+          "field": "owner_company",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Ma[iî]tre\\s+d['’]ouvrage[\\s\\S]{0,160}?Nom(?:\\s+ou\\s+raison\\s+sociale)?\\s+([^\\n\\r]{3,140})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.998,
+          "maxMatches": 1
+        },
+        {
+          "id": "rt12-rset-dept",
+          "field": "department",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Département\\s+([0-9]{1,3}\\s*[-,]\\s*[^\\n\\r]{2,60})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "rt12-rset-building",
+          "field": "building",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Identifiant\\s+Bâtiment\\s+[\\\"“]?([^\\\"”\\n\\r]{1,80})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "rt12-rset-housing",
+          "field": "housing_count",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Nombre\\s+de\\s+logements\\s+([0-9]{1,5})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1
+        },
+        {
+          "id": "rt12-rset-shab",
+          "field": "shab",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Zone\\s+1[\\s\\S]{0,220}?logement\\s+collectif\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+0\\s+0\\s+1",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "m²",
+          "requireAny": [
+            "surface utile surt"
+          ]
+        },
+        {
+          "id": "rt12-rset-bbio",
+          "field": "bbio",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats du besoin bioclimatique"
+          ]
+        },
+        {
+          "id": "rt12-rset-bbiomax",
+          "field": "bbio_max",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats du besoin bioclimatique"
+          ]
+        },
+        {
+          "id": "rt12-rset-bbiogain",
+          "field": "bbio_gain",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Coefficient\\s+Bbio\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "%",
+          "requireAny": [
+            "résultats du besoin bioclimatique"
+          ]
+        },
+        {
+          "id": "rt12-rset-cep",
+          "field": "cep",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Coefficient\\s+Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats du calcul de la consommation conventionnelle d'énergie cep"
+          ]
+        },
+        {
+          "id": "rt12-rset-cepmax",
+          "field": "cep_max",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Coefficient\\s+Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats du calcul de la consommation conventionnelle d'énergie cep"
+          ]
+        },
+        {
+          "id": "rt12-rset-cepgain",
+          "field": "cep_gain",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Coefficient\\s+Cep\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)\\s+([0-9]+(?:[.,][0-9]+)?)",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "%",
+          "requireAny": [
+            "résultats du calcul de la consommation conventionnelle d'énergie cep"
+          ]
+        },
+        {
+          "id": "rt12-rset-tic",
+          "field": "tic",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Zone\\s*:\\s*[^\\n\\r]{1,80}?/\\s*Groupe\\s*:\\s*[^\\n\\r]{1,80}?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+-?[0-9][0-9 \\u00a0.,]*\\s+Conforme",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "°C",
+          "requireAny": [
+            "tic réf"
+          ]
+        },
+        {
+          "id": "rt12-rset-ticref",
+          "field": "tic_ref",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Zone\\s*:\\s*[^\\n\\r]{1,80}?/\\s*Groupe\\s*:\\s*[^\\n\\r]{1,80}?\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+([0-9][0-9 \\u00a0.,]*)\\s+-?[0-9][0-9 \\u00a0.,]*\\s+Conforme",
+          "valueGroup": 3,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "°C",
+          "requireAny": [
+            "tic réf"
+          ]
+        },
+        {
+          "id": "rt12-rset-cool",
+          "field": "cep_cooling",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Refroidissement\\s+0\\s+0\\s+0\\s+0\\s+([0-9][0-9 \\u00a0.,]*)\\s+0",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+          "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+        },
+        {
+          "id": "rt12-rset-light",
+          "field": "cep_lighting",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Eclairage\\s+([0-9][0-9 \\u00a0.,]*)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+          "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+        },
+        {
+          "id": "rt12-rset-vent",
+          "field": "cep_aux_vent",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Auxiliaires\\s+VMC\\s+([0-9][0-9 \\u00a0.,]*)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+          "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+        },
+        {
+          "id": "rt12-rset-dist",
+          "field": "cep_aux_dist",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Auxiliaires[\\s\\r\\n]+distribution\\s+([0-9][0-9 \\u00a0.,]*)",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.998,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment",
+          "sectionEndRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+poste\\s+et\\s+par\\s+énergie\\s+pour\\s+le\\s+bâtiment\\s+par\\s+ZONES"
+        },
+        {
+          "id": "rt12-rset-electricity",
+          "field": "cep_electricity",
+          "docTypes": [
+            "RT2012"
+          ],
+          "regex": "Bâtiment\\s*\\(Bâtiment[^\\)]*\\)\\s+[0-9][0-9 \\u00a0.,]*\\s+0\\s+0\\s+0\\s+0\\s+([0-9][0-9 \\u00a0.,]*)\\s+0",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "sectionStartRegex": "Résultats\\s+détaillés\\s+des\\s+consommations\\s+annuelles\\s+par\\s+type\\s+d['’]énergie\\s+pour\\s+le\\s+bâtiment",
+          "sectionEndRegex": "Résultats\\s+détaillés\\s+du\\s+coefficient\\s+Cep"
+        },
+        {
+          "id": "rt12-study-dept",
+          "field": "department",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Département\\s*:\\s*([0-9]{1,3}\\s*[-,]\\s*[^\\n\\r]{2,60})",
+          "valueGroup": 1,
+          "valueType": "text",
+          "confidence": 0.997,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-housing",
+          "field": "housing_count",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Nombre\\s+de\\s+logement[s]?\\s+([0-9]{1,5})",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.996,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-shab",
+          "field": "shab",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Surface\\s+utile\\s+du\\s+groupe\\s*\\(SHAB\\s*/\\s*SURT\\)\\s*([0-9][0-9 \\u00a0.,]*)\\s*m",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "m²",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-bbio",
+          "field": "bbio",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Besoins\\s+Bioclimatique\\s+([0-9][0-9 \\u00a0.,]*)\\s*points\\s+([0-9][0-9 \\u00a0.,]*)\\s*points",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-bbiomax",
+          "field": "bbio_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Besoins\\s+Bioclimatique\\s+([0-9][0-9 \\u00a0.,]*)\\s*points\\s+([0-9][0-9 \\u00a0.,]*)\\s*points",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-cep",
+          "field": "cep",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommation\\s+énergie\\s+Primaire\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-cepmax",
+          "field": "cep_max",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommation\\s+énergie\\s+Primaire\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-tic",
+          "field": "tic",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Groupe\\s+\\d+\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "°C",
+          "requireAny": [
+            "exigence de résultat : tic"
+          ]
+        },
+        {
+          "id": "rt12-study-ticref",
+          "field": "tic_ref",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Groupe\\s+\\d+\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C\\s+([0-9][0-9 \\u00a0.,]*)\\s*°C",
+          "valueGroup": 2,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "°C",
+          "requireAny": [
+            "exigence de résultat : tic"
+          ]
+        },
+        {
+          "id": "rt12-study-cool",
+          "field": "cep_cooling",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?climatisation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-light",
+          "field": "cep_lighting",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?éclairage\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-vent",
+          "field": "cep_aux_vent",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?auxiliaires de ventilation\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-dist",
+          "field": "cep_aux_dist",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Consommations?\\s+(?:des?\\s+)?auxiliaires hydrauliques\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh\\s*EP/m²",
+          "valueGroup": 1,
+          "valueType": "number",
+          "confidence": 0.999,
+          "maxMatches": 1,
+          "unit": "kWhEP/m².an",
+          "requireAny": [
+            "résultats rt2012"
+          ]
+        },
+        {
+          "id": "rt12-study-enr",
+          "field": "enr",
+          "docTypes": [
+            "Étude thermique"
+          ],
+          "regex": "Utilisation\\s+des\\s+ENR\\s+([0-9][0-9 \\u00a0.,]*)\\s*kWh",
+          "valueGroup": 0,
+          "valueType": "text",
+          "confidence": 0.996,
+          "maxMatches": 1,
+          "constantValue": "Oui",
+          "requireAny": [
+            "résultats rt2012"
           ]
         }
       ]
