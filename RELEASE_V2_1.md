@@ -1,3 +1,7 @@
+# ExtracTerre v2.1.1 — correctif complet
+
+Cette révision conserve l’architecture Cloud v2.1 et corrige le formulaire propriétaire de correction/apprentissage (`missing is not defined`). Le bundle a été reconstruit depuis la source corrigée. Les 167 champs, les patchs documentaires et le pipeline hybride restent inchangés.
+
 # Release ExtracTerre v2.1.0
 
 Base de départ vérifiée : `ExtracTerre_GitHub_v1_1_23(1).zip`.

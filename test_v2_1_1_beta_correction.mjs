@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const src=fs.readFileSync('./js/app.js','utf8');
+const start=src.indexOf('async function submitBetaError()');
+assert.ok(start>=0,'submitBetaError doit exister');
+const end=src.indexOf('\nfunction rerunWithBuildingLinks',start);
+assert.ok(end>start,'fin de submitBetaError introuvable');
+const fn=src.slice(start,end);
+assert.ok(!/\bmissing\b/.test(fn),'submitBetaError ne doit pas référencer une variable locale missing inexistante');
+assert.match(fn,/dlg\.dataset\.wasMissing!==['"]1['"]/,'la branche rejet doit utiliser dataset.wasMissing');
+console.log('V2.1.1 beta correction regression: OK');

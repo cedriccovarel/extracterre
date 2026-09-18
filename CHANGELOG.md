@@ -1,3 +1,9 @@
+# v2.1.1
+
+- Correction du formulaire propriétaire de correction/apprentissage : suppression de la référence hors portée `missing` dans `submitBetaError()`.
+- Cache-busting des assets en 2.1.1 pour garantir le chargement du bundle corrigé.
+- Aucun changement du pipeline Cloud v2.1 ni du schéma des 167 champs.
+
 # ExtracTerre v2.1.0
 
 - Base réelle : v1.1.23 enrichie, sans suppression des fonctions existantes.

@@ -1,4 +1,4 @@
-/* ExtracTerre bundled runtime v2.1.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.1.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
@@ -5833,7 +5833,7 @@ async function submitBetaError(){
     }
     const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']);
     const srcDoc=state.docs.find(d=>d.id===src.docId);
-    if(!missing&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){
+    if(dlg.dataset.wasMissing!=='1'&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){
       const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};
       const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());
       await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});
