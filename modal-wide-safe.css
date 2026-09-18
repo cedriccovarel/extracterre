@@ -1,0 +1,108 @@
+/* ExtracTerre - correctif SAFE largeur fenetre correction/apprentissage
+   A AJOUTER A LA FIN du styles.css de la V2.1 CLOUD.
+   Ne remplace aucun JS / HTML et ne touche pas au pipeline cloud. */
+
+#betaErrorDialog,
+dialog#betaErrorDialog,
+.beta-error-dialog {
+  width: calc(100vw - 32px) !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  max-height: calc(100vh - 32px) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#betaErrorDialog .beta-error-shell,
+.beta-error-dialog .beta-error-shell,
+.beta-error-shell {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  max-height: calc(100vh - 32px) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+#betaErrorDialog .beta-error-body,
+.beta-error-dialog .beta-error-body,
+.beta-error-body {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  max-height: calc(100vh - 190px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#betaErrorDialog *,
+.beta-error-dialog * {
+  box-sizing: border-box !important;
+  min-width: 0;
+}
+
+#betaErrorDialog .beta-learning-source,
+.beta-error-dialog .beta-learning-source,
+#betaErrorDialog .beta-error-form,
+.beta-error-dialog .beta-error-form,
+#betaErrorDialog .beta-error-summary,
+.beta-error-dialog .beta-error-summary {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+#betaErrorDialog .beta-learning-controls,
+.beta-error-dialog .beta-learning-controls {
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 140px) max-content !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#betaErrorDialog select,
+#betaErrorDialog input,
+#betaErrorDialog textarea,
+#betaErrorDialog .beta-learning-text,
+.beta-error-dialog select,
+.beta-error-dialog input,
+.beta-error-dialog textarea,
+.beta-error-dialog .beta-learning-text {
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+#betaErrorDialog .beta-learning-text,
+.beta-error-dialog .beta-learning-text,
+#betaErrorDialog .beta-learning-line,
+.beta-error-dialog .beta-learning-line,
+#betaErrorDialog .beta-error-excerpt p,
+.beta-error-dialog .beta-error-excerpt p,
+#betaErrorDialog .beta-learning-selection,
+.beta-error-dialog .beta-learning-selection {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+}
+
+#betaErrorDialog .beta-learning-action,
+.beta-error-dialog .beta-learning-action,
+#betaErrorDialog .search-integrate-foot,
+.beta-error-dialog .search-integrate-foot {
+  flex-wrap: wrap !important;
+}
+
+@media (max-width: 900px) {
+  #betaErrorDialog,
+  dialog#betaErrorDialog,
+  .beta-error-dialog {
+    width: calc(100vw - 12px) !important;
+    max-height: calc(100vh - 12px) !important;
+  }
+
+  #betaErrorDialog .beta-learning-controls,
+  .beta-error-dialog .beta-learning-controls {
+    grid-template-columns: 1fr !important;
+  }
+}
