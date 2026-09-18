@@ -451,10 +451,10 @@
       "valueType": "number",
       "confidence": 0.999,
       "maxMatches": 20,
-      "note": "DHmax le plus défavorable observé parmi les groupes du bâtiment.",
+      "note": "DHmax associé à la même ligne/groupe que le DH maximal retenu.",
       "unit": "°C.h",
       "selection": "max",
-      "selectionGroup": 2
+      "selectionGroup": 1
     }
   ]
 }

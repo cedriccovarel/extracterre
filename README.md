@@ -1,3 +1,42 @@
+# ExtracTerre v2.1.0 — analyse hybride locale + distante
+
+ExtracTerre v2.1.0 repart de la base **v1.1.23** et conserve les 167 champs, la mémoire d’apprentissage, les patchs, le journal, le Crible fin, les exports et les protections existantes.
+
+## Nouveautés v2.1
+
+- Nouveau choix **Calcul : Hybride auto / Local / Serveur**.
+- En mode **Hybride auto**, les PDF lourds (seuil par défaut : 6 Mo) et l’OCR renforcé peuvent être lus sur le worker GitHub ; les petits PDF, XML et Excel restent locaux.
+- Le worker distant utilise Poppler + Tesseract pour la lecture lourde et renvoie uniquement un **index documentaire compact** ; les 167 champs continuent d’être parsés par le même moteur métier ExtracTerre dans le navigateur.
+- En mode automatique, une panne Cloud provoque une **bascule locale** au lieu de bloquer l’analyse.
+- Upload privé Supabase découpé en blocs de 45 MiB pour les PDF supérieurs à la limite unitaire du stockage ; plafond applicatif distant : 700 MiB.
+- Les PDF bruts sont supprimés du stockage temporaire après traitement ; l’index distant compressé est supprimé après récupération par ExtracTerre.
+- Ajout des Edge Functions `extracterre-create-job`, `extracterre-start-job`, `extracterre-worker-bridge`, `extracterre-job-status` et `extracterre-finish-job`.
+- Ajout du pack worker GitHub dans `worker-v2_1/`.
+- Correction métier **DH/DHmax U22Win** : le DHmax est désormais pris sur la même ligne/groupe que le DH maximal retenu.
+- Le moteur de patchs applique maintenant réellement `minAppVersion`.
+- Cache-busting, version d’interface et catalogue 167 champs harmonisés en `2.1.0`.
+
+Pour activer le mode distant, suivre `DEPLOIEMENT_HYBRIDE_V2_1.md`. Sans déploiement Cloud, le mode **Local** continue de fonctionner comme la v1.1.23.
+
+---
+
+# Historique — ExtracTerre v1.1.23
+
+## v1.1.23 — mémoire d’apprentissage interne
+
+- Ajoute une base IndexedDB séparée `extracterre-learning-memory`, conservée indépendamment de la session de travail.
+- Chaque surlignage validé crée un signal d’apprentissage par champ + famille documentaire + contexte structurel.
+- Les profils commencent à influencer le parseur après plusieurs confirmations concordantes (2 / 3 / 5+), avec un bonus plafonné.
+- Les contre-exemples explicites (mauvaise source, mauvais bâtiment, faux positif) diminuent automatiquement la fiabilité du profil.
+- La mémoire ne crée jamais une valeur : elle repondère uniquement des occurrences réellement extraites du document.
+- Une vue « Mémoire d’apprentissage du parseur » permet de consulter, désactiver/réactiver ou effacer les profils locaux.
+- Le journal partagé peut synchroniser cette mémoire entre ordinateurs après application de `SUPABASE_MEMORY_V1_1_23.sql`.
+
+
+## Apprentissage documentaire par surlignage
+
+En mode propriétaire, **✕** corrige une valeur trouvée et **+** renseigne une cellule vide. La fenêtre de correction liste les pièces analysées, permet de choisir une page, d'ouvrir l'aperçu intégré et de surligner la bonne donnée dans le texte extrait. La correction peut être appliquée immédiatement au tableau. ExtracTerre journalise le type de document, la page, la position relative, la ligne, le contexte avant/après et la valeur surlignée afin d'identifier les emplacements récurrents par champ et d'améliorer les futurs parseurs sans inventer de données. Le pack d'amélioration contient `apprentissage_emplacements.json`.
+
 # ExtracTerre v1.1.14
 
 ## Mode bêta propriétaire

@@ -6,14 +6,16 @@
   <meta name="theme-color" content="#07583f">
   <title>ExtracTerre</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=1.1.20">
-  <script defer src="js/journal-config.js?v=1.1.20"></script>
-  <script defer src="js/security.js?v=1.1.20"></script>
+  <link rel="stylesheet" href="styles.css?v=2.1.0">
+  <script defer src="js/journal-config.js?v=2.1.0"></script>
+  <script defer src="js/security.js?v=2.1.0"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script defer src="js/app.bundle.js?v=1.1.20"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script defer src="js/cloud-config.js?v=2.1.0"></script>
+  <script defer src="js/app.bundle.js?v=2.1.0"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -34,7 +36,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v1.1.20</span>
+      <span class="ux-version-chip" id="version">v2.1.0</span>
     </div>
   </header>
 
@@ -113,6 +115,14 @@
                     <option value="fast">Rapide · 5 / 2</option>
                   </select>
                 </label>
+                <label class="ocr-control execution-mode-control" title="Choisir où s'effectue la lecture lourde des PDF">
+                  <span>Calcul</span>
+                  <select id="executionMode">
+                    <option value="auto" selected>Hybride auto</option>
+                    <option value="local">Local</option>
+                    <option value="remote">Serveur</option>
+                  </select>
+                </label>
                 <span id="statusText" class="badge doc stable-status" title="Prêt">Prêt</span>
                 <button id="analyzeBtn" class="btn primary stable-analyze-btn" type="button">▶ Lancer l’analyse</button>
               </div>
@@ -133,7 +143,7 @@
             <div class="analysis-detail-block ux-analysis-detail stable-analysis-detail">
               <div class="analysis-detail-title">
                 <strong>Détail de l’analyse</strong>
-                <small><span id="analysisModeDetail">Mode équilibré · 3 documents / 1 OCR</span> · <span id="analysisEtaDetail">Temps estimé : en attente du lancement</span> · deuxième passe ciblée sur SHAB, Cep et IC manquants</small>
+                <small><span id="analysisModeDetail">Mode équilibré · 3 documents / 1 OCR</span> · <span id="cloudModeDetail">Calcul hybride automatique</span> · <span id="analysisEtaDetail">Temps estimé : en attente du lancement</span> · deuxième passe ciblée sur SHAB, Cep et IC manquants</small>
               </div>
               <div id="fileList" class="file-list stable-file-list"></div>
             </div>
@@ -165,6 +175,15 @@
             <small id="localSaveDetail" class="ux-local-save-detail">Stockage local du navigateur</small>
           </section>
 
+
+          <section class="card ux-side-card ux-cloud-card">
+            <div class="ux-side-card-head"><span>☁</span><h3>Traitement hybride</h3></div>
+            <p class="ux-local-save-copy">Les PDF lourds et l’OCR peuvent être traités sur le worker GitHub. Les parseurs métier et les 167 champs restent identiques.</p>
+            <div class="ux-meta-row"><span>Cloud</span><strong id="cloudConnectionStatus">Vérification…</strong></div>
+            <div class="ux-meta-row"><span>Mode</span><strong id="cloudExecutionStatus">Hybride auto</strong></div>
+            <button id="cloudConnectionBtn" class="btn light ux-manual-btn" type="button">☁ Connexion Cloud</button>
+            <small id="cloudConnectionDetail" class="ux-local-save-detail">Fallback local automatique si le serveur est indisponible.</small>
+          </section>
 
           <section class="card ux-side-card ux-kpi-card">
             <div class="ux-side-card-head"><span>◉</span><h3>Informations extraites</h3></div>
@@ -332,37 +351,29 @@
 <dialog id="betaErrorDialog" class="search-integrate-dialog beta-error-dialog">
   <div class="search-integrate-shell beta-error-shell">
     <div class="search-integrate-head">
-      <div><span class="ux-eyebrow">Mode bêta propriétaire</span><h3>Signaler un résultat erroné</h3><p>Le signalement est ajouté au journal d’amélioration avec la source et le contexte utilisés par ExtracTerre.</p></div>
+      <div><span class="ux-eyebrow">Apprentissage documentaire · propriétaire</span><h3 id="betaErrorTitle">Corriger une donnée</h3><p id="betaErrorIntro">Choisissez la pièce puis surlignez la donnée correcte.</p></div>
       <button id="betaErrorClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
     </div>
     <div class="beta-error-body">
       <div class="beta-error-summary">
-        <div><span>Champ</span><strong id="betaErrorField">—</strong></div>
-        <div><span>Bâtiment</span><strong id="betaErrorBuilding">—</strong></div>
-        <div><span>Valeur détectée</span><strong id="betaErrorDetected">—</strong></div>
-        <div><span>Source retenue</span><strong id="betaErrorSource">—</strong></div>
+        <div><span>Champ</span><strong id="betaErrorField">—</strong></div><div><span>Bâtiment</span><strong id="betaErrorBuilding">—</strong></div>
+        <div><span>Valeur actuelle</span><strong id="betaErrorDetected">—</strong></div><div><span>Source actuelle</span><strong id="betaErrorSource">—</strong></div>
       </div>
-      <div class="beta-error-excerpt"><span>Contexte source</span><p id="betaErrorExcerpt">—</p></div>
+      <div class="beta-error-excerpt"><span>Contexte actuellement utilisé</span><p id="betaErrorExcerpt">—</p></div>
+      <section class="beta-learning-source">
+        <div class="beta-learning-controls"><label>Pièce analysée<select id="betaLearningDocument"></select></label><label>Page<select id="betaLearningPage"></select></label><button id="betaPreviewSelectedDoc" class="btn light" type="button">👁 Aperçu de la pièce</button></div>
+        <p class="beta-learning-help">Surlignez directement la bonne donnée dans le texte ci-dessous, puis cliquez sur <b>Utiliser le surlignage</b>. L’emplacement exact et son contexte seront ajoutés au journal d’amélioration.</p>
+        <div id="betaLearningMeta" class="beta-learning-meta"></div><div id="betaLearningText" class="beta-learning-text" tabindex="0"></div>
+        <div class="beta-learning-action"><button id="betaUseHighlight" class="btn secondary" type="button">✦ Utiliser le surlignage</button><span id="betaLearningSelection">Aucun surlignage sélectionné.</span></div>
+      </section>
       <div class="beta-error-form">
-        <label>Type d’erreur
-          <select id="betaErrorReason">
-            <option value="wrong_value">Valeur fausse</option>
-            <option value="wrong_source">Mauvaise source</option>
-            <option value="wrong_building">Mauvais bâtiment</option>
-            <option value="before_after_inverted">Avant / après inversé</option>
-            <option value="wrong_unit">Unité incorrecte</option>
-            <option value="false_positive">Donnée absente du document / faux positif</option>
-            <option value="normalization">Normalisation incorrecte</option>
-            <option value="other">Autre</option>
-          </select>
-        </label>
-        <label>Bonne valeur <small>facultatif</small><input id="betaErrorCorrectValue" type="text" autocomplete="off" placeholder="Laisser vide si aucune valeur ne doit être retournée"></label>
-        <label>Commentaire <small>facultatif</small><textarea id="betaErrorComment" rows="3" placeholder="Ex. la valeur correcte est dans le tableau récapitulatif p. 42"></textarea></label>
-        <label class="beta-apply-row"><input id="betaApplyCorrection" type="checkbox" checked> Appliquer aussi la bonne valeur au résultat courant lorsqu’elle est renseignée</label>
-        <div id="betaErrorFeedback" class="auth-error" aria-live="polite"></div>
+        <label>Type de correction<select id="betaErrorReason"><option value="missing_data">Donnée manquante</option><option value="wrong_value">Valeur fausse</option><option value="wrong_source">Mauvaise source</option><option value="wrong_building">Mauvais bâtiment</option><option value="before_after_inverted">Avant / après inversé</option><option value="wrong_unit">Unité incorrecte</option><option value="false_positive">Donnée absente / faux positif</option><option value="normalization">Normalisation incorrecte</option><option value="other">Autre</option></select></label>
+        <label>Bonne valeur <small>remplie automatiquement lorsque le surlignage le permet</small><input id="betaErrorCorrectValue" type="text" autocomplete="off" placeholder="Valeur correcte"></label>
+        <label>Commentaire <small>facultatif</small><textarea id="betaErrorComment" rows="2" placeholder="Précision utile pour l’apprentissage"></textarea></label>
+        <label class="beta-apply-row"><input id="betaApplyCorrection" type="checkbox" checked> Appliquer immédiatement cette valeur au résultat courant</label><div id="betaErrorFeedback" class="auth-error" aria-live="polite"></div>
       </div>
     </div>
-    <div class="search-integrate-foot"><button id="betaErrorCancel" class="btn light" type="button">Annuler</button><button id="betaErrorSubmit" class="btn primary" type="button">Ajouter au journal</button></div>
+    <div class="search-integrate-foot"><button id="betaErrorCancel" class="btn light" type="button">Annuler</button><button id="betaErrorSubmit" class="btn primary" type="button">Enregistrer la correction & l’apprentissage</button></div>
   </div>
 </dialog>
 
@@ -398,16 +409,37 @@
   </div>
 </dialog>
 
+<dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
+  <div class="search-integrate-shell">
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.1</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-body cloud-dialog-body">
+      <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
+      <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>
+      <label>Mot de passe<input id="cloudPassword" type="password" autocomplete="current-password"></label>
+      <div id="cloudDialogFeedback" class="journal-config-feedback"></div>
+      <details class="cloud-advanced"><summary>Configuration avancée</summary>
+        <label>URL Supabase<input id="cloudSupabaseUrl" type="url"></label>
+        <label>Publishable key<input id="cloudSupabaseKey" type="text" autocomplete="off"></label>
+        <div class="cloud-advanced-actions"><button id="cloudConfigSave" class="btn light" type="button">Enregistrer</button><button id="cloudConfigReset" class="btn light" type="button">Configuration par défaut</button></div>
+      </details>
+    </div>
+    <div class="search-integrate-foot cloud-dialog-foot">
+      <button id="cloudSignOutBtn" class="btn light" type="button" hidden>Se déconnecter</button>
+      <button id="cloudSignInBtn" class="btn primary" type="button">Se connecter</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="helpDialog" class="ux-help-dialog">
   <div class="ux-help-shell">
     <div class="ux-help-head"><div><span class="ux-eyebrow">ExtracTerre</span><h2>Aide rapide</h2></div><button id="helpDialogClose" class="icon-btn" type="button" onclick="document.getElementById('helpDialog').close()">×</button></div>
     <div class="ux-help-grid">
       <div><strong>1. Ajouter les pièces</strong><p>Déposez des PDF/XML/Excel ou un dossier complet. L’analyse fonctionne projet par projet.</p></div>
-      <div><strong>2. Lancer l’analyse</strong><p>L’OCR intervient en secours, y compris sur les tableaux SHAB, Cep et IC dont la couche texte est mal reconstruite.</p></div>
+      <div><strong>2. Lancer l’analyse</strong><p>En mode Hybride auto, les PDF lourds et l’OCR renforcé partent sur le worker GitHub. Les PDF légers, XML et Excel restent locaux. En cas d’indisponibilité Cloud, ExtracTerre rebascule localement.</p></div>
       <div><strong>3. Compléter</strong><p>Ajoutez de nouveaux documents sans retraiter les anciens, ou utilisez le bouton « 🔎 Crible fin » sur le PDF à approfondir.</p></div>
       <div><strong>4. Vérifier</strong><p>Corrigez manuellement les cellules avant export et validez ou refusez les propositions issues du crible fin.</p></div>
       <div><strong>5. Reprendre après interruption</strong><p>ExtracTerre sauvegarde localement chaque document analysé, les résultats et vos validations. À la réouverture, la session est restaurée automatiquement ; redéposez un PDF uniquement si vous souhaitez refaire sa lecture ou son OCR.</p></div>
-      <div><strong>Confidentialité locale</strong><p>Les fichiers PDF bruts ne sont pas enregistrés dans IndexedDB. « Effacer la session » supprime les checkpoints et résultats du projet, sans modifier les règles de sources ni le journal d’amélioration. Le journal peut être synchronisé entre plusieurs ordinateurs lorsqu’une base partagée est configurée.</p></div>
+      <div><strong>Confidentialité locale & Cloud</strong><p>Les PDF bruts ne sont pas enregistrés dans IndexedDB. En mode Cloud, ils transitent par un bucket Supabase privé puis sont supprimés après traitement ; seul l’index texte compact revient dans le navigateur. « Effacer la session » supprime les checkpoints et résultats du projet, sans modifier le journal d’amélioration.</p></div>
       <div class="ux-help-patches ux-patch-card">
         <div class="ux-side-card-head"><span>🧩</span><h3>Patchs d’amélioration</h3></div>
         <p>Chargez un patch JSON ExtracTerre pour enrichir la bibliothèque documentaire sans remplacer le site. Les patchs sont déclaratifs : aucun JavaScript externe n’est exécuté.</p>
@@ -415,6 +447,18 @@
         <div id="patchList" class="patch-list"><div class="patch-empty">Chargement…</div></div>
         <div class="ux-journal-actions"><button id="patchLoadBtn" class="btn primary" type="button">＋ Charger un patch</button><input id="patchFileInput" type="file" accept="application/json,.json" hidden></div>
         <small>Un patch chargé localement est mémorisé dans ce navigateur. Pour le déployer à toute l’équipe, il pourra ensuite être intégré au manifeste GitHub.</small>
+      </div>
+      <div class="ux-help-journal ux-journal-card learning-memory-card">
+        <div class="ux-side-card-head"><span>🧭</span><h3>Mémoire d’apprentissage du parseur</h3></div>
+        <p class="ux-journal-copy">Les emplacements que vous surlignez sont mémorisés localement. À partir de 2, 3 puis 5 corrections concordantes, ExtracTerre donne progressivement plus de priorité aux occurrences trouvées dans la même structure documentaire, sans jamais créer de valeur absente du document.</p>
+        <div class="ux-help-journal-stats">
+          <div class="ux-meta-row"><span>Signaux mémorisés</span><strong id="learningMemorySignals">0</strong></div>
+          <div class="ux-meta-row"><span>Profils actifs</span><strong id="learningMemoryProfiles">0</strong></div>
+          <div class="ux-meta-row"><span>Profils forts (≥ 5 confirmations)</span><strong id="learningMemoryStrong">0</strong></div>
+        </div>
+        <div class="learning-memory-table-wrap"><table class="learning-memory-table"><thead><tr><th>Champ</th><th>Document</th><th>✓</th><th>✕</th><th>Fiabilité</th><th>Bonus</th><th></th></tr></thead><tbody id="learningMemoryRows"></tbody></table></div>
+        <div class="ux-journal-actions"><button id="learningMemoryRefresh" class="btn light" type="button">↻ Synchroniser la mémoire</button><button id="learningMemoryClear" class="btn light" type="button">Effacer la mémoire locale</button></div>
+        <small class="ux-journal-note">La mémoire est stockée dans un IndexedDB séparé et survit à « Effacer la session ». La synchronisation Supabase est facultative.</small>
       </div>
       <div class="ux-help-journal ux-journal-card">
         <div class="ux-side-card-head"><span>🧠</span><h3>Journal d’amélioration</h3></div>

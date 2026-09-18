@@ -24,3 +24,8 @@ Les PDF originaux, leurs ArrayBuffer et l'index complet des pages ne sont jamais
 ## Effacer la session
 
 Le bouton **Effacer la session** efface uniquement l'espace de travail/checkpoints de ce navigateur. Il ne supprime ni le journal local d'amélioration, ni les événements déjà synchronisés dans Supabase.
+
+
+## Mémoire partagée v1.1.23
+
+Si votre base Supabase ExtracTerre existe déjà, exécutez une seule fois `SUPABASE_MEMORY_V1_1_23.sql` dans SQL Editor. Cette migration ajoute uniquement une RPC de lecture limitée aux signaux `parser_location_learning` et `parser_location_rejection`. Le journal complet reste protégé par les règles existantes. Après cette migration, chaque poste récupère les apprentissages partagés automatiquement lors d’une synchronisation.

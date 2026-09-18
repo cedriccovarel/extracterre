@@ -99,6 +99,9 @@ function serializeDocMeta(doc={}){
     targetedLastOcrPages:Number.isFinite(doc.targetedLastOcrPages)?doc.targetedLastOcrPages:null,
     targetedRejectedKeys:safeJsonClone(doc.targetedRejectedKeys,[]),
     targetedStatus:doc.targetedStatus==='running'?null:(doc.targetedStatus||null),
+    processingLocation:doc.processingLocation||null,
+    remoteAnalysis:safeJsonClone(doc.remoteAnalysis,null),
+    cloudFallback:doc.cloudFallback||null,
     persistedAnalysis:hasAnalysis
   };
 }

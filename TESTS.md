@@ -262,3 +262,54 @@ Jeu de référence : `data/bao-evolution-reference.json`. Résultat attendu du l
 - RSENV : Chapitre 5 niveau bâtiment prioritaire pour Ic composant / chantier / énergie ; lots séparés du global.
 - Une ACV libre qui recopie Bbio/Cep/Tic reste une source secondaire de contrôle.
 - La consolidation tient désormais compte de `hierarchyRank` avant la confiance brute.
+
+
+## v1.1.22 — correction et apprentissage par surlignage
+
+- Vérifier qu’une cellule renseignée affiche ✕ en mode propriétaire et ouvre la nouvelle fenêtre d’apprentissage.
+- Vérifier qu’une cellule vide affiche + et permet de renseigner la valeur depuis une pièce analysée.
+- Vérifier que la liste des pièces ne contient que les documents analysés disposant de texte/index retenu.
+- Vérifier le changement de page et le surlignage dans le texte extrait.
+- Vérifier que « Utiliser le surlignage » préremplit un champ numérique lorsqu’une valeur numérique est sélectionnée.
+- Vérifier qu’une correction appliquée met à jour le tableau sans relancer l’OCR.
+- Vérifier que le journal contient `parser_location_learning` avec document, type, page, lineIndex, pageRatio, lineRatio, contexte avant/après et selectedText.
+- Vérifier qu’une donnée vide produit aussi `beta_missing_data_location`.
+- Vérifier que le pack contient `apprentissage_emplacements.json`.
+
+### Test automatisé de packaging v1.1.22
+
+```bash
+node test_v1_1_22_learning.mjs
+```
+
+Ce test vérifie la présence du flux ✕/+ de correction, du sélecteur de pièces/pages, du surlignage, des métadonnées de localisation, des nouveaux événements du journal, de l'export `apprentissage_emplacements.json` et du cache-busting 1.1.22.
+
+
+## v1.1.23 — mémoire d’apprentissage interne
+
+Test automatisé : `node test_v1_1_23_memory.mjs`.
+
+Il vérifie :
+- bonus progressif après 2, 3 et 5 confirmations ;
+- baisse du bonus lorsque des contre-exemples s’accumulent ;
+- priorité fondée sur le contexte structurel ;
+- absence de transfert d’apprentissage entre deux familles documentaires différentes.
+
+La suite historique `runSelfTests()` doit rester entièrement verte.
+
+
+## v2.1.0 — pipeline hybride
+
+Tests ajoutés dans `test_v2_1_hybrid.mjs` :
+
+- version applicative `2.1.0` ;
+- 167 champs strictement conservés dans `config.js`, `field-catalog.json` et `COLONNES_EXTRACTERRE.txt` ;
+- ordre des colonnes maître inchangé ;
+- choix automatique Local / Serveur selon format, taille et mode OCR ;
+- refus d’un patch dont `minAppVersion` est supérieur à la version courante ;
+- régression U22Win : `DH=1000 / DHmax=1200` et `DH=900 / DHmax=1300` doit produire `DH=1000` et `DHmax=1200` ;
+- worker Poppler sur PDF texte natif ;
+- worker Tesseract sur PDF image/scanné ;
+- conservation d’items positionnés dans l’index distant pour les parseurs de tableaux.
+
+La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et v1.1.23 restent verts.

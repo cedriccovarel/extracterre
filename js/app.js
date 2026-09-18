@@ -12,7 +12,9 @@ import {analyzeEconomicData} from './economics.js';
 import {parseDocument} from './parsers.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
-import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack} from './journal.js';
+import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
+import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
+import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud} from './cloud.js';
 
 function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
@@ -166,10 +168,24 @@ async function refreshJournalUi(){
     if(betaCount) betaCount.textContent=String(stats.byType?.beta_result_error||0);
   }catch(err){ const status=$('#journalRemoteStatus'); if(status){status.textContent='Journal indisponible';status.className='warn';} }
 }
+async function renderLearningMemoryUi(){
+  const stats=getLearningMemoryStats(),count=$('#learningMemoryProfiles'),strong=$('#learningMemoryStrong'),signals=$('#learningMemorySignals'),body=$('#learningMemoryRows');
+  if(count) count.textContent=String(stats.activeProfiles||0); if(strong) strong.textContent=String(stats.strongProfiles||0); if(signals) signals.textContent=String(stats.signals||0);
+  if(!body) return;
+  const profiles=listLearningProfiles().slice(0,120);
+  body.innerHTML=profiles.length?profiles.map(p=>`<tr><td>${escapeHtml(FIELD_MAP[p.field]?.label||p.field)}</td><td>${escapeHtml(p.docType||'')}</td><td>${p.confirmations}</td><td>${p.rejections}</td><td>${Math.round((p.reliability||0)*100)} %</td><td>${Math.round((p.boost||0)*1000)/10} pt</td><td><button class="btn light learning-toggle" data-learning-key="${escapeHtml(p.key)}">${p.disabled?'Réactiver':'Désactiver'}</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty-small">La mémoire se remplira à mesure que vous corrigerez ou renseignerez des données par surlignage.</td></tr>';
+  [...body.querySelectorAll('.learning-toggle')].forEach(btn=>btn.onclick=async()=>{const p=listLearningProfiles().find(x=>x.key===btn.dataset.learningKey);if(!p)return;await setLearningProfileEnabled(p.key,p.disabled);renderLearningMemoryUi();});
+}
+async function syncLearningMemoryFromRemote(showToast=false){
+  const cfg=getRemoteJournalConfig(); if(!cfg.configured){await renderLearningMemoryUi();return {added:0};}
+  const remote=await pullRemoteLearningMemoryEvents();
+  if(remote.unsupported){ if(showToast) toast('La mémoire locale fonctionne. Pour le partage multi-ordinateurs, appliquez la migration Supabase v1.1.23.','info'); await renderLearningMemoryUi(); return {added:0,unsupported:true}; }
+  const added=await importRemoteLearningEvents(remote.events||[]); if(showToast&&added) toast(`${added} apprentissage(s) distant(s) intégrés à la mémoire.`, 'success'); await renderLearningMemoryUi(); return {added};
+}
 async function syncLearningJournalNow(showToast=true){
   const cfg=getRemoteJournalConfig(); if(!cfg.configured){ if(showToast) toast('Journal partagé non configuré. Le journal local continue à être conservé.','info'); await refreshJournalUi(); return; }
   const btn=$('#journalSyncBtn'); if(btn) btn.disabled=true;
-  try{ const result=await flushLearningJournal(); lastJournalSyncAt=Date.now(); if(showToast) toast(`${result?.sent||0} observation(s) synchronisée(s) avec le journal partagé.`,'success'); }
+  try{ const result=await flushLearningJournal(); lastJournalSyncAt=Date.now(); await syncLearningMemoryFromRemote(false); if(showToast) toast(`${result?.sent||0} observation(s) synchronisée(s) avec le journal partagé.`, 'success'); }
   catch(err){ if(showToast) toast(`Synchronisation du journal impossible : ${err?.message||err}`,'warn'); }
   finally{ if(btn) btn.disabled=false; await refreshJournalUi(); }
 }
@@ -333,7 +349,9 @@ function renderFiles(){
     const isPdf=/\.pdf$/i.test(d.name); const targetedRunning=d.targetedStatus==='running'; const showTarget=d.status==='ready'&&isPdf; const canTarget=showTarget&&!!d.file&&!!state.result; const canPreview=!!d.file;
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · > 5 min':d.status==='reading'?'Lecture parallèle…':'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
+    const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
+    const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
@@ -505,6 +523,55 @@ function getAnalysisProfile(){
   const key=$('#analysisMode')?.value||DEFAULT_ANALYSIS_MODE;
   return ANALYSIS_MODES[key]||ANALYSIS_MODES[DEFAULT_ANALYSIS_MODE];
 }
+
+function executionModeFromUi(){
+  const value=$('#executionMode')?.value||getExecutionMode();
+  return CLOUD_MODES[value]?value:'auto';
+}
+function syncCloudModeUi(){
+  const mode=executionModeFromUi(), cfg=CLOUD_MODES[mode]||CLOUD_MODES.auto;
+  const detail=$('#cloudModeDetail'); if(detail) detail.textContent=mode==='auto'?'Calcul hybride automatique':mode==='remote'?'Calcul PDF sur serveur':'Calcul local uniquement';
+  const status=$('#cloudExecutionStatus'); if(status) status.textContent=cfg.label;
+}
+async function refreshCloudUi(showError=false){
+  const status=$('#cloudConnectionStatus'),detail=$('#cloudConnectionDetail'),btn=$('#cloudConnectionBtn');
+  try{
+    const session=await getCloudSession();
+    if(status){ status.textContent=!session.configured?'Non configuré':session.connected?'Connecté':'Déconnecté'; status.classList.toggle('cloud-ok',!!session.connected); }
+    if(detail){ detail.textContent=session.connected?`${session.user?.email||'Utilisateur Cloud'} · PDF temporaires supprimés après récupération.`:session.error?`Cloud indisponible : ${session.error}`:'Connectez un compte Supabase autorisé pour activer le traitement distant.'; }
+    if(btn) btn.textContent=session.connected?'☁ Cloud connecté':'☁ Connexion Cloud';
+    const signOut=$('#cloudSignOutBtn'),signIn=$('#cloudSignInBtn'); if(signOut) signOut.hidden=!session.connected; if(signIn) signIn.textContent=session.connected?'Reconnecter':'Se connecter';
+    return session;
+  }catch(err){
+    if(status) status.textContent='Indisponible'; if(detail) detail.textContent=err?.message||String(err); if(showError) toast(`Cloud : ${err?.message||err}`,'warn');
+    return {configured:cloudConfigured(),connected:false,user:null,error:err?.message||String(err)};
+  }finally{ syncCloudModeUi(); }
+}
+async function openCloudDialog(){
+  const dlg=$('#cloudDialog'); if(!dlg) return;
+  const cfg=getCloudConfig(); $('#cloudSupabaseUrl').value=cfg.supabaseUrl||''; $('#cloudSupabaseKey').value=cfg.supabasePublishableKey||''; $('#cloudPassword').value=''; $('#cloudDialogFeedback').textContent='';
+  const session=await refreshCloudUi(false); if(session?.user?.email&&!$('#cloudEmail').value) $('#cloudEmail').value=session.user.email;
+  dlg.showModal();
+}
+async function signInCloudFromDialog(){
+  const fb=$('#cloudDialogFeedback'); if(fb) fb.textContent='Connexion…';
+  try{
+    const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;
+    if(!email||!password) throw new Error('Renseignez votre e-mail et votre mot de passe Cloud.');
+    await cloudSignIn(email,password); $('#cloudPassword').value=''; if(fb){fb.textContent='Connexion Cloud réussie.';fb.className='journal-config-feedback success';} await refreshCloudUi(); toast('Cloud ExtracTerre connecté.','success');
+  }catch(err){ if(fb){fb.textContent=err?.message||String(err);fb.className='journal-config-feedback error';} }
+}
+async function signOutCloudFromDialog(){
+  try{ await cloudSignOut(); $('#cloudPassword').value=''; const fb=$('#cloudDialogFeedback'); if(fb){fb.textContent='Session Cloud fermée.';fb.className='journal-config-feedback';} await refreshCloudUi(); toast('Cloud ExtracTerre déconnecté.','info'); }
+  catch(err){ toast(`Déconnexion Cloud impossible : ${err?.message||err}`,'error'); }
+}
+function saveCloudConfigFromDialog(){
+  const cfg=saveCloudConfig({supabaseUrl:$('#cloudSupabaseUrl').value,supabasePublishableKey:$('#cloudSupabaseKey').value});
+  const fb=$('#cloudDialogFeedback'); if(fb){fb.textContent=cfg.supabaseUrl&&cfg.supabasePublishableKey?'Configuration Cloud enregistrée.':'Configuration Cloud incomplète.';fb.className='journal-config-feedback';} refreshCloudUi();
+}
+function resetCloudConfigFromDialog(){
+  const cfg=resetCloudConfig(); $('#cloudSupabaseUrl').value=cfg.supabaseUrl||''; $('#cloudSupabaseKey').value=cfg.supabasePublishableKey||''; const fb=$('#cloudDialogFeedback'); if(fb){fb.textContent='Configuration Cloud par défaut restaurée.';fb.className='journal-config-feedback';} refreshCloudUi();
+}
 function formatAnalysisDuration(seconds){
   const s=Math.max(0,Math.round(Number(seconds)||0));
   if(s<45) return `${Math.max(1,s)} s`;
@@ -589,8 +656,11 @@ async function analyze(onlyIds=null,manualUnlimited=false){
   const pendingDocs=state.docs.filter(d=>!!d.file&&d.status!=='ready'&&d.status!=='timeout'&&(!onlyIds||onlyIds.includes(d.id)));
   const alreadyReady=state.docs.length-pendingDocs.length;
   const ocrMode=$('#ocrMode')?.value||'auto';
+  const executionMode=executionModeFromUi();
   const profile=getAnalysisProfile();
   const documentConcurrency=Math.max(1,Math.min(profile.documents,pendingDocs.length||1));
+  let cloudFallbackWarned=false;
+  syncCloudModeUi();
   setOcrConcurrencyLimit(profile.ocr);
   const progressByDoc=new Map(pendingDocs.map(d=>[d.id,0]));
   const activeIds=new Set();
@@ -606,7 +676,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const overall=(alreadyReady+work)/totalDocs;
     const pool=ocrPoolStatus();
     const page=meta?.page?` · p.${meta.page}${meta.totalPages?`/${meta.totalPages}`:''}`:'';
-    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':meta?.stage==='classification'?'classification':meta?.stage==='parsing'?'extraction métier':meta?.stage==='checkpoint'?'sauvegarde':'lecture';
+    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':meta?.stage==='cloud-wait'?'Cloud · attente':meta?.stage==='cloud-create'?'Cloud · préparation':meta?.stage==='cloud-upload'?'Cloud · envoi':meta?.stage==='cloud-queue'||meta?.stage==='cloud-queued'?'Cloud · file GitHub':meta?.stage==='cloud-processing'?'Cloud · PDF/OCR':meta?.stage==='cloud-download'?'Cloud · récupération':meta?.stage==='cloud-done'?'Cloud · terminé':meta?.stage==='classification'?'classification':meta?.stage==='parsing'?'extraction métier':meta?.stage==='checkpoint'?'sauvegarde':'lecture';
     const latest=doc?` · ${doc.name} · ${stage}${page}`:'';
     setStatus(`${done}/${pendingDocs.length} terminés · ${activeIds.size} actifs · OCR ${pool.active}/${pool.max}${pool.waiting?` (+${pool.waiting} en file)`:''}${latest}`,Math.round(Math.max(0,Math.min(1,overall))*62));
     const eta=etaTracker.snapshot(forceEta);
@@ -619,12 +689,44 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const noLimit=manualUnlimited||d.retryUnlimited===true; let timeoutTriggered=false, timeoutId=null;
     const started=performance.now();
     try{
-      const readPromise=readFile(d.file,(p,meta)=>{
+      const remotePlanned=shouldUseCloudForFile(d.file,executionMode,ocrMode);
+      d.remotePlanned=remotePlanned;
+      d.processingLocation=null;
+      d.cloudFallback=null;
+      d.remoteAnalysis=null;
+      const progress=(p,meta)=>{
         progressByDoc.set(d.id,Math.max(0,Math.min(1,p||0)));
         d.liveStage=meta?.stage||'reading'; updateParallelStatus(d,meta,false);
-      },{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
+      };
+      const readPromise=(async()=>{
+        if(remotePlanned){
+          const session=await getCloudSession();
+          if(session.connected){
+            try{
+              d.processingLocation='remote';
+              const remote=await analyzePdfInCloud(d.file,{ocrMode,onProgress:progress,signal:controller.signal});
+              d.remoteAnalysis=remote.cloud;
+              return remote.read;
+            }catch(cloudErr){
+              if(executionMode==='remote') throw cloudErr;
+              d.cloudFallback=cloudErr?.message||String(cloudErr);
+              d.processingLocation='local-fallback';
+              if(!cloudFallbackWarned){ cloudFallbackWarned=true; toast(`Cloud indisponible : bascule locale automatique (${d.cloudFallback}).`,'warn'); }
+              progress(.02,{stage:'reading',message:'Cloud indisponible · bascule locale'});
+            }
+          } else if(executionMode==='remote') {
+            throw new Error('Mode Serveur sélectionné mais aucun compte Cloud n’est connecté.');
+          } else {
+            d.cloudFallback=session.error||'Compte Cloud non connecté';
+            d.processingLocation='local-fallback';
+          }
+        }
+        d.processingLocation=d.processingLocation||'local';
+        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
+      })();
+      const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
-      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error('Analyse interrompue après 5 minutes.'); e.name='TimeoutError'; reject(e); },5*60*1000); })]);
+      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue après ${timeoutMinutes} minutes.`); e.name='TimeoutError'; reject(e); },timeoutMinutes*60*1000); })]);
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
       if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
@@ -648,14 +750,14 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       await checkpointDocument(activeProject(),d);
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
       const structuredThermalEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
-      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length,...(structuredThermalEvidence.length?{structuredThermalEvidence}: {})},activeProject());
+      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,executionMode,processingLocation:d.processingLocation||'local',cloudJobId:d.remoteAnalysis?.jobId||null,cloudWorkerVersion:d.remoteAnalysis?.workerVersion||null,cloudFallback:d.cloudFallback||null,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length,...(structuredThermalEvidence.length?{structuredThermalEvidence}: {})},activeProject());
       // Les champs de ce document sont visibles immédiatement pendant que les autres continuent.
       await refreshProgressiveResults(d.name);
     }catch(e){
       const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||analysisControl.stopRequested;
       const timedOut=!stopped&&(timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout'));
       if(stopped){ d.status=Array.isArray(d.cachedOccurrences)?'ready':'pending'; d.error=null; }
-      else if(timedOut){ d.status='timeout'; d.error='Analyse interrompue après 5 minutes. Relance manuelle disponible sans limite de temps.'; d.retryUnlimited=false; }
+      else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue après ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
       else { d.status='error'; d.error=e?.message||String(e); }
       learn('analysis_error',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,status:d.status,error:d.error||e?.message||String(e),ocrMode,elapsedMs:Math.round(performance.now()-started)},activeProject());
     }finally{
@@ -698,7 +800,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const elapsed=(performance.now()-etaTracker.startedAt)/1000;
     const completeness=state.result?.completeness||null;
     const missingFields=[...new Set((completeness?.checks||[]).flatMap(c=>c.missing||[]))];
-    learn('analysis_batch',{documents:state.docs.length,readyDocuments:state.docs.filter(d=>d.status==='ready').length,newDocuments:pendingDocs.length,durationMs:Math.round(elapsed*1000),analysisMode:profile.key,analysisProfile:profile.description,ocrMode,completeness:completeness?{percent:completeness.percent,found:completeness.found,expected:completeness.expected}:null,missingFields,missingLabels:missingFields.map(k=>FIELD_MAP[k]?.label||k),alerts:state.result?.alerts?.map(a=>({level:a.level,message:a.message,fileName:a.fileName||''})).slice(0,100)||[]},activeProject());
+    learn('analysis_batch',{documents:state.docs.length,readyDocuments:state.docs.filter(d=>d.status==='ready').length,newDocuments:pendingDocs.length,durationMs:Math.round(elapsed*1000),analysisMode:profile.key,analysisProfile:profile.description,executionMode,remoteDocuments:pendingDocs.filter(d=>d.processingLocation==='remote').length,localFallbackDocuments:pendingDocs.filter(d=>d.processingLocation==='local-fallback').length,ocrMode,completeness:completeness?{percent:completeness.percent,found:completeness.found,expected:completeness.expected}:null,missingFields,missingLabels:missingFields.map(k=>FIELD_MAP[k]?.label||k),alerts:state.result?.alerts?.map(a=>({level:a.level,message:a.message,fileName:a.fileName||''})).slice(0,100)||[]},activeProject());
     const eta=$('#analysisEtaDetail'); if(eta) eta.textContent=analysisControl.stopRequested?`Analyse arrêtée après ${formatAnalysisDuration(elapsed)} · résultats partiels conservés`:`Analyse terminée en ${formatAnalysisDuration(elapsed)}`;
     if(!analysisControl.stopRequested) setTimeout(()=>$('#progress').hidden=true,900);
     const timedOut=state.docs.filter(d=>d.status==='timeout').length;
@@ -855,7 +957,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()&&v!==undefined?`<button class="cell-beta-error" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Signaler ce résultat comme erroné" aria-label="Signaler une erreur">✕</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -874,55 +976,97 @@ function renderSummary(){
 }
 
 
+let betaLearningSelection=null;
+function betaLearningDocs(){ return (activeProject()?.docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length); }
+function betaLearningDoc(){ const id=$('#betaLearningDocument')?.value||''; return betaLearningDocs().find(d=>d.id===id)||null; }
+function renderBetaLearningPage(){
+  const doc=betaLearningDoc(), pageSelect=$('#betaLearningPage'), textBox=$('#betaLearningText'), meta=$('#betaLearningMeta');
+  if(!doc||!pageSelect||!textBox) return;
+  const pages=doc.read?.pages||[]; const current=Number(pageSelect.value)||Number(doc?.read?.pages?.[0]?.page)||1;
+  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===current?'selected':''}>Page ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join('');
+  const page=pages.find(p=>Number(p.page)===Number(pageSelect.value))||pages[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
+  const lines=(page.lines||String(page.text||'').split(/\r?\n/).map((t,index)=>({text:t,index}))).filter(l=>String(l.text||'').trim());
+  textBox.innerHTML=lines.map((l,i)=>`<div class="beta-learning-line" data-line-index="${Number.isFinite(l.index)?l.index:i}">${escapeHtml(l.text||'')}</div>`).join('')||'<div class="empty-small">Aucun texte exploitable sur cette page.</div>';
+  if(meta) meta.textContent=`${doc.name} · ${doc.type||'Document'} · page ${page.page||1} / ${pages.length}`;
+  betaLearningSelection=null; const out=$('#betaLearningSelection'); if(out) out.textContent='Aucun surlignage sélectionné.';
+}
+function syncBetaLearningDocument(preferredDocId='',preferredPage=null){
+  const sel=$('#betaLearningDocument'); if(!sel) return; const docs=betaLearningDocs();
+  sel.innerHTML=docs.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${escapeHtml(d.type||'Document')}</option>`).join('');
+  if(preferredDocId&&docs.some(d=>d.id===preferredDocId)) sel.value=preferredDocId;
+  else if(docs.length) sel.value=docs[0].id;
+  const page=$('#betaLearningPage'); if(page&&preferredPage) page.value=String(preferredPage);
+  renderBetaLearningPage(); if(page&&preferredPage&&[...page.options].some(o=>o.value===String(preferredPage))){page.value=String(preferredPage);renderBetaLearningPage();}
+}
+function captureBetaLearningSelection(){
+  const box=$('#betaLearningText'), selection=globalThis.getSelection?.(); if(!box||!selection||selection.rangeCount<1||selection.isCollapsed){ $('#betaErrorFeedback').textContent='Surlignez d’abord la donnée correcte dans le texte du document.'; return; }
+  const range=selection.getRangeAt(0); if(!box.contains(range.commonAncestorContainer)){ $('#betaErrorFeedback').textContent='Le surlignage doit être fait dans la zone texte du document.'; return; }
+  const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){ $('#betaErrorFeedback').textContent='Le surlignage est vide.'; return; }
+  const startEl=(range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement)?.closest?.('.beta-learning-line');
+  const endEl=(range.endContainer.nodeType===1?range.endContainer:range.endContainer.parentElement)?.closest?.('.beta-learning-line')||startEl;
+  const doc=betaLearningDoc(), pageNo=Number($('#betaLearningPage')?.value)||1, page=doc?.read?.pages?.find(p=>Number(p.page)===pageNo);
+  const lines=page?.lines||[]; const startIndex=Number(startEl?.dataset?.lineIndex); const endIndex=Number(endEl?.dataset?.lineIndex);
+  const lineObj=lines.find(l=>Number(l.index)===startIndex)||null; const pos=lines.findIndex(l=>Number(l.index)===startIndex);
+  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:Number.isFinite(startIndex)?startIndex:null,endLineIndex:Number.isFinite(endIndex)?endIndex:null,lineCount:lines.length,selectedText,lineText:lineObj?.text||startEl?.textContent||'',beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:(lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null)};
+  box.querySelectorAll('.beta-learning-line').forEach(el=>el.classList.remove('beta-learning-line-selected'));
+  if(startEl&&endEl){ let active=false; for(const el of box.querySelectorAll('.beta-learning-line')){ if(el===startEl) active=true; if(active) el.classList.add('beta-learning-line-selected'); if(el===endEl) break; } }
+  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${Number.isFinite(startIndex)?` · ligne ${startIndex+1}`:''}`;
+  const def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||'']; const input=$('#betaErrorCorrectValue');
+  if(input&&def){ if(def.type==='number'){ const n=parseFrNumber(selectedText); if(n!==null) input.value=String(n).replace('.',','); } else input.value=selectedText; }
+  $('#betaErrorFeedback').textContent='';
+}
 function openBetaErrorDialog(building,field){
   if(!ownerBetaEnabled()||!state.result) return;
   const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog');
   if(!def||!ctx.row||!dlg) return;
-  const src=ctx.source||{};
+  const src=ctx.source||{}, missing=ctx.value===undefined||ctx.value===null||ctx.value==='';
+  $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée';
+  $('#betaErrorIntro').textContent=missing?'Choisissez la pièce, surlignez la donnée correcte et ExtracTerre mémorisera son emplacement pour les prochains documents similaires.':'Choisissez la pièce, surlignez la bonne donnée et ExtracTerre remplacera la valeur tout en mémorisant précisément son emplacement.';
   $('#betaErrorField').textContent=def.label||field;
   $('#betaErrorBuilding').textContent=building||'Bâtiment unique';
-  $('#betaErrorDetected').textContent=formatValue(ctx.value);
-  $('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Source non déterminée';
+  $('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);
+  $('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';
   $('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';
   $('#betaErrorCorrectValue').value='';
-  $('#betaErrorReason').value='wrong_value';
-  $('#betaErrorComment').value='';
-  $('#betaApplyCorrection').checked=true;
-  $('#betaErrorFeedback').textContent='';
-  dlg.dataset.building=building; dlg.dataset.field=field;
-  dlg.showModal();
-  setTimeout(()=>$('#betaErrorCorrectValue')?.focus(),60);
+  $('#betaErrorReason').value=missing?'missing_data':'wrong_value';
+  $('#betaErrorComment').value=''; $('#betaApplyCorrection').checked=true; $('#betaErrorFeedback').textContent='';
+  dlg.dataset.building=building; dlg.dataset.field=field; dlg.dataset.wasMissing=missing?'1':'0'; betaLearningSelection=null;
+  syncBetaLearningDocument(src.docId||'',src.page||null); dlg.showModal();
 }
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); }
+function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); betaLearningSelection=null; }
 async function submitBetaError(){
   if(!ownerBetaEnabled()) return;
   const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field];
   const ctx=betaResultContext(building,field); if(!dlg||!def||!ctx.row) return;
-  const raw=($('#betaErrorCorrectValue')?.value||'').trim();
-  let correctedValue=null,hasCorrection=!!raw;
-  if(hasCorrection){
-    if(def.type==='number'){
-      const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; }
-      correctedValue=n;
-    } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;
-  }
-  const src=ctx.source||{},reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
-  const payload={beta:true,field,fieldLabel:def.label||field,building,detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
+  const raw=($('#betaErrorCorrectValue')?.value||'').trim(); let correctedValue=null,hasCorrection=!!raw;
+  if(hasCorrection){ if(def.type==='number'){ const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; } correctedValue=n; } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw; }
+  if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.'; return; }
+  const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
+  const loc=betaLearningSelection?{...betaLearningSelection}:null;
+  const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
   try{
-    await recordLearningEvent('beta_result_error',payload,activeProject());
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){
-      const key=`${building}|${field}`,previous=ctx.value;
-      state.manualValues[key]=correctedValue;
-      state.manualSources[key]={docId:src.docId||'',fileName:src.fileName||'Correction bêta',page:src.page||1,excerpt:src.excerpt||'',method:'manual:beta-error-correction',provenanceNote:`Correction bêta propriétaire — ${reason}`};
-      applyManualValues();
-      learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'beta_error_feedback',reason},activeProject());
-      refreshEconomic(); scheduleWorkspaceCheckpoint('correction bêta',80);
+    await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
+    if(loc){
+      const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};
+      const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());
+      await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});
     }
-    closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh();
-    toast(hasCorrection?'Erreur enregistrée et correction appliquée.':'Erreur enregistrée dans le journal d’amélioration.','success');
+    const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']);
+    const srcDoc=state.docs.find(d=>d.id===src.docId);
+    if(!missing&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){
+      const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};
+      const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());
+      await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});
+    }
+    if(hasCorrection&&$('#betaApplyCorrection')?.checked){
+      const key=`${building}|${field}`,previous=ctx.value; state.manualValues[key]=correctedValue;
+      state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:'manual:highlight-learning',provenanceNote:`Correction propriétaire par surlignage — ${reason}`};
+      applyManualValues(); learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'highlight_learning',reason,highlight:loc},activeProject()); refreshEconomic(); scheduleWorkspaceCheckpoint('correction par surlignage',80);
+    }
+    closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh(); renderLearningMemoryUi();
+    toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
   }catch(err){ $('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`; }
 }
-
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
   const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length)||!state.result) return;
@@ -1121,6 +1265,8 @@ function wire(){
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
   $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
+  const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
+  const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
   const journalPack=$('#journalPackBtn'); if(journalPack) journalPack.onclick=()=>requestJournalPackDownload();
   const journalConfig=$('#journalConfigBtn'); if(journalConfig) journalConfig.onclick=openJournalConfigDialog;
   const journalConfigClose=$('#journalConfigClose'); if(journalConfigClose) journalConfigClose.onclick=()=>$('#journalConfigDialog')?.close();
@@ -1129,7 +1275,7 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
+  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaPreview=$('#betaPreviewSelectedDoc'); if(betaPreview) betaPreview.onclick=()=>{const d=betaLearningDoc(); if(d) openFilePreview(d.id);}; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
@@ -1146,6 +1292,18 @@ function wire(){
     analysisMode.onchange=()=>{ localStorage.setItem('extracterre-analysis-mode',analysisMode.value); syncModeInfo(); const p=ANALYSIS_MODES[analysisMode.value]; toast(p.key==='fast'?`Mode rapide : ${p.description}. Consommation mémoire plus élevée.`:`Mode ${p.label.toLowerCase()} : ${p.description}.`,'info'); };
     syncModeInfo();
   }
+  const executionMode=$('#executionMode'); if(executionMode){
+    executionMode.value=getExecutionMode();
+    executionMode.onchange=()=>{ const mode=setExecutionMode(executionMode.value); executionMode.value=mode; syncCloudModeUi(); const cfg=CLOUD_MODES[mode]; toast(`Calcul ${cfg.label.toLowerCase()} : ${cfg.description}.`,'info'); };
+    syncCloudModeUi();
+  }
+  const cloudBtn=$('#cloudConnectionBtn'); if(cloudBtn) cloudBtn.onclick=openCloudDialog;
+  const cloudClose=$('#cloudDialogClose'); if(cloudClose) cloudClose.onclick=()=>$('#cloudDialog')?.close();
+  const cloudLogin=$('#cloudSignInBtn'); if(cloudLogin) cloudLogin.onclick=signInCloudFromDialog;
+  const cloudLogout=$('#cloudSignOutBtn'); if(cloudLogout) cloudLogout.onclick=signOutCloudFromDialog;
+  const cloudSave=$('#cloudConfigSave'); if(cloudSave) cloudSave.onclick=saveCloudConfigFromDialog;
+  const cloudReset=$('#cloudConfigReset'); if(cloudReset) cloudReset.onclick=resetCloudConfigFromDialog;
+  const cloudPassword=$('#cloudPassword'); if(cloudPassword) cloudPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();signInCloudFromDialog();}});
   const patchBtn=$('#patchLoadBtn'), patchInput=$('#patchFileInput'); if(patchBtn&&patchInput){patchBtn.onclick=()=>patchInput.click();patchInput.onchange=async()=>{await handlePatchFile(patchInput.files?.[0]);patchInput.value='';};}
   renderPatchUi();
   $('#version').textContent=`v${APP_VERSION}`; syncProjectInput(); libraryCheck();
@@ -1154,6 +1312,7 @@ function wire(){
 async function initializeApp(){
   if(!globalThis.__extracterreAccessPromise) throw new Error('Le contrôle d’accès ExtracTerre n’a pas été initialisé.');
   await globalThis.__extracterreAccessPromise;
+  try{await initializeLearningMemory();}catch(err){console.warn('Learning memory init failed',err);}
   await initializeImprovementPatches();
   wire(); setLocalSaveUi('Recherche de session…');
   try{
@@ -1175,6 +1334,6 @@ async function initializeApp(){
   }catch(err){
     console.warn('IndexedDB restore failed',err); persistenceReady=false; setLocalSaveUi('Indisponible'); const detail=$('#localSaveDetail'); if(detail) detail.textContent='Le navigateur ne permet pas la restauration locale dans ce contexte.';
   }
-  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); await refreshJournalUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
+  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
 initializeApp();

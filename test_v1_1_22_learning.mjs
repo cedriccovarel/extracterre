@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const read=p=>fs.readFileSync(new URL(p,import.meta.url),'utf8');
+const app=read('./js/app.js'), html=read('./index.html'), journal=read('./js/journal.js'), version=read('./VERSION').trim();
+const vp=version.split('.').map(Number); assert.ok((vp[0]>1)||(vp[0]===1&&vp[1]>1)||(vp[0]===1&&vp[1]===1&&(vp[2]||0)>=22),'current version must be >= 1.1.22');
+for(const id of ['betaLearningDocument','betaLearningPage','betaPreviewSelectedDoc','betaLearningText','betaUseHighlight','betaLearningSelection']) assert.ok(html.includes(`id="${id}"`),`missing UI ${id}`);
+assert.ok(app.includes("v===undefined?'＋':'✕'"),'empty cells must expose + while filled cells expose x');
+assert.ok(app.includes("recordLearningEvent('parser_location_learning'"),'location-learning event missing');
+assert.ok(app.includes("'beta_missing_data_location':'beta_result_error'"),'missing-data event missing');
+assert.ok(app.includes('lineRatio')&&app.includes('pageRatio')&&app.includes('beforeLine')&&app.includes('afterLine'),'precise document location metadata missing');
+assert.ok(journal.includes("apprentissage_emplacements.json"),'learning-location pack export missing');
+assert.ok(journal.includes('learnedLocations'),'learning-location summary missing');
+assert.ok(html.includes(`app.bundle.js?v=${version}`),'bundle cache bust must match app version');
+console.log('v1.1.22+ learning regression: OK');

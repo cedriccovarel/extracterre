@@ -1,3 +1,40 @@
+# ExtracTerre v2.1.0
+
+- Base réelle : v1.1.23 enrichie, sans suppression des fonctions existantes.
+- Architecture hybride : navigateur + Supabase privé + worker GitHub Actions.
+- Trois modes de calcul : Hybride auto, Local, Serveur.
+- Déport de la lecture lourde PDF/OCR uniquement ; le moteur métier 167 champs reste commun côté ExtracTerre.
+- Fallback local automatique en mode hybride si le Cloud est indisponible.
+- Upload distant multi-parties de 45 MiB, reconstitution sur le runner, index `read.json.gz` en sortie.
+- Suppression des PDF temporaires après traitement et suppression de l’index après récupération.
+- Ajout des fonctions Supabase de création, démarrage, suivi, pont worker et nettoyage.
+- Correction DH/DHmax U22Win : sélection couplée sur la ligne du DH maximal.
+- Validation effective de `minAppVersion` pour les patchs.
+- Catalogue maître inchangé : 167 champs, même ordre.
+- Ajout de tests de non-régression V2.1 pour le routage hybride, DH/DHmax, compatibilité patchs et worker PDF/OCR.
+
+# ExtracTerre v1.1.23
+
+- Ajoute une mémoire d’apprentissage interne persistante dans un IndexedDB séparé.
+- Regroupe les corrections par champ, type documentaire et contexte structurel plutôt que par numéro de page seul.
+- Active une montée progressive de priorité après 2, 3 puis 5 confirmations concordantes, avec bonus plafonné à 0,08 de confiance.
+- Ajoute des signaux négatifs pour mauvaise source, mauvais bâtiment et faux positif afin qu’un apprentissage puisse se corriger avec l’usage.
+- Ajoute la vue Aide → Mémoire d’apprentissage du parseur avec compteurs, profils, fiabilité, désactivation et effacement local.
+- Ajoute la synchronisation facultative de la mémoire via Supabase (`extracterre_learning_memory_pull`) sans exposer le journal complet.
+- Ajoute `SUPABASE_MEMORY_V1_1_23.sql` pour migrer une base Supabase existante.
+- Conserve le fonctionnement local si Supabase est absent ou si la migration distante n’est pas encore appliquée.
+
+# ExtracTerre v1.1.22
+
+- Ajoute la correction documentaire par surlignage depuis la croix propriétaire.
+- La même action est disponible sur les cellules vides via un bouton +.
+- La fenêtre liste toutes les pièces analysées, permet de choisir la page et d’ouvrir l’aperçu intégré.
+- Le texte extrait de la page devient sélectionnable : le surlignage mémorise document, type, page, position relative, ligne, contexte avant/après et valeur sélectionnée.
+- La valeur surlignée peut remplacer immédiatement la donnée fausse ou compléter la donnée manquante.
+- Ajoute les événements `beta_missing_data_location` et `parser_location_learning` au journal d’amélioration.
+- Le pack d’amélioration exporte désormais `apprentissage_emplacements.json` et synthétise les emplacements récurrents par champ et type documentaire.
+- Met à jour le cache-busting de `index.html` en 1.1.22.
+
 # v1.1.21
 
 - Correctif moteur des patchs : un patch chargé est désormais réappliqué immédiatement aux documents déjà analysés à partir du texte conservé, sans relire ni OCRiser les PDF.

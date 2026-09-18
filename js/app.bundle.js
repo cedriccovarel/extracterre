@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v1.1.21 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.1.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '1.1.21';
+const APP_VERSION = '2.1.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -854,8 +854,15 @@ function validateRegex(raw,label,max=1200){
   if(typeof raw!=='string'||raw.length>max) throw new Error(`Expression régulière invalide : ${label}`);
   try{ new RegExp(raw,'im'); }catch{ throw new Error(`Expression régulière invalide : ${label}`); }
 }
+function versionParts(value=''){ return String(value||'').trim().replace(/^v/i,'').split('.').map(x=>Number.parseInt(x,10)||0); }
+function compareVersions(a,b){
+  const aa=versionParts(a),bb=versionParts(b),n=Math.max(aa.length,bb.length,3);
+  for(let i=0;i<n;i++){ const d=(aa[i]||0)-(bb[i]||0); if(d) return d<0?-1:1; }
+  return 0;
+}
 function validPatch(p){
   if(!p||p.schema!==SCHEMA||typeof p.id!=='string'||!p.id.trim()) throw new Error('Patch ExtracTerre invalide ou incompatible.');
+  if(p.minAppVersion&&compareVersions(APP_VERSION,p.minAppVersion)<0) throw new Error(`Patch ${p.id} incompatible : ExtracTerre ${p.minAppVersion} minimum requis (version actuelle ${APP_VERSION}).`);
   if(safeArray(p.extractionRules).length>160) throw new Error('Patch refusé : trop de règles.');
   for(const r of safeArray(p.extractionRules)){
     if(!r.field||!FIELD_MAP[r.field]) throw new Error(`Champ de patch inconnu : ${r.field||'—'}`);
@@ -3014,12 +3021,123 @@ function buildProjectTags(docs,result,manualTags=[]){
   return out;
 }
 
+/* ---- learning-memory.js ---- */
+const LEARNING_DB_NAME='extracterre-learning-memory';
+const LEARNING_DB_VERSION=1;
+const LEARNING_SIGNAL_STORE='signals';
+const LEARNING_SETTINGS_STORE='settings';
+const cache={ready:false,signals:new Map(),profiles:[],disabled:new Set()};
+
+function openLearningDb(){
+  return new Promise((resolve,reject)=>{
+    if(!globalThis.indexedDB){ reject(new Error('IndexedDB indisponible.')); return; }
+    const req=indexedDB.open(LEARNING_DB_NAME,LEARNING_DB_VERSION);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(LEARNING_SIGNAL_STORE)){
+        const s=db.createObjectStore(LEARNING_SIGNAL_STORE,{keyPath:'id'});
+        s.createIndex('field','field',{unique:false}); s.createIndex('docType','docType',{unique:false}); s.createIndex('createdAt','createdAt',{unique:false});
+      }
+      if(!db.objectStoreNames.contains(LEARNING_SETTINGS_STORE)) db.createObjectStore(LEARNING_SETTINGS_STORE,{keyPath:'key'});
+    };
+    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error||new Error('Mémoire d’apprentissage indisponible.'));
+  });
+}
+function reqP(req){return new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('Erreur IndexedDB apprentissage.'));});}
+function txP(tx){return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||new Error('Transaction apprentissage impossible.'));tx.onabort=()=>reject(tx.error||new Error('Transaction apprentissage annulée.'));});}
+function safe(v=''){return normalizeText(String(v||'')).trim();}
+function anchorText(signal={}){return safe([signal.beforeLine,signal.lineText,signal.afterLine].filter(Boolean).join(' | '));}
+function anchorTokens(text=''){
+  return [...new Set(normLower(text).replace(/\d+(?:[.,]\d+)?/g,' ').replace(/[^a-zà-ÿ0-9]+/gi,' ').split(/\s+/).filter(t=>t.length>=3&&!/^(?:page|bâtiment|batiment|ligne|valeur|total)$/.test(t)))].slice(0,70);
+}
+function similarityTokens(a=[],b=[]){if(!a.length||!b.length)return 0;const A=new Set(a),B=new Set(b);let i=0;for(const x of A)if(B.has(x))i++;return i/Math.max(1,new Set([...A,...B]).size);}
+function locationSimilarity(a,b){
+  if(a.field!==b.field||String(a.docType||'')!==String(b.docType||'')) return 0;
+  const text=similarityTokens(a.tokens||anchorTokens(a.anchor||''),b.tokens||anchorTokens(b.anchor||''));
+  const pageA=Number(a.page),pageB=Number(b.page); let page=0;
+  if(Number.isFinite(pageA)&&Number.isFinite(pageB)) page=Math.max(0,1-Math.abs(pageA-pageB)/5);
+  const ratioA=Number(a.lineRatio),ratioB=Number(b.lineRatio); let ratio=0;
+  if(Number.isFinite(ratioA)&&Number.isFinite(ratioB)) ratio=Math.max(0,1-Math.abs(ratioA-ratioB)/0.35);
+  return Math.min(1,text*.72+page*.12+ratio*.16);
+}
+function profileReliability(p){return (p.confirmations+1)/(p.confirmations+p.rejections+2);}
+function baseBoost(p){
+  const n=p.confirmations,r=profileReliability(p); if(n<2||r<.55) return 0;
+  const b=n>=10?.075:n>=5?.055:n>=3?.035:.018; return Math.max(0,b*Math.min(1,(r-.45)/.45));
+}
+function rebuildProfiles(){
+  const groups=[];
+  const signals=[...cache.signals.values()].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  for(const s of signals){
+    if(!s?.field||!s?.docType) continue;
+    const probe={field:s.field,docType:s.docType,page:s.page,lineRatio:s.lineRatio,anchor:anchorText(s),tokens:anchorTokens(anchorText(s))};
+    let best=null,bestScore=0;
+    for(const p of groups){const score=locationSimilarity(probe,p);if(score>bestScore){best=p;bestScore=score;}}
+    if(!best||bestScore<.52){
+      best={id:`profile-${groups.length+1}`,seedId:s.id,field:s.field,docType:s.docType,anchor:probe.anchor,tokens:probe.tokens,page:Number(s.page)||null,lineRatio:Number.isFinite(Number(s.lineRatio))?Number(s.lineRatio):null,confirmations:0,rejections:0,lastAt:0,samples:[],disabled:false}; groups.push(best);
+    }
+    if(s.polarity==='negative') best.rejections++; else best.confirmations++;
+    best.lastAt=Math.max(best.lastAt,Number(s.createdAt)||0); if(best.samples.length<5) best.samples.push({page:s.page,lineText:s.lineText,selectedText:s.selectedText,polarity:s.polarity||'positive'});
+    if(s.polarity!=='negative' && bestScore>=.52){ best.anchor=probe.anchor||best.anchor; best.tokens=probe.tokens.length?probe.tokens:best.tokens; if(Number.isFinite(Number(s.page))) best.page=Number(s.page); if(Number.isFinite(Number(s.lineRatio))) best.lineRatio=Number(s.lineRatio); }
+  }
+  for(const p of groups){ p.reliability=profileReliability(p); p.boost=baseBoost(p); p.disabled=cache.disabled.has(profileKey(p)); }
+  cache.profiles=groups.sort((a,b)=>b.confirmations-a.confirmations||b.reliability-a.reliability);
+}
+function profileKey(p){return `${p.field}|${p.docType}|${p.seedId||normLower(p.anchor||'').slice(0,180)}`;}
+async function putSignal(signal){
+  const db=await openLearningDb(); try{const tx=db.transaction(LEARNING_SIGNAL_STORE,'readwrite');tx.objectStore(LEARNING_SIGNAL_STORE).put(signal);await txP(tx);}finally{db.close();}
+}
+function makeId(){try{return `learn-${Date.now()}-${crypto.randomUUID()}`;}catch{return `learn-${Date.now()}-${Math.random().toString(36).slice(2)}`;}}
+async function initializeLearningMemory(){
+  const db=await openLearningDb(); try{
+    const tx=db.transaction([LEARNING_SIGNAL_STORE,LEARNING_SETTINGS_STORE],'readonly'); const signals=await reqP(tx.objectStore(LEARNING_SIGNAL_STORE).getAll()); const disabled=await reqP(tx.objectStore(LEARNING_SETTINGS_STORE).get('disabledProfiles')); await txP(tx);
+    cache.signals=new Map((signals||[]).map(s=>[s.id,s])); cache.disabled=new Set(disabled?.value||[]); cache.ready=true; rebuildProfiles(); return getLearningMemoryStats();
+  }finally{db.close();}
+}
+async function reinforceLearningLocation(location={},meta={}){
+  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'positive',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,pageRatio:Number.isFinite(Number(location.pageRatio))?Number(location.pageRatio):null,lineIndex:Number.isFinite(Number(location.lineIndex))?Number(location.lineIndex):null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText),building:String(meta.building||''),source:'user-highlight'};
+  if(!signal.field||!signal.docType) return null; if(cache.signals.has(signal.id)) return signal; await putSignal(signal); cache.signals.set(signal.id,signal); rebuildProfiles(); return signal;
+}
+async function penalizeLearningLocation(location={},meta={}){
+  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'negative',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText||meta.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText||meta.selectedText),building:String(meta.building||''),source:'user-rejection'};
+  if(!signal.field||!signal.docType) return null; if(cache.signals.has(signal.id)) return signal; await putSignal(signal); cache.signals.set(signal.id,signal); rebuildProfiles(); return signal;
+}
+function applyLearningBoosts(raw=[]){
+  if(!cache.ready||!cache.profiles.length) return raw;
+  return raw.map(o=>{
+    if(!o?.field||!o?.docType||o.userValidated) return o;
+    const probe={field:o.field,docType:o.docType,page:o.page,lineRatio:o.lineRatio,anchor:safe(o.excerpt||o.lineText||''),tokens:anchorTokens(o.excerpt||o.lineText||'')};
+    let best=null,match=0; for(const p of cache.profiles){if(p.disabled||p.boost<=0)continue;const s=locationSimilarity(probe,p);if(s>match){best=p;match=s;}}
+    if(!best||match<.42) return o;
+    const boost=Math.min(.08,best.boost*Math.min(1,match/.72)); if(boost<=.002) return o;
+    return {...o,confidence:Math.min(1,Number(o.confidence||0)+boost),learningBoost:boost,learningMatch:match,learningConfirmations:best.confirmations,learningReliability:best.reliability,learningProfile:profileKey(best)};
+  });
+}
+async function importRemoteLearningEvents(events=[]){
+  let added=0;
+  for(const e of events||[]){ if(!e?.id||cache.signals.has(e.id)) continue; const p=e.payload||{}; if(e.eventType==='parser_location_learning'){await reinforceLearningLocation(p,{eventId:e.id,createdAt:e.createdAt,field:p.field,docType:p.docType,building:p.building});added++;} else if(e.eventType==='parser_location_rejection'){await penalizeLearningLocation(p,{eventId:e.id,createdAt:e.createdAt,field:p.field,docType:p.docType,building:p.building});added++;} }
+  return added;
+}
+function listLearningProfiles(){return cache.profiles.map(p=>({...p,key:profileKey(p)}));}
+function getLearningMemoryStats(){const active=cache.profiles.filter(p=>!p.disabled);return {ready:cache.ready,signals:cache.signals.size,profiles:cache.profiles.length,activeProfiles:active.length,strongProfiles:active.filter(p=>p.confirmations>=5&&p.reliability>=.7).length};}
+async function setLearningProfileEnabled(key,enabled=true){
+  if(enabled) cache.disabled.delete(key); else cache.disabled.add(key);
+  const db=await openLearningDb(); try{const tx=db.transaction(LEARNING_SETTINGS_STORE,'readwrite');tx.objectStore(LEARNING_SETTINGS_STORE).put({key:'disabledProfiles',value:[...cache.disabled]});await txP(tx);}finally{db.close();} rebuildProfiles(); return getLearningMemoryStats();
+}
+async function clearLearningMemory(){
+  const db=await openLearningDb(); try{const tx=db.transaction([LEARNING_SIGNAL_STORE,LEARNING_SETTINGS_STORE],'readwrite');tx.objectStore(LEARNING_SIGNAL_STORE).clear();tx.objectStore(LEARNING_SETTINGS_STORE).clear();await txP(tx);}finally{db.close();} cache.signals.clear();cache.disabled.clear();rebuildProfiles();return getLearningMemoryStats();
+}
+
+function __learningMemoryTestProfile(confirmations=5,rejections=0){ const p={field:'cep',docType:'RSET RE2020',anchor:'chapitre exigences cep maximum consommation energie',tokens:anchorTokens('chapitre exigences cep maximum consommation energie'),page:5,lineRatio:.4,confirmations,rejections}; p.reliability=profileReliability(p);p.boost=baseBoost(p);p.disabled=false;return p;}
+function __learningMemoryTestSimilarity(a,b){return locationSimilarity(a,b);}
+
 /* ---- engine.js ---- */
 function valueKey(v){ return typeof v==='number'?v.toFixed(6):normLower(v); }
 function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
-  const normalizedRaw=raw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
+  const learnedRaw=applyLearningBoosts(raw);
+  const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':sourceTier(o.field,o.docType,rules),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building].join('|'); if(!agreement.has(k)) agreement.set(k,new Set()); agreement.get(k).add(o.docId); }
@@ -4051,6 +4169,9 @@ function serializeDocMeta(doc={}){
     targetedLastOcrPages:Number.isFinite(doc.targetedLastOcrPages)?doc.targetedLastOcrPages:null,
     targetedRejectedKeys:safeJsonClone(doc.targetedRejectedKeys,[]),
     targetedStatus:doc.targetedStatus==='running'?null:(doc.targetedStatus||null),
+    processingLocation:doc.processingLocation||null,
+    remoteAnalysis:safeJsonClone(doc.remoteAnalysis,null),
+    cloudFallback:doc.cloudFallback||null,
     persistedAnalysis:hasAnalysis
   };
 }
@@ -4388,6 +4509,16 @@ async function testRemoteJournalConnection(){
   const data=await remoteRpc('extracterre_journal_status',{p_proof:ctx.journalProof});
   return data||{ok:true};
 }
+async function pullRemoteLearningMemoryEvents(){
+  const cfg=getRemoteJournalConfig(),ctx=accessContext();
+  if(!cfg.configured||!ctx?.journalProof) return {configured:cfg.configured,events:[]};
+  try{
+    const data=await remoteRpc('extracterre_learning_memory_pull',{p_proof:ctx.journalProof});
+    return {configured:true,events:Array.isArray(data)?data:(Array.isArray(data?.events)?data.events:[])};
+  }catch(err){
+    return {configured:true,events:[],unsupported:true,error:err?.message||String(err)};
+  }
+}
 async function getLearningJournalOverview(){
   const local=await getLearningJournalStats(); const cfg=getRemoteJournalConfig();
   return {...local,remoteConfigured:cfg.configured};
@@ -4401,7 +4532,7 @@ async function exportRemoteJournal(packProof=''){
   return [];
 }
 function eventSummary(events=[]){
-  const byType={},byVersion={},fieldCorrections={},betaReasons={}; let accepted=0,rejected=0,errors=0,betaErrors=0,betaCorrected=0,totalAnalysisMs=0,analysisDocs=0;
+  const byType={},byVersion={},fieldCorrections={},betaReasons={},locationLearning={}; let accepted=0,rejected=0,errors=0,betaErrors=0,betaCorrected=0,totalAnalysisMs=0,analysisDocs=0;
   for(const e of events){
     byType[e.eventType]=(byType[e.eventType]||0)+1; byVersion[e.appVersion]=(byVersion[e.appVersion]||0)+1;
     const p=e.payload||{};
@@ -4409,14 +4540,16 @@ function eventSummary(events=[]){
     if(/decision|validation/.test(e.eventType)){ if(p.decision==='accept'||p.accepted===true) accepted++; if(p.decision==='reject'||p.accepted===false) rejected++; }
     if(e.eventType==='analysis_error') errors++;
     if(e.eventType==='beta_result_error'){ betaErrors++; if(p.hasCorrectedValue) betaCorrected++; if(p.reason) betaReasons[p.reason]=(betaReasons[p.reason]||0)+1; if(p.field) fieldCorrections[p.field]=(fieldCorrections[p.field]||0)+1; }
+    if(e.eventType==='parser_location_learning'&&p.field){ const k=[p.field,p.docType||'Document'].join('|'); const x=locationLearning[k]||{field:p.field,label:FIELD_MAP[p.field]?.label||p.field,docType:p.docType||'',count:0,pages:{},lineRatios:[]}; x.count++; if(p.page) x.pages[p.page]=(x.pages[p.page]||0)+1; if(Number.isFinite(Number(p.lineRatio))) x.lineRatios.push(Number(p.lineRatio)); locationLearning[k]=x; }
     if(e.eventType==='analysis_document'&&Number.isFinite(Number(p.durationMs))){totalAnalysisMs+=Number(p.durationMs);analysisDocs++;}
   }
   const mostCorrected=Object.entries(fieldCorrections).sort((a,b)=>b[1]-a[1]).slice(0,30).map(([field,count])=>({field,label:FIELD_MAP[field]?.label||field,count}));
-  return {events:events.length,byType,byVersion,accepted,rejected,errors,betaErrors,betaCorrected,betaReasons,analysisDocs,meanAnalysisDurationMs:analysisDocs?Math.round(totalAnalysisMs/analysisDocs):null,mostCorrectedFields:mostCorrected};
+  const learnedLocations=Object.values(locationLearning).sort((a,b)=>b.count-a.count).slice(0,100).map(x=>({...x,meanLineRatio:x.lineRatios.length?Math.round(x.lineRatios.reduce((a,b)=>a+b,0)/x.lineRatios.length*1000)/1000:null,lineRatios:undefined}));
+  return {events:events.length,byType,byVersion,accepted,rejected,errors,betaErrors,betaCorrected,betaReasons,analysisDocs,meanAnalysisDurationMs:analysisDocs?Math.round(totalAnalysisMs/analysisDocs):null,mostCorrectedFields:mostCorrected,learnedLocations};
 }
 function pretty(value){ return JSON.stringify(value,null,2); }
 function improvementPrompt(summary){
-return `# PROMPT — Amélioration continue d’ExtracTerre\n\nJe joins à ce nouveau chat :\n1. le dernier ZIP complet d’ExtracTerre ;\n2. ce pack de journal d’amélioration généré par l’application.\n\n## Mission\n\nAnalyse d’abord le code de la dernière version d’ExtracTerre puis l’intégralité du journal. Utilise les validations, rejets, corrections manuelles, signalements bêta champ par champ, champs manquants, Cribles fins, erreurs et mesures de performance pour produire une nouvelle version réellement meilleure. Les événements beta_result_error sont des retours propriétaires prioritaires : compare systématiquement la valeur détectée, la bonne valeur éventuelle, la source/page, l’extrait et le motif pour corriger la cause racine.\n\nLes objectifs sont, dans cet ordre :\n- augmenter la fiabilité des extractions et réduire les faux positifs ;\n- récupérer davantage de données réellement présentes dans les documents sans inventer ;\n- améliorer les parseurs spécialisés, les tags, les normalisations et la hiérarchie de sources à partir des cas observés ;\n- réduire le recours à l’OCR intégral et privilégier lecture structurée puis OCR ciblé ;\n- améliorer la rapidité globale, la consommation mémoire et la stabilité sur de gros lots ;\n- exploiter les corrections récurrentes comme cas de régression permanents ;\n- conserver les comportements qui fonctionnent déjà.\n\n## Contraintes à ne pas casser\n\n- Conserver exactement le schéma métier actuel de 167 colonnes et leur ordre dans l’export Excel, sauf demande explicite contraire de ma part.\n- Ne jamais fabriquer une valeur absente des sources : tolérance d’hallucination = 0.\n- Respecter les priorités de sources configurées par champ.\n- Conserver le système de confiance, les candidats à vérifier et le Crible fin.\n- Conserver le checkpoint IndexedDB, le pool d’analyse borné, la libération mémoire et le journal d’amélioration.\n- Ne jamais mettre les mots de passe en clair dans les fichiers livrés.\n- L’Excel doit continuer à exporter l’ensemble du tableau, même si l’interface répartit les résultats en onglets métier.\n\n## Méthode attendue\n\n1. Établis les statistiques du journal : corrections les plus fréquentes, champs souvent absents, sources/types de documents responsables, faux positifs, validations et temps d’analyse.\n2. Regroupe les problèmes par cause racine plutôt que d’ajouter des rustines document par document.\n3. Modifie les parseurs/dictionnaires/règles nécessaires dans le code de la dernière version jointe.\n4. Pour chaque motif récurrent corrigé, ajoute un test de régression.\n5. Vérifie les tests historiques et les nouveaux tests. Une amélioration ne doit pas faire régresser un cas déjà validé.\n6. Vérifie particulièrement les performances : parsing parallèle borné, OCR ciblé, destruction des ressources PDF/canvas, absence de duplication massive en mémoire.\n7. Mets à jour VERSION, CHANGELOG, README et TESTS.\n8. Livre le ZIP complet de la nouvelle version, pas seulement des fichiers de patch.\n\n## Informations synthétiques du pack\n\n${pretty(summary)}\n\nCommence par analyser les causes récurrentes visibles dans le journal et applique directement les améliorations les plus rentables en efficacité, fiabilité et rapidité.\n`;
+return `# PROMPT — Amélioration continue d’ExtracTerre\n\nJe joins à ce nouveau chat :\n1. le dernier ZIP complet d’ExtracTerre ;\n2. ce pack de journal d’amélioration généré par l’application.\n\n## Mission\n\nAnalyse d’abord le code de la dernière version d’ExtracTerre puis l’intégralité du journal. Utilise les validations, rejets, corrections manuelles, signalements bêta champ par champ, champs manquants, Cribles fins, erreurs et mesures de performance pour produire une nouvelle version réellement meilleure. Les événements beta_result_error et beta_missing_data_location sont des retours propriétaires prioritaires. Les événements parser_location_learning décrivent les endroits exacts surlignés dans les documents : type documentaire, page, position relative, ligne et contexte avant/après. Regroupe-les par champ + type documentaire afin de faire rechercher en priorité les emplacements récurrents, sans jamais créer une valeur absente du document.\n\nLes objectifs sont, dans cet ordre :\n- augmenter la fiabilité des extractions et réduire les faux positifs ;\n- récupérer davantage de données réellement présentes dans les documents sans inventer ;\n- améliorer les parseurs spécialisés, les tags, les normalisations et la hiérarchie de sources à partir des cas observés ;\n- réduire le recours à l’OCR intégral et privilégier lecture structurée puis OCR ciblé ;\n- améliorer la rapidité globale, la consommation mémoire et la stabilité sur de gros lots ;\n- exploiter les corrections récurrentes comme cas de régression permanents ;\n- conserver les comportements qui fonctionnent déjà.\n\n## Contraintes à ne pas casser\n\n- Conserver exactement le schéma métier actuel de 167 colonnes et leur ordre dans l’export Excel, sauf demande explicite contraire de ma part.\n- Ne jamais fabriquer une valeur absente des sources : tolérance d’hallucination = 0.\n- Respecter les priorités de sources configurées par champ.\n- Conserver le système de confiance, les candidats à vérifier et le Crible fin.\n- Conserver le checkpoint IndexedDB, le pool d’analyse borné, la libération mémoire et le journal d’amélioration.\n- Ne jamais mettre les mots de passe en clair dans les fichiers livrés.\n- L’Excel doit continuer à exporter l’ensemble du tableau, même si l’interface répartit les résultats en onglets métier.\n\n## Méthode attendue\n\n1. Établis les statistiques du journal : corrections les plus fréquentes, champs souvent absents, sources/types de documents responsables, faux positifs, validations et temps d’analyse.\n2. Regroupe les problèmes par cause racine plutôt que d’ajouter des rustines document par document.\n3. Modifie les parseurs/dictionnaires/règles nécessaires dans le code de la dernière version jointe.\n4. Pour chaque motif récurrent corrigé, ajoute un test de régression.\n5. Vérifie les tests historiques et les nouveaux tests. Une amélioration ne doit pas faire régresser un cas déjà validé.\n6. Vérifie particulièrement les performances : parsing parallèle borné, OCR ciblé, destruction des ressources PDF/canvas, absence de duplication massive en mémoire.\n7. Mets à jour VERSION, CHANGELOG, README et TESTS.\n8. Livre le ZIP complet de la nouvelle version, pas seulement des fichiers de patch.\n\n## Informations synthétiques du pack\n\n${pretty(summary)}\n\nCommence par analyser les causes récurrentes visibles dans le journal et applique directement les améliorations les plus rentables en efficacité, fiabilité et rapidité.\n`;
 }
 function downloadBlob(blob,name){
   const url=URL.createObjectURL(blob),a=document.createElement('a'); a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -4434,7 +4567,8 @@ async function downloadLearningImprovementPack({packProof='',skipRemote=false}={
   const now=new Date();
   const manifest={packSchema:1,generatedAt:now.toISOString(),appVersion:APP_VERSION,events:events.length,localEvents:local.length,remoteEvents:remote.length,remoteConfigured:getRemoteJournalConfig().configured,remoteError:remoteError||null,summary};
   const corrections=events.filter(e=>e.eventType==='manual_override');
-  const betaErrors=events.filter(e=>e.eventType==='beta_result_error');
+  const betaErrors=events.filter(e=>['beta_result_error','beta_missing_data_location'].includes(e.eventType));
+  const learnedLocations=events.filter(e=>e.eventType==='parser_location_learning');
   const decisions=events.filter(e=>['uncertain_decision','targeted_decision','free_search_validation'].includes(e.eventType));
   const performance=events.filter(e=>['analysis_document','analysis_batch','analysis_error'].includes(e.eventType));
   const missing=events.filter(e=>e.eventType==='analysis_batch'&&(e.payload?.missingFields?.length||e.payload?.completeness));
@@ -4445,15 +4579,220 @@ async function downloadLearningImprovementPack({packProof='',skipRemote=false}={
   zip.file('journal_complet.json',pretty(events));
   zip.file('corrections_manuelles.json',pretty(corrections));
   zip.file('erreurs_beta_proprietaire.json',pretty(betaErrors));
+  zip.file('apprentissage_emplacements.json',pretty(learnedLocations));
   zip.file('validations_rejets.json',pretty(decisions));
   zip.file('performances.json',pretty(performance));
   zip.file('donnees_manquantes.json',pretty(missing));
   zip.file('erreurs.json',pretty(errors));
-  zip.file('README_PACK.md',`# Pack d’amélioration ExtracTerre\n\nCe pack est généré automatiquement depuis le journal d’apprentissage local et, lorsqu’il est configuré, le journal partagé multi-ordinateurs.\n\nIl ne contient pas les PDF originaux. Il contient les événements utiles à l’amélioration du moteur : corrections, validations/rejets, signalements bêta propriétaires champ par champ, résultats de Crible fin, champs manquants, temps d’analyse et erreurs techniques. Le fichier erreurs_beta_proprietaire.json doit être traité en priorité car il contient les faux résultats explicitement signalés avec leur contexte et, lorsque renseignée, la bonne valeur.\n\nPour une nouvelle itération, joignez ce pack et le dernier ZIP complet d’ExtracTerre dans un nouveau chat. Le fichier PROMPT_NOUVEAU_CHAT.md indique la mission à exécuter.\n`);
+  zip.file('README_PACK.md',`# Pack d’amélioration ExtracTerre\n\nCe pack est généré automatiquement depuis le journal d’apprentissage local et, lorsqu’il est configuré, le journal partagé multi-ordinateurs.\n\nIl ne contient pas les PDF originaux. Il contient les événements utiles à l’amélioration du moteur : corrections, validations/rejets, signalements bêta propriétaires champ par champ, surlignages d’emplacements documentaires, résultats de Crible fin, champs manquants, temps d’analyse et erreurs techniques. Le fichier erreurs_beta_proprietaire.json doit être traité en priorité car il contient les faux résultats explicitement signalés avec leur contexte et, lorsque renseignée, la bonne valeur.\n\nPour une nouvelle itération, joignez ce pack et le dernier ZIP complet d’ExtracTerre dans un nouveau chat. Le fichier PROMPT_NOUVEAU_CHAT.md indique la mission à exécuter.\n`);
   const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
   const stamp=now.toISOString().slice(0,10).replaceAll('-','');
   const name=`ExtracTerre_Journal_Amelioration_${stamp}.zip`; downloadBlob(blob,name);
   return {name,manifest};
+}
+
+/* ---- cloud.js ---- */
+const CLOUD_CONFIG_STORAGE_KEY='extracterre-cloud-config-v2';
+const CLOUD_AUTH_STORAGE_KEY='extracterre-cloud-auth-v2';
+const CLOUD_EXECUTION_MODE_KEY='extracterre-execution-mode-v2';
+const CLOUD_MODES=Object.freeze({
+  auto:{key:'auto',label:'Hybride auto',description:'PDF lourds/OCR sur serveur ; petits documents localement'},
+  local:{key:'local',label:'Local',description:'Tout analyser sur cet ordinateur'},
+  remote:{key:'remote',label:'Serveur',description:'PDF envoyés au worker distant ; autres formats locaux'}
+});
+let cloudClient=null;
+
+const CLOUD_MAX_CONCURRENCY=1;
+let cloudActive=0;
+const cloudWaiters=[];
+function acquireCloudSlot(signal,onProgress=()=>{}){
+  if(cloudActive<CLOUD_MAX_CONCURRENCY){ cloudActive++; return Promise.resolve(()=>releaseCloudSlot()); }
+  onProgress(.005,{stage:'cloud-wait',message:'Cloud · attente du créneau gratuit'});
+  return new Promise((resolve,reject)=>{
+    const waiter={resolve,reject,signal,onAbort:null};
+    waiter.onAbort=()=>{
+      const i=cloudWaiters.indexOf(waiter); if(i>=0) cloudWaiters.splice(i,1);
+      const e=new Error('Analyse distante interrompue.'); e.name='AbortError'; reject(e);
+    };
+    signal?.addEventListener?.('abort',waiter.onAbort,{once:true});
+    cloudWaiters.push(waiter);
+  });
+}
+function releaseCloudSlot(){
+  cloudActive=Math.max(0,cloudActive-1);
+  while(cloudWaiters.length){
+    const waiter=cloudWaiters.shift();
+    if(waiter.signal?.aborted) continue;
+    waiter.signal?.removeEventListener?.('abort',waiter.onAbort);
+    cloudActive++;
+    waiter.resolve(()=>releaseCloudSlot());
+    break;
+  }
+}
+
+function defaultCloudConfig(){
+  const cfg=globalThis.EXTRACTERRE_CLOUD_CONFIG||{};
+  return {
+    supabaseUrl:String(cfg.supabaseUrl||'').trim().replace(/\/$/,''),
+    supabasePublishableKey:String(cfg.supabasePublishableKey||'').trim(),
+    functions:{
+      createJob:String(cfg.functions?.createJob||'extracterre-create-job'),
+      startJob:String(cfg.functions?.startJob||'extracterre-start-job'),
+      jobStatus:String(cfg.functions?.jobStatus||'extracterre-job-status'),
+      finishJob:String(cfg.functions?.finishJob||'extracterre-finish-job')
+    },
+    storageBucket:String(cfg.storageBucket||'extracterre-temp'),
+    autoRemoteMinBytes:Number(cfg.autoRemoteMinBytes)||6*1024*1024,
+    maxRemoteBytes:Number(cfg.maxRemoteBytes)||700*1024*1024,
+    pollIntervalMs:Number(cfg.pollIntervalMs)||1400,
+    maxWaitMs:Number(cfg.maxWaitMs)||25*60*1000
+  };
+}
+function getCloudConfig(){
+  const base=defaultCloudConfig();
+  try{
+    const local=JSON.parse(localStorage.getItem(CLOUD_CONFIG_STORAGE_KEY)||'null');
+    if(local&&typeof local==='object'){
+      if(typeof local.supabaseUrl==='string'&&local.supabaseUrl.trim()) base.supabaseUrl=local.supabaseUrl.trim().replace(/\/$/,'');
+      if(typeof local.supabasePublishableKey==='string'&&local.supabasePublishableKey.trim()) base.supabasePublishableKey=local.supabasePublishableKey.trim();
+    }
+  }catch{}
+  return base;
+}
+function saveCloudConfig({supabaseUrl='',supabasePublishableKey=''}={}){
+  const clean={supabaseUrl:String(supabaseUrl||'').trim().replace(/\/$/,''),supabasePublishableKey:String(supabasePublishableKey||'').trim()};
+  localStorage.setItem(CLOUD_CONFIG_STORAGE_KEY,JSON.stringify(clean)); cloudClient=null; return getCloudConfig();
+}
+function resetCloudConfig(){ localStorage.removeItem(CLOUD_CONFIG_STORAGE_KEY); cloudClient=null; return getCloudConfig(); }
+function cloudConfigured(){ const c=getCloudConfig(); return /^https:\/\//i.test(c.supabaseUrl)&&/^sb_publishable_/i.test(c.supabasePublishableKey)&&!!globalThis.supabase?.createClient; }
+function getCloudClient(){
+  if(cloudClient) return cloudClient;
+  if(!globalThis.supabase?.createClient) throw new Error('Supabase.js n’est pas chargé. Rechargez la page avec une connexion internet.');
+  const c=getCloudConfig();
+  if(!c.supabaseUrl||!c.supabasePublishableKey) throw new Error('Configuration Cloud ExtracTerre incomplète.');
+  cloudClient=globalThis.supabase.createClient(c.supabaseUrl,c.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:CLOUD_AUTH_STORAGE_KEY}});
+  return cloudClient;
+}
+async function getCloudSession(){
+  if(!cloudConfigured()) return {configured:false,connected:false,user:null,error:null};
+  try{
+    const client=getCloudClient(); const {data,error}=await client.auth.getSession();
+    if(error) return {configured:true,connected:false,user:null,error:error.message};
+    const session=data?.session||null; return {configured:true,connected:!!session,user:session?.user||null,error:null};
+  }catch(err){ return {configured:true,connected:false,user:null,error:err?.message||String(err)}; }
+}
+async function cloudSignIn(email,password){
+  const client=getCloudClient();
+  const {data,error}=await client.auth.signInWithPassword({email:String(email||'').trim(),password:String(password||'')});
+  if(error) throw error; return data?.session||null;
+}
+async function cloudSignOut(){ if(!cloudConfigured()) return; const client=getCloudClient(); const {error}=await client.auth.signOut(); if(error) throw error; }
+function getExecutionMode(){ const raw=localStorage.getItem(CLOUD_EXECUTION_MODE_KEY)||'auto'; return CLOUD_MODES[raw]?raw:'auto'; }
+function setExecutionMode(mode){ const key=CLOUD_MODES[mode]?mode:'auto'; localStorage.setItem(CLOUD_EXECUTION_MODE_KEY,key); return key; }
+function shouldUseCloudForFile(file,mode='auto',ocrMode='auto'){
+  if(!file||!/\.pdf$/i.test(file.name||'')) return false;
+  const cfg=getCloudConfig(); const size=Number(file.size)||0;
+  if(size>cfg.maxRemoteBytes) return false;
+  if(mode==='local') return false;
+  if(mode==='remote') return true;
+  return ocrMode==='always'||size>=cfg.autoRemoteMinBytes;
+}
+function cloudReasonForFile(file,mode='auto',ocrMode='auto'){
+  if(!file||!/\.pdf$/i.test(file.name||'')) return 'format local';
+  const cfg=getCloudConfig(),size=Number(file.size)||0;
+  if(size>cfg.maxRemoteBytes) return 'taille hors plafond Cloud';
+  if(mode==='remote') return 'mode Serveur';
+  if(mode==='local') return 'mode Local';
+  if(ocrMode==='always') return 'OCR renforcé';
+  if(size>=cfg.autoRemoteMinBytes) return `PDF ≥ ${(cfg.autoRemoteMinBytes/1024/1024).toFixed(0)} Mo`;
+  return 'PDF léger';
+}
+function throwIfCloudAborted(signal){ if(signal?.aborted){ const e=new Error('Analyse distante interrompue.'); e.name='AbortError'; throw e; } }
+function sleepCloud(ms,signal){
+  return new Promise((resolve,reject)=>{
+    if(signal?.aborted){ const e=new Error('Analyse distante interrompue.'); e.name='AbortError'; reject(e); return; }
+    const id=setTimeout(()=>{ signal?.removeEventListener?.('abort',onAbort); resolve(); },ms);
+    const onAbort=()=>{ clearTimeout(id); const e=new Error('Analyse distante interrompue.'); e.name='AbortError'; reject(e); };
+    signal?.addEventListener?.('abort',onAbort,{once:true});
+  });
+}
+async function invokeCloudFunction(name,body){
+  const client=getCloudClient(); const {data,error}=await client.functions.invoke(name,{body});
+  if(error){ const msg=error?.context?.body||error?.message||String(error); throw new Error(`Cloud ExtracTerre : ${msg}`); }
+  let out=data;
+  if(out instanceof Uint8Array||out instanceof ArrayBuffer){ try{out=JSON.parse(new TextDecoder().decode(out));}catch{} }
+  if(typeof out==='string'){ try{out=JSON.parse(out);}catch{} }
+  if(out?.error&&!out?.ok) throw new Error(out.error);
+  return out;
+}
+async function uploadCloudParts(file,upload,onProgress=()=>{},signal){
+  const client=getCloudClient(); const bucket=getCloudConfig().storageBucket;
+  const parts=Array.isArray(upload?.parts)&&upload.parts.length?upload.parts:[upload];
+  const total=Math.max(1,Number(file.size)||1); let uploaded=0;
+  for(let i=0;i<parts.length;i++){
+    throwIfCloudAborted(signal); const part=parts[i];
+    if(!part?.path||!part?.token) throw new Error('Autorisation d’upload Cloud incomplète.');
+    const start=Number.isFinite(part.start)?part.start:uploaded;
+    const end=Number.isFinite(part.end)?part.end:Math.min(file.size,start+(Number(part.size)||file.size));
+    const blob=file.slice(start,end,'application/octet-stream');
+    const {error}=await client.storage.from(bucket).uploadToSignedUrl(part.path,part.token,blob,{contentType:parts.length===1?'application/pdf':'application/octet-stream'});
+    if(error) throw error;
+    uploaded=end; onProgress(Math.min(.28,.03+.25*(uploaded/total)),{stage:'cloud-upload',message:`Cloud · envoi ${i+1}/${parts.length}`});
+  }
+  return parts.length;
+}
+async function fetchCloudRead(url,compression='gzip',signal){
+  throwIfCloudAborted(signal); const response=await fetch(url,{cache:'no-store',signal});
+  if(!response.ok) throw new Error(`Téléchargement index distant impossible (HTTP ${response.status}).`);
+  if(compression==='gzip'){
+    if(typeof DecompressionStream!=='function') throw new Error('Ce navigateur ne sait pas décompresser le résultat Cloud. Utilisez Chrome/Edge récent ou le mode Local.');
+    const stream=response.body.pipeThrough(new DecompressionStream('gzip')); const text=await new Response(stream).text(); return JSON.parse(text);
+  }
+  return response.json();
+}
+async function analyzePdfInCloud(file,{ocrMode='auto',onProgress=()=>{},signal}={}){
+  if(!/\.pdf$/i.test(file?.name||'')) throw new Error('Le Cloud v2.1 traite uniquement les PDF ; XML/Excel restent locaux.');
+  const releaseCloud=await acquireCloudSlot(signal,onProgress);
+  try{
+  const cfg=getCloudConfig();
+  if((Number(file.size)||0)>cfg.maxRemoteBytes) throw new Error(`PDF trop volumineux pour le quota Cloud configuré (${Math.round(cfg.maxRemoteBytes/1024/1024)} Mo max).`);
+  const session=await getCloudSession(); if(!session.connected) throw new Error('Connexion Cloud requise. Ouvrez « Cloud » et connectez votre compte Supabase.');
+  throwIfCloudAborted(signal); onProgress(.01,{stage:'cloud-create',message:'Cloud · création du job'});
+  const created=await invokeCloudFunction(cfg.functions.createJob,{originalFilename:file.name,fileSize:file.size,options:{ocrMode,clientVersion:typeof APP_VERSION==='string'?APP_VERSION:'2.1'}});
+  if(!created?.ok||!created?.job?.id) throw new Error(created?.error||'Création du job Cloud impossible.');
+  const jobId=created.job.id; let started=false;
+  try{
+    const partCount=await uploadCloudParts(file,created.upload,onProgress,signal);
+    throwIfCloudAborted(signal); onProgress(.30,{stage:'cloud-queue',message:'Cloud · mise en file GitHub'});
+    const start=await invokeCloudFunction(cfg.functions.startJob,{jobId});
+    if(!start?.ok) throw new Error(start?.error||'Démarrage du worker impossible.'); started=true;
+    const begun=Date.now(); let lastStatus='queued';
+    while(Date.now()-begun<cfg.maxWaitMs){
+      throwIfCloudAborted(signal);
+      const status=await invokeCloudFunction(cfg.functions.jobStatus,{jobId});
+      if(!status?.ok) throw new Error(status?.error||'État Cloud indisponible.');
+      lastStatus=status.status||lastStatus;
+      if(lastStatus==='queued') onProgress(.34,{stage:'cloud-queued',message:'Cloud · worker en attente'});
+      else if(lastStatus==='processing') onProgress(.38,{stage:'cloud-processing',message:'Cloud · PDF/OCR sur GitHub'});
+      else if(lastStatus==='error') throw new Error(status.errorMessage||'Le worker distant a échoué.');
+      else if(lastStatus==='cancelled') throw new Error('Job Cloud annulé.');
+      else if(lastStatus==='completed'){
+        if(!status.readUrl){ throw new Error('Le worker a terminé mais aucun index documentaire v2.1 n’a été retourné. Mettez à jour extracterre-worker avec le pack V2.1.'); }
+        onProgress(.78,{stage:'cloud-download',message:'Cloud · récupération de l’index'});
+        const read=await fetchCloudRead(status.readUrl,status.readCompression||'gzip',signal);
+        if(!read?.pages||!Array.isArray(read.pages)) throw new Error('Index documentaire Cloud invalide.');
+        onProgress(.86,{stage:'cloud-done',message:'Cloud · lecture distante terminée'});
+        try{ await invokeCloudFunction(cfg.functions.finishJob,{jobId}); }catch(err){ console.warn('Nettoyage Cloud différé',err); }
+        return {read,cloud:{jobId,partCount,status:'completed',worker:status.result?.worker||'github-actions',workerVersion:status.result?.workerVersion||'',durationMs:Date.now()-begun,result:status.result||{}}};
+      }
+      await sleepCloud(cfg.pollIntervalMs,signal);
+    }
+    throw new Error('Le worker Cloud n’a pas terminé dans le délai maximal autorisé.');
+  }catch(err){
+    if(started) console.warn(`Job Cloud ${jobId} interrompu côté client`,err);
+    throw err;
+  }
+  } finally { releaseCloud(); }
 }
 
 /* ---- app.js ---- */
@@ -4609,10 +4948,24 @@ async function refreshJournalUi(){
     if(betaCount) betaCount.textContent=String(stats.byType?.beta_result_error||0);
   }catch(err){ const status=$('#journalRemoteStatus'); if(status){status.textContent='Journal indisponible';status.className='warn';} }
 }
+async function renderLearningMemoryUi(){
+  const stats=getLearningMemoryStats(),count=$('#learningMemoryProfiles'),strong=$('#learningMemoryStrong'),signals=$('#learningMemorySignals'),body=$('#learningMemoryRows');
+  if(count) count.textContent=String(stats.activeProfiles||0); if(strong) strong.textContent=String(stats.strongProfiles||0); if(signals) signals.textContent=String(stats.signals||0);
+  if(!body) return;
+  const profiles=listLearningProfiles().slice(0,120);
+  body.innerHTML=profiles.length?profiles.map(p=>`<tr><td>${escapeHtml(FIELD_MAP[p.field]?.label||p.field)}</td><td>${escapeHtml(p.docType||'')}</td><td>${p.confirmations}</td><td>${p.rejections}</td><td>${Math.round((p.reliability||0)*100)} %</td><td>${Math.round((p.boost||0)*1000)/10} pt</td><td><button class="btn light learning-toggle" data-learning-key="${escapeHtml(p.key)}">${p.disabled?'Réactiver':'Désactiver'}</button></td></tr>`).join(''):'<tr><td colspan="7" class="empty-small">La mémoire se remplira à mesure que vous corrigerez ou renseignerez des données par surlignage.</td></tr>';
+  [...body.querySelectorAll('.learning-toggle')].forEach(btn=>btn.onclick=async()=>{const p=listLearningProfiles().find(x=>x.key===btn.dataset.learningKey);if(!p)return;await setLearningProfileEnabled(p.key,p.disabled);renderLearningMemoryUi();});
+}
+async function syncLearningMemoryFromRemote(showToast=false){
+  const cfg=getRemoteJournalConfig(); if(!cfg.configured){await renderLearningMemoryUi();return {added:0};}
+  const remote=await pullRemoteLearningMemoryEvents();
+  if(remote.unsupported){ if(showToast) toast('La mémoire locale fonctionne. Pour le partage multi-ordinateurs, appliquez la migration Supabase v1.1.23.','info'); await renderLearningMemoryUi(); return {added:0,unsupported:true}; }
+  const added=await importRemoteLearningEvents(remote.events||[]); if(showToast&&added) toast(`${added} apprentissage(s) distant(s) intégrés à la mémoire.`, 'success'); await renderLearningMemoryUi(); return {added};
+}
 async function syncLearningJournalNow(showToast=true){
   const cfg=getRemoteJournalConfig(); if(!cfg.configured){ if(showToast) toast('Journal partagé non configuré. Le journal local continue à être conservé.','info'); await refreshJournalUi(); return; }
   const btn=$('#journalSyncBtn'); if(btn) btn.disabled=true;
-  try{ const result=await flushLearningJournal(); lastJournalSyncAt=Date.now(); if(showToast) toast(`${result?.sent||0} observation(s) synchronisée(s) avec le journal partagé.`,'success'); }
+  try{ const result=await flushLearningJournal(); lastJournalSyncAt=Date.now(); await syncLearningMemoryFromRemote(false); if(showToast) toast(`${result?.sent||0} observation(s) synchronisée(s) avec le journal partagé.`, 'success'); }
   catch(err){ if(showToast) toast(`Synchronisation du journal impossible : ${err?.message||err}`,'warn'); }
   finally{ if(btn) btn.disabled=false; await refreshJournalUi(); }
 }
@@ -4776,7 +5129,9 @@ function renderFiles(){
     const isPdf=/\.pdf$/i.test(d.name); const targetedRunning=d.targetedStatus==='running'; const showTarget=d.status==='ready'&&isPdf; const canTarget=showTarget&&!!d.file&&!!state.result; const canPreview=!!d.file;
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · > 5 min':d.status==='reading'?'Lecture parallèle…':'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
+    const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
+    const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
@@ -4948,6 +5303,55 @@ function getAnalysisProfile(){
   const key=$('#analysisMode')?.value||DEFAULT_ANALYSIS_MODE;
   return ANALYSIS_MODES[key]||ANALYSIS_MODES[DEFAULT_ANALYSIS_MODE];
 }
+
+function executionModeFromUi(){
+  const value=$('#executionMode')?.value||getExecutionMode();
+  return CLOUD_MODES[value]?value:'auto';
+}
+function syncCloudModeUi(){
+  const mode=executionModeFromUi(), cfg=CLOUD_MODES[mode]||CLOUD_MODES.auto;
+  const detail=$('#cloudModeDetail'); if(detail) detail.textContent=mode==='auto'?'Calcul hybride automatique':mode==='remote'?'Calcul PDF sur serveur':'Calcul local uniquement';
+  const status=$('#cloudExecutionStatus'); if(status) status.textContent=cfg.label;
+}
+async function refreshCloudUi(showError=false){
+  const status=$('#cloudConnectionStatus'),detail=$('#cloudConnectionDetail'),btn=$('#cloudConnectionBtn');
+  try{
+    const session=await getCloudSession();
+    if(status){ status.textContent=!session.configured?'Non configuré':session.connected?'Connecté':'Déconnecté'; status.classList.toggle('cloud-ok',!!session.connected); }
+    if(detail){ detail.textContent=session.connected?`${session.user?.email||'Utilisateur Cloud'} · PDF temporaires supprimés après récupération.`:session.error?`Cloud indisponible : ${session.error}`:'Connectez un compte Supabase autorisé pour activer le traitement distant.'; }
+    if(btn) btn.textContent=session.connected?'☁ Cloud connecté':'☁ Connexion Cloud';
+    const signOut=$('#cloudSignOutBtn'),signIn=$('#cloudSignInBtn'); if(signOut) signOut.hidden=!session.connected; if(signIn) signIn.textContent=session.connected?'Reconnecter':'Se connecter';
+    return session;
+  }catch(err){
+    if(status) status.textContent='Indisponible'; if(detail) detail.textContent=err?.message||String(err); if(showError) toast(`Cloud : ${err?.message||err}`,'warn');
+    return {configured:cloudConfigured(),connected:false,user:null,error:err?.message||String(err)};
+  }finally{ syncCloudModeUi(); }
+}
+async function openCloudDialog(){
+  const dlg=$('#cloudDialog'); if(!dlg) return;
+  const cfg=getCloudConfig(); $('#cloudSupabaseUrl').value=cfg.supabaseUrl||''; $('#cloudSupabaseKey').value=cfg.supabasePublishableKey||''; $('#cloudPassword').value=''; $('#cloudDialogFeedback').textContent='';
+  const session=await refreshCloudUi(false); if(session?.user?.email&&!$('#cloudEmail').value) $('#cloudEmail').value=session.user.email;
+  dlg.showModal();
+}
+async function signInCloudFromDialog(){
+  const fb=$('#cloudDialogFeedback'); if(fb) fb.textContent='Connexion…';
+  try{
+    const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;
+    if(!email||!password) throw new Error('Renseignez votre e-mail et votre mot de passe Cloud.');
+    await cloudSignIn(email,password); $('#cloudPassword').value=''; if(fb){fb.textContent='Connexion Cloud réussie.';fb.className='journal-config-feedback success';} await refreshCloudUi(); toast('Cloud ExtracTerre connecté.','success');
+  }catch(err){ if(fb){fb.textContent=err?.message||String(err);fb.className='journal-config-feedback error';} }
+}
+async function signOutCloudFromDialog(){
+  try{ await cloudSignOut(); $('#cloudPassword').value=''; const fb=$('#cloudDialogFeedback'); if(fb){fb.textContent='Session Cloud fermée.';fb.className='journal-config-feedback';} await refreshCloudUi(); toast('Cloud ExtracTerre déconnecté.','info'); }
+  catch(err){ toast(`Déconnexion Cloud impossible : ${err?.message||err}`,'error'); }
+}
+function saveCloudConfigFromDialog(){
+  const cfg=saveCloudConfig({supabaseUrl:$('#cloudSupabaseUrl').value,supabasePublishableKey:$('#cloudSupabaseKey').value});
+  const fb=$('#cloudDialogFeedback'); if(fb){fb.textContent=cfg.supabaseUrl&&cfg.supabasePublishableKey?'Configuration Cloud enregistrée.':'Configuration Cloud incomplète.';fb.className='journal-config-feedback';} refreshCloudUi();
+}
+function resetCloudConfigFromDialog(){
+  const cfg=resetCloudConfig(); $('#cloudSupabaseUrl').value=cfg.supabaseUrl||''; $('#cloudSupabaseKey').value=cfg.supabasePublishableKey||''; const fb=$('#cloudDialogFeedback'); if(fb){fb.textContent='Configuration Cloud par défaut restaurée.';fb.className='journal-config-feedback';} refreshCloudUi();
+}
 function formatAnalysisDuration(seconds){
   const s=Math.max(0,Math.round(Number(seconds)||0));
   if(s<45) return `${Math.max(1,s)} s`;
@@ -5032,8 +5436,11 @@ async function analyze(onlyIds=null,manualUnlimited=false){
   const pendingDocs=state.docs.filter(d=>!!d.file&&d.status!=='ready'&&d.status!=='timeout'&&(!onlyIds||onlyIds.includes(d.id)));
   const alreadyReady=state.docs.length-pendingDocs.length;
   const ocrMode=$('#ocrMode')?.value||'auto';
+  const executionMode=executionModeFromUi();
   const profile=getAnalysisProfile();
   const documentConcurrency=Math.max(1,Math.min(profile.documents,pendingDocs.length||1));
+  let cloudFallbackWarned=false;
+  syncCloudModeUi();
   setOcrConcurrencyLimit(profile.ocr);
   const progressByDoc=new Map(pendingDocs.map(d=>[d.id,0]));
   const activeIds=new Set();
@@ -5049,7 +5456,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const overall=(alreadyReady+work)/totalDocs;
     const pool=ocrPoolStatus();
     const page=meta?.page?` · p.${meta.page}${meta.totalPages?`/${meta.totalPages}`:''}`:'';
-    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':meta?.stage==='classification'?'classification':meta?.stage==='parsing'?'extraction métier':meta?.stage==='checkpoint'?'sauvegarde':'lecture';
+    const stage=meta?.stage==='ocr'?'OCR':meta?.stage==='ocr-wait'?'attente OCR':meta?.stage==='ocr-init'?'initialisation OCR':meta?.stage==='cloud-wait'?'Cloud · attente':meta?.stage==='cloud-create'?'Cloud · préparation':meta?.stage==='cloud-upload'?'Cloud · envoi':meta?.stage==='cloud-queue'||meta?.stage==='cloud-queued'?'Cloud · file GitHub':meta?.stage==='cloud-processing'?'Cloud · PDF/OCR':meta?.stage==='cloud-download'?'Cloud · récupération':meta?.stage==='cloud-done'?'Cloud · terminé':meta?.stage==='classification'?'classification':meta?.stage==='parsing'?'extraction métier':meta?.stage==='checkpoint'?'sauvegarde':'lecture';
     const latest=doc?` · ${doc.name} · ${stage}${page}`:'';
     setStatus(`${done}/${pendingDocs.length} terminés · ${activeIds.size} actifs · OCR ${pool.active}/${pool.max}${pool.waiting?` (+${pool.waiting} en file)`:''}${latest}`,Math.round(Math.max(0,Math.min(1,overall))*62));
     const eta=etaTracker.snapshot(forceEta);
@@ -5062,12 +5469,44 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const noLimit=manualUnlimited||d.retryUnlimited===true; let timeoutTriggered=false, timeoutId=null;
     const started=performance.now();
     try{
-      const readPromise=readFile(d.file,(p,meta)=>{
+      const remotePlanned=shouldUseCloudForFile(d.file,executionMode,ocrMode);
+      d.remotePlanned=remotePlanned;
+      d.processingLocation=null;
+      d.cloudFallback=null;
+      d.remoteAnalysis=null;
+      const progress=(p,meta)=>{
         progressByDoc.set(d.id,Math.max(0,Math.min(1,p||0)));
         d.liveStage=meta?.stage||'reading'; updateParallelStatus(d,meta,false);
-      },{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
+      };
+      const readPromise=(async()=>{
+        if(remotePlanned){
+          const session=await getCloudSession();
+          if(session.connected){
+            try{
+              d.processingLocation='remote';
+              const remote=await analyzePdfInCloud(d.file,{ocrMode,onProgress:progress,signal:controller.signal});
+              d.remoteAnalysis=remote.cloud;
+              return remote.read;
+            }catch(cloudErr){
+              if(executionMode==='remote') throw cloudErr;
+              d.cloudFallback=cloudErr?.message||String(cloudErr);
+              d.processingLocation='local-fallback';
+              if(!cloudFallbackWarned){ cloudFallbackWarned=true; toast(`Cloud indisponible : bascule locale automatique (${d.cloudFallback}).`,'warn'); }
+              progress(.02,{stage:'reading',message:'Cloud indisponible · bascule locale'});
+            }
+          } else if(executionMode==='remote') {
+            throw new Error('Mode Serveur sélectionné mais aucun compte Cloud n’est connecté.');
+          } else {
+            d.cloudFallback=session.error||'Compte Cloud non connecté';
+            d.processingLocation='local-fallback';
+          }
+        }
+        d.processingLocation=d.processingLocation||'local';
+        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
+      })();
+      const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
-      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error('Analyse interrompue après 5 minutes.'); e.name='TimeoutError'; reject(e); },5*60*1000); })]);
+      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue après ${timeoutMinutes} minutes.`); e.name='TimeoutError'; reject(e); },timeoutMinutes*60*1000); })]);
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
       if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
@@ -5091,14 +5530,14 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       await checkpointDocument(activeProject(),d);
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
       const structuredThermalEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
-      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length,...(structuredThermalEvidence.length?{structuredThermalEvidence}: {})},activeProject());
+      learn('analysis_document',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,docType:d.type,sizeBytes:d.size,pageCount:d.read?.pageCount||0,durationMs:d.analysisDurationMs,ocrMode,executionMode,processingLocation:d.processingLocation||'local',cloudJobId:d.remoteAnalysis?.jobId||null,cloudWorkerVersion:d.remoteAnalysis?.workerVersion||null,cloudFallback:d.cloudFallback||null,ocrUsed:!!d.read?.ocr?.used,ocrPages:d.read?.ocr?.pages?.length||0,fieldsFound:extractedFields,fieldCount:extractedFields.length,occurrences:(d.cachedOccurrences||[]).length,...(structuredThermalEvidence.length?{structuredThermalEvidence}: {})},activeProject());
       // Les champs de ce document sont visibles immédiatement pendant que les autres continuent.
       await refreshProgressiveResults(d.name);
     }catch(e){
       const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||analysisControl.stopRequested;
       const timedOut=!stopped&&(timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout'));
       if(stopped){ d.status=Array.isArray(d.cachedOccurrences)?'ready':'pending'; d.error=null; }
-      else if(timedOut){ d.status='timeout'; d.error='Analyse interrompue après 5 minutes. Relance manuelle disponible sans limite de temps.'; d.retryUnlimited=false; }
+      else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue après ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
       else { d.status='error'; d.error=e?.message||String(e); }
       learn('analysis_error',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,status:d.status,error:d.error||e?.message||String(e),ocrMode,elapsedMs:Math.round(performance.now()-started)},activeProject());
     }finally{
@@ -5141,7 +5580,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const elapsed=(performance.now()-etaTracker.startedAt)/1000;
     const completeness=state.result?.completeness||null;
     const missingFields=[...new Set((completeness?.checks||[]).flatMap(c=>c.missing||[]))];
-    learn('analysis_batch',{documents:state.docs.length,readyDocuments:state.docs.filter(d=>d.status==='ready').length,newDocuments:pendingDocs.length,durationMs:Math.round(elapsed*1000),analysisMode:profile.key,analysisProfile:profile.description,ocrMode,completeness:completeness?{percent:completeness.percent,found:completeness.found,expected:completeness.expected}:null,missingFields,missingLabels:missingFields.map(k=>FIELD_MAP[k]?.label||k),alerts:state.result?.alerts?.map(a=>({level:a.level,message:a.message,fileName:a.fileName||''})).slice(0,100)||[]},activeProject());
+    learn('analysis_batch',{documents:state.docs.length,readyDocuments:state.docs.filter(d=>d.status==='ready').length,newDocuments:pendingDocs.length,durationMs:Math.round(elapsed*1000),analysisMode:profile.key,analysisProfile:profile.description,executionMode,remoteDocuments:pendingDocs.filter(d=>d.processingLocation==='remote').length,localFallbackDocuments:pendingDocs.filter(d=>d.processingLocation==='local-fallback').length,ocrMode,completeness:completeness?{percent:completeness.percent,found:completeness.found,expected:completeness.expected}:null,missingFields,missingLabels:missingFields.map(k=>FIELD_MAP[k]?.label||k),alerts:state.result?.alerts?.map(a=>({level:a.level,message:a.message,fileName:a.fileName||''})).slice(0,100)||[]},activeProject());
     const eta=$('#analysisEtaDetail'); if(eta) eta.textContent=analysisControl.stopRequested?`Analyse arrêtée après ${formatAnalysisDuration(elapsed)} · résultats partiels conservés`:`Analyse terminée en ${formatAnalysisDuration(elapsed)}`;
     if(!analysisControl.stopRequested) setTimeout(()=>$('#progress').hidden=true,900);
     const timedOut=state.docs.filter(d=>d.status==='timeout').length;
@@ -5298,7 +5737,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()&&v!==undefined?`<button class="cell-beta-error" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Signaler ce résultat comme erroné" aria-label="Signaler une erreur">✕</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -5317,55 +5756,97 @@ function renderSummary(){
 }
 
 
+let betaLearningSelection=null;
+function betaLearningDocs(){ return (activeProject()?.docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length); }
+function betaLearningDoc(){ const id=$('#betaLearningDocument')?.value||''; return betaLearningDocs().find(d=>d.id===id)||null; }
+function renderBetaLearningPage(){
+  const doc=betaLearningDoc(), pageSelect=$('#betaLearningPage'), textBox=$('#betaLearningText'), meta=$('#betaLearningMeta');
+  if(!doc||!pageSelect||!textBox) return;
+  const pages=doc.read?.pages||[]; const current=Number(pageSelect.value)||Number(doc?.read?.pages?.[0]?.page)||1;
+  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===current?'selected':''}>Page ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join('');
+  const page=pages.find(p=>Number(p.page)===Number(pageSelect.value))||pages[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
+  const lines=(page.lines||String(page.text||'').split(/\r?\n/).map((t,index)=>({text:t,index}))).filter(l=>String(l.text||'').trim());
+  textBox.innerHTML=lines.map((l,i)=>`<div class="beta-learning-line" data-line-index="${Number.isFinite(l.index)?l.index:i}">${escapeHtml(l.text||'')}</div>`).join('')||'<div class="empty-small">Aucun texte exploitable sur cette page.</div>';
+  if(meta) meta.textContent=`${doc.name} · ${doc.type||'Document'} · page ${page.page||1} / ${pages.length}`;
+  betaLearningSelection=null; const out=$('#betaLearningSelection'); if(out) out.textContent='Aucun surlignage sélectionné.';
+}
+function syncBetaLearningDocument(preferredDocId='',preferredPage=null){
+  const sel=$('#betaLearningDocument'); if(!sel) return; const docs=betaLearningDocs();
+  sel.innerHTML=docs.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${escapeHtml(d.type||'Document')}</option>`).join('');
+  if(preferredDocId&&docs.some(d=>d.id===preferredDocId)) sel.value=preferredDocId;
+  else if(docs.length) sel.value=docs[0].id;
+  const page=$('#betaLearningPage'); if(page&&preferredPage) page.value=String(preferredPage);
+  renderBetaLearningPage(); if(page&&preferredPage&&[...page.options].some(o=>o.value===String(preferredPage))){page.value=String(preferredPage);renderBetaLearningPage();}
+}
+function captureBetaLearningSelection(){
+  const box=$('#betaLearningText'), selection=globalThis.getSelection?.(); if(!box||!selection||selection.rangeCount<1||selection.isCollapsed){ $('#betaErrorFeedback').textContent='Surlignez d’abord la donnée correcte dans le texte du document.'; return; }
+  const range=selection.getRangeAt(0); if(!box.contains(range.commonAncestorContainer)){ $('#betaErrorFeedback').textContent='Le surlignage doit être fait dans la zone texte du document.'; return; }
+  const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){ $('#betaErrorFeedback').textContent='Le surlignage est vide.'; return; }
+  const startEl=(range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement)?.closest?.('.beta-learning-line');
+  const endEl=(range.endContainer.nodeType===1?range.endContainer:range.endContainer.parentElement)?.closest?.('.beta-learning-line')||startEl;
+  const doc=betaLearningDoc(), pageNo=Number($('#betaLearningPage')?.value)||1, page=doc?.read?.pages?.find(p=>Number(p.page)===pageNo);
+  const lines=page?.lines||[]; const startIndex=Number(startEl?.dataset?.lineIndex); const endIndex=Number(endEl?.dataset?.lineIndex);
+  const lineObj=lines.find(l=>Number(l.index)===startIndex)||null; const pos=lines.findIndex(l=>Number(l.index)===startIndex);
+  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:Number.isFinite(startIndex)?startIndex:null,endLineIndex:Number.isFinite(endIndex)?endIndex:null,lineCount:lines.length,selectedText,lineText:lineObj?.text||startEl?.textContent||'',beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:(lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null)};
+  box.querySelectorAll('.beta-learning-line').forEach(el=>el.classList.remove('beta-learning-line-selected'));
+  if(startEl&&endEl){ let active=false; for(const el of box.querySelectorAll('.beta-learning-line')){ if(el===startEl) active=true; if(active) el.classList.add('beta-learning-line-selected'); if(el===endEl) break; } }
+  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${Number.isFinite(startIndex)?` · ligne ${startIndex+1}`:''}`;
+  const def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||'']; const input=$('#betaErrorCorrectValue');
+  if(input&&def){ if(def.type==='number'){ const n=parseFrNumber(selectedText); if(n!==null) input.value=String(n).replace('.',','); } else input.value=selectedText; }
+  $('#betaErrorFeedback').textContent='';
+}
 function openBetaErrorDialog(building,field){
   if(!ownerBetaEnabled()||!state.result) return;
   const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog');
   if(!def||!ctx.row||!dlg) return;
-  const src=ctx.source||{};
+  const src=ctx.source||{}, missing=ctx.value===undefined||ctx.value===null||ctx.value==='';
+  $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée';
+  $('#betaErrorIntro').textContent=missing?'Choisissez la pièce, surlignez la donnée correcte et ExtracTerre mémorisera son emplacement pour les prochains documents similaires.':'Choisissez la pièce, surlignez la bonne donnée et ExtracTerre remplacera la valeur tout en mémorisant précisément son emplacement.';
   $('#betaErrorField').textContent=def.label||field;
   $('#betaErrorBuilding').textContent=building||'Bâtiment unique';
-  $('#betaErrorDetected').textContent=formatValue(ctx.value);
-  $('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Source non déterminée';
+  $('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);
+  $('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';
   $('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';
   $('#betaErrorCorrectValue').value='';
-  $('#betaErrorReason').value='wrong_value';
-  $('#betaErrorComment').value='';
-  $('#betaApplyCorrection').checked=true;
-  $('#betaErrorFeedback').textContent='';
-  dlg.dataset.building=building; dlg.dataset.field=field;
-  dlg.showModal();
-  setTimeout(()=>$('#betaErrorCorrectValue')?.focus(),60);
+  $('#betaErrorReason').value=missing?'missing_data':'wrong_value';
+  $('#betaErrorComment').value=''; $('#betaApplyCorrection').checked=true; $('#betaErrorFeedback').textContent='';
+  dlg.dataset.building=building; dlg.dataset.field=field; dlg.dataset.wasMissing=missing?'1':'0'; betaLearningSelection=null;
+  syncBetaLearningDocument(src.docId||'',src.page||null); dlg.showModal();
 }
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); }
+function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); betaLearningSelection=null; }
 async function submitBetaError(){
   if(!ownerBetaEnabled()) return;
   const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field];
   const ctx=betaResultContext(building,field); if(!dlg||!def||!ctx.row) return;
-  const raw=($('#betaErrorCorrectValue')?.value||'').trim();
-  let correctedValue=null,hasCorrection=!!raw;
-  if(hasCorrection){
-    if(def.type==='number'){
-      const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; }
-      correctedValue=n;
-    } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;
-  }
-  const src=ctx.source||{},reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
-  const payload={beta:true,field,fieldLabel:def.label||field,building,detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
+  const raw=($('#betaErrorCorrectValue')?.value||'').trim(); let correctedValue=null,hasCorrection=!!raw;
+  if(hasCorrection){ if(def.type==='number'){ const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; } correctedValue=n; } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw; }
+  if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.'; return; }
+  const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
+  const loc=betaLearningSelection?{...betaLearningSelection}:null;
+  const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
   try{
-    await recordLearningEvent('beta_result_error',payload,activeProject());
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){
-      const key=`${building}|${field}`,previous=ctx.value;
-      state.manualValues[key]=correctedValue;
-      state.manualSources[key]={docId:src.docId||'',fileName:src.fileName||'Correction bêta',page:src.page||1,excerpt:src.excerpt||'',method:'manual:beta-error-correction',provenanceNote:`Correction bêta propriétaire — ${reason}`};
-      applyManualValues();
-      learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'beta_error_feedback',reason},activeProject());
-      refreshEconomic(); scheduleWorkspaceCheckpoint('correction bêta',80);
+    await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
+    if(loc){
+      const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};
+      const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());
+      await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});
     }
-    closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh();
-    toast(hasCorrection?'Erreur enregistrée et correction appliquée.':'Erreur enregistrée dans le journal d’amélioration.','success');
+    const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']);
+    const srcDoc=state.docs.find(d=>d.id===src.docId);
+    if(!missing&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){
+      const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};
+      const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());
+      await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});
+    }
+    if(hasCorrection&&$('#betaApplyCorrection')?.checked){
+      const key=`${building}|${field}`,previous=ctx.value; state.manualValues[key]=correctedValue;
+      state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:'manual:highlight-learning',provenanceNote:`Correction propriétaire par surlignage — ${reason}`};
+      applyManualValues(); learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'highlight_learning',reason,highlight:loc},activeProject()); refreshEconomic(); scheduleWorkspaceCheckpoint('correction par surlignage',80);
+    }
+    closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh(); renderLearningMemoryUi();
+    toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
   }catch(err){ $('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`; }
 }
-
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
   const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length)||!state.result) return;
@@ -5564,6 +6045,8 @@ function wire(){
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
   $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
+  const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
+  const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
   const journalPack=$('#journalPackBtn'); if(journalPack) journalPack.onclick=()=>requestJournalPackDownload();
   const journalConfig=$('#journalConfigBtn'); if(journalConfig) journalConfig.onclick=openJournalConfigDialog;
   const journalConfigClose=$('#journalConfigClose'); if(journalConfigClose) journalConfigClose.onclick=()=>$('#journalConfigDialog')?.close();
@@ -5572,7 +6055,7 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
+  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaPreview=$('#betaPreviewSelectedDoc'); if(betaPreview) betaPreview.onclick=()=>{const d=betaLearningDoc(); if(d) openFilePreview(d.id);}; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
@@ -5589,6 +6072,18 @@ function wire(){
     analysisMode.onchange=()=>{ localStorage.setItem('extracterre-analysis-mode',analysisMode.value); syncModeInfo(); const p=ANALYSIS_MODES[analysisMode.value]; toast(p.key==='fast'?`Mode rapide : ${p.description}. Consommation mémoire plus élevée.`:`Mode ${p.label.toLowerCase()} : ${p.description}.`,'info'); };
     syncModeInfo();
   }
+  const executionMode=$('#executionMode'); if(executionMode){
+    executionMode.value=getExecutionMode();
+    executionMode.onchange=()=>{ const mode=setExecutionMode(executionMode.value); executionMode.value=mode; syncCloudModeUi(); const cfg=CLOUD_MODES[mode]; toast(`Calcul ${cfg.label.toLowerCase()} : ${cfg.description}.`,'info'); };
+    syncCloudModeUi();
+  }
+  const cloudBtn=$('#cloudConnectionBtn'); if(cloudBtn) cloudBtn.onclick=openCloudDialog;
+  const cloudClose=$('#cloudDialogClose'); if(cloudClose) cloudClose.onclick=()=>$('#cloudDialog')?.close();
+  const cloudLogin=$('#cloudSignInBtn'); if(cloudLogin) cloudLogin.onclick=signInCloudFromDialog;
+  const cloudLogout=$('#cloudSignOutBtn'); if(cloudLogout) cloudLogout.onclick=signOutCloudFromDialog;
+  const cloudSave=$('#cloudConfigSave'); if(cloudSave) cloudSave.onclick=saveCloudConfigFromDialog;
+  const cloudReset=$('#cloudConfigReset'); if(cloudReset) cloudReset.onclick=resetCloudConfigFromDialog;
+  const cloudPassword=$('#cloudPassword'); if(cloudPassword) cloudPassword.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();signInCloudFromDialog();}});
   const patchBtn=$('#patchLoadBtn'), patchInput=$('#patchFileInput'); if(patchBtn&&patchInput){patchBtn.onclick=()=>patchInput.click();patchInput.onchange=async()=>{await handlePatchFile(patchInput.files?.[0]);patchInput.value='';};}
   renderPatchUi();
   $('#version').textContent=`v${APP_VERSION}`; syncProjectInput(); libraryCheck();
@@ -5597,6 +6092,7 @@ function wire(){
 async function initializeApp(){
   if(!globalThis.__extracterreAccessPromise) throw new Error('Le contrôle d’accès ExtracTerre n’a pas été initialisé.');
   await globalThis.__extracterreAccessPromise;
+  try{await initializeLearningMemory();}catch(err){console.warn('Learning memory init failed',err);}
   await initializeImprovementPatches();
   wire(); setLocalSaveUi('Recherche de session…');
   try{
@@ -5618,7 +6114,7 @@ async function initializeApp(){
   }catch(err){
     console.warn('IndexedDB restore failed',err); persistenceReady=false; setLocalSaveUi('Indisponible'); const detail=$('#localSaveDetail'); if(detail) detail.textContent='Le navigateur ne permet pas la restauration locale dans ce contexte.';
   }
-  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); await refreshJournalUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
+  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
 initializeApp();
 

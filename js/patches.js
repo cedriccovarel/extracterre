@@ -1,4 +1,4 @@
-import {DOC_TYPES,FIELD_MAP} from './config.js';
+import {APP_VERSION,DOC_TYPES,FIELD_MAP} from './config.js';
 import {normalizeText,normLower,parseFrNumber,clamp} from './utils.js';
 import {canonicalBuilding} from './buildings.js';
 
@@ -13,8 +13,15 @@ function validateRegex(raw,label,max=1200){
   if(typeof raw!=='string'||raw.length>max) throw new Error(`Expression régulière invalide : ${label}`);
   try{ new RegExp(raw,'im'); }catch{ throw new Error(`Expression régulière invalide : ${label}`); }
 }
+function versionParts(value=''){ return String(value||'').trim().replace(/^v/i,'').split('.').map(x=>Number.parseInt(x,10)||0); }
+function compareVersions(a,b){
+  const aa=versionParts(a),bb=versionParts(b),n=Math.max(aa.length,bb.length,3);
+  for(let i=0;i<n;i++){ const d=(aa[i]||0)-(bb[i]||0); if(d) return d<0?-1:1; }
+  return 0;
+}
 function validPatch(p){
   if(!p||p.schema!==SCHEMA||typeof p.id!=='string'||!p.id.trim()) throw new Error('Patch ExtracTerre invalide ou incompatible.');
+  if(p.minAppVersion&&compareVersions(APP_VERSION,p.minAppVersion)<0) throw new Error(`Patch ${p.id} incompatible : ExtracTerre ${p.minAppVersion} minimum requis (version actuelle ${APP_VERSION}).`);
   if(safeArray(p.extractionRules).length>160) throw new Error('Patch refusé : trop de règles.');
   for(const r of safeArray(p.extractionRules)){
     if(!r.field||!FIELD_MAP[r.field]) throw new Error(`Champ de patch inconnu : ${r.field||'—'}`);
