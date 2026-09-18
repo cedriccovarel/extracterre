@@ -701,20 +701,63 @@ body.auth-locked .app-shell{visibility:hidden;pointer-events:none;user-select:no
 .learning-memory-table th{position:sticky;top:0;background:var(--panel,#fff);z-index:1;font-size:11px}
 .learning-memory-table .btn{padding:4px 7px;font-size:11px;white-space:nowrap}
 
-/* ===== ExtracTerre v2.1 — traitement hybride ===== */
-.ux-cloud-card{border-color:#d7e8df;background:linear-gradient(180deg,#ffffff 0%,#f6fbf8 100%)}
-.ux-cloud-card .ux-side-card-head span{font-size:19px}
-#cloudConnectionStatus.cloud-ok{color:#1f7a4b}
-.execution-mode-control select{max-width:150px}
-.cloud-dialog{width:min(620px,94vw)}
-.cloud-dialog-body{display:flex;flex-direction:column;gap:12px}
-.cloud-dialog-body>p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
-.cloud-dialog-body label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:800;color:var(--forest)}
-.cloud-dialog-body input{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:10px 11px;font:inherit;color:var(--ink);background:#fff}
-.cloud-advanced{border:1px solid var(--line-soft);border-radius:12px;padding:10px 12px;background:#f8fbf9}
-.cloud-advanced summary{cursor:pointer;font-size:11px;font-weight:800;color:var(--forest)}
-.cloud-advanced[open]{display:flex;flex-direction:column;gap:10px}
-.cloud-advanced[open] summary{margin-bottom:8px}
-.cloud-advanced-actions{display:flex;gap:8px;flex-wrap:wrap}
-.cloud-dialog-foot{justify-content:flex-end}
-@media(max-width:980px){.execution-mode-control{width:100%;justify-content:space-between}.execution-mode-control select{max-width:none;flex:1}}
+/* v1.1.23 hotfix — fenêtre correction/apprentissage pleine largeur */
+.beta-error-dialog{
+  width:calc(100vw - 20px)!important;
+  max-width:none!important;
+  height:auto;
+  max-height:96vh;
+  margin:auto;
+}
+.beta-error-dialog .beta-error-shell{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0;
+  max-height:96vh;
+  overflow:hidden;
+}
+.beta-error-dialog .beta-error-body{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  overflow-y:auto;
+  overflow-x:hidden!important;
+}
+.beta-error-dialog .beta-error-summary,
+.beta-error-dialog .beta-error-excerpt,
+.beta-error-dialog .beta-learning-source,
+.beta-error-dialog .beta-error-form{
+  min-width:0;
+  max-width:100%;
+}
+.beta-error-dialog .beta-learning-controls{
+  grid-template-columns:minmax(0,1fr) minmax(90px,120px) minmax(180px,max-content);
+  width:100%;
+  min-width:0;
+}
+.beta-error-dialog .beta-learning-controls label,
+.beta-error-dialog .beta-learning-controls select,
+.beta-error-dialog .beta-error-form label,
+.beta-error-dialog .beta-error-form input,
+.beta-error-dialog .beta-error-form select,
+.beta-error-dialog .beta-error-form textarea,
+.beta-error-dialog .beta-learning-text{
+  min-width:0;
+  max-width:100%;
+}
+.beta-error-dialog .beta-learning-text{
+  width:100%;
+  overflow-x:hidden!important;
+  overflow-y:auto;
+}
+.beta-error-dialog .beta-learning-line{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  max-width:100%;
+}
+@media(max-width:900px){
+  .beta-error-dialog{width:calc(100vw - 10px)!important;max-height:98vh}
+  .beta-error-dialog .beta-error-shell{max-height:98vh;padding:14px}
+  .beta-error-dialog .beta-learning-controls{grid-template-columns:1fr}
+}
