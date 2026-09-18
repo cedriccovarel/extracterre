@@ -5815,22 +5815,16 @@ function openBetaErrorDialog(building,field){
 }
 function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); betaLearningSelection=null; }
 async function submitBetaError(){
-  const dlg=$('#betaErrorDialog');
-  const feedback=$('#betaErrorFeedback');
-  try{
-    if(!dlg){ throw new Error('Fenêtre de correction introuvable.'); }
-    if(!ownerBetaEnabled()){ throw new Error('Le mode propriétaire n’est plus actif. Reconnectez-vous avec le profil propriétaire.'); }
-    const building=dlg.dataset.building||'',field=dlg.dataset.field||'',def=FIELD_MAP[field];
-    const ctx=betaResultContext(building,field);
-    if(!def) throw new Error('Champ de correction introuvable.');
-    if(!ctx.row) throw new Error('La ligne bâtiment associée à cette correction est introuvable.');
+  if(!ownerBetaEnabled()) return;
+  const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field];
+  const ctx=betaResultContext(building,field); if(!dlg||!def||!ctx.row) return;
   const raw=($('#betaErrorCorrectValue')?.value||'').trim(); let correctedValue=null,hasCorrection=!!raw;
   if(hasCorrection){ if(def.type==='number'){ const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; } correctedValue=n; } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw; }
   if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.'; return; }
   const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
   const loc=betaLearningSelection?{...betaLearningSelection}:null;
   const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
-    if(feedback) feedback.textContent='Enregistrement de la correction et de l’apprentissage…';
+  try{
     await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
     if(loc){
       const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};
@@ -5851,12 +5845,7 @@ async function submitBetaError(){
     }
     closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh(); renderLearningMemoryUi();
     toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
-    return true;
-  }catch(err){
-    console.error('Correction/apprentissage impossible',err);
-    if(feedback) feedback.textContent=`Enregistrement impossible : ${err?.message||err}`;
-    return false;
-  }
+  }catch(err){ $('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`; }
 }
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
@@ -6066,7 +6055,7 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=async e=>{ e?.preventDefault?.(); if(betaSubmit.dataset.saving==='1') return; const original=betaSubmit.textContent; betaSubmit.dataset.saving='1'; betaSubmit.disabled=true; betaSubmit.textContent='Enregistrement…'; try{ await submitBetaError(); }catch(err){ console.error('Erreur bouton correction',err); const fb=$('#betaErrorFeedback'); if(fb) fb.textContent=`Enregistrement impossible : ${err?.message||err}`; }finally{ betaSubmit.dataset.saving='0'; betaSubmit.disabled=false; betaSubmit.textContent=original; } }; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaPreview=$('#betaPreviewSelectedDoc'); if(betaPreview) betaPreview.onclick=()=>{const d=betaLearningDoc(); if(d) openFilePreview(d.id);}; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
+  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaPreview=$('#betaPreviewSelectedDoc'); if(betaPreview) betaPreview.onclick=()=>{const d=betaLearningDoc(); if(d) openFilePreview(d.id);}; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
