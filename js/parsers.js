@@ -1523,7 +1523,121 @@ function pruneHierarchicalShadowed(doc,out){
   return out;
 }
 
+
+// V2.2.1 — listes blanches strictes par famille documentaire.
+// Une occurrence hors périmètre est ignorée même si un tag générique, un patch ou un sous-parseur la détecte.
+const SPECIALIZED_ALLOWED_FIELDS=Object.freeze({
+  rset:new Set([
+    'project','operation','building','housing_count','shab',
+    'dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type',
+    'structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r',
+    'wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r',
+    'floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r',
+    'window_material','window_glazing','window_shading',
+    'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation',
+    'bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain',
+    'cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass',
+    'enr','enr_type'
+  ]),
+  rt2012:new Set([
+    'project','operation','building','housing_count','shab',
+    'tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_count','fan_type',
+    'structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r',
+    'wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r',
+    'floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r',
+    'window_material','window_glazing','window_shading',
+    'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation',
+    'bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain',
+    'cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass',
+    'enr','enr_type'
+  ]),
+  thcex:new Set([
+    'project','operation','building','housing_count','shab','construction_year',
+    'structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r',
+    'wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r',
+    'floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r',
+    'window_material','window_glazing','window_shading',
+    'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation',
+    'ubat_before','ubat_after','cep_before','cep_after_final','enr','enr_type'
+  ]),
+  rsenv:new Set([
+    'project','operation','building','ic_components','ic_site',
+    'ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13',
+    'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'
+  ]),
+  cctp:new Set([
+    'project','operation','building','structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r',
+    'wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r',
+    'floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r',
+    'window_material','window_glazing','window_shading',
+    'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type'
+  ]),
+  dpgf:new Set([
+    'project','operation','building','structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r',
+    'wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r',
+    'floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r',
+    'window_material','window_glazing','window_shading',
+    'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type'
+  ]),
+  '3cl':new Set([
+    'project','operation','building','shab','construction_year',
+    'structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r',
+    'wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r',
+    'floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r',
+    'window_material','window_glazing','window_shading',
+    'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type',
+    'dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'
+  ]),
+  dpe:new Set([
+    'project','operation','building','shab','construction_year',
+    'dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'
+  ]),
+  acv:new Set([
+    'project','operation','building','ic_components','ic_site',
+    'ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13',
+    'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'
+  ])
+});
+function filterSpecializedOccurrences(family,occurrences=[]){
+  const allowed=SPECIALIZED_ALLOWED_FIELDS[family];
+  if(!allowed) return occurrences;
+  return occurrences.filter(o=>o?.field&&allowed.has(o.field));
+}
+
+function parseSpecializedDocument(doc){
+  const family=doc.specializedFamily;
+  let out=[];
+  const common=()=>{ out.push(...parseTaggedFields(doc)); };
+  common();
+  if(family==='rset'||family==='rt2012'){
+    out.push(...parseBuildingSurface(doc),...parseRset(doc),...parseRt2012Hierarchical(doc),...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
+    if(doc.type===DOC_TYPES.RSEE_RE2020) out.push(...parseCarbon(doc));
+  }else if(family==='rsenv'){
+    out.push(...parseBuildingSurface(doc),...parseProgram(doc),...parseCarbon(doc));
+    addRsetCarbonBreakdown(doc,out); out.push(...parseRsenvHierarchical(doc));
+  }else if(family==='thcex'){
+    out.push(...parseBuildingSurface(doc),...parseGenericRegulatory(doc));
+    if(isStructuredRenovationThermalDocument(doc)) out.push(...parseStructuredRenovationThermal(doc));
+    out.push(...parseThermalStudy(doc),...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
+  }else if(family==='cctp'){
+    out.push(...parseBuildingSurface(doc),...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
+  }else if(family==='dpgf'){
+    out.push(...parseProgram(doc),...parseEnvelope(doc),...parseSystems(doc));
+  }else if(family==='3cl'){
+    out.push(...parseBuildingSurface(doc),...parseProgram(doc),...parseDpe(doc),...parseSystems(doc),...parseThermalStudy(doc));
+  }else if(family==='dpe'){
+    out.push(...parseBuildingSurface(doc),...parseProgram(doc),...parseDpe(doc));
+  }else if(family==='acv'){
+    out.push(...parseBuildingSurface(doc),...parseProgram(doc),...parseCarbon(doc)); addRsetCarbonBreakdown(doc,out);
+  }
+  out.push(...parsePatchOccurrences(doc));
+  out=filterSpecializedOccurrences(family,out.filter(Boolean));
+  out=pruneHierarchicalShadowed(doc,out);
+  return annotateSemanticHierarchy(doc,out).map(o=>({...o,specializedFamily:family,specializedParser:true}));
+}
+
 export function parseDocument(doc){
+  if(doc?.specializedFamily&&doc.specializedFamily!=='annex') return parseSpecializedDocument(doc);
   let out=[];
   out.push(...parseTaggedFields(doc));
   // Surface bâtiment générique : SHAB, Sref/SRéf, surface habitable, surface du bâtiment, SU/SURT/SRT.

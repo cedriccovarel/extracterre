@@ -1,3 +1,19 @@
+# v2.2.1 — Listes blanches par type documentaire
+
+- filtrage strict des champs autorisés par famille documentaire ;
+- séparation définitive RSET RE2020 / RSET RT2012 ;
+- RSENV limité aux données carbone et métadonnées de rattachement ;
+- suppression de RSENV des sources automatiques DH, systèmes, ENR et consommations thermiques ;
+- nouveau test de non-régression `test_v2_2_1_whitelists.mjs`.
+
+# v2.2.0 — Parseurs spécialisés par type de document
+
+- Une dropzone dédiée par famille : RSET/RSEE, RT2012, THCex/RT Existant, RSENV, CCTP, DPGF, 3CL, DPE, Analyse ACV et Annexes.
+- Le choix de la dropzone pilote le parseur et évite les croisements de règles entre familles.
+- Contrôle de complétude par document avec champs attendus trouvés/manquants.
+- Les documents annexes conservent l'ancien moteur de classification automatique.
+- Cloud V2.1, mémoire d'apprentissage, patchs et 167 champs conservés.
+
 # v2.1.1
 
 - Correction du formulaire propriétaire de correction/apprentissage : suppression de la référence hors portée `missing` dans `submitBetaError()`.

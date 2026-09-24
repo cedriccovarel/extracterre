@@ -102,6 +102,8 @@ function serializeDocMeta(doc={}){
     processingLocation:doc.processingLocation||null,
     remoteAnalysis:safeJsonClone(doc.remoteAnalysis,null),
     cloudFallback:doc.cloudFallback||null,
+    specializedFamily:doc.specializedFamily||'annex',
+    specializedLabel:doc.specializedLabel||'',
     persistedAnalysis:hasAnalysis
   };
 }
@@ -165,6 +167,8 @@ function serializeDocAnalysis(projectId,doc,compact=false,minimal=false){
     buildings:safeJsonClone(doc.buildings,null),
     classification:safeJsonClone(doc.classification,null),
     type:doc.type||'En attente',
+    specializedFamily:doc.specializedFamily||'annex',
+    specializedLabel:doc.specializedLabel||'',
     analysisCachedAt:doc.analysisCachedAt||Date.now(),
     storageMode:minimal?'results-only':compact?'compact':'full-index'
   };
@@ -218,6 +222,8 @@ export async function loadWorkspaceSnapshot(){
             doc.read=hydrateRead(saved.read);
             doc.cachedOccurrences=Array.isArray(saved.cachedOccurrences)?saved.cachedOccurrences:[];
             doc.buildings=saved.buildings||doc.buildings;
+            doc.specializedFamily=saved.specializedFamily||doc.specializedFamily||'annex';
+            doc.specializedLabel=saved.specializedLabel||doc.specializedLabel||'';
             doc.classification=saved.classification||doc.classification;
             doc.type=saved.type||doc.type;
             doc.analysisCachedAt=saved.analysisCachedAt||doc.analysisCachedAt;

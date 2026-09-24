@@ -19,6 +19,46 @@ import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigu
 function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
 
+const SPECIALIZED_FAMILIES=Object.freeze({
+  rset:{label:'RSET / RSEE',type:DOC_TYPES.RSET_RE2020},
+  rt2012:{label:'RSET RT2012',type:DOC_TYPES.RT2012},
+  thcex:{label:'THCex / RT Existant',type:DOC_TYPES.RT_EXISTING},
+  rsenv:{label:'RSEE / RSENV',type:DOC_TYPES.RSENV},
+  cctp:{label:'CCTP',type:DOC_TYPES.CCTP},
+  dpgf:{label:'DPGF',type:DOC_TYPES.DPGF},
+  '3cl':{label:'3CL',type:DOC_TYPES.DPE},
+  dpe:{label:'DPE',type:DOC_TYPES.DPE},
+  acv:{label:'Analyse ACV',type:DOC_TYPES.CARBON},
+  annex:{label:'Documents annexes',type:null}
+});
+const SPECIALIZED_EXPECTED=Object.freeze({
+  rset:['housing_count','shab','bbio','bbio_max','cep','cep_max','cepnr','cepnr_max','dh','dh_max','heating_vector_after','heating_mode_after','ecs_vector_after','ventilation'],
+  rt2012:['housing_count','shab','bbio','bbio_max','cep','cep_max','tic','tic_ref','heating_vector_after','heating_mode_after','ecs_vector_after','ventilation'],
+  thcex:['shab','ubat_before','ubat_after','cep_before','cep_after_final','heating_vector_before','heating_vector_after','ecs_vector_before','ecs_vector_after','ventilation'],
+  rsenv:['ic_components','ic_site','ic_energy','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13'],
+  cctp:['roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','heating_mode_after','ecs','ventilation'],
+  dpgf:['roof_insulation','wall_insulation','floor_insulation','window_material','window_glazing','heating_mode_after','ecs','ventilation'],
+  '3cl':['shab','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','heating_mode_after','ecs_vector_before','ecs','ventilation'],
+  dpe:['shab','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'],
+  acv:['ic_components','ic_site','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']
+});
+function specializedConfig(family){return SPECIALIZED_FAMILIES[family]||SPECIALIZED_FAMILIES.annex;}
+function classifyForSelectedFamily(doc){
+  const auto=classifyDocument(doc.name,doc.read.text,{kind:doc.read.kind});
+  const family=doc.specializedFamily||'annex', cfg=specializedConfig(family);
+  const forced=cfg.type;
+  if(family==='annex'||!forced) return auto;
+  return {...auto,automaticType:auto.type,type:forced,forcedByDropzone:true,specializedFamily:family,specializedLabel:cfg.label};
+}
+function documentCompleteness(doc){
+  const expected=SPECIALIZED_EXPECTED[doc.specializedFamily]; if(!expected?.length||!Array.isArray(doc.cachedOccurrences)) return null;
+  const found=new Set(doc.cachedOccurrences.map(o=>o?.field).filter(Boolean));
+  const checked=[...expected];
+  const hits=checked.filter(k=>found.has(k)), missing=checked.filter(k=>!found.has(k));
+  return {hits:hits.length,total:checked.length,missing,ratio:checked.length?hits.length/checked.length:1};
+}
+
+
 // v1.1.20 — contrôle coopératif de l'analyse + remplissage progressif
 const analysisControl={running:false,paused:false,stopRequested:false,controllers:new Map(),pauseWaiters:[]};
 function syncAnalysisControlUi(){
@@ -350,8 +390,9 @@ function renderFiles(){
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
+    const spec=d.specializedFamily&&d.specializedFamily!=='annex'?`<span class="file-specialized-badge">${escapeHtml(specializedConfig(d.specializedFamily).label)}</span>`:''; const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="${escapeHtml(completeness.missing.map(k=>FIELD_MAP[k]?.label||k).join(', '))}">${completeness.hits}/${completeness.total} attendus</span>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${comp}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
@@ -359,17 +400,17 @@ function renderFiles(){
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
-function addFiles(fileList){
+function addFiles(fileList,specializedFamily='annex'){
   const allowed=/\.(pdf|xml|xlsx?|xls)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
     const rel=file._relativePath||file.webkitRelativePath||file.name;
     const existing=state.docs.find(d=>(d.relativePath||d.name)===rel&&d.size===file.size);
     if(existing){
-      if(!existing.file){ existing.file=file; existing.relativePath=rel; if(['missing','error'].includes(existing.status)) existing.status='pending'; rehydrated++; continue; }
+      if(!existing.file){ existing.file=file; existing.relativePath=rel; if(specializedFamily) existing.specializedFamily=specializedFamily; if(['missing','error'].includes(existing.status)) existing.status='pending'; rehydrated++; continue; }
       toast(`Déjà ajouté : ${rel}`,'warn'); continue;
     }
-    const rec=makeDocumentRecord(file); rec.relativePath=rel; state.docs.push(rec); added++;
+    const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.specializedFamily=specializedFamily||'annex'; rec.specializedLabel=specializedConfig(rec.specializedFamily).label; state.docs.push(rec); added++;
   }
   if(rehydrated) toast(`${rehydrated} fichier(s) rechargé(s) pour permettre une nouvelle analyse OCR.`,'success');
   if(added) toast(state.result?`${added} nouveau${added>1?'x':''} document${added>1?'s':''} ajouté${added>1?'s':''} — prêt${added>1?'s':''} à compléter l’analyse.`:`${added} fichier${added>1?'s':''} ajouté${added>1?'s':''}`,'success');
@@ -730,7 +771,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
       if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
-      d.classification=classifyDocument(d.name,d.read.text,{kind:d.read.kind});
+      d.classification=classifyForSelectedFamily(d);
       d.type=d.classification.type;
       d.buildings=detectBuildings(d);
       await yieldToBrowser();
@@ -902,7 +943,7 @@ async function targetedReanalysis(id){
   doc.targetedStatus='running'; renderFiles(); setStatus(`Crible fin — ${doc.name}`,1);
   try{
     const highRead=await readFile(doc.file,(p,meta)=>{ const pct=Math.max(1,Math.min(96,Math.round((p||0)*96))); setStatus(`Crible fin — ${doc.name}${meta?.page?` · page ${meta.page}`:''}`,pct); },{mode:'max',lang:'fra+eng',scale:3.15,maxPixels:12000000});
-    const classification=classifyDocument(doc.name,highRead.text,{kind:highRead.kind});
+    const classification=classifyForSelectedFamily({...doc,read:highRead});
     const tempDoc={...doc,read:highRead,classification,type:classification.type,cachedOccurrences:null}; tempDoc.buildings=detectBuildings(tempDoc);
     const parsed=parseDocument(tempDoc);
     const candidates=buildTargetedCandidates(doc,tempDoc,parsed);
@@ -1199,7 +1240,7 @@ async function reapplyPatchesToReadyDocuments(){
   let count=0;
   for(const d of ready){
     try{
-      d.classification=classifyDocument(d.name,d.read.text,{kind:d.read.kind});
+      d.classification=classifyForSelectedFamily(d);
       d.type=d.classification.type;
       d.buildings=detectBuildings(d);
       d.cachedOccurrences=parseDocument(d);
@@ -1243,23 +1284,16 @@ function wire(){
   });
   fi.addEventListener('click',e=>e.stopPropagation());
   folderInput?.addEventListener('click',e=>e.stopPropagation());
-  fi.addEventListener('change',e=>{ addFiles(e.target.files||[]); fi.value=''; });
-  if(folderInput) folderInput.addEventListener('change',e=>{ addFiles(e.target.files||[]); folderInput.value=''; });
-  for(const ev of ['dragenter','dragover']) dz.addEventListener(ev,e=>{ e.preventDefault(); e.stopPropagation(); if(e.dataTransfer) e.dataTransfer.dropEffect='copy'; dz.classList.add('drag'); });
-  dz.addEventListener('dragleave',e=>{ e.preventDefault(); e.stopPropagation(); if(!dz.contains(e.relatedTarget)) dz.classList.remove('drag'); });
-  dz.addEventListener('drop',async e=>{
-    e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag');
-    setStatus('Lecture du dépôt Finder…');
-    try{
-      const files=await filesFromDrop(e.dataTransfer);
-      if(files?.length){
-        const before=state.docs.length; addFiles(files); const added=state.docs.length-before;
-        const roots=[...new Set(files.map(f=>(f._relativePath||f.webkitRelativePath||'').split('/')[0]).filter(Boolean))];
-        if(added&&roots.some(r=>r&&r!==files[0]?.name)) toast(`Dossier${roots.length>1?'s':''} importé${roots.length>1?'s':''} : ${added} fichier(s) compatible(s).`,'success');
-        setStatus(`${added||0} fichier${added===1?'':'s'} ajouté${added===1?'':'s'}`);
-      } else { toast('Aucun fichier compatible détecté dans le dépôt.','warn'); setStatus('Prêt'); }
-    }catch(err){ console.error('Drop import error',err); toast(`Import impossible : ${err?.message||'erreur Finder'}`,'error'); setStatus('Erreur d’import'); }
+  document.querySelectorAll('.specialized-file-input').forEach(inp=>inp.addEventListener('change',e=>{ const family=inp.dataset.family||'annex'; addFiles(e.target.files||[],family); inp.value=''; }));
+  document.querySelectorAll('.specialized-dropzone').forEach(zone=>{
+    const family=zone.dataset.family||'annex';
+    for(const ev of ['dragenter','dragover']) zone.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';zone.classList.add('drag');});
+    zone.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!zone.contains(e.relatedTarget))zone.classList.remove('drag');});
+    zone.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();zone.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs,family);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
   });
+  fi.addEventListener('change',e=>{ addFiles(e.target.files||[],'annex'); fi.value=''; });
+  if(folderInput) folderInput.addEventListener('change',e=>{ addFiles(e.target.files||[],'annex'); folderInput.value=''; });
+  // Le drag & drop est géré par chaque zone documentaire spécialisée.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);

@@ -1,3 +1,7 @@
+# ExtracTerre v2.2.1
+
+Architecture spécialisée : déposer chaque document dans la zone correspondant à sa famille. Les RSET/RSEE, RT2012 et RSENV utilisent leurs parseurs structurés standardisés ; THCex, CCTP, DPGF, 3CL, DPE et ACV ont des routes dédiées ; Annexes garde l'analyse automatique générale.
+
 # ExtracTerre v2.1.0 — analyse hybride locale + distante
 
 ExtracTerre v2.1.0 repart de la base **v1.1.23** et conserve les 167 champs, la mémoire d’apprentissage, les patchs, le journal, le Crible fin, les exports et les protections existantes.
