@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const app=fs.readFileSync(new URL('./js/app.js',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
+const css=fs.readFileSync(new URL('./styles.css',import.meta.url),'utf8');
+const learning=fs.readFileSync(new URL('./js/learning-memory.js',import.meta.url),'utf8');
+assert.match(app,/renderBetaPdfPage/,'Le rendu PDF de correction doit exister');
+assert.match(app,/runBetaPageOcr/,'L OCR à la demande doit exister');
+assert.match(app,/normalizedRects/,'Les coordonnées du surlignage doivent être enregistrées');
+assert.match(app,/bboxNormalized/,'La boîte normalisée doit être mémorisée');
+assert.match(html,/id="betaPdfCanvas"/,'Le canvas PDF doit être présent');
+assert.match(html,/id="betaPdfTextLayer"/,'La couche texte PDF doit être présente');
+assert.match(html,/id="betaRunPageOcr"/,'Le bouton OCR page doit être présent');
+assert.match(css,/\.beta-pdf-text-layer/,'Le style de la couche texte PDF doit être présent');
+assert.match(learning,/bboxNormalized/,'La mémoire doit exploiter les coordonnées PDF');
+assert.doesNotMatch(html,/Surlignez directement la bonne donnée dans le texte ci-dessous/,'L ancienne UX texte seul ne doit plus être utilisée');
+console.log('OK v2.2.2 — surlignage direct PDF + OCR page');

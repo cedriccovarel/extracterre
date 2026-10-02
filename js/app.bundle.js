@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.2.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.2.4 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.2.4';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -3172,7 +3172,13 @@ function locationSimilarity(a,b){
   if(Number.isFinite(pageA)&&Number.isFinite(pageB)) page=Math.max(0,1-Math.abs(pageA-pageB)/5);
   const ratioA=Number(a.lineRatio),ratioB=Number(b.lineRatio); let ratio=0;
   if(Number.isFinite(ratioA)&&Number.isFinite(ratioB)) ratio=Math.max(0,1-Math.abs(ratioA-ratioB)/0.35);
-  return Math.min(1,text*.72+page*.12+ratio*.16);
+  const boxA=a.bboxNormalized,boxB=b.bboxNormalized; let geometry=0;
+  if(boxA&&boxB&&Number.isFinite(Number(boxA.x))&&Number.isFinite(Number(boxA.y))&&Number.isFinite(Number(boxB.x))&&Number.isFinite(Number(boxB.y))){
+    const ax=Number(boxA.x)+Number(boxA.w||0)/2,ay=Number(boxA.y)+Number(boxA.h||0)/2,bx=Number(boxB.x)+Number(boxB.w||0)/2,by=Number(boxB.y)+Number(boxB.h||0)/2;
+    const dist=Math.hypot(ax-bx,ay-by); geometry=Math.max(0,1-dist/.32);
+  }
+  const hasGeometry=geometry>0||boxA&&boxB;
+  return Math.min(1,hasGeometry?text*.58+page*.10+ratio*.12+geometry*.20:text*.72+page*.12+ratio*.16);
 }
 function profileReliability(p){return (p.confirmations+1)/(p.confirmations+p.rejections+2);}
 function baseBoost(p){
@@ -3184,15 +3190,15 @@ function rebuildProfiles(){
   const signals=[...cache.signals.values()].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
   for(const s of signals){
     if(!s?.field||!s?.docType) continue;
-    const probe={field:s.field,docType:s.docType,page:s.page,lineRatio:s.lineRatio,anchor:anchorText(s),tokens:anchorTokens(anchorText(s))};
+    const probe={field:s.field,docType:s.docType,page:s.page,lineRatio:s.lineRatio,bboxNormalized:s.bboxNormalized||null,anchor:anchorText(s),tokens:anchorTokens(anchorText(s))};
     let best=null,bestScore=0;
     for(const p of groups){const score=locationSimilarity(probe,p);if(score>bestScore){best=p;bestScore=score;}}
     if(!best||bestScore<.52){
-      best={id:`profile-${groups.length+1}`,seedId:s.id,field:s.field,docType:s.docType,anchor:probe.anchor,tokens:probe.tokens,page:Number(s.page)||null,lineRatio:Number.isFinite(Number(s.lineRatio))?Number(s.lineRatio):null,confirmations:0,rejections:0,lastAt:0,samples:[],disabled:false}; groups.push(best);
+      best={id:`profile-${groups.length+1}`,seedId:s.id,field:s.field,docType:s.docType,anchor:probe.anchor,tokens:probe.tokens,page:Number(s.page)||null,lineRatio:Number.isFinite(Number(s.lineRatio))?Number(s.lineRatio):null,bboxNormalized:s.bboxNormalized||null,confirmations:0,rejections:0,lastAt:0,samples:[],disabled:false}; groups.push(best);
     }
     if(s.polarity==='negative') best.rejections++; else best.confirmations++;
     best.lastAt=Math.max(best.lastAt,Number(s.createdAt)||0); if(best.samples.length<5) best.samples.push({page:s.page,lineText:s.lineText,selectedText:s.selectedText,polarity:s.polarity||'positive'});
-    if(s.polarity!=='negative' && bestScore>=.52){ best.anchor=probe.anchor||best.anchor; best.tokens=probe.tokens.length?probe.tokens:best.tokens; if(Number.isFinite(Number(s.page))) best.page=Number(s.page); if(Number.isFinite(Number(s.lineRatio))) best.lineRatio=Number(s.lineRatio); }
+    if(s.polarity!=='negative' && bestScore>=.52){ best.anchor=probe.anchor||best.anchor; best.tokens=probe.tokens.length?probe.tokens:best.tokens; if(Number.isFinite(Number(s.page))) best.page=Number(s.page); if(Number.isFinite(Number(s.lineRatio))) best.lineRatio=Number(s.lineRatio); if(s.bboxNormalized) best.bboxNormalized=s.bboxNormalized; }
   }
   for(const p of groups){ p.reliability=profileReliability(p); p.boost=baseBoost(p); p.disabled=cache.disabled.has(profileKey(p)); }
   cache.profiles=groups.sort((a,b)=>b.confirmations-a.confirmations||b.reliability-a.reliability);
@@ -3209,18 +3215,18 @@ async function initializeLearningMemory(){
   }finally{db.close();}
 }
 async function reinforceLearningLocation(location={},meta={}){
-  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'positive',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,pageRatio:Number.isFinite(Number(location.pageRatio))?Number(location.pageRatio):null,lineIndex:Number.isFinite(Number(location.lineIndex))?Number(location.lineIndex):null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText),building:String(meta.building||''),source:'user-highlight'};
+  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'positive',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,pageRatio:Number.isFinite(Number(location.pageRatio))?Number(location.pageRatio):null,lineIndex:Number.isFinite(Number(location.lineIndex))?Number(location.lineIndex):null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText),selectionMode:String(location.selectionMode||''),normalizedRects:Array.isArray(location.normalizedRects)?location.normalizedRects.slice(0,24):[],bboxNormalized:location.bboxNormalized||null,building:String(meta.building||''),source:'user-highlight'};
   if(!signal.field||!signal.docType) return null; if(cache.signals.has(signal.id)) return signal; await putSignal(signal); cache.signals.set(signal.id,signal); rebuildProfiles(); return signal;
 }
 async function penalizeLearningLocation(location={},meta={}){
-  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'negative',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText||meta.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText||meta.selectedText),building:String(meta.building||''),source:'user-rejection'};
+  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'negative',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText||meta.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText||meta.selectedText),bboxNormalized:location.bboxNormalized||null,building:String(meta.building||''),source:'user-rejection'};
   if(!signal.field||!signal.docType) return null; if(cache.signals.has(signal.id)) return signal; await putSignal(signal); cache.signals.set(signal.id,signal); rebuildProfiles(); return signal;
 }
 function applyLearningBoosts(raw=[]){
   if(!cache.ready||!cache.profiles.length) return raw;
   return raw.map(o=>{
     if(!o?.field||!o?.docType||o.userValidated) return o;
-    const probe={field:o.field,docType:o.docType,page:o.page,lineRatio:o.lineRatio,anchor:safe(o.excerpt||o.lineText||''),tokens:anchorTokens(o.excerpt||o.lineText||'')};
+    const probe={field:o.field,docType:o.docType,page:o.page,lineRatio:o.lineRatio,bboxNormalized:o.bboxNormalized||null,anchor:safe(o.excerpt||o.lineText||''),tokens:anchorTokens(o.excerpt||o.lineText||'')};
     let best=null,match=0; for(const p of cache.profiles){if(p.disabled||p.boost<=0)continue;const s=locationSimilarity(probe,p);if(s>match){best=p;match=s;}}
     if(!best||match<.42) return o;
     const boost=Math.min(.08,best.boost*Math.min(1,match/.72)); if(boost<=.002) return o;
@@ -5918,95 +5924,189 @@ function renderSummary(){
 
 
 let betaLearningSelection=null;
+const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
 function betaLearningDocs(){ return (activeProject()?.docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length); }
 function betaLearningDoc(){ const id=$('#betaLearningDocument')?.value||''; return betaLearningDocs().find(d=>d.id===id)||null; }
-function renderBetaLearningPage(){
-  const doc=betaLearningDoc(), pageSelect=$('#betaLearningPage'), textBox=$('#betaLearningText'), meta=$('#betaLearningMeta');
-  if(!doc||!pageSelect||!textBox) return;
-  const pages=doc.read?.pages||[]; const current=Number(pageSelect.value)||Number(doc?.read?.pages?.[0]?.page)||1;
-  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===current?'selected':''}>Page ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join('');
-  const page=pages.find(p=>Number(p.page)===Number(pageSelect.value))||pages[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
-  const lines=(page.lines||String(page.text||'').split(/\r?\n/).map((t,index)=>({text:t,index}))).filter(l=>String(l.text||'').trim());
-  textBox.innerHTML=lines.map((l,i)=>`<div class="beta-learning-line" data-line-index="${Number.isFinite(l.index)?l.index:i}">${escapeHtml(l.text||'')}</div>`).join('')||'<div class="empty-small">Aucun texte exploitable sur cette page.</div>';
-  if(meta) meta.textContent=`${doc.name} · ${doc.type||'Document'} · page ${page.page||1} / ${pages.length}`;
-  betaLearningSelection=null; const out=$('#betaLearningSelection'); if(out) out.textContent='Aucun surlignage sélectionné.';
+function betaLearningIsPdf(doc){ return !!doc&&/\.pdf$/i.test(doc.name||''); }
+function betaPdfStatus(message='',kind=''){ const el=$('#betaPdfStatus'); if(!el)return; el.textContent=message; el.className=`beta-pdf-status${kind?` ${kind}`:''}`; }
+async function disposeBetaPdfPreview({keepOcr=false}={}){
+  betaPdfPreviewState.renderToken++;
+  try{betaPdfPreviewState.renderTask?.cancel?.();}catch{}
+  betaPdfPreviewState.renderTask=null;
+  if(betaPdfPreviewState.pdf){try{betaPdfPreviewState.pdf.cleanup?.();}catch{}try{await betaPdfPreviewState.pdf.destroy?.();}catch{}}
+  else if(betaPdfPreviewState.loadingTask){try{await betaPdfPreviewState.loadingTask.destroy?.();}catch{}}
+  betaPdfPreviewState.pdf=null; betaPdfPreviewState.loadingTask=null; betaPdfPreviewState.docId=''; betaPdfPreviewState.viewport=null; betaPdfPreviewState.ocrWords=[]; betaPdfPreviewState.mode='native';
+  if(!keepOcr&&betaPdfPreviewState.ocrWorker){try{await betaPdfPreviewState.ocrWorker.terminate?.();}catch{} betaPdfPreviewState.ocrWorker=null;}
+}
+function betaPageLines(doc,pageNo){ const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo)); return (page?.lines||[]).filter(l=>String(l.text||'').trim()); }
+function betaSelectionContext(doc,pageNo,selectedText){
+  const lines=betaPageLines(doc,pageNo),needle=normLower(selectedText).replace(/\s+/g,' ').trim();
+  let pos=needle?lines.findIndex(l=>normLower(l.text||'').includes(needle)):-1;
+  if(pos<0&&needle){const token=needle.split(/\s+/).find(t=>t.length>=3); if(token)pos=lines.findIndex(l=>normLower(l.text||'').includes(token));}
+  const line=pos>=0?lines[pos]:null;
+  return {lineIndex:line&&Number.isFinite(line.index)?line.index:(pos>=0?pos:null),lineCount:lines.length,lineText:line?.text||selectedText,beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',lineRatio:lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null};
+}
+function betaClearSavedHighlight(){ const layer=$('#betaPdfHighlightLayer'); if(layer)layer.innerHTML=''; }
+function betaDrawSavedHighlight(rects=[]){
+  const layer=$('#betaPdfHighlightLayer'); if(!layer)return; layer.innerHTML='';
+  for(const r of rects||[]){const el=document.createElement('div');el.className='beta-pdf-saved-highlight';el.style.left=`${r.x*100}%`;el.style.top=`${r.y*100}%`;el.style.width=`${r.w*100}%`;el.style.height=`${r.h*100}%`;layer.appendChild(el);}
+}
+function betaSetTextSpanGeometry(span,{left,top,width,height,angle=0}){
+  span.style.left=`${left}px`; span.style.top=`${top}px`; span.style.height=`${Math.max(1,height)}px`; span.style.fontSize=`${Math.max(1,height)}px`; span.style.lineHeight='1'; span.style.transformOrigin='0 0';
+  span.style.transform=`rotate(${angle}rad)`; span.style.width='auto';
+  requestAnimationFrame(()=>{ if(!span.isConnected)return; const measured=Math.max(1,span.getBoundingClientRect().width); const sx=Math.max(.08,Math.min(12,width/measured)); span.style.transform=`rotate(${angle}rad) scaleX(${sx})`; });
+}
+function betaRenderNativeTextLayer(content,viewport){
+  const layer=$('#betaPdfTextLayer'); if(!layer)return; layer.innerHTML=''; layer.dataset.mode='native';
+  const styles=content?.styles||{};
+  for(let i=0;i<(content?.items||[]).length;i++){
+    const item=content.items[i]; if(!item?.str)continue;
+    const tx=globalThis.pdfjsLib?.Util?.transform?globalThis.pdfjsLib.Util.transform(viewport.transform,item.transform):null; if(!tx)continue;
+    const height=Math.max(1,Math.hypot(tx[2],tx[3])); const angle=Math.atan2(tx[1],tx[0]); const left=tx[4],top=tx[5]-height; const width=Math.max(1,Number(item.width||0)*viewport.scale);
+    const span=document.createElement('span'); span.className='beta-pdf-text-item'; span.textContent=item.str; span.dataset.itemIndex=String(i); span.dataset.source='pdf';
+    const font=styles[item.fontName]?.fontFamily; if(font)span.style.fontFamily=font;
+    layer.appendChild(span); betaSetTextSpanGeometry(span,{left,top,width,height,angle});
+  }
+}
+function flattenOcrWords(blocks=[]){
+  const out=[];
+  for(const block of blocks||[])for(const paragraph of block?.paragraphs||[])for(const line of paragraph?.lines||[])for(const word of line?.words||[]){if(String(word?.text||'').trim()&&word?.bbox)out.push(word);}
+  return out;
+}
+function betaRenderOcrTextLayer(words,sourceWidth,sourceHeight,viewport){
+  const layer=$('#betaPdfTextLayer'); if(!layer)return; layer.innerHTML=''; layer.dataset.mode='ocr';
+  for(let i=0;i<(words||[]).length;i++){
+    const word=words[i],b=word?.bbox; if(!b)continue; const text=String(word.text||'').trim(); if(!text)continue;
+    const left=(b.x0/sourceWidth)*viewport.width,top=(b.y0/sourceHeight)*viewport.height,width=((b.x1-b.x0)/sourceWidth)*viewport.width,height=((b.y1-b.y0)/sourceHeight)*viewport.height;
+    const span=document.createElement('span');span.className='beta-pdf-text-item beta-pdf-ocr-item';span.textContent=text;span.dataset.itemIndex=String(i);span.dataset.source='ocr';span.dataset.confidence=String(Number(word.confidence)||0);layer.appendChild(span);betaSetTextSpanGeometry(span,{left,top,width:Math.max(2,width),height:Math.max(4,height)});
+  }
+}
+async function betaEnsurePdf(doc){
+  if(!doc?.file) throw new Error('Le PDF doit être redéposé pour permettre le surlignage visuel.');
+  if(!globalThis.pdfjsLib) throw new Error('PDF.js n’est pas chargé.');
+  if(betaPdfPreviewState.pdf&&betaPdfPreviewState.docId===doc.id)return betaPdfPreviewState.pdf;
+  await disposeBetaPdfPreview({keepOcr:true});
+  const data=await doc.file.arrayBuffer(); const task=globalThis.pdfjsLib.getDocument({data}); betaPdfPreviewState.loadingTask=task; const pdf=await task.promise; betaPdfPreviewState.pdf=pdf; betaPdfPreviewState.loadingTask=null; betaPdfPreviewState.docId=doc.id; return pdf;
+}
+async function renderBetaPdfPage({forceMode='native'}={}){
+  const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,stage=$('#betaPdfViewport'),pageWrap=$('#betaPdfPage'),canvas=$('#betaPdfCanvas'),textLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText');
+  betaLearningSelection=null; betaClearSavedHighlight(); const out=$('#betaLearningSelection'); if(out)out.textContent='Aucun surlignage sélectionné.';
+  if(!doc||!stage||!pageWrap||!canvas||!textLayer||!fallback)return;
+  fallback.hidden=true; stage.hidden=false; textLayer.innerHTML=''; betaPdfStatus('Préparation de la page…');
+  if(!betaLearningIsPdf(doc)){
+    stage.hidden=true; fallback.hidden=false; renderBetaLearningTextFallback(doc,pageNo); betaPdfStatus('Mode texte : ce document n’est pas un PDF.'); return;
+  }
+  if(!doc.file){ stage.hidden=true; fallback.hidden=false; fallback.innerHTML='<div class="empty-small">Le PDF a été restauré depuis une session précédente. Redéposez le fichier pour surligner directement dans la page.</div>'; betaPdfStatus('PDF à redéposer','warn'); return; }
+  try{
+    try{betaPdfPreviewState.renderTask?.cancel?.();}catch{} betaPdfPreviewState.renderTask=null;
+    const pdf=await betaEnsurePdf(doc); const token=++betaPdfPreviewState.renderToken; const p=Math.min(Math.max(1,pageNo),pdf.numPages); betaPdfPreviewState.pageNo=p;
+    const page=await pdf.getPage(p); const base=page.getViewport({scale:1}); const available=Math.max(520,Math.min(1500,(stage.clientWidth||1200)-28)); const scale=Math.max(.72,Math.min(2.15,available/base.width)); const viewport=page.getViewport({scale}); betaPdfPreviewState.viewport=viewport;
+    const dpr=Math.min(2,globalThis.devicePixelRatio||1); canvas.width=Math.max(1,Math.round(viewport.width*dpr));canvas.height=Math.max(1,Math.round(viewport.height*dpr));canvas.style.width=`${viewport.width}px`;canvas.style.height=`${viewport.height}px`;pageWrap.style.width=`${viewport.width}px`;pageWrap.style.height=`${viewport.height}px`;textLayer.style.width=`${viewport.width}px`;textLayer.style.height=`${viewport.height}px`;const hl=$('#betaPdfHighlightLayer');if(hl){hl.style.width=`${viewport.width}px`;hl.style.height=`${viewport.height}px`;}
+    const ctx=canvas.getContext('2d',{alpha:false});ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);const renderViewport=page.getViewport({scale:scale*dpr}); betaPdfPreviewState.renderTask=page.render({canvasContext:ctx,viewport:renderViewport,background:'white'});await betaPdfPreviewState.renderTask.promise;betaPdfPreviewState.renderTask=null;
+    if(forceMode==='ocr'&&betaPdfPreviewState.ocrWords.length&&betaPdfPreviewState.mode==='ocr'){
+      const dims=betaPdfPreviewState.ocrSourceDims||{width:canvas.width,height:canvas.height}; betaRenderOcrTextLayer(betaPdfPreviewState.ocrWords,dims.width,dims.height,viewport); betaPdfStatus(`OCR actif · ${betaPdfPreviewState.ocrWords.length} mots sélectionnables`,'ok');
+    }else{
+      const content=await page.getTextContent({includeMarkedContent:true}); betaRenderNativeTextLayer(content,viewport); betaPdfPreviewState.mode='native'; betaPdfPreviewState.ocrWords=[]; betaPdfStatus(`${content.items?.length||0} blocs texte PDF · surlignez directement dans la page`,'ok');
+    }
+    try{page.cleanup?.();}catch{}
+  }catch(err){ if(err?.name==='RenderingCancelledException')return; console.error('Correction PDF preview',err); stage.hidden=true;fallback.hidden=false;renderBetaLearningTextFallback(doc,pageNo);betaPdfStatus(`Aperçu PDF impossible : ${err?.message||err}`,'error'); }
+}
+function renderBetaLearningTextFallback(doc,pageNo){
+  const textBox=$('#betaLearningText'); if(!textBox)return; const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
+  const lines=(page.lines||String(page.text||'').split(/\r?\n/).map((t,index)=>({text:t,index}))).filter(l=>String(l.text||'').trim()); textBox.innerHTML=lines.map((l,i)=>`<div class="beta-learning-line" data-line-index="${Number.isFinite(l.index)?l.index:i}">${escapeHtml(l.text||'')}</div>`).join('')||'<div class="empty-small">Aucun texte exploitable sur cette page.</div>';
+}
+function updateBetaPageNavState(){
+  const select=$('#betaLearningPage'),prev=$('#betaPrevPage'),next=$('#betaNextPage');
+  if(!select){if(prev)prev.disabled=true;if(next)next.disabled=true;return;}
+  const idx=Math.max(0,select.selectedIndex);
+  if(prev)prev.disabled=!select.options.length||idx<=0;
+  if(next)next.disabled=!select.options.length||idx>=select.options.length-1;
+}
+async function changeBetaLearningPage(delta){
+  const select=$('#betaLearningPage'); if(!select||!select.options.length)return;
+  const idx=Math.max(0,select.selectedIndex),target=Math.min(select.options.length-1,Math.max(0,idx+delta));
+  if(target===idx){updateBetaPageNavState();return;}
+  select.selectedIndex=target;
+  await renderBetaLearningPage();
+  const stage=$('#betaPdfViewport'),fallback=$('#betaLearningText'); if(stage&&!stage.hidden)stage.scrollTop=0;if(fallback&&!fallback.hidden)fallback.scrollTop=0;
+}
+async function renderBetaLearningPage(){
+  const doc=betaLearningDoc(),pageSelect=$('#betaLearningPage'),meta=$('#betaLearningMeta'); if(!doc||!pageSelect)return; const pages=doc.read?.pages||[]; const wanted=Number(pageSelect.value)||Number(pages[0]?.page)||1;
+  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===wanted?'selected':''}>Page ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join(''); if([...pageSelect.options].some(o=>Number(o.value)===wanted))pageSelect.value=String(wanted);
+  updateBetaPageNavState();
+  const pageNo=Number(pageSelect.value)||1; if(meta)meta.textContent=`${doc.name} · ${doc.type||'Document'} · page ${pageNo} / ${pages.length}`; betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'});
 }
 function syncBetaLearningDocument(preferredDocId='',preferredPage=null){
-  const sel=$('#betaLearningDocument'); if(!sel) return; const docs=betaLearningDocs();
-  sel.innerHTML=docs.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${escapeHtml(d.type||'Document')}</option>`).join('');
-  if(preferredDocId&&docs.some(d=>d.id===preferredDocId)) sel.value=preferredDocId;
-  else if(docs.length) sel.value=docs[0].id;
-  const page=$('#betaLearningPage'); if(page&&preferredPage) page.value=String(preferredPage);
-  renderBetaLearningPage(); if(page&&preferredPage&&[...page.options].some(o=>o.value===String(preferredPage))){page.value=String(preferredPage);renderBetaLearningPage();}
+  const sel=$('#betaLearningDocument'); if(!sel)return; const docs=betaLearningDocs(); sel.innerHTML=docs.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${escapeHtml(d.type||'Document')}</option>`).join(''); if(preferredDocId&&docs.some(d=>d.id===preferredDocId))sel.value=preferredDocId;else if(docs.length)sel.value=docs[0].id; const page=$('#betaLearningPage'); if(page&&preferredPage)page.value=String(preferredPage); renderBetaLearningPage();
+}
+function betaRangeRects(range,pageWrap){
+  const pageRect=pageWrap.getBoundingClientRect(); if(!pageRect.width||!pageRect.height)return []; const rects=[];
+  for(const r of range.getClientRects()){ if(r.width<1||r.height<1)continue; const x=Math.max(0,(r.left-pageRect.left)/pageRect.width),y=Math.max(0,(r.top-pageRect.top)/pageRect.height),w=Math.min(1-x,r.width/pageRect.width),h=Math.min(1-y,r.height/pageRect.height); if(w>0&&h>0)rects.push({x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000,w:Math.round(w*10000)/10000,h:Math.round(h*10000)/10000}); }
+  return rects.slice(0,24);
+}
+function betaExactValueFromHighlight(selectedText,def){
+  const exact=String(selectedText??'').replace(/\s+/g,' ').trim();
+  if(!exact)return '';
+  // « Valeur exacte » doit refléter le surlignage tel quel. La conversion métier
+  // d'un champ numérique se fait seulement à la validation.
+  return exact;
+}
+function betaParseCorrectedNumber(raw){
+  const direct=parseFrNumber(raw); if(direct!==null)return direct;
+  const txt=String(raw??'').replace(/\u00a0/g,' ');
+  // Les unités (m², W/m².K, etc.) peuvent contenir d'autres chiffres : on prend
+  // le premier nombre réellement surligné au lieu de concaténer tous les chiffres.
+  const m=txt.match(/[+\-−]?\s*\d+(?:[\s\u00a0]\d{3})*(?:[.,]\d+)?/);
+  if(!m)return null;
+  return parseFrNumber(m[0].replace('−','-'));
+}
+function betaSetExactValueFromSelection(selectedText){
+  const input=$('#betaErrorCorrectValue'),hint=$('#betaExactValueHint'),def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||''];
+  if(!input)return;
+  const exact=betaExactValueFromHighlight(selectedText,def);
+  input.value=exact;
+  input.classList.toggle('beta-value-from-highlight',!!exact);
+  input.dataset.fromHighlight=exact?'1':'0';
+  if(hint){hint.textContent=exact?`Valeur reprise du surlignage : « ${exact} »`:'Aucune valeur sélectionnée.';hint.classList.toggle('ok',!!exact);}
 }
 function captureBetaLearningSelection(){
-  const box=$('#betaLearningText'), selection=globalThis.getSelection?.(); if(!box||!selection||selection.rangeCount<1||selection.isCollapsed){ $('#betaErrorFeedback').textContent='Surlignez d’abord la donnée correcte dans le texte du document.'; return; }
-  const range=selection.getRangeAt(0); if(!box.contains(range.commonAncestorContainer)){ $('#betaErrorFeedback').textContent='Le surlignage doit être fait dans la zone texte du document.'; return; }
-  const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){ $('#betaErrorFeedback').textContent='Le surlignage est vide.'; return; }
-  const startEl=(range.startContainer.nodeType===1?range.startContainer:range.startContainer.parentElement)?.closest?.('.beta-learning-line');
-  const endEl=(range.endContainer.nodeType===1?range.endContainer:range.endContainer.parentElement)?.closest?.('.beta-learning-line')||startEl;
-  const doc=betaLearningDoc(), pageNo=Number($('#betaLearningPage')?.value)||1, page=doc?.read?.pages?.find(p=>Number(p.page)===pageNo);
-  const lines=page?.lines||[]; const startIndex=Number(startEl?.dataset?.lineIndex); const endIndex=Number(endEl?.dataset?.lineIndex);
-  const lineObj=lines.find(l=>Number(l.index)===startIndex)||null; const pos=lines.findIndex(l=>Number(l.index)===startIndex);
-  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:Number.isFinite(startIndex)?startIndex:null,endLineIndex:Number.isFinite(endIndex)?endIndex:null,lineCount:lines.length,selectedText,lineText:lineObj?.text||startEl?.textContent||'',beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:(lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null)};
-  box.querySelectorAll('.beta-learning-line').forEach(el=>el.classList.remove('beta-learning-line-selected'));
-  if(startEl&&endEl){ let active=false; for(const el of box.querySelectorAll('.beta-learning-line')){ if(el===startEl) active=true; if(active) el.classList.add('beta-learning-line-selected'); if(el===endEl) break; } }
-  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${Number.isFinite(startIndex)?` · ligne ${startIndex+1}`:''}`;
-  const def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||'']; const input=$('#betaErrorCorrectValue');
-  if(input&&def){ if(def.type==='number'){ const n=parseFrNumber(selectedText); if(n!==null) input.value=String(n).replace('.',','); } else input.value=selectedText; }
+  const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,selection=globalThis.getSelection?.(),pdfLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText'),pageWrap=$('#betaPdfPage');
+  if(!selection||selection.rangeCount<1||selection.isCollapsed){$('#betaErrorFeedback').textContent='Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
+  const range=selection.getRangeAt(0),insidePdf=pdfLayer&&!pdfLayer.hidden&&pdfLayer.contains(range.commonAncestorContainer),insideFallback=fallback&&!fallback.hidden&&fallback.contains(range.commonAncestorContainer); if(!insidePdf&&!insideFallback){$('#betaErrorFeedback').textContent='Le surlignage doit être fait dans l’aperçu du document.';return;}
+  const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){$('#betaErrorFeedback').textContent='Le surlignage est vide.';return;} const ctx=betaSelectionContext(doc,pageNo,selectedText); let rects=[];
+  if(insidePdf&&pageWrap)rects=betaRangeRects(range,pageWrap);
+  const bbox=rects.length?{x:Math.min(...rects.map(r=>r.x)),y:Math.min(...rects.map(r=>r.y)),x2:Math.max(...rects.map(r=>r.x+r.w)),y2:Math.max(...rects.map(r=>r.y+r.h))}:null;
+  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:ctx.lineIndex,endLineIndex:ctx.lineIndex,lineCount:ctx.lineCount,selectedText,lineText:ctx.lineText,beforeLine:ctx.beforeLine,afterLine:ctx.afterLine,pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:ctx.lineRatio,selectionMode:insidePdf?(betaPdfPreviewState.mode==='ocr'?'ocr':'pdf-text'):'text-fallback',normalizedRects:rects,bboxNormalized:bbox?{x:bbox.x,y:bbox.y,w:Math.max(0,bbox.x2-bbox.x),h:Math.max(0,bbox.y2-bbox.y)}:null};
+  if(rects.length)betaDrawSavedHighlight(rects);
+  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${insidePdf?` · ${betaLearningSelection.selectionMode==='ocr'?'OCR':'texte PDF'}`:''}`;
+  betaSetExactValueFromSelection(selectedText);
   $('#betaErrorFeedback').textContent='';
 }
-function openBetaErrorDialog(building,field){
-  if(!ownerBetaEnabled()||!state.result) return;
-  const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog');
-  if(!def||!ctx.row||!dlg) return;
-  const src=ctx.source||{}, missing=ctx.value===undefined||ctx.value===null||ctx.value==='';
-  $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée';
-  $('#betaErrorIntro').textContent=missing?'Choisissez la pièce, surlignez la donnée correcte et ExtracTerre mémorisera son emplacement pour les prochains documents similaires.':'Choisissez la pièce, surlignez la bonne donnée et ExtracTerre remplacera la valeur tout en mémorisant précisément son emplacement.';
-  $('#betaErrorField').textContent=def.label||field;
-  $('#betaErrorBuilding').textContent=building||'Bâtiment unique';
-  $('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);
-  $('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';
-  $('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';
-  $('#betaErrorCorrectValue').value='';
-  $('#betaErrorReason').value=missing?'missing_data':'wrong_value';
-  $('#betaErrorComment').value=''; $('#betaApplyCorrection').checked=true; $('#betaErrorFeedback').textContent='';
-  dlg.dataset.building=building; dlg.dataset.field=field; dlg.dataset.wasMissing=missing?'1':'0'; betaLearningSelection=null;
-  syncBetaLearningDocument(src.docId||'',src.page||null); dlg.showModal();
+async function betaEnsureOcrWorker(){
+  if(betaPdfPreviewState.ocrWorker)return betaPdfPreviewState.ocrWorker; if(!globalThis.Tesseract?.createWorker)throw new Error('Tesseract.js n’est pas chargé.'); betaPdfStatus('Initialisation OCR…'); betaPdfPreviewState.ocrWorker=await globalThis.Tesseract.createWorker('fra+eng',1,{logger:m=>{if(m?.status==='recognizing text'&&Number.isFinite(m.progress))betaPdfStatus(`OCR de la page · ${Math.round(m.progress*100)} %`);}}); return betaPdfPreviewState.ocrWorker;
 }
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog'); if(dlg?.open) dlg.close(); betaLearningSelection=null; }
+async function runBetaPageOcr(){
+  const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1;if(!doc||!betaLearningIsPdf(doc)){betaPdfStatus('OCR disponible uniquement pour les PDF.','warn');return;} const btn=$('#betaRunPageOcr');if(btn){btn.disabled=true;btn.textContent='OCR en cours…';}
+  try{
+    const pdf=await betaEnsurePdf(doc),page=await pdf.getPage(pageNo),base=page.getViewport({scale:1}),maxPixels=6500000,scale=Math.min(2.15,Math.sqrt(maxPixels/Math.max(1,base.width*base.height))),vp=page.getViewport({scale:Math.max(1.45,scale)}),ocrCanvas=document.createElement('canvas');ocrCanvas.width=Math.max(1,Math.round(vp.width));ocrCanvas.height=Math.max(1,Math.round(vp.height));const ctx=ocrCanvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,ocrCanvas.width,ocrCanvas.height);await page.render({canvasContext:ctx,viewport:vp,background:'white'}).promise; const worker=await betaEnsureOcrWorker(); betaPdfStatus('OCR de la page…'); const ret=await worker.recognize(ocrCanvas,{}, {text:true,blocks:true}); const words=flattenOcrWords(ret?.data?.blocks||[]); if(!words.length)throw new Error('Aucun mot exploitable détecté par OCR sur cette page.'); betaPdfPreviewState.mode='ocr';betaPdfPreviewState.ocrWords=words;betaPdfPreviewState.ocrSourceDims={width:ocrCanvas.width,height:ocrCanvas.height}; const viewport=betaPdfPreviewState.viewport; if(viewport)betaRenderOcrTextLayer(words,ocrCanvas.width,ocrCanvas.height,viewport);betaPdfStatus(`OCR actif · ${words.length} mots sélectionnables`,'ok');betaLearningSelection=null;betaClearSavedHighlight();$('#betaLearningSelection').textContent='Aucun surlignage sélectionné.';ocrCanvas.width=1;ocrCanvas.height=1;try{page.cleanup?.();}catch{}
+  }catch(err){console.error('OCR correction page',err);betaPdfStatus(`OCR impossible : ${err?.message||err}`,'error');}
+  finally{if(btn){btn.disabled=false;btn.textContent='OCR cette page';}}
+}
+async function restoreBetaNativeText(){ betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'}); }
+function openBetaErrorDialog(building,field){
+  if(!ownerBetaEnabled()||!state.result)return; const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog'); if(!def||!ctx.row||!dlg)return; const src=ctx.source||{},missing=ctx.value===undefined||ctx.value===null||ctx.value===''; $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée'; $('#betaErrorIntro').textContent=missing?'Choisissez la pièce puis surlignez directement la donnée correcte dans la page PDF. Utilisez l’OCR uniquement si la couche texte du PDF est mauvaise.':'Choisissez la pièce puis surlignez directement la bonne donnée dans la page PDF. ExtracTerre mémorisera le texte et sa position exacte.'; $('#betaErrorField').textContent=def.label||field;$('#betaErrorBuilding').textContent=building||'Bâtiment unique';$('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);$('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';$('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';betaSetExactValueFromSelection('');$('#betaErrorReason').value=missing?'missing_data':'wrong_value';$('#betaErrorComment').value='';$('#betaApplyCorrection').checked=true;$('#betaErrorFeedback').textContent='';dlg.dataset.building=building;dlg.dataset.field=field;dlg.dataset.wasMissing=missing?'1':'0';betaLearningSelection=null;dlg.showModal();syncBetaLearningDocument(src.docId||'',src.page||null);
+}
+function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview(); }
 async function submitBetaError(){
-  if(!ownerBetaEnabled()) return;
-  const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field];
-  const ctx=betaResultContext(building,field); if(!dlg||!def||!ctx.row) return;
-  const raw=($('#betaErrorCorrectValue')?.value||'').trim(); let correctedValue=null,hasCorrection=!!raw;
-  if(hasCorrection){ if(def.type==='number'){ const n=parseFrNumber(raw); if(n===null){ $('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.'; return; } correctedValue=n; } else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw; }
-  if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.'; return; }
-  const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim();
-  const loc=betaLearningSelection?{...betaLearningSelection}:null;
+  if(!ownerBetaEnabled())return; const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field],ctx=betaResultContext(building,field);if(!dlg||!def||!ctx.row)return; const raw=($('#betaErrorCorrectValue')?.value||'').trim();let correctedValue=null,hasCorrection=!!raw;if(hasCorrection){if(def.type==='number'){const n=betaParseCorrectedNumber(raw);if(n===null){$('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.';return;}correctedValue=n;}else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;}if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.';return;} const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim(),loc=betaLearningSelection?{...betaLearningSelection}:null;
   const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
   try{
     await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
-    if(loc){
-      const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};
-      const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());
-      await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});
-    }
-    const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']);
-    const srcDoc=state.docs.find(d=>d.id===src.docId);
-    if(dlg.dataset.wasMissing!=='1'&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){
-      const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};
-      const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());
-      await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});
-    }
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){
-      const key=`${building}|${field}`,previous=ctx.value; state.manualValues[key]=correctedValue;
-      state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:'manual:highlight-learning',provenanceNote:`Correction propriétaire par surlignage — ${reason}`};
-      applyManualValues(); learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'highlight_learning',reason,highlight:loc},activeProject()); refreshEconomic(); scheduleWorkspaceCheckpoint('correction par surlignage',80);
-    }
-    closeBetaErrorDialog(); renderSummary(); scheduleJournalUiRefresh(); renderLearningMemoryUi();
-    toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
-  }catch(err){ $('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`; }
+    if(loc){const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,selectionMode:loc.selectionMode,normalizedRects:loc.normalizedRects,bboxNormalized:loc.bboxNormalized,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});}
+    const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']),srcDoc=state.docs.find(d=>d.id===src.docId);if(dlg.dataset.wasMissing!=='1'&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});}
+    if(hasCorrection&&$('#betaApplyCorrection')?.checked){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par surlignage PDF — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par surlignage PDF',80);}
+    closeBetaErrorDialog();renderSummary();scheduleJournalUiRefresh();renderLearningMemoryUi();toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement PDF mémorisé.':'Correction appliquée et emplacement PDF mémorisé.','success');
+  }catch(err){$('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`;}
 }
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
@@ -6209,7 +6309,7 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaPreview=$('#betaPreviewSelectedDoc'); if(betaPreview) betaPreview.onclick=()=>{const d=betaLearningDoc(); if(d) openFilePreview(d.id);}; const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
+  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};

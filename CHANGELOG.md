@@ -1,3 +1,21 @@
+## v2.2.3 — fenêtre de correction reconstruite
+
+- La valeur surlignée est recopiée immédiatement et intégralement dans « Valeur exacte ».
+- Le surlignage PDF/OCR est capturé automatiquement au relâchement de la souris ; le bouton « Utiliser la sélection » reste disponible.
+- Les champs numériques acceptent désormais un surlignage contenant une unité sans concaténer les chiffres de l’unité.
+- Fenêtre de correction reconstruite en deux colonnes : aperçu documentaire large à gauche, correction/validation à droite, sans défilement horizontal.
+- Aucun changement au Cloud V2.1, aux parseurs spécialisés, aux listes blanches ou aux 9 familles de patchs.
+
+# v2.2.2 — Surlignage direct dans le PDF
+
+- correction/apprentissage directement dans la page PDF rendue par PDF.js ;
+- couche texte native sélectionnable superposée au document ;
+- bouton OCR à la demande, limité à la page courante ;
+- coordonnées normalisées de chaque surlignage enregistrées dans le journal et la mémoire ;
+- retour au texte PDF natif après OCR ;
+- fallback texte conservé pour les pièces non-PDF ou restaurées sans fichier source ;
+- aucune modification du pipeline Cloud, des parseurs spécialisés ou des listes blanches v2.2.1.
+
 # v2.2.1 — Listes blanches par type documentaire
 
 - filtrage strict des champs autorisés par famille documentaire ;

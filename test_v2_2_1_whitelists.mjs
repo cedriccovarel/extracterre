@@ -7,7 +7,7 @@ function doc(family,type,text){
   return {id:`test-${family}`,name:`${family}.pdf`,type,specializedFamily:family,read:{kind:'pdf',text,pages:[{page:1,text,lines}]},buildings:{names:['Bâtiment A'],hits:[]}};
 }
 function fields(d){ return new Set(parseDocument(d).map(o=>o.field)); }
-assert.equal(APP_VERSION,'2.2.1');
+assert.equal(APP_VERSION,'2.2.4');
 
 let f=fields(doc('rsenv',DOC_TYPES.RSENV,'Bâtiment: A\nDH: 900\nBbio: 50\nCep: 70\nIC chantier: 20\nIC énergie: 100'));
 assert(!f.has('dh'),'RSENV ne doit jamais produire DH');
@@ -35,4 +35,4 @@ assert(!f.has('bbio')&&!f.has('dh')&&!f.has('ic_site'),'DPE ne doit pas produire
 f=fields(doc('acv',DOC_TYPES.CARBON,'Bbio: 50\nDH: 900\nIC chantier: 20'));
 assert(!f.has('bbio')&&!f.has('dh'),'Analyse ACV ne doit pas produire Bbio ou DH');
 
-console.log('OK v2.2.1 — listes blanches spécialisées');
+console.log('OK v2.2.3 — listes blanches spécialisées');

@@ -36,7 +36,13 @@ function locationSimilarity(a,b){
   if(Number.isFinite(pageA)&&Number.isFinite(pageB)) page=Math.max(0,1-Math.abs(pageA-pageB)/5);
   const ratioA=Number(a.lineRatio),ratioB=Number(b.lineRatio); let ratio=0;
   if(Number.isFinite(ratioA)&&Number.isFinite(ratioB)) ratio=Math.max(0,1-Math.abs(ratioA-ratioB)/0.35);
-  return Math.min(1,text*.72+page*.12+ratio*.16);
+  const boxA=a.bboxNormalized,boxB=b.bboxNormalized; let geometry=0;
+  if(boxA&&boxB&&Number.isFinite(Number(boxA.x))&&Number.isFinite(Number(boxA.y))&&Number.isFinite(Number(boxB.x))&&Number.isFinite(Number(boxB.y))){
+    const ax=Number(boxA.x)+Number(boxA.w||0)/2,ay=Number(boxA.y)+Number(boxA.h||0)/2,bx=Number(boxB.x)+Number(boxB.w||0)/2,by=Number(boxB.y)+Number(boxB.h||0)/2;
+    const dist=Math.hypot(ax-bx,ay-by); geometry=Math.max(0,1-dist/.32);
+  }
+  const hasGeometry=geometry>0||boxA&&boxB;
+  return Math.min(1,hasGeometry?text*.58+page*.10+ratio*.12+geometry*.20:text*.72+page*.12+ratio*.16);
 }
 function profileReliability(p){return (p.confirmations+1)/(p.confirmations+p.rejections+2);}
 function baseBoost(p){
@@ -48,15 +54,15 @@ function rebuildProfiles(){
   const signals=[...cache.signals.values()].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
   for(const s of signals){
     if(!s?.field||!s?.docType) continue;
-    const probe={field:s.field,docType:s.docType,page:s.page,lineRatio:s.lineRatio,anchor:anchorText(s),tokens:anchorTokens(anchorText(s))};
+    const probe={field:s.field,docType:s.docType,page:s.page,lineRatio:s.lineRatio,bboxNormalized:s.bboxNormalized||null,anchor:anchorText(s),tokens:anchorTokens(anchorText(s))};
     let best=null,bestScore=0;
     for(const p of groups){const score=locationSimilarity(probe,p);if(score>bestScore){best=p;bestScore=score;}}
     if(!best||bestScore<.52){
-      best={id:`profile-${groups.length+1}`,seedId:s.id,field:s.field,docType:s.docType,anchor:probe.anchor,tokens:probe.tokens,page:Number(s.page)||null,lineRatio:Number.isFinite(Number(s.lineRatio))?Number(s.lineRatio):null,confirmations:0,rejections:0,lastAt:0,samples:[],disabled:false}; groups.push(best);
+      best={id:`profile-${groups.length+1}`,seedId:s.id,field:s.field,docType:s.docType,anchor:probe.anchor,tokens:probe.tokens,page:Number(s.page)||null,lineRatio:Number.isFinite(Number(s.lineRatio))?Number(s.lineRatio):null,bboxNormalized:s.bboxNormalized||null,confirmations:0,rejections:0,lastAt:0,samples:[],disabled:false}; groups.push(best);
     }
     if(s.polarity==='negative') best.rejections++; else best.confirmations++;
     best.lastAt=Math.max(best.lastAt,Number(s.createdAt)||0); if(best.samples.length<5) best.samples.push({page:s.page,lineText:s.lineText,selectedText:s.selectedText,polarity:s.polarity||'positive'});
-    if(s.polarity!=='negative' && bestScore>=.52){ best.anchor=probe.anchor||best.anchor; best.tokens=probe.tokens.length?probe.tokens:best.tokens; if(Number.isFinite(Number(s.page))) best.page=Number(s.page); if(Number.isFinite(Number(s.lineRatio))) best.lineRatio=Number(s.lineRatio); }
+    if(s.polarity!=='negative' && bestScore>=.52){ best.anchor=probe.anchor||best.anchor; best.tokens=probe.tokens.length?probe.tokens:best.tokens; if(Number.isFinite(Number(s.page))) best.page=Number(s.page); if(Number.isFinite(Number(s.lineRatio))) best.lineRatio=Number(s.lineRatio); if(s.bboxNormalized) best.bboxNormalized=s.bboxNormalized; }
   }
   for(const p of groups){ p.reliability=profileReliability(p); p.boost=baseBoost(p); p.disabled=cache.disabled.has(profileKey(p)); }
   cache.profiles=groups.sort((a,b)=>b.confirmations-a.confirmations||b.reliability-a.reliability);
@@ -73,18 +79,18 @@ export async function initializeLearningMemory(){
   }finally{db.close();}
 }
 export async function reinforceLearningLocation(location={},meta={}){
-  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'positive',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,pageRatio:Number.isFinite(Number(location.pageRatio))?Number(location.pageRatio):null,lineIndex:Number.isFinite(Number(location.lineIndex))?Number(location.lineIndex):null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText),building:String(meta.building||''),source:'user-highlight'};
+  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'positive',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,pageRatio:Number.isFinite(Number(location.pageRatio))?Number(location.pageRatio):null,lineIndex:Number.isFinite(Number(location.lineIndex))?Number(location.lineIndex):null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText),selectionMode:String(location.selectionMode||''),normalizedRects:Array.isArray(location.normalizedRects)?location.normalizedRects.slice(0,24):[],bboxNormalized:location.bboxNormalized||null,building:String(meta.building||''),source:'user-highlight'};
   if(!signal.field||!signal.docType) return null; if(cache.signals.has(signal.id)) return signal; await putSignal(signal); cache.signals.set(signal.id,signal); rebuildProfiles(); return signal;
 }
 export async function penalizeLearningLocation(location={},meta={}){
-  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'negative',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText||meta.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText||meta.selectedText),building:String(meta.building||''),source:'user-rejection'};
+  const signal={id:String(meta.eventId||makeId()),createdAt:Number(meta.createdAt)||Date.now(),polarity:'negative',field:String(meta.field||location.field||''),docType:String(meta.docType||location.docType||''),document:String(location.document||meta.document||''),page:Number(location.page)||null,lineRatio:Number.isFinite(Number(location.lineRatio))?Number(location.lineRatio):null,lineText:safe(location.lineText||meta.lineText),beforeLine:safe(location.beforeLine),afterLine:safe(location.afterLine),selectedText:safe(location.selectedText||meta.selectedText),bboxNormalized:location.bboxNormalized||null,building:String(meta.building||''),source:'user-rejection'};
   if(!signal.field||!signal.docType) return null; if(cache.signals.has(signal.id)) return signal; await putSignal(signal); cache.signals.set(signal.id,signal); rebuildProfiles(); return signal;
 }
 export function applyLearningBoosts(raw=[]){
   if(!cache.ready||!cache.profiles.length) return raw;
   return raw.map(o=>{
     if(!o?.field||!o?.docType||o.userValidated) return o;
-    const probe={field:o.field,docType:o.docType,page:o.page,lineRatio:o.lineRatio,anchor:safe(o.excerpt||o.lineText||''),tokens:anchorTokens(o.excerpt||o.lineText||'')};
+    const probe={field:o.field,docType:o.docType,page:o.page,lineRatio:o.lineRatio,bboxNormalized:o.bboxNormalized||null,anchor:safe(o.excerpt||o.lineText||''),tokens:anchorTokens(o.excerpt||o.lineText||'')};
     let best=null,match=0; for(const p of cache.profiles){if(p.disabled||p.boost<=0)continue;const s=locationSimilarity(probe,p);if(s>match){best=p;match=s;}}
     if(!best||match<.42) return o;
     const boost=Math.min(.08,best.boost*Math.min(1,match/.72)); if(boost<=.002) return o;
