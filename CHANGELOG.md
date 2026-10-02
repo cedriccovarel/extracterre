@@ -1,3 +1,12 @@
+# v2.2.5 — aperçu Excel dans la fenêtre de correction
+
+- Les documents `.xlsx` et `.xls` sont affichés comme une grille de tableur dans la fenêtre de correction.
+- En-têtes de colonnes A/B/C… et numéros de lignes figés pour faciliter la lecture.
+- Un clic sur une cellule sélectionne la cellule et renvoie immédiatement son contenu dans « Valeur exacte ».
+- Une sélection partielle du texte d’une cellule reste possible avec « Utiliser la sélection ».
+- Chaque feuille Excel reste accessible depuis le menu déroulant ainsi qu’avec Précédent / Suivant.
+- Les PDF conservent leur aperçu PDF/OCR actuel.
+
 ## v2.2.3 — fenêtre de correction reconstruite
 
 - La valeur surlignée est recopiée immédiatement et intégralement dans « Valeur exacte ».
