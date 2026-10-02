@@ -1,6 +1,11 @@
-# ExtracTerre v2.2.5
+# ExtracTerre v2.2.6
 
 Architecture spécialisée : déposer chaque document dans la zone correspondant à sa famille. Les RSET/RSEE, RT2012 et RSENV utilisent leurs parseurs structurés standardisés ; THCex, CCTP, DPGF, 3CL, DPE et ACV ont des routes dédiées ; Annexes garde l'analyse automatique générale.
+
+## Analyse manuelle documentaire
+
+Le bouton **Analyse manuelle** du bloc « Analyse du projet » ouvre le même lecteur que la correction. Sélectionnez un bâtiment, puis l’onglet Thermique / Carbone / Enveloppe et enfin le champ à renseigner. La valeur surlignée dans le PDF ou la cellule cliquée dans Excel est affectée immédiatement à ce champ et conserve la provenance du document.
+
 
 # ExtracTerre v2.1.0 — analyse hybride locale + distante
 

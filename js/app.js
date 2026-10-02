@@ -1019,6 +1019,84 @@ function renderSummary(){
 
 let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
+
+const MANUAL_ANALYSIS_SECTIONS={
+  thermal:{label:'Thermique',families:new Set(['Performance énergétique','Confort d’été','Systèmes','DPE','ENR'])},
+  carbon:{label:'Carbone',families:new Set(['Carbone'])},
+  envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
+};
+let manualAnalysisState={building:'',section:'thermal',field:''};
+function manualAnalysisMode(){ return $('#betaErrorDialog')?.dataset.mode==='manual'; }
+function manualAnalysisBuildings(){
+  const fromResult=(state.result?.rows||[]).map(r=>r.building).filter(Boolean);
+  if(fromResult.length)return unique(fromResult);
+  const fromDocs=state.docs.flatMap(d=>d.buildings?.names||[]).filter(Boolean);
+  return unique(fromDocs.length?fromDocs:['Bâtiment unique']);
+}
+function manualAnalysisFields(section=manualAnalysisState.section){
+  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.thermal;
+  return FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family));
+}
+function manualAnalysisCurrentValue(building,field){
+  const key=`${building}|${field}`;
+  if(Object.prototype.hasOwnProperty.call(state.manualValues||{},key))return state.manualValues[key];
+  const row=state.result?.rows?.find(r=>r.building===building);
+  return row?.[field];
+}
+function renderManualAnalysisSidebar(){
+  const side=$('#manualAnalysisSidebar'); if(!side)return;
+  const buildings=manualAnalysisBuildings();
+  if(!buildings.includes(manualAnalysisState.building))manualAnalysisState.building=buildings[0]||'Bâtiment unique';
+  if(!MANUAL_ANALYSIS_SECTIONS[manualAnalysisState.section])manualAnalysisState.section='thermal';
+  const fields=manualAnalysisFields();
+  if(manualAnalysisState.field&&!fields.some(f=>f.key===manualAnalysisState.field))manualAnalysisState.field='';
+  const bt=$('#manualBuildingTabs'),st=$('#manualSectionTabs'),fb=$('#manualFieldButtons'),target=$('#manualSelectedTarget');
+  if(bt)bt.innerHTML=buildings.map(b=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}">${escapeHtml(b)}</button>`).join('');
+  if(st)st.innerHTML=Object.entries(MANUAL_ANALYSIS_SECTIONS).map(([key,cfg])=>`<button type="button" class="manual-section-tab ${key===manualAnalysisState.section?'active':''}" data-section="${key}">${escapeHtml(cfg.label)}</button>`).join('');
+  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=v!==undefined&&v!==null&&v!=='';return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):'À renseigner'}</strong></button>`;}).join('')||'<div class="empty-small">Aucun champ dans cette famille.</div>';
+  const def=FIELD_MAP[manualAnalysisState.field];
+  if(target)target.innerHTML=def?`<span>Cible active</span><strong>${escapeHtml(manualAnalysisState.building)} · ${escapeHtml(def.label)}</strong><small>Surlignez maintenant la valeur dans le document à gauche.</small>`:'<span>Cible active</span><strong>Sélectionnez une donnée à renseigner</strong><small>Puis surlignez la valeur dans le PDF ou cliquez une cellule Excel.</small>';
+  bt?.querySelectorAll('.manual-building-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.building=b.dataset.building||'Bâtiment unique';manualAnalysisState.field='';renderManualAnalysisSidebar();});
+  st?.querySelectorAll('.manual-section-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.section=b.dataset.section||'thermal';manualAnalysisState.field='';renderManualAnalysisSidebar();});
+  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document.`:'';feedback.className='manual-analysis-feedback';}});
+}
+function manualAnalysisAssignSelection(selectedText=betaLearningSelection?.selectedText||''){
+  if(!manualAnalysisMode())return false;
+  const feedback=$('#manualAnalysisFeedback'),building=manualAnalysisState.building,field=manualAnalysisState.field,def=FIELD_MAP[field];
+  if(!def){if(feedback){feedback.textContent='Choisissez d’abord une donnée à renseigner dans le panneau de droite.';feedback.className='manual-analysis-feedback warn';}return false;}
+  const raw=String(selectedText??'').replace(/\s+/g,' ').trim(); if(!raw)return false;
+  let value=raw;
+  if(def.type==='number'){const n=betaParseCorrectedNumber(raw);if(n===null){if(feedback){feedback.textContent=`La sélection « ${raw} » ne contient pas de valeur numérique exploitable pour ${def.label}.`;feedback.className='manual-analysis-feedback error';}return false;}value=n;}
+  else if(field==='window_glazing')value=normalizeGlazingType(raw)||raw;
+  const key=`${building}|${field}`,previous=manualAnalysisCurrentValue(building,field),loc=betaLearningSelection?{...betaLearningSelection}:null,doc=betaLearningDoc();
+  state.manualValues[key]=value;
+  state.manualSources[key]={docId:loc?.docId||doc?.id||'',fileName:loc?.document||doc?.name||'Analyse manuelle',page:loc?.page||Number($('#betaLearningPage')?.value)||1,excerpt:loc?.lineText||loc?.selectedText||raw,method:`manual:${loc?.selectionMode||'document-analysis'}`,provenanceNote:'Analyse manuelle par sélection documentaire'};
+  applyManualValues();
+  learn('manual_override',{building,field,label:def.label,previousValue:previous,newValue:value,source:'manual_document_analysis',highlight:loc},activeProject());
+  scheduleWorkspaceCheckpoint('analyse manuelle documentaire',80);
+  renderManualAnalysisSidebar();
+  renderSummary(); renderOccurrences();
+  if(feedback){feedback.textContent=`✓ ${def.label} = ${formatValue(value)} · ${building}`;feedback.className='manual-analysis-feedback ok';}
+  return true;
+}
+function openManualAnalysisDialog(){
+  const docs=betaLearningDocs(),dlg=$('#betaErrorDialog');
+  if(!dlg)return;
+  if(!docs.length){toast('Ajoutez et lisez au moins un PDF ou tableur avant l’analyse manuelle.','warn');return;}
+  dlg.dataset.mode='manual'; dlg.dataset.field=''; dlg.dataset.building='';
+  $('#betaErrorTitle').textContent='Analyse manuelle du projet';
+  $('#betaErrorIntro').textContent='Choisissez un bâtiment et un champ à droite, puis surlignez la valeur dans le PDF ou cliquez une cellule du tableur. La donnée est affectée immédiatement.';
+  const correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
+  if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
+  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'thermal',field:''};
+  const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
+  betaLearningSelection=null;dlg.showModal();renderManualAnalysisSidebar();syncBetaLearningDocument(docs[0]?.id||'',null);
+}
+function setCorrectionDialogMode(){
+  const dlg=$('#betaErrorDialog'),correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
+  if(dlg)dlg.dataset.mode='correction';if(correction)correction.hidden=false;if(manual)manual.hidden=true;if(submit)submit.hidden=false;if(cancel)cancel.textContent='Annuler';
+}
+
 function betaLearningDocs(){ return (activeProject()?.docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length); }
 function betaLearningDoc(){ const id=$('#betaLearningDocument')?.value||''; return betaLearningDocs().find(d=>d.id===id)||null; }
 function betaLearningIsPdf(doc){ return !!doc&&/\.pdf$/i.test(doc.name||''); }
@@ -1115,7 +1193,7 @@ function betaSelectSpreadsheetCell(cell){
   const rowIndex=Number(cell.dataset.rowIndex),colIndex=Number(cell.dataset.colIndex),lineIndex=Number(cell.dataset.lineIndex); const lines=page?.lines||[]; const pos=lines.findIndex(l=>Number(l.index)===lineIndex); const line=pos>=0?lines[pos]:null; const cellRef=cell.dataset.cellRef||betaSpreadsheetCellRef(rowIndex,colIndex);
   $('#betaLearningText')?.querySelectorAll('.beta-spreadsheet-cell-selected').forEach(el=>el.classList.remove('beta-spreadsheet-cell-selected')); cell.classList.add('beta-spreadsheet-cell-selected');
   betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:Number.isFinite(lineIndex)?lineIndex:null,endLineIndex:Number.isFinite(lineIndex)?lineIndex:null,lineCount:lines.length,selectedText,lineText:line?.text||selectedText,beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null,selectionMode:'spreadsheet-cell',cellRef,cellRow:Number.isFinite(rowIndex)?rowIndex+1:null,cellColumn:Number.isFinite(colIndex)?betaExcelColumnLabel(colIndex):'',normalizedRects:[],bboxNormalized:null};
-  $('#betaLearningSelection').textContent=`Cellule ${cellRef} : « ${selectedText} » · ${doc?.name||''}${page?.sheet?` · ${page.sheet}`:''}`; betaSetExactValueFromSelection(selectedText); $('#betaErrorFeedback').textContent='';
+  $('#betaLearningSelection').textContent=`Cellule ${cellRef} : « ${selectedText} » · ${doc?.name||''}${page?.sheet?` · ${page.sheet}`:''}`; betaSetExactValueFromSelection(selectedText); $('#betaErrorFeedback').textContent=''; manualAnalysisAssignSelection(selectedText);
 }
 function renderBetaSpreadsheetPreview(doc,pageNo){
   const box=$('#betaLearningText'); if(!box)return; const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){box.innerHTML='<div class="empty-small">Aucune feuille exploitable.</div>';return;}
@@ -1186,7 +1264,7 @@ function betaSetExactValueFromSelection(selectedText){
 }
 function captureBetaLearningSelection(){
   const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,selection=globalThis.getSelection?.(),pdfLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText'),pageWrap=$('#betaPdfPage');
-  if(!selection||selection.rangeCount<1||selection.isCollapsed){if(betaLearningIsSpreadsheet(doc)&&betaLearningSelection?.selectionMode==='spreadsheet-cell'){betaSetExactValueFromSelection(betaLearningSelection.selectedText);return;}$('#betaErrorFeedback').textContent=betaLearningIsSpreadsheet(doc)?'Cliquez une cellule ou sélectionnez la donnée correcte dans le tableur.':'Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
+  if(!selection||selection.rangeCount<1||selection.isCollapsed){if(betaLearningIsSpreadsheet(doc)&&betaLearningSelection?.selectionMode==='spreadsheet-cell'){betaSetExactValueFromSelection(betaLearningSelection.selectedText);manualAnalysisAssignSelection(betaLearningSelection.selectedText);return;}$('#betaErrorFeedback').textContent=betaLearningIsSpreadsheet(doc)?'Cliquez une cellule ou sélectionnez la donnée correcte dans le tableur.':'Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
   const range=selection.getRangeAt(0),insidePdf=pdfLayer&&!pdfLayer.hidden&&pdfLayer.contains(range.commonAncestorContainer),insideFallback=fallback&&!fallback.hidden&&fallback.contains(range.commonAncestorContainer); if(!insidePdf&&!insideFallback){$('#betaErrorFeedback').textContent='Le surlignage doit être fait dans l’aperçu du document.';return;}
   const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){$('#betaErrorFeedback').textContent='Le surlignage est vide.';return;} const ctx=betaSelectionContext(doc,pageNo,selectedText); let rects=[];
   if(insidePdf&&pageWrap)rects=betaRangeRects(range,pageWrap);
@@ -1195,6 +1273,7 @@ function captureBetaLearningSelection(){
   if(rects.length)betaDrawSavedHighlight(rects);
   $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${insidePdf?` · ${betaLearningSelection.selectionMode==='ocr'?'OCR':'texte PDF'}`:''}`;
   betaSetExactValueFromSelection(selectedText);
+  manualAnalysisAssignSelection(selectedText);
   $('#betaErrorFeedback').textContent='';
 }
 async function betaEnsureOcrWorker(){
@@ -1209,9 +1288,10 @@ async function runBetaPageOcr(){
 }
 async function restoreBetaNativeText(){ betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'}); }
 function openBetaErrorDialog(building,field){
+  setCorrectionDialogMode();
   if(!ownerBetaEnabled()||!state.result)return; const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog'); if(!def||!ctx.row||!dlg)return; const src=ctx.source||{},missing=ctx.value===undefined||ctx.value===null||ctx.value===''; $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée'; $('#betaErrorIntro').textContent=missing?'Choisissez la pièce puis surlignez directement la donnée correcte dans la page PDF. Utilisez l’OCR uniquement si la couche texte du PDF est mauvaise.':'Choisissez la pièce puis surlignez directement la bonne donnée dans la page PDF. ExtracTerre mémorisera le texte et sa position exacte.'; $('#betaErrorField').textContent=def.label||field;$('#betaErrorBuilding').textContent=building||'Bâtiment unique';$('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);$('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';$('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';betaSetExactValueFromSelection('');$('#betaErrorReason').value=missing?'missing_data':'wrong_value';$('#betaErrorComment').value='';$('#betaApplyCorrection').checked=true;$('#betaErrorFeedback').textContent='';dlg.dataset.building=building;dlg.dataset.field=field;dlg.dataset.wasMissing=missing?'1':'0';betaLearningSelection=null;dlg.showModal();syncBetaLearningDocument(src.docId||'',src.page||null);
 }
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview(); }
+function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview();setCorrectionDialogMode(); }
 async function submitBetaError(){
   if(!ownerBetaEnabled())return; const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field],ctx=betaResultContext(building,field);if(!dlg||!def||!ctx.row)return; const raw=($('#betaErrorCorrectValue')?.value||'').trim();let correctedValue=null,hasCorrection=!!raw;if(hasCorrection){if(def.type==='number'){const n=betaParseCorrectedNumber(raw);if(n===null){$('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.';return;}correctedValue=n;}else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;}if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.';return;} const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim(),loc=betaLearningSelection?{...betaLearningSelection}:null;
   const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
@@ -1412,7 +1492,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };

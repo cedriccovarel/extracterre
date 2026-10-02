@@ -1,3 +1,13 @@
+# v2.2.6 — analyse manuelle documentaire par bâtiment
+
+- Ajout d’un bouton **Analyse manuelle** dans le bloc « Analyse du projet ».
+- Réutilisation du même lecteur documentaire que la correction : aperçu PDF avec couche texte/OCR surlignable et tableur Excel en grille.
+- Panneau latéral avec un onglet par bâtiment puis trois sous-onglets : **Thermique**, **Carbone**, **Enveloppe**.
+- Chaque donnée est présentée sous forme de bouton avec sa valeur actuelle ou « À renseigner ».
+- Après sélection d’un champ, un surlignage PDF ou un clic sur une cellule Excel affecte immédiatement la valeur au bâtiment et au champ actifs.
+- Les valeurs saisies de cette manière utilisent le mécanisme de correction manuelle existant, restent prioritaires dans la consolidation et conservent leur source documentaire.
+- Aucun changement des 167 colonnes, des parseurs spécialisés, du Cloud V2.1 ou des règles de source.
+
 # v2.2.5 — aperçu Excel dans la fenêtre de correction
 
 - Les documents `.xlsx` et `.xls` sont affichés comme une grille de tableur dans la fenêtre de correction.

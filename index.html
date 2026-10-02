@@ -8,16 +8,16 @@
   <link rel="icon" href="assets/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="assets/favicon-512.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=2.2.5">
-  <script defer src="js/journal-config.js?v=2.2.5"></script>
-  <script defer src="js/security.js?v=2.2.5"></script>
+  <link rel="stylesheet" href="styles.css?v=2.2.6">
+  <script defer src="js/journal-config.js?v=2.2.6"></script>
+  <script defer src="js/security.js?v=2.2.6"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.2.5"></script>
-  <script defer src="js/app.bundle.js?v=2.2.5"></script>
+  <script defer src="js/cloud-config.js?v=2.2.6"></script>
+  <script defer src="js/app.bundle.js?v=2.2.6"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -38,7 +38,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v2.2.5</span>
+      <span class="ux-version-chip" id="version">v2.2.6</span>
     </div>
   </header>
 
@@ -132,6 +132,7 @@
                   </select>
                 </label>
                 <span id="statusText" class="badge doc stable-status" title="Prêt">Prêt</span>
+                <button id="manualAnalysisBtn" class="btn secondary stable-manual-analysis-btn" type="button">✦ Analyse manuelle</button>
                 <button id="analyzeBtn" class="btn primary stable-analyze-btn" type="button">▶ Lancer l’analyse</button>
               </div>
             </div>
@@ -387,7 +388,7 @@
         <div class="beta-learning-action"><button id="betaUseHighlight" class="btn secondary" type="button">✦ Utiliser la sélection</button><span id="betaLearningSelection">Aucun surlignage sélectionné.</span></div>
       </section>
 
-      <aside class="beta-error-correction-column">
+      <aside id="betaCorrectionSidebar" class="beta-error-correction-column">
         <div class="beta-error-summary">
           <div><span>Champ</span><strong id="betaErrorField">—</strong></div>
           <div><span>Bâtiment</span><strong id="betaErrorBuilding">—</strong></div>
@@ -408,6 +409,18 @@
           <label class="beta-apply-row"><input id="betaApplyCorrection" type="checkbox" checked> Appliquer immédiatement cette valeur au résultat courant</label>
           <div id="betaErrorFeedback" class="auth-error" aria-live="polite"></div>
         </div>
+      </aside>
+
+      <aside id="manualAnalysisSidebar" class="manual-analysis-sidebar" hidden>
+        <div class="manual-analysis-side-head">
+          <div><span>Analyse documentaire manuelle</span><strong>Choisissez le bâtiment puis la donnée à renseigner</strong></div>
+          <small>La valeur surlignée dans le PDF — ou la cellule cliquée dans Excel — est affectée immédiatement au champ actif.</small>
+        </div>
+        <div id="manualBuildingTabs" class="manual-building-tabs" role="tablist" aria-label="Bâtiments"></div>
+        <div id="manualSectionTabs" class="manual-section-tabs" role="tablist" aria-label="Familles de données"></div>
+        <div id="manualSelectedTarget" class="manual-selected-target">Sélectionnez une donnée à renseigner.</div>
+        <div id="manualFieldButtons" class="manual-field-buttons"></div>
+        <div id="manualAnalysisFeedback" class="manual-analysis-feedback" aria-live="polite"></div>
       </aside>
     </div>
 
@@ -450,7 +463,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.2.5</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.2.6</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>
