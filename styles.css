@@ -945,3 +945,26 @@ dialog#betaErrorDialog,
 #betaErrorDialog[data-mode="manual"] .beta-learning-action span{color:#176b49;font-weight:700}
 @media(max-width:1050px){#betaErrorDialog .manual-analysis-sidebar{overflow:visible;min-height:520px}.manual-field-buttons{max-height:440px}.manual-building-tabs{flex-wrap:wrap;overflow:visible}}
 @media(max-width:700px){.manual-section-tabs{grid-template-columns:1fr}.manual-field-btn{grid-template-columns:1fr}.manual-field-btn strong{max-width:none;justify-self:start}}
+
+
+/* ===== ExtracTerre v2.2.7 — bâtiments visibles + saisie manuelle ===== */
+#betaErrorDialog .manual-analysis-sidebar{overflow:hidden!important}
+#betaErrorDialog .manual-building-block{flex:0 0 auto;display:grid;gap:6px;padding:9px;border:1px solid #b9d7c8;border-radius:11px;background:#f1f8f4;box-shadow:inset 3px 0 0 #167c53}
+#betaErrorDialog .manual-sidebar-label{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#betaErrorDialog .manual-sidebar-label span{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:#416d59}
+#betaErrorDialog .manual-sidebar-label strong{font-size:9px;color:#176b49;background:#fff;border:1px solid #c8dfd3;border-radius:999px;padding:3px 7px}
+#betaErrorDialog .manual-building-tabs{display:flex!important;flex-wrap:wrap!important;gap:6px!important;overflow-y:auto!important;overflow-x:hidden!important;max-height:116px;min-height:34px;padding:1px 2px 3px!important;align-content:flex-start}
+#betaErrorDialog .manual-building-tab{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:31px!important;max-width:100%;border:1px solid #9fc9b5!important;background:#fff!important;color:#245b43!important;border-radius:8px!important;padding:7px 10px!important;font:800 10px/1.2 system-ui!important;box-shadow:0 1px 2px rgba(26,80,56,.05)}
+#betaErrorDialog .manual-building-tab:hover{border-color:#167c53!important;background:#eaf6ef!important}
+#betaErrorDialog .manual-building-tab.active{border-color:#0d6844!important;background:#167c53!important;color:#fff!important;box-shadow:0 2px 7px rgba(22,124,83,.22)!important}
+#betaErrorDialog .manual-direct-entry{flex:0 0 auto;display:grid;gap:6px;padding:9px 10px;border:1px solid #d8e5de;border-radius:10px;background:#fbfdfc}
+#betaErrorDialog .manual-direct-entry label{display:grid;gap:1px;color:#294b3e}
+#betaErrorDialog .manual-direct-entry label span{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}
+#betaErrorDialog .manual-direct-entry label small{font-size:9px;font-weight:500;color:#74827b;line-height:1.35}
+#betaErrorDialog .manual-direct-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}
+#betaErrorDialog #manualDirectValue{width:100%;min-width:0;box-sizing:border-box;border:1px solid #b9ccc2;border-radius:8px;background:#fff;padding:8px 9px;font:700 11px/1.25 system-ui;color:#193e30}
+#betaErrorDialog #manualDirectValue:disabled{background:#f1f3f2;color:#97a19c;cursor:not-allowed}
+#betaErrorDialog #manualDirectApply{min-height:34px;white-space:nowrap;padding:7px 10px}
+#betaErrorDialog .manual-field-buttons{min-height:120px}
+@media(max-height:760px){#betaErrorDialog .manual-building-tabs{max-height:78px}#betaErrorDialog .manual-direct-entry{padding:7px 8px}.manual-analysis-side-head small{display:none}}
+@media(max-width:700px){#betaErrorDialog .manual-direct-row{grid-template-columns:1fr}#betaErrorDialog #manualDirectApply{width:100%}}

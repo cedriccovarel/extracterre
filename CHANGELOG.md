@@ -450,3 +450,8 @@ Test réel sur `Xml_RSET_EC183200 BREUILLET V8.pdf` : 4 bâtiments annoncés →
 - RSENV : Chapitre 5 niveau bâtiment prioritaire pour Ic composant / chantier / énergie ; lots séparés du global.
 - Une ACV libre qui recopie Bbio/Cep/Tic reste une source secondaire de contrôle.
 - La consolidation tient désormais compte de `hierarchyRank` avant la confiance brute.
+
+
+## 2.2.7
+- Rend visibles les boutons de bâtiment de l’analyse manuelle.
+- Ajoute la saisie clavier directe des valeurs et l’application par bouton ou touche Entrée.

@@ -1051,33 +1051,54 @@ function renderManualAnalysisSidebar(){
   const fields=manualAnalysisFields();
   if(manualAnalysisState.field&&!fields.some(f=>f.key===manualAnalysisState.field))manualAnalysisState.field='';
   const bt=$('#manualBuildingTabs'),st=$('#manualSectionTabs'),fb=$('#manualFieldButtons'),target=$('#manualSelectedTarget');
-  if(bt)bt.innerHTML=buildings.map(b=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}">${escapeHtml(b)}</button>`).join('');
+  const buildingCount=$('#manualBuildingCount'),direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
+  if(buildingCount)buildingCount.textContent=`${buildings.length} bâtiment${buildings.length>1?'s':''}`;
+  if(bt)bt.innerHTML=buildings.map((b,i)=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}" title="${escapeHtml(b)}">${escapeHtml(b||`Bâtiment ${i+1}`)}</button>`).join('');
   if(st)st.innerHTML=Object.entries(MANUAL_ANALYSIS_SECTIONS).map(([key,cfg])=>`<button type="button" class="manual-section-tab ${key===manualAnalysisState.section?'active':''}" data-section="${key}">${escapeHtml(cfg.label)}</button>`).join('');
   if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=v!==undefined&&v!==null&&v!=='';return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):'À renseigner'}</strong></button>`;}).join('')||'<div class="empty-small">Aucun champ dans cette famille.</div>';
   const def=FIELD_MAP[manualAnalysisState.field];
-  if(target)target.innerHTML=def?`<span>Cible active</span><strong>${escapeHtml(manualAnalysisState.building)} · ${escapeHtml(def.label)}</strong><small>Surlignez maintenant la valeur dans le document à gauche.</small>`:'<span>Cible active</span><strong>Sélectionnez une donnée à renseigner</strong><small>Puis surlignez la valeur dans le PDF ou cliquez une cellule Excel.</small>';
+  if(target)target.innerHTML=def?`<span>Cible active</span><strong>${escapeHtml(manualAnalysisState.building)} · ${escapeHtml(def.label)}</strong><small>Surlignez la valeur à gauche, cliquez une cellule Excel ou saisissez-la manuellement ci-dessous.</small>`:'<span>Cible active</span><strong>Sélectionnez une donnée à renseigner</strong><small>Puis utilisez le document ou la saisie manuelle.</small>';
+  if(direct){
+    direct.disabled=!def;
+    direct.placeholder=def?`Saisir la valeur exacte pour « ${def.label} »`:'Choisissez d’abord un champ';
+    if(def&&document.activeElement!==direct){const current=manualAnalysisCurrentValue(manualAnalysisState.building,manualAnalysisState.field);direct.value=(current!==undefined&&current!==null)?String(current):'';}
+    if(!def)direct.value='';
+  }
+  if(directApply)directApply.disabled=!def;
   bt?.querySelectorAll('.manual-building-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.building=b.dataset.building||'Bâtiment unique';manualAnalysisState.field='';renderManualAnalysisSidebar();});
   st?.querySelectorAll('.manual-section-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.section=b.dataset.section||'thermal';manualAnalysisState.field='';renderManualAnalysisSidebar();});
-  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document.`:'';feedback.className='manual-analysis-feedback';}});
+  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document ou saisissez directement la bonne valeur.`:'';feedback.className='manual-analysis-feedback';}setTimeout(()=>$('#manualDirectValue')?.select?.(),0);});
 }
-function manualAnalysisAssignSelection(selectedText=betaLearningSelection?.selectedText||''){
+function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
   if(!manualAnalysisMode())return false;
   const feedback=$('#manualAnalysisFeedback'),building=manualAnalysisState.building,field=manualAnalysisState.field,def=FIELD_MAP[field];
   if(!def){if(feedback){feedback.textContent='Choisissez d’abord une donnée à renseigner dans le panneau de droite.';feedback.className='manual-analysis-feedback warn';}return false;}
-  const raw=String(selectedText??'').replace(/\s+/g,' ').trim(); if(!raw)return false;
-  let value=raw;
-  if(def.type==='number'){const n=betaParseCorrectedNumber(raw);if(n===null){if(feedback){feedback.textContent=`La sélection « ${raw} » ne contient pas de valeur numérique exploitable pour ${def.label}.`;feedback.className='manual-analysis-feedback error';}return false;}value=n;}
-  else if(field==='window_glazing')value=normalizeGlazingType(raw)||raw;
-  const key=`${building}|${field}`,previous=manualAnalysisCurrentValue(building,field),loc=betaLearningSelection?{...betaLearningSelection}:null,doc=betaLearningDoc();
+  const exact=String(raw??'').replace(/\s+/g,' ').trim();
+  if(!exact){if(feedback){feedback.textContent='Saisissez ou sélectionnez une valeur avant de l’appliquer.';feedback.className='manual-analysis-feedback warn';}return false;}
+  let value=exact;
+  if(def.type==='number'){const n=betaParseCorrectedNumber(exact);if(n===null){if(feedback){feedback.textContent=`La valeur « ${exact} » ne contient pas de nombre exploitable pour ${def.label}.`;feedback.className='manual-analysis-feedback error';}return false;}value=n;}
+  else if(field==='window_glazing')value=normalizeGlazingType(exact)||exact;
+  const key=`${building}|${field}`,previous=manualAnalysisCurrentValue(building,field),loc=location?{...location}:null,doc=betaLearningDoc();
   state.manualValues[key]=value;
-  state.manualSources[key]={docId:loc?.docId||doc?.id||'',fileName:loc?.document||doc?.name||'Analyse manuelle',page:loc?.page||Number($('#betaLearningPage')?.value)||1,excerpt:loc?.lineText||loc?.selectedText||raw,method:`manual:${loc?.selectionMode||'document-analysis'}`,provenanceNote:'Analyse manuelle par sélection documentaire'};
+  state.manualSources[key]=manualEntry
+    ? {docId:'',fileName:'Saisie manuelle',page:'',excerpt:exact,method:'manual:direct-entry',provenanceNote:'Analyse manuelle — valeur saisie directement'}
+    : {docId:loc?.docId||doc?.id||'',fileName:loc?.document||doc?.name||'Analyse manuelle',page:loc?.page||Number($('#betaLearningPage')?.value)||1,excerpt:loc?.lineText||loc?.selectedText||exact,method:`manual:${loc?.selectionMode||'document-analysis'}`,provenanceNote:'Analyse manuelle par sélection documentaire'};
   applyManualValues();
-  learn('manual_override',{building,field,label:def.label,previousValue:previous,newValue:value,source:'manual_document_analysis',highlight:loc},activeProject());
-  scheduleWorkspaceCheckpoint('analyse manuelle documentaire',80);
+  learn('manual_override',{building,field,label:def.label,previousValue:previous,newValue:value,source:manualEntry?'manual_direct_entry':'manual_document_analysis',highlight:loc},activeProject());
+  scheduleWorkspaceCheckpoint(manualEntry?'analyse manuelle saisie directe':'analyse manuelle documentaire',80);
   renderManualAnalysisSidebar();
   renderSummary(); renderOccurrences();
-  if(feedback){feedback.textContent=`✓ ${def.label} = ${formatValue(value)} · ${building}`;feedback.className='manual-analysis-feedback ok';}
+  if(feedback){feedback.textContent=`✓ ${def.label} = ${formatValue(value)} · ${building}${manualEntry?' · saisie manuelle':''}`;feedback.className='manual-analysis-feedback ok';}
   return true;
+}
+function manualAnalysisAssignSelection(selectedText=betaLearningSelection?.selectedText||''){
+  return manualAnalysisStoreValue(selectedText,{location:betaLearningSelection,manualEntry:false});
+}
+function manualAnalysisApplyDirectValue(){
+  const input=$('#manualDirectValue');
+  const ok=manualAnalysisStoreValue(input?.value||'',{manualEntry:true});
+  if(ok)setTimeout(()=>input?.select?.(),0);
+  return ok;
 }
 function openManualAnalysisDialog(){
   const docs=betaLearningDocs(),dlg=$('#betaErrorDialog');
@@ -1090,6 +1111,9 @@ function openManualAnalysisDialog(){
   if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
   manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'thermal',field:''};
   const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
+  const direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
+  if(direct){direct.value='';direct.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();manualAnalysisApplyDirectValue();}};}
+  if(directApply)directApply.onclick=manualAnalysisApplyDirectValue;
   betaLearningSelection=null;dlg.showModal();renderManualAnalysisSidebar();syncBetaLearningDocument(docs[0]?.id||'',null);
 }
 function setCorrectionDialogMode(){
