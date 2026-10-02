@@ -1,0 +1,13 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const app=fs.readFileSync(new URL('./js/app.js',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
+const css=fs.readFileSync(new URL('./styles.css',import.meta.url),'utf8');
+assert.match(app,/betaLearningIsSpreadsheet/);
+assert.match(app,/renderBetaSpreadsheetPreview/);
+assert.match(app,/betaSelectSpreadsheetCell/);
+assert.match(app,/selectionMode:'spreadsheet-cell'/);
+assert.match(app,/betaSetExactValueFromSelection\(selectedText\)/);
+assert.match(css,/beta-spreadsheet-grid/);
+assert.match(css,/beta-sheet-row-head/);
+assert.match(html,/Pour un tableur Excel/);
+console.log('OK v2.2.5 excel preview');
