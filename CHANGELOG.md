@@ -1,3 +1,12 @@
+## 2.2.9 — Rapprochement souple des colonnes collées depuis Excel
+
+- Le copier-coller Excel/Google Sheets n’exige plus que les en-têtes soient identiques aux anciens exports.
+- Ajout d’alias explicites pour les nouveaux intitulés OPERATIONS / CRM : `Opération: Code interne`, `Opportunité: Accepté le`, `Nom de la société: ...`, `Opération: Mentions`, `Opération: Performance`, `Opération: Profil choisi`, etc.
+- Normalisation des préfixes métier et rapprochement conservateur par similarité lorsque l’équivalence est claire.
+- Les intitulés ambigus ou correspondant à une donnée inexistante dans ExtracTerre restent volontairement non reconnus au lieu d’être rattachés au mauvais champ.
+- L’aperçu du collage distingue désormais les rapprochements souples avec le symbole `≈`.
+- Le journal `manual_paste` conserve le mode de rapprochement et son score pour faciliter les audits futurs.
+
 # Changelog
 
 ## 2.2.8 — Apprentissage depuis l'analyse manuelle

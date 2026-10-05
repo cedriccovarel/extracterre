@@ -1,4 +1,4 @@
-import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader} from './config.js';
+import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
 import {classifyDocument} from './classifier.js';
 import {readFile,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
@@ -476,11 +476,11 @@ function parseManualClipboard(raw=''){
   const split=line=>line.includes('\t')?line.split('\t'):(line.includes(';')?line.split(';'):[line]);
   let best={index:-1,count:0,cells:[],defs:[]};
   for(let i=0;i<Math.min(lines.length,8);i++){
-    const cells=split(lines[i]); const defs=cells.map(c=>matchFieldByHeader(c)); const count=defs.filter(Boolean).length;
-    if(count>best.count) best={index:i,count,cells,defs};
+    const cells=split(lines[i]); const matches=cells.map(c=>matchFieldByHeaderDetailed(c)); const defs=matches.map(m=>m?.def||null); const count=defs.filter(Boolean).length;
+    if(count>best.count) best={index:i,count,cells,defs,matches};
   }
   if(best.index<0||best.count===0) return {rows:[],columns:[],unrecognized:best.cells||[],recognized:0};
-  const columns=best.cells.map((header,i)=>({header:String(header||'').trim(),def:best.defs[i]||null,index:i}));
+  const columns=best.cells.map((header,i)=>({header:String(header||'').trim(),def:best.defs[i]||null,index:i,matchMode:best.matches?.[i]?.mode||'',matchScore:best.matches?.[i]?.score||0}));
   const rows=[];
   for(let i=best.index+1;i<lines.length;i++){
     const cells=split(lines[i]); const values={}; let nonEmpty=0;
@@ -514,17 +514,18 @@ function openManualDataDialog(){
 function renderManualPastePreview(parsed){
   const box=$('#manualDataPreview'); if(!box) return;
   if(!parsed.recognized){ box.innerHTML='<div class="empty-small">Collez au minimum une ligne d’en-têtes puis une ligne de données.</div>'; return; }
-  const recognized=parsed.columns.filter(c=>c.def).map(c=>c.def.label);
-  box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span><span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span>${escapeHtml(x)}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
+  const recognized=parsed.columns.filter(c=>c.def).map(c=>({label:c.def.label,mode:c.matchMode||'exact'}));
+  const flexible=recognized.filter(x=>x.mode!=='exact').length;
+  box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span>${flexible?`<span><b>${flexible}</b> rapprochement(s) souple(s)</span>`:''}<span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span title="${x.mode==='exact'?'Intitulé exact':'Intitulé rapproché automatiquement'}">${escapeHtml(x.label)}${x.mode==='exact'?'':' ≈'}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus (aucun équivalent existant suffisamment fiable) : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
 }
 function applyManualPaste(){
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
-  state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null}));
+  state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
   $('#manualDataDialog')?.close();
-  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
+  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label,matchMode:c.matchMode||'exact',matchScore:c.matchScore||1})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
   recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
