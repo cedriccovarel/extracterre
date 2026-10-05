@@ -1,3 +1,11 @@
+# Changelog
+
+## 2.2.8 — Apprentissage depuis l'analyse manuelle
+- Toute valeur affectée par surlignage PDF ou clic sur une cellule Excel depuis **Analyse manuelle** crée maintenant un événement `parser_location_learning`.
+- La position documentaire est immédiatement injectée dans la mémoire d'apprentissage locale via `reinforceLearningLocation`, avec le bâtiment, le champ, le type de document, la page/feuille, le texte et la géométrie disponibles.
+- Les affectations manuelles contribuent donc aux mêmes profils de localisation que les corrections d'erreur et peuvent améliorer les analyses suivantes après confirmations répétées.
+- Une valeur saisie entièrement au clavier est journalisée (`manual_analysis_direct_value`) et reste une correction fiable, mais ne renforce pas une position documentaire en l'absence de sélection dans une source.
+
 # v2.2.6 — analyse manuelle documentaire par bâtiment
 
 - Ajout d’un bouton **Analyse manuelle** dans le bloc « Analyse du projet ».

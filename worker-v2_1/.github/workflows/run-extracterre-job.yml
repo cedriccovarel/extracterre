@@ -1,0 +1,153 @@
+name: Analyse ExtracTerre distante
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "ID du job ExtracTerre"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    name: Analyse
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+      WORKER_SECRET: ${{ secrets.EXTRACTERRE_WORKER_SECRET }}
+      JOB_ID: ${{ inputs.job_id }}
+
+    steps:
+      - name: Recuperer le worker
+        uses: actions/checkout@v4
+
+      - name: Verifier la configuration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          for name in ["SUPABASE_URL","SUPABASE_PUBLISHABLE_KEY","WORKER_SECRET","JOB_ID"]:
+              value=os.environ.get(name,"").strip()
+              if not value:
+                  raise SystemExit(f"ERREUR : {name} est vide")
+              if not value.isascii():
+                  raise SystemExit(f"ERREUR : {name} contient un caractere non ASCII")
+          print("Configuration GitHub valide")
+          PY
+
+      - name: Installer les outils PDF et OCR
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng
+
+      - name: Recuperer le job et reconstituer le PDF prive
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error, urllib.parse
+          base=os.environ["SUPABASE_URL"].strip().rstrip("/")
+          key=os.environ["SUPABASE_PUBLISHABLE_KEY"].strip()
+          secret=os.environ["WORKER_SECRET"].strip()
+          job=os.environ["JOB_ID"].strip()
+          payload=json.dumps({"action":"claim","jobId":job}).encode()
+          req=urllib.request.Request(base+"/functions/v1/extracterre-worker-bridge",data=payload,method="POST",headers={"apikey":key,"x-extracterre-worker-secret":secret,"Content-Type":"application/json"})
+          try:
+              with urllib.request.urlopen(req,timeout=30) as r: data=json.loads(r.read().decode())
+          except urllib.error.HTTPError as e:
+              print(e.read().decode(errors="replace")); raise
+          if not data.get("ok"): raise SystemExit(str(data))
+          parts=data.get("inputParts") or []
+          if not parts: raise SystemExit("Aucune partie PDF fournie par le bridge")
+          with open("input.pdf","wb") as out:
+              for idx,part in enumerate(parts,1):
+                  url=str(part.get("url") or "")
+                  if not url.startswith("http"): url=urllib.parse.urljoin(base+"/",url)
+                  with urllib.request.urlopen(url,timeout=120) as r: out.write(r.read())
+                  print(f"Partie {idx}/{len(parts)} recue")
+          with open("claim.json","w",encoding="utf-8") as f: json.dump(data,f,ensure_ascii=False)
+          print("PDF prive reconstitue")
+          PY
+
+      - name: Extraire le texte et lancer OCR cible
+        shell: bash
+        run: |
+          OPTIONS="$(python3 - <<'PY'
+          import json
+          d=json.load(open('claim.json',encoding='utf-8'))
+          print(json.dumps(d.get('options') or {},ensure_ascii=False))
+          PY
+          )"
+          python3 worker/extract_pdf.py input.pdf read.json result.json --options "$OPTIONS"
+          gzip -9 -c read.json > read.json.gz
+          echo "Analyse distante terminee"
+          cat result.json
+
+      - name: Envoyer l index compact dans Supabase
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.parse
+          base=os.environ["SUPABASE_URL"].strip().rstrip("/")
+          key=os.environ["SUPABASE_PUBLISHABLE_KEY"].strip()
+          claim=json.load(open("claim.json",encoding="utf-8"))
+          upload=claim.get("resultUpload") or {}
+          path=str(upload.get("path") or "")
+          token=str(upload.get("token") or "")
+          if not path or not token: raise SystemExit("Autorisation upload resultat absente")
+          url=str(upload.get("signedUrl") or "")
+          if not url:
+              url=base+"/storage/v1/object/upload/sign/extracterre-temp/"+urllib.parse.quote(path,safe="/")+"?token="+urllib.parse.quote(token,safe="")
+          elif not url.startswith("http"):
+              url=urllib.parse.urljoin(base+"/",url)
+          data=open("read.json.gz","rb").read()
+          req=urllib.request.Request(url,data=data,method="PUT",headers={"apikey":key,"Content-Type":"application/gzip","Cache-Control":"max-age=300","x-upsert":"false"})
+          with urllib.request.urlopen(req,timeout=120) as r:
+              print("Index distant envoye :",r.status,len(data),"octets")
+          PY
+
+      - name: Marquer le job termine
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          base=os.environ["SUPABASE_URL"].strip().rstrip("/")
+          key=os.environ["SUPABASE_PUBLISHABLE_KEY"].strip()
+          secret=os.environ["WORKER_SECRET"].strip()
+          job=os.environ["JOB_ID"].strip()
+          claim=json.load(open("claim.json",encoding="utf-8"))
+          result=json.load(open("result.json",encoding="utf-8"))
+          payload=json.dumps({"action":"complete","jobId":job,"result":result,"readStoragePath":claim["resultUpload"]["path"],"readCompression":"gzip"}).encode()
+          req=urllib.request.Request(base+"/functions/v1/extracterre-worker-bridge",data=payload,method="POST",headers={"apikey":key,"x-extracterre-worker-secret":secret,"Content-Type":"application/json"})
+          with urllib.request.urlopen(req,timeout=30) as r:
+              data=json.loads(r.read().decode())
+          if not data.get("ok"): raise SystemExit(str(data))
+          print("Resultat enregistre dans Supabase")
+          PY
+
+      - name: Signaler une erreur a Supabase
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          try:
+              base=os.environ["SUPABASE_URL"].strip().rstrip("/")
+              payload=json.dumps({"action":"error","jobId":os.environ["JOB_ID"].strip(),"error":"Echec du worker GitHub v2.1"}).encode()
+              req=urllib.request.Request(base+"/functions/v1/extracterre-worker-bridge",data=payload,method="POST",headers={"apikey":os.environ["SUPABASE_PUBLISHABLE_KEY"].strip(),"x-extracterre-worker-secret":os.environ["WORKER_SECRET"].strip(),"Content-Type":"application/json"})
+              urllib.request.urlopen(req,timeout=15).read()
+          except Exception as exc:
+              print("Signalement erreur impossible :",type(exc).__name__)
+          PY
+
+      - name: Nettoyer le runner
+        if: always()
+        shell: bash
+        run: |
+          rm -f input.pdf read.json read.json.gz result.json claim.json

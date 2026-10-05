@@ -1,4 +1,4 @@
-# ExtracTerre v2.2.7
+# ExtracTerre v2.2.8
 
 Architecture spécialisée : déposer chaque document dans la zone correspondant à sa famille. Les RSET/RSEE, RT2012 et RSENV utilisent leurs parseurs structurés standardisés ; THCex, CCTP, DPGF, 3CL, DPE et ACV ont des routes dédiées ; Annexes garde l'analyse automatique générale.
 

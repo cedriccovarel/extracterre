@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.2.7 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.2.8 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.2.7';
+const APP_VERSION = '2.2.8';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -5991,6 +5991,28 @@ function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
     : {docId:loc?.docId||doc?.id||'',fileName:loc?.document||doc?.name||'Analyse manuelle',page:loc?.page||Number($('#betaLearningPage')?.value)||1,excerpt:loc?.lineText||loc?.selectedText||exact,method:`manual:${loc?.selectionMode||'document-analysis'}`,provenanceNote:'Analyse manuelle par sélection documentaire'};
   applyManualValues();
   learn('manual_override',{building,field,label:def.label,previousValue:previous,newValue:value,source:manualEntry?'manual_direct_entry':'manual_document_analysis',highlight:loc},activeProject());
+  // V2.2.8 — l'analyse manuelle alimente aussi la mémoire d'apprentissage.
+  // Une saisie directe est journalisée comme correction fiable, mais n'enseigne pas
+  // de position documentaire puisqu'aucune zone du document n'a été désignée.
+  if(manualEntry){
+    learn('manual_analysis_direct_value',{building,field,fieldLabel:def.label,previousValue:previous,newValue:value,enteredText:exact},activeProject());
+  }else if(loc?.docType){
+    const learnPayload={
+      field,fieldLabel:def.label||field,building,
+      docType:loc.docType,document:loc.document||doc?.name||'',page:loc.page||Number($('#betaLearningPage')?.value)||1,
+      pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,endLineIndex:loc.endLineIndex,lineRatio:loc.lineRatio,
+      lineText:loc.lineText||'',beforeLine:loc.beforeLine||'',afterLine:loc.afterLine||'',selectedText:loc.selectedText||exact,
+      selectionMode:loc.selectionMode||'manual-analysis',normalizedRects:loc.normalizedRects||[],bboxNormalized:loc.bboxNormalized||null,
+      correctedValue:value,operation:learningPayloadBase(activeProject()).operation,source:'manual_analysis'
+    };
+    recordLearningEvent('parser_location_learning',learnPayload,activeProject())
+      .then(async evt=>{
+        await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});
+        scheduleJournalUiRefresh();
+        renderLearningMemoryUi();
+      })
+      .catch(err=>console.warn('Manual analysis location learning failed',err));
+  }
   scheduleWorkspaceCheckpoint(manualEntry?'analyse manuelle saisie directe':'analyse manuelle documentaire',80);
   renderManualAnalysisSidebar();
   renderSummary(); renderOccurrences();
