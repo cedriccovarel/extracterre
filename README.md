@@ -1,21 +1,23 @@
-# ExtracTerre v2.2.10
+# ExtracTerre v2.2.3
+
+## v2.2.3 — Stock C/m² dans le volet Carbone
+- Nouveau champ canonique **Stock C/m²** (unité `kgC/m²`) dans le volet Carbone et dans l’export maître, qui passe à 168 colonnes.
+- Source automatique autorisée : **Analyse ACV** ; entrée manuelle toujours disponible.
+- Premier apprentissage embarqué : détection stricte du motif `Stockage carbone Stock,C (par m²) <valeur> kgC/m²`.
+- Garde-fou : la ligne `Stockage carbone Stock,C <valeur> kgC` totale n’est jamais utilisée pour ce champ.
+- Compatible avec la correction manuelle et le surlignage PDF/OCR existants.
 
 Architecture spécialisée : déposer chaque document dans la zone correspondant à sa famille. Les RSET/RSEE, RT2012 et RSENV utilisent leurs parseurs structurés standardisés ; THCex, CCTP, DPGF, 3CL, DPE et ACV ont des routes dédiées ; Annexes garde l'analyse automatique générale.
 
-## Analyse manuelle documentaire
-
-Le bouton **Analyse manuelle** du bloc « Analyse du projet » ouvre le même lecteur que la correction. Sélectionnez un bâtiment, puis l’onglet Thermique / Carbone / Enveloppe et enfin le champ à renseigner. La valeur surlignée dans le PDF ou la cellule cliquée dans Excel est affectée immédiatement à ce champ et conserve la provenance du document.
-
-
 # ExtracTerre v2.1.0 — analyse hybride locale + distante
 
-ExtracTerre v2.1.0 repart de la base **v1.1.23** et conserve les 167 champs, la mémoire d’apprentissage, les patchs, le journal, le Crible fin, les exports et les protections existantes.
+ExtracTerre v2.1.0 repart de la base **v1.1.23** et conserve les 168 champs, la mémoire d’apprentissage, les patchs, le journal, le Crible fin, les exports et les protections existantes.
 
 ## Nouveautés v2.1
 
 - Nouveau choix **Calcul : Hybride auto / Local / Serveur**.
 - En mode **Hybride auto**, les PDF lourds (seuil par défaut : 6 Mo) et l’OCR renforcé peuvent être lus sur le worker GitHub ; les petits PDF, XML et Excel restent locaux.
-- Le worker distant utilise Poppler + Tesseract pour la lecture lourde et renvoie uniquement un **index documentaire compact** ; les 167 champs continuent d’être parsés par le même moteur métier ExtracTerre dans le navigateur.
+- Le worker distant utilise Poppler + Tesseract pour la lecture lourde et renvoie uniquement un **index documentaire compact** ; les 168 champs continuent d’être parsés par le même moteur métier ExtracTerre dans le navigateur.
 - En mode automatique, une panne Cloud provoque une **bascule locale** au lieu de bloquer l’analyse.
 - Upload privé Supabase découpé en blocs de 45 MiB pour les PDF supérieurs à la limite unitaire du stockage ; plafond applicatif distant : 700 MiB.
 - Les PDF bruts sont supprimés du stockage temporaire après traitement ; l’index distant compressé est supprimé après récupération par ExtracTerre.
@@ -23,7 +25,7 @@ ExtracTerre v2.1.0 repart de la base **v1.1.23** et conserve les 167 champs, la 
 - Ajout du pack worker GitHub dans `worker-v2_1/`.
 - Correction métier **DH/DHmax U22Win** : le DHmax est désormais pris sur la même ligne/groupe que le DH maximal retenu.
 - Le moteur de patchs applique maintenant réellement `minAppVersion`.
-- Cache-busting, version d’interface et catalogue 167 champs harmonisés en `2.1.0`.
+- Cache-busting, version d’interface et catalogue 168 champs harmonisés en `2.1.0`.
 
 Pour activer le mode distant, suivre `DEPLOIEMENT_HYBRIDE_V2_1.md`. Sans déploiement Cloud, le mode **Local** continue de fonctionner comme la v1.1.23.
 
@@ -59,7 +61,7 @@ ExtracTerre ne repose plus sur un mot-clé isolé pour les champs sensibles. Le 
 
 # ExtracTerre v1.1.12
 
-Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
+Version stabilisée du moteur métier ExtracTerre : schéma 168 colonnes, routage par sources, saisie manuelle tracée, sauvegarde locale IndexedDB et analyse mémoire sécurisée.
 
 
 
@@ -67,13 +69,13 @@ Version stabilisée du moteur métier ExtracTerre : schéma 167 colonnes, routag
 
 ## v1.1.12 — correctif « page ne répond pas »
 
-Cette version corrige les blocages CPU du thread principal pendant l’analyse. Le regroupement des fragments PDF.js est désormais linéaire après tri, le dictionnaire des 167 champs utilise un index de tags précompilé, la recherche floue d’isolants n’effectue plus de balayage Levenshtein caractère par caractère, et la consolidation est indexée par champ+bâtiment. Le navigateur récupère également explicitement la main entre lecture, classification, extraction métier et checkpoint. Les règles métier et les 167 colonnes restent inchangées.
+Cette version corrige les blocages CPU du thread principal pendant l’analyse. Le regroupement des fragments PDF.js est désormais linéaire après tri, le dictionnaire des 168 champs utilise un index de tags précompilé, la recherche floue d’isolants n’effectue plus de balayage Levenshtein caractère par caractère, et la consolidation est indexée par champ+bâtiment. Le navigateur récupère également explicitement la main entre lecture, classification, extraction métier et checkpoint. Les règles métier et les 168 colonnes restent inchangées.
 
 ## v1.1.11 — Parseur Bao Evolution approfondi
 
 Cette version traite les rapports Bao Evolution / études thermiques de rénovation comme un format structuré à part entière. Le moteur distingue explicitement **ÉTAT INITIAL** et **ÉTAT APRÈS TRAVAUX**, lit les coefficients Ubat, les systèmes, l’enveloppe et les tableaux de consommations d’énergie primaire par poste.
 
-Le tableau Bao « Détails des consommations » alimente le **Cep avant travaux**, le **Cep après travaux final**, le Cep projet et les colonnes détaillées déjà disponibles (refroidissement, éclairage, auxiliaires ventilation/distribution et énergie électrique lorsque le bilan est mono-énergie). Les postes Chauffage, ECS et Autres usages, ainsi que le bilan GES, sont conservés comme données complémentaires avec page, provenance et contrôles de cohérence, sans créer de nouvelles colonnes dans le schéma de 167 champs.
+Le tableau Bao « Détails des consommations » alimente le **Cep avant travaux**, le **Cep après travaux final**, le Cep projet et les colonnes détaillées déjà disponibles (refroidissement, éclairage, auxiliaires ventilation/distribution et énergie électrique lorsque le bilan est mono-énergie). Les postes Chauffage, ECS et Autres usages, ainsi que le bilan GES, sont conservés comme données complémentaires avec page, provenance et contrôles de cohérence, sans créer de nouvelles colonnes dans le schéma de 168 champs.
 
 Garde-fous ajoutés : `Température intérieure` n’est jamais une `Tic` ; une période de construction n’est pas convertie en année exacte ; le matériau d’un volet n’est pas celui de la menuiserie ; une liste d’exemples de vecteurs n’est pas interprétée comme une énergie réellement utilisée ; `Double +15mm` ne devient jamais artificiellement une composition `4.x.4`. L’OCR ciblé est renforcé sur les pages Bao Ubat, bilan énergétique, GES, vitrages, parois et systèmes lorsque la couche texte est incomplète.
 
@@ -95,7 +97,7 @@ Chaque fichier chargé dispose désormais d’un bouton **👁 Aperçu** qui aff
 - Ajout de `SUPABASE_JOURNAL_SETUP.sql`, `JOURNAL_PARTAGE_SETUP.md` et `js/journal-config.js`. Une fois l’URL et la clé publique du projet renseignées dans `journal-config.js`, tous les ordinateurs utilisant le site partagent automatiquement le même historique.
 - Deux profils d’accès sont maintenant reconnus par empreinte cryptographique, sans secret en clair. Le profil propriétaire peut exporter le journal directement ; le profil équipe doit valider une seconde clé dédiée. Cette règle est aussi vérifiable côté base partagée.
 - Nouveau bouton **Pack d’amélioration**. Il génère un ZIP contenant le journal complet et des vues dédiées (`corrections_manuelles.json`, `validations_rejets.json`, `performances.json`, `donnees_manquantes.json`, `erreurs.json`).
-- Le pack contient `PROMPT_NOUVEAU_CHAT.md` : en joignant le pack et le dernier ZIP d’ExtracTerre dans un nouveau chat, la mission d’amélioration est déjà explicitée (fiabilité, couverture, rapidité, mémoire, OCR ciblé, non-régression et conservation des 167 colonnes).
+- Le pack contient `PROMPT_NOUVEAU_CHAT.md` : en joignant le pack et le dernier ZIP d’ExtracTerre dans un nouveau chat, la mission d’amélioration est déjà explicitée (fiabilité, couverture, rapidité, mémoire, OCR ciblé, non-régression et conservation des 168 colonnes).
 - Les PDF bruts ne sont ni copiés dans le journal local, ni transmis à la base partagée.
 
 ## v1.1.5 — Écran d’accueil sécurisé
@@ -104,8 +106,8 @@ ExtracTerre affiche désormais un écran d’accès avant de charger l’espace 
 
 ## v1.1.4 — Onglets métier, vitrage technique et Crible fin
 
-- Synthèse écran répartie en **Données générales**, **Thermique neuf**, **Thermique réno**, **Carbone neuf**, **Carbone réno** et **Structure & enveloppe**. Chaque onglet contient plusieurs tableaux courts afin d'éviter une grille de 167 colonnes à l'écran.
-- L'export Excel ne change pas : la feuille `Données par bâtiment` conserve les **167 colonnes** dans l'ordre de référence.
+- Synthèse écran répartie en **Données générales**, **Thermique neuf**, **Thermique réno**, **Carbone neuf**, **Carbone réno** et **Structure & enveloppe**. Chaque onglet contient plusieurs tableaux courts afin d'éviter une grille de 168 colonnes à l'écran.
+- L'export Excel ne change pas : la feuille `Données par bâtiment` conserve les **168 colonnes** dans l'ordre de référence.
 - `Menuiseries vitrage` privilégie la composition technique et normalise notamment `4/16/4 Argon`, `4-16Ar-4` et `4.16.4 Ar` en **`4.16.4 Ar`**.
 - Chaque PDF analysé affiche **🔎 Crible fin**. Le document choisi est seul relu en OCR maximal ; les propositions restent soumises à validation ✓ / ✕. Après restauration IndexedDB, le bouton reste visible et indique qu'il faut redéposer le PDF brut si celui-ci a été déchargé.
 - Les profils Sécurisé / Équilibré / Rapide, l'ETA globale et les checkpoints IndexedDB restent inchangés.
@@ -123,7 +125,7 @@ Le résultat consolidé complet n’est pas dupliqué dans IndexedDB : il est re
 
 ## v1.1.1 — Schéma métier stabilisé, priorités de sources et saisie Excel
 
-- **167 colonnes métier exactes** : la feuille principale Excel reprend strictement les intitulés et l'ordre du référentiel ExtracTerre.
+- **168 colonnes métier exactes** : la feuille principale Excel reprend strictement les intitulés et l'ordre du référentiel ExtracTerre.
 - Chaque colonne possède une **clé stable**, une **liste de tags/synonymes** et une **hiérarchie de sources**. Le catalogue complet est disponible dans `data/field-catalog.json`.
 - L'ordre des sources est désormais réel : à niveau de validation suffisant, la première source prioritaire gagne avant le score de confiance. Exemple : un Contrat peut primer sur un Livret d'opération, et un RSET sur un CCTP selon le champ.
 - Nouvelles familles documentaires reconnues : Contrat, Livret d'opération, CR de conception, CR environnemental, Choix des exigences, Descriptif du projet, RSENV/RSNV, Diagnostic et rapport d'imperméabilité. **RSET et RSEE sont distingués dans le routage** afin de respecter l'ordre de priorité propre à chaque champ, tout en partageant les parseurs techniques compatibles.
@@ -131,7 +133,7 @@ Le résultat consolidé complet n’est pas dupliqué dans IndexedDB : il est re
 - Les candidats entre **65 et 89 %** sont conservés dans une file de vérification ✓/✕ au lieu d'être jetés silencieusement. Le seuil de remplissage automatique reste **90 %**.
 - Contrôle de **complétude par document réglementaire** et affichage `Analyse technique terminée / Complétude`.
 - OCR Tesseract limité selon le profil choisi. Le profil Équilibré utilise **3 documents parallèles / 1 worker OCR** et reste le mode recommandé pour les gros lots.
-- **109/109 auto-tests** réussis, dont des tests contractuels sur les 167 colonnes, les tags, les en-têtes et l'ordre des sources.
+- **109/109 auto-tests** réussis, dont des tests contractuels sur les 168 colonnes, les tags, les en-têtes et l'ordre des sources.
 
 Application 100 % navigateur pour l'extraction structurée de données bâtiment depuis PDF / XML / Excel.
 
@@ -225,7 +227,7 @@ Les documents déjà analysés restent réutilisés sans être relus lors d’un
 - La dropzone accepte les dossiers complets et parcourt récursivement leurs sous-dossiers pour récupérer les PDF, XML, XLS et XLSX compatibles.
 - Le bouton **+ Ajouter un projet** ferme visuellement le projet courant, décharge ses fichiers binaires déjà analysés et ouvre un nouveau projet vide. Les résultats précédents restent visibles sous forme de blocs repliables.
 - Chaque projet peut être rouvert et complété ultérieurement sans réanalyser les documents déjà traités.
-- L'export Excel consolide tous les projets présents dans la session. La feuille principale conserve strictement les 167 colonnes métier ; le champ `Projet` fait partie de ce schéma et les métadonnées techniques restent dans les onglets de traçabilité.
+- L'export Excel consolide tous les projets présents dans la session. La feuille principale conserve strictement les 168 colonnes métier ; le champ `Projet` fait partie de ce schéma et les métadonnées techniques restent dans les onglets de traçabilité.
 
 
 ## Import Finder v1.0.13

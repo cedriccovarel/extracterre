@@ -1,3 +1,8 @@
+
+## v2.2.3 — Stock C/m² ACV
+- `test_v2_2_3_stock_c.mjs` vérifie l’extraction du Stock C/m² sur 4 bâtiments (50,4 ; 80,5 ; 77,0 ; 55,1 kgC/m²).
+- vérifie que le Stock,C total en kgC n’est pas confondu avec la valeur surfacique.
+- vérifie que le champ est autorisé dans la dropzone Analyse ACV et reste disponible pour saisie/surlignage manuel.
 # v1.1.16 — retours bêta du 14/09/2026
 
 - 147/147 auto-tests métier.
@@ -36,7 +41,7 @@ Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
 - profils propriétaire/équipe conservés uniquement sous forme d’empreintes PBKDF2 ;
 - seconde autorisation du pack conservée uniquement sous forme d’empreinte ;
 - aucune des clés d’accès fournies ne doit apparaître en clair dans les fichiers livrés ;
-- schéma métier toujours fixé à 167 colonnes ;
+- schéma métier toujours fixé à 168 colonnes ;
 - auto-tests moteur historiques toujours intégralement passants.
 
 ## Régressions v1.1.5
@@ -53,15 +58,15 @@ Les auto-tests sont exécutés au chargement et visibles dans **Diagnostics**.
 - normalisation `4-16Ar-4` -> `4.16.4 Ar` ;
 - priorité de la composition technique dans le parseur `Menuiseries vitrage` ;
 - présence du bouton **Crible fin** sur les PDF analysés ;
-- export Excel principal toujours basé sur les 167 champs, indépendamment des onglets d'affichage.
+- export Excel principal toujours basé sur les 168 champs, indépendamment des onglets d'affichage.
 
 ## Contrats v1.1.1
 
 En plus des régressions historiques, la v1.1.1 vérifie automatiquement :
 
-- exactement **167 champs** dans `FIELD_DEFS` ;
+- exactement **168 champs** dans `FIELD_DEFS` ;
 - au moins un tag/synonyme par champ ;
-- reconnaissance de chacun des 167 intitulés exacts comme en-tête ;
+- reconnaissance de chacun des 168 intitulés exacts comme en-tête ;
 - extraction générique de champs administratifs (`Code interne`, `Nom opération`) depuis un Contrat ;
 - priorité de l'ordre des sources sur le score de confiance (`Contrat` avant `Livret d'opération` lorsque la règle le demande) ;
 - maintien du seuil automatique à 90 % et conservation séparée des candidats intermédiaires ;
@@ -303,7 +308,7 @@ La suite historique `runSelfTests()` doit rester entièrement verte.
 Tests ajoutés dans `test_v2_1_hybrid.mjs` :
 
 - version applicative `2.1.0` ;
-- 167 champs strictement conservés dans `config.js`, `field-catalog.json` et `COLONNES_EXTRACTERRE.txt` ;
+- 168 champs strictement conservés dans `config.js`, `field-catalog.json` et `COLONNES_EXTRACTERRE.txt` ;
 - ordre des colonnes maître inchangé ;
 - choix automatique Local / Serveur selon format, taille et mode OCR ;
 - refus d’un patch dont `minAppVersion` est supérieur à la version courante ;
@@ -313,7 +318,3 @@ Tests ajoutés dans `test_v2_1_hybrid.mjs` :
 - conservation d’items positionnés dans l’index distant pour les parseurs de tableaux.
 
 La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et v1.1.23 restent verts.
-
-
-## v2.2.6
-- `node test_v2_2_6_manual_analysis.mjs` : présence du bouton Analyse manuelle, onglets bâtiment/famille, boutons de champs et affectation immédiate depuis PDF/Excel.

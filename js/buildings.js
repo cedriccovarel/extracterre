@@ -107,6 +107,8 @@ export function detectBuildings(doc){
       if(m){ raw=m[1]; quality='chapter2-id'; }
       // Les rapports logiciels utilisent souvent « 1.1. Bâtiment : BÂTIMENT A ».
       if(!raw){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s*:\s*(.+)$/i); if(m){raw=m[1];quality='building-heading';} }
+      // Synthèses ACV (ClimaWin notamment) : « 1. Bâtiment A », « 2. Bâtiment B - 1 » sans deux-points.
+      if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m){raw=m[1];quality='building-heading';} }
       if(!raw) continue;
       raw=cleanCandidate(raw);
       if(isGenericBuildingHeading(raw)){ genericSingleHeadingSeen=true; continue; }

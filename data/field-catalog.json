@@ -1,7 +1,7 @@
 {
-  "version": "2.1.1",
-  "generatedAt": "2026-09-11T15:42:09.296Z",
-  "count": 167,
+  "version": "2.2.3",
+  "generatedAt": "2026-10-05T17:02:00+02:00",
+  "count": 168,
   "fields": [
     {
       "position": 1,
@@ -3704,6 +3704,29 @@
     },
     {
       "position": 142,
+      "key": "stock_c_per_m2",
+      "label": "Stock C/m²",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Stock C/m²",
+        "Stockage carbone Stock,C (par m²)",
+        "Stock,C (par m²)",
+        "stockage carbone par m²",
+        "stock carbone par m²"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 143,
       "key": "ic_lot_1",
       "label": "IC composants lot 1",
       "family": "Carbone",
@@ -3729,7 +3752,7 @@
       }
     },
     {
-      "position": 143,
+      "position": 144,
       "key": "ic_lot_2",
       "label": "IC composants lot 2",
       "family": "Carbone",
@@ -3755,7 +3778,7 @@
       }
     },
     {
-      "position": 144,
+      "position": 145,
       "key": "ic_lot_3",
       "label": "IC composants lot 3",
       "family": "Carbone",
@@ -3781,7 +3804,7 @@
       }
     },
     {
-      "position": 145,
+      "position": 146,
       "key": "ic_lot_4",
       "label": "IC composants lot 4",
       "family": "Carbone",
@@ -3807,7 +3830,7 @@
       }
     },
     {
-      "position": 146,
+      "position": 147,
       "key": "ic_lot_5",
       "label": "IC composants lot 5",
       "family": "Carbone",
@@ -3833,7 +3856,7 @@
       }
     },
     {
-      "position": 147,
+      "position": 148,
       "key": "ic_lot_6",
       "label": "IC composants lot 6",
       "family": "Carbone",
@@ -3859,7 +3882,7 @@
       }
     },
     {
-      "position": 148,
+      "position": 149,
       "key": "ic_lot_7",
       "label": "IC composants lot 7",
       "family": "Carbone",
@@ -3885,7 +3908,7 @@
       }
     },
     {
-      "position": 149,
+      "position": 150,
       "key": "ic_lot_8",
       "label": "IC composants lot 8",
       "family": "Carbone",
@@ -3911,7 +3934,7 @@
       }
     },
     {
-      "position": 150,
+      "position": 151,
       "key": "ic_lot_9",
       "label": "IC composants lot 9",
       "family": "Carbone",
@@ -3937,7 +3960,7 @@
       }
     },
     {
-      "position": 151,
+      "position": 152,
       "key": "ic_lot_10",
       "label": "IC composants lot 10",
       "family": "Carbone",
@@ -3963,7 +3986,7 @@
       }
     },
     {
-      "position": 152,
+      "position": 153,
       "key": "ic_lot_11",
       "label": "IC composants lot 11",
       "family": "Carbone",
@@ -3989,7 +4012,7 @@
       }
     },
     {
-      "position": 153,
+      "position": 154,
       "key": "ic_lot_12",
       "label": "IC composants lot 12",
       "family": "Carbone",
@@ -4015,7 +4038,7 @@
       }
     },
     {
-      "position": 154,
+      "position": 155,
       "key": "ic_lot_13",
       "label": "IC composants lot 13",
       "family": "Carbone",
@@ -4041,7 +4064,7 @@
       }
     },
     {
-      "position": 155,
+      "position": 156,
       "key": "ic_energy",
       "label": "IC énergie bâtiment",
       "family": "Carbone",
@@ -4067,7 +4090,7 @@
       }
     },
     {
-      "position": 156,
+      "position": 157,
       "key": "ic_energy_heating",
       "label": "IC énergie chauffage",
       "family": "Carbone",
@@ -4091,7 +4114,7 @@
       }
     },
     {
-      "position": 157,
+      "position": 158,
       "key": "ic_energy_cooling",
       "label": "IC énergie refroidissement",
       "family": "Carbone",
@@ -4115,7 +4138,7 @@
       }
     },
     {
-      "position": 158,
+      "position": 159,
       "key": "ic_energy_ecs",
       "label": "IC énergie ECS",
       "family": "Carbone",
@@ -4139,7 +4162,7 @@
       }
     },
     {
-      "position": 159,
+      "position": 160,
       "key": "ic_energy_aux_vent",
       "label": "IC énergie auxiliaires ventilation",
       "family": "Carbone",
@@ -4163,7 +4186,7 @@
       }
     },
     {
-      "position": 160,
+      "position": 161,
       "key": "ic_energy_aux_dist",
       "label": "IC énergie auxiliaires distribution",
       "family": "Carbone",
@@ -4187,7 +4210,7 @@
       }
     },
     {
-      "position": 161,
+      "position": 162,
       "key": "ic_energy_mobility",
       "label": "IC énergie déplacements",
       "family": "Carbone",
@@ -4211,7 +4234,7 @@
       }
     },
     {
-      "position": 162,
+      "position": 163,
       "key": "dpe_energy_before",
       "label": "DPE Énergie avant travaux",
       "family": "DPE",
@@ -4235,7 +4258,7 @@
       }
     },
     {
-      "position": 163,
+      "position": 164,
       "key": "dpe_ges_before",
       "label": "DPE GES avant travaux",
       "family": "DPE",
@@ -4260,7 +4283,7 @@
       }
     },
     {
-      "position": 164,
+      "position": 165,
       "key": "dpe_energy_after",
       "label": "DPE Énergie après travaux final",
       "family": "DPE",
@@ -4284,7 +4307,7 @@
       }
     },
     {
-      "position": 165,
+      "position": 166,
       "key": "dpe_ges_after",
       "label": "DPE GES après travaux final",
       "family": "DPE",
@@ -4308,7 +4331,7 @@
       }
     },
     {
-      "position": 166,
+      "position": 167,
       "key": "enr",
       "label": "ENR oui/non",
       "family": "ENR",
@@ -4337,7 +4360,7 @@
       }
     },
     {
-      "position": 167,
+      "position": 168,
       "key": "enr_type",
       "label": "ENR type",
       "family": "ENR",

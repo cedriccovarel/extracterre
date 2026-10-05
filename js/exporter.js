@@ -12,7 +12,7 @@ export function exportProjectsExcel(projects,rules){
   const wb=XLSX.utils.book_new();
   const fields=FIELD_DEFS;
 
-  // La feuille principale respecte strictement le schéma métier demandé : 167 colonnes, mêmes intitulés, même ordre.
+  // La feuille principale respecte strictement le schéma métier demandé : 168 colonnes, mêmes intitulés, même ordre.
   const data=[fields.map(f=>f.label)];
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; })); } });
   const ws1=aoaSheet(data); autoWidth(ws1); XLSX.utils.book_append_sheet(wb,ws1,'Données par bâtiment');

@@ -1228,6 +1228,11 @@ function parseCarbon(doc){
     ['ic_components',/ic\s*composants?(?:\s+batiment)?/i],['ic_site',/ic\s*chantier/i],['ic_energy',/ic\s*[eé]nergie(?:\s+batiment)?/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], raw=normalizeText(line.text||''), ctx=normalizeText(lineWindow(page,i,1,2));
+    // Apprentissage initial ACV v2.2.3 : le stockage carbone surfacique est une donnée
+    // explicitement portée par la ligne « Stockage carbone Stock,C (par m²) ».
+    // La présence de « par m² » est obligatoire afin de ne jamais confondre avec le Stock,C total en kgC.
+    const stockC=raw.match(/stockage\s+carbone\s+stock\s*,?\s*c\s*\(\s*par\s+m(?:²|2)\s*\)\s*[:=]?\s*([-+]?\d+(?:[,.]\d+)?)\s*kg\s*c\s*\/\s*m(?:²|2)/i);
+    if(stockC){ const v=parseFrNumber(stockC[1]); if(v!==null) push(out,occ(doc,page,line,'stock_c_per_m2',v,'acv:stock-c-per-m2-seed-v1',0.999,'kgC/m²',{excerpt:ctx.slice(0,420),origin:'Étude ACV — Résultats ACV',provenanceNote:'Valeur lue sur la ligne explicite « Stockage carbone Stock,C (par m²) ».'})); }
     // Une occurrence carbone générique doit porter elle-même le libellé ET une valeur.
     // Les titres de chapitres, n° de lot et tableaux d'autres indicateurs ne sont jamais utilisés ici.
     const strongCarrier=/kg\s*(?:eq|éq)?\.?\s*co2|kgco2|[:=]/i.test(raw);
@@ -1245,7 +1250,7 @@ function parseCarbon(doc){
 }
 
 
-// Dictionnaire central des 167 colonnes ExtracTerre.
+// Dictionnaire central des 168 colonnes ExtracTerre.
 // Ce parseur reste volontairement strict : il exploite les couples libellé/valeur explicites
 // et les tableaux Excel, tandis que les parseurs RSET/RSEE/thermiques spécialisés gardent la priorité.
 function taggedValue(def,raw=''){
@@ -1261,7 +1266,7 @@ function taggedValue(def,raw=''){
   }
   return text.replace(/^[:=|;\-–—\s]+/,'').trim()||null;
 }
-// Index de tags précompilé : auparavant chaque ligne de chaque PDF reparcourait les 167 champs,
+// Index de tags précompilé : auparavant chaque ligne de chaque PDF reparcourait les 168 champs,
 // retriait leurs tags et les renormalisait. Sur un rapport dense cela pouvait monopoliser le thread
 // principal plusieurs secondes et déclencher « page ne répond pas ».
 const TAG_CACHE_BY_KEY=new Map();
@@ -1593,7 +1598,7 @@ const SPECIALIZED_ALLOWED_FIELDS=Object.freeze({
     'dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'
   ]),
   acv:new Set([
-    'project','operation','building','ic_components','ic_site',
+    'project','operation','building','ic_components','ic_site','stock_c_per_m2',
     'ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13',
     'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'
   ])

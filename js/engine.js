@@ -91,7 +91,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
   const finals=[]; const rows=[];
 
   // Index field+bâtiment : l'ancienne consolidation refiltrait toutes les occurrences pour chacun
-  // des 167 champs et chacun des bâtiments. Avec plusieurs centaines de dossiers cela pouvait
+  // des 168 champs et chacun des bâtiments. Avec plusieurs centaines de dossiers cela pouvait
   // bloquer le thread principal plusieurs secondes.
   const byFieldBuilding=new Map();
   for(const o of occurrences){
@@ -685,8 +685,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v1.1.1 : 167 colonnes exactes, chacune avec des tags reconnus.
-  assert('Schéma métier = 167 colonnes',FIELD_DEFS.length===167,String(FIELD_DEFS.length));
+  // Contrat de schéma v1.1.1 : 168 colonnes exactes, chacune avec des tags reconnus.
+  assert('Schéma métier = 168 colonnes',FIELD_DEFS.length===168,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));

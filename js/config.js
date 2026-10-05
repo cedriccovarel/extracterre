@@ -1,4 +1,4 @@
-export const APP_VERSION = '2.2.10';
+export const APP_VERSION = '2.2.3';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -180,6 +180,7 @@ export const FIELD_DEFS = [
   {key:"cep_after_final",label:"Cep après travaux final",family:"Performance énergétique",type:"number",tags:["Cep après travaux final", "Cep après", "Cep final", "Cep projet final", "total kWhEP/m² état après travaux", "total EP état après travaux", "bilan énergétique après travaux"] ,presence:false},
   {key:"ic_components",label:"IC composants bâtiment",family:"Carbone",type:"number",tags:["IC composants bâtiment", "IC composants", "Iccomposant", "IC construction composants"] ,presence:false},
   {key:"ic_site",label:"IC chantier",family:"Carbone",type:"number",tags:["IC chantier"] ,presence:false},
+  {key:"stock_c_per_m2",label:"Stock C/m²",family:"Carbone",type:"number",tags:["Stock C/m²", "Stockage carbone Stock,C (par m²)", "Stock,C (par m²)", "stockage carbone par m²", "stock carbone par m²"] ,presence:false},
   {key:"ic_lot_1",label:"IC composants lot 1",family:"Carbone",type:"number",tags:["IC composants lot 1", "IC lot 1", "lot 1 IC composants"] ,presence:false},
   {key:"ic_lot_2",label:"IC composants lot 2",family:"Carbone",type:"number",tags:["IC composants lot 2", "IC lot 2", "lot 2 IC composants"] ,presence:false},
   {key:"ic_lot_3",label:"IC composants lot 3",family:"Carbone",type:"number",tags:["IC composants lot 3", "IC lot 3", "lot 3 IC composants"] ,presence:false},
@@ -216,115 +217,7 @@ export function normalizeFieldHeader(value=''){
 }
 const HEADER_LOOKUP=new Map();
 for(const f of FIELD_DEFS) for(const tag of f.tags){ const n=normalizeFieldHeader(tag); if(n&&!HEADER_LOOKUP.has(n)) HEADER_LOOKUP.set(n,f.key); }
-
-// V2.2.9 — compatibilité souple des exports Excel successifs.
-// On conserve les intitulés historiques mais on accepte aussi les nouveaux noms
-// de colonnes CRM / OPERATIONS sans créer de nouveaux champs ExtracTerre.
-const HEADER_ALIASES={
-  'numero du contrat':'contract_number',
-  'operation code interne':'internal_code',
-  'statut':'contract_status',
-  'operation etape':'stage',
-  'opportunite accepte le':'case_accepted_date',
-  'date de creation de l affaire':'case_creation_date',
-  'date d activation':'contract_activation_date',
-  'nom de la societe societe principale nom de la societe':'owner_main_company',
-  'nom de la societe nom de la societe':'owner_company',
-  'nom de la societe hierarchie':'owner_hierarchy',
-  'opportunite nom de l affaire':'case_name',
-  'nom de l operation':'operation_name',
-  'departement de l operation':'department',
-  'referentiel':'reference_name',
-  'version':'reference_version',
-  'opportunite montant ht':'case_amount_ht',
-  'operation mentions':'mentions',
-  'operation performance':'performance',
-  'operation profil choisi':'selected_profile',
-  'date de decision ap':'certification_ap_date',
-  'date de decision de certification':'certification_cd_date',
-  'operation evaluation code interne':'evaluation_internal_code',
-  'operation evaluation statut':'evaluation_status',
-  'operation avancement de l operation':'progress_status',
-  'operation evaluation date de premiere reception du dossier':'evaluation_creation_date',
-  'annee':'construction_year',
-  'ecs apres travaux':'ecs',
-  'refroidissement apres travaux':'cooling',
-  'ventilation apres travaux':'ventilation',
-  'mode constructif':'structure',
-  'planchers hauts structure':'roof_structure',
-  'planchers hauts type isolant':'roof_insulation',
-  'parois verticales type d isolant':'wall_insulation',
-  'planchers bas type isolant':'floor_insulation',
-  'menuiseries exterieures materiau':'window_material',
-  'menuiseries exterieures vitrage':'window_glazing',
-  'menuiseries exterieures occultations':'window_shading',
-  'dh projet':'dh',
-  'tic projet':'tic',
-  'bbio projet':'bbio',
-  'cep projet':'cep',
-  'cep nr projet':'cepnr',
-  'cep,nr projet':'cepnr',
-  'cep nr max':'cepnr_max',
-  'cep,nr max':'cepnr_max',
-  'ubat initial':'ubat_before',
-  'ubat projet':'ubat_after',
-  'cep initial':'cep_before',
-  'ic composants batiment':'ic_components',
-  'dpe energie avant travaux':'dpe_energy_before',
-  'dpe energie apres travaux final':'dpe_energy_after',
-  'dpe ges avant travaux':'dpe_ges_before',
-  'dpe ges apres travaux final':'dpe_ges_after'
-};
-const NORMALIZED_HEADER_ALIASES=new Map(Object.entries(HEADER_ALIASES).map(([k,v])=>[normalizeFieldHeader(k),v]));
-
-const HEADER_STOPWORDS=new Set(['de','du','des','la','le','les','l','d','un','une','pour','operation','opportunite','certification','evaluation','societe','nom']);
-function headerTokens(value=''){
-  return normalizeFieldHeader(value).replace(/[,:/.-]+/g,' ').split(/\s+/).filter(t=>t&&t.length>1&&!HEADER_STOPWORDS.has(t));
-}
-function headerVariants(value=''){
-  const n=normalizeFieldHeader(value),out=new Set([n]);
-  const prefixes=['operation ','opportunite ','certification ','evaluation ','operation evaluation ','nom de la societe ','maitre d ouvrage ','affaire ','contrat '];
-  for(const p of prefixes) if(n.startsWith(p)) out.add(n.slice(p.length).trim());
-  out.add(n.replace(/\bde l operation\b/g,'').replace(/\bde la societe\b/g,'').replace(/\s+/g,' ').trim());
-  return [...out].filter(Boolean);
-}
-const HEADER_CANDIDATES=[];
-for(const f of FIELD_DEFS){
-  const seen=new Set();
-  for(const label of [f.label,...f.tags]) for(const variant of headerVariants(label)) if(variant&&!seen.has(variant)){seen.add(variant);HEADER_CANDIDATES.push({key:f.key,text:variant,tokens:headerTokens(variant)});}
-}
-function fuzzyHeaderMatch(header=''){
-  const src=headerTokens(header); if(src.length<2)return null;
-  const srcSet=new Set(src); let best=null,second=0;
-  // Ces qualificatifs changent le sens métier. Un en-tête « max », « seuil 2028 »,
-  // « avant », etc. ne doit jamais être rapproché d'un champ qui ne porte pas
-  // le même qualificatif uniquement parce que le reste du libellé se ressemble.
-  const semanticQualifiers=new Set(['max','maximum','min','minimum','seuil','initial','avant','apres','final','projet','ref','reference','2025','2028','2031']);
-  const srcQual=[...srcSet].filter(t=>semanticQualifiers.has(t));
-  for(const c of HEADER_CANDIDATES){
-    if(!c.tokens.length)continue; const cand=new Set(c.tokens);
-    if(srcQual.some(q=>!cand.has(q)))continue;
-    const inter=[...srcSet].filter(t=>cand.has(t)).length;
-    if(!inter)continue;
-    const union=new Set([...srcSet,...cand]).size;
-    const jacc=inter/Math.max(1,union),coverage=inter/Math.max(1,Math.min(srcSet.size,cand.size));
-    const score=.58*coverage+.42*jacc;
-    if(!best||score>best.score){second=best?.score||0;best={key:c.key,score};} else if(score>second)second=score;
-  }
-  if(!best||best.score<.84||(best.score-second)<.08)return null;
-  return best;
-}
-export function matchFieldByHeaderDetailed(header=''){
-  const normalized=normalizeFieldHeader(header);
-  let key=HEADER_LOOKUP.get(normalized); if(key)return {def:FIELD_MAP[key],mode:'exact',score:1};
-  key=NORMALIZED_HEADER_ALIASES.get(normalized); if(key)return {def:FIELD_MAP[key],mode:'alias',score:.99};
-  for(const variant of headerVariants(header)){
-    key=HEADER_LOOKUP.get(variant); if(key)return {def:FIELD_MAP[key],mode:'normalized',score:.97};
-    key=NORMALIZED_HEADER_ALIASES.get(variant); if(key)return {def:FIELD_MAP[key],mode:'alias',score:.96};
-  }
-  const fuzzy=fuzzyHeaderMatch(header); return fuzzy?{def:FIELD_MAP[fuzzy.key],mode:'fuzzy',score:fuzzy.score}:null;
-}
-export function matchFieldByHeader(header=''){ return matchFieldByHeaderDetailed(header)?.def||null; }
+export function matchFieldByHeader(header=''){ const key=HEADER_LOOKUP.get(normalizeFieldHeader(header)); return key?FIELD_MAP[key]:null; }
 
 const SOURCE_ADMIN=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.DESIGN_REPORT,DOC_TYPES.MANUAL];
 const SOURCE_CERT=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.REQUIREMENTS,DOC_TYPES.ENV_REPORT,DOC_TYPES.MANUAL];
@@ -358,6 +251,7 @@ for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_typ
 for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON,DOC_TYPES.DIAGNOSTIC]);
 for(const key of ['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL],[DOC_TYPES.DIAGNOSTIC]);
 for(const key of ['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
+DEFAULT_SOURCE_RULES.stock_c_per_m2=ordered([DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
 for(const key of ['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);

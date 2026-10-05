@@ -80,7 +80,7 @@ Modes :
 4. Le worker reconstitue le PDF, extrait le texte natif et lance l'OCR ciblé si nécessaire.
 5. Le worker renvoie `read.json.gz`, pas le PDF.
 6. Le bridge passe le job à `completed` et supprime les morceaux PDF bruts.
-7. ExtracTerre récupère l'index compact, le décompresse et applique le moteur métier habituel des 167 champs.
+7. ExtracTerre récupère l'index compact, le décompresse et applique le moteur métier habituel des 168 champs.
 8. `extracterre-finish-job` supprime l'index distant après récupération.
 
 ## 7. Test conseillé après déploiement

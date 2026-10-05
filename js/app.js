@@ -1,4 +1,4 @@
-import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
+import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader} from './config.js';
 import {classifyDocument} from './classifier.js';
 import {readFile,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
@@ -40,7 +40,7 @@ const SPECIALIZED_EXPECTED=Object.freeze({
   dpgf:['roof_insulation','wall_insulation','floor_insulation','window_material','window_glazing','heating_mode_after','ecs','ventilation'],
   '3cl':['shab','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','heating_mode_after','ecs_vector_before','ecs','ventilation'],
   dpe:['shab','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'],
-  acv:['ic_components','ic_site','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']
+  acv:['ic_components','ic_site','stock_c_per_m2','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']
 });
 function specializedConfig(family){return SPECIALIZED_FAMILIES[family]||SPECIALIZED_FAMILIES.annex;}
 function classifyForSelectedFamily(doc){
@@ -149,7 +149,7 @@ const RESULT_VIEWS = Object.freeze({
     {title:'Consommations par poste / énergie',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']}
   ]},
   carbon:{label:'Carbone',groups:[
-    {title:'IC composants & chantier',keys:['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
+    {title:'IC composants & chantier',keys:['ic_components','ic_site','stock_c_per_m2','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
     {title:'IC énergie',keys:['ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   envelope:{label:'Structure & enveloppe',groups:[
@@ -476,11 +476,11 @@ function parseManualClipboard(raw=''){
   const split=line=>line.includes('\t')?line.split('\t'):(line.includes(';')?line.split(';'):[line]);
   let best={index:-1,count:0,cells:[],defs:[]};
   for(let i=0;i<Math.min(lines.length,8);i++){
-    const cells=split(lines[i]); const matches=cells.map(c=>matchFieldByHeaderDetailed(c)); const defs=matches.map(m=>m?.def||null); const count=defs.filter(Boolean).length;
-    if(count>best.count) best={index:i,count,cells,defs,matches};
+    const cells=split(lines[i]); const defs=cells.map(c=>matchFieldByHeader(c)); const count=defs.filter(Boolean).length;
+    if(count>best.count) best={index:i,count,cells,defs};
   }
   if(best.index<0||best.count===0) return {rows:[],columns:[],unrecognized:best.cells||[],recognized:0};
-  const columns=best.cells.map((header,i)=>({header:String(header||'').trim(),def:best.defs[i]||null,index:i,matchMode:best.matches?.[i]?.mode||'',matchScore:best.matches?.[i]?.score||0}));
+  const columns=best.cells.map((header,i)=>({header:String(header||'').trim(),def:best.defs[i]||null,index:i}));
   const rows=[];
   for(let i=best.index+1;i<lines.length;i++){
     const cells=split(lines[i]); const values={}; let nonEmpty=0;
@@ -514,18 +514,17 @@ function openManualDataDialog(){
 function renderManualPastePreview(parsed){
   const box=$('#manualDataPreview'); if(!box) return;
   if(!parsed.recognized){ box.innerHTML='<div class="empty-small">Collez au minimum une ligne d’en-têtes puis une ligne de données.</div>'; return; }
-  const recognized=parsed.columns.filter(c=>c.def).map(c=>({label:c.def.label,mode:c.matchMode||'exact'}));
-  const flexible=recognized.filter(x=>x.mode!=='exact').length;
-  box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span>${flexible?`<span><b>${flexible}</b> rapprochement(s) souple(s)</span>`:''}<span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span title="${x.mode==='exact'?'Intitulé exact':'Intitulé rapproché automatiquement'}">${escapeHtml(x.label)}${x.mode==='exact'?'':' ≈'}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus (aucun équivalent existant suffisamment fiable) : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
+  const recognized=parsed.columns.filter(c=>c.def).map(c=>c.def.label);
+  box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span><span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span>${escapeHtml(x)}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
 }
 function applyManualPaste(){
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
-  state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''}));
+  state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
   $('#manualDataDialog')?.close();
-  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label,matchMode:c.matchMode||'exact',matchScore:c.matchScore||1})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
+  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
   recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
@@ -1020,137 +1019,9 @@ function renderSummary(){
 
 let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
-
-const MANUAL_ANALYSIS_SECTIONS={
-  general:{label:'Généralités',families:new Set(['Administration','Programme','Certification & exigences'])},
-  thermal:{label:'Thermique',families:new Set(['Performance énergétique','Confort d’été','Systèmes','DPE','ENR'])},
-  carbon:{label:'Carbone',families:new Set(['Carbone'])},
-  envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
-};
-let manualAnalysisState={building:'',section:'general',field:''};
-function manualAnalysisMode(){ return $('#betaErrorDialog')?.dataset.mode==='manual'; }
-function manualAnalysisBuildings(){
-  const fromResult=(state.result?.rows||[]).map(r=>r.building).filter(Boolean);
-  if(fromResult.length)return unique(fromResult);
-  const fromDocs=state.docs.flatMap(d=>d.buildings?.names||[]).filter(Boolean);
-  return unique(fromDocs.length?fromDocs:['Bâtiment unique']);
-}
-function manualAnalysisFields(section=manualAnalysisState.section){
-  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general;
-  return FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family));
-}
-function manualAnalysisCurrentValue(building,field){
-  const key=`${building}|${field}`;
-  if(Object.prototype.hasOwnProperty.call(state.manualValues||{},key))return state.manualValues[key];
-  const row=state.result?.rows?.find(r=>r.building===building);
-  return row?.[field];
-}
-function renderManualAnalysisSidebar(){
-  const side=$('#manualAnalysisSidebar'); if(!side)return;
-  const buildings=manualAnalysisBuildings();
-  if(!buildings.includes(manualAnalysisState.building))manualAnalysisState.building=buildings[0]||'Bâtiment unique';
-  if(!MANUAL_ANALYSIS_SECTIONS[manualAnalysisState.section])manualAnalysisState.section='general';
-  const fields=manualAnalysisFields();
-  if(manualAnalysisState.field&&!fields.some(f=>f.key===manualAnalysisState.field))manualAnalysisState.field='';
-  const bt=$('#manualBuildingTabs'),st=$('#manualSectionTabs'),fb=$('#manualFieldButtons'),target=$('#manualSelectedTarget');
-  const buildingCount=$('#manualBuildingCount'),direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
-  if(buildingCount)buildingCount.textContent=`${buildings.length} bâtiment${buildings.length>1?'s':''}`;
-  if(bt)bt.innerHTML=buildings.map((b,i)=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}" title="${escapeHtml(b)}">${escapeHtml(b||`Bâtiment ${i+1}`)}</button>`).join('');
-  if(st)st.innerHTML=Object.entries(MANUAL_ANALYSIS_SECTIONS).map(([key,cfg])=>`<button type="button" class="manual-section-tab ${key===manualAnalysisState.section?'active':''}" data-section="${key}">${escapeHtml(cfg.label)}</button>`).join('');
-  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=v!==undefined&&v!==null&&v!=='';return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):'À renseigner'}</strong></button>`;}).join('')||'<div class="empty-small">Aucun champ dans cette famille.</div>';
-  const def=FIELD_MAP[manualAnalysisState.field];
-  if(target)target.innerHTML=def?`<span>Cible active</span><strong>${escapeHtml(manualAnalysisState.building)} · ${escapeHtml(def.label)}</strong><small>Surlignez la valeur à gauche, cliquez une cellule Excel ou saisissez-la manuellement ci-dessous.</small>`:'<span>Cible active</span><strong>Sélectionnez une donnée à renseigner</strong><small>Puis utilisez le document ou la saisie manuelle.</small>';
-  if(direct){
-    direct.disabled=!def;
-    direct.placeholder=def?`Saisir la valeur exacte pour « ${def.label} »`:'Choisissez d’abord un champ';
-    if(def&&document.activeElement!==direct){const current=manualAnalysisCurrentValue(manualAnalysisState.building,manualAnalysisState.field);direct.value=(current!==undefined&&current!==null)?String(current):'';}
-    if(!def)direct.value='';
-  }
-  if(directApply)directApply.disabled=!def;
-  bt?.querySelectorAll('.manual-building-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.building=b.dataset.building||'Bâtiment unique';manualAnalysisState.field='';renderManualAnalysisSidebar();});
-  st?.querySelectorAll('.manual-section-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.section=b.dataset.section||'thermal';manualAnalysisState.field='';renderManualAnalysisSidebar();});
-  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document ou saisissez directement la bonne valeur.`:'';feedback.className='manual-analysis-feedback';}setTimeout(()=>$('#manualDirectValue')?.select?.(),0);});
-}
-function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
-  if(!manualAnalysisMode())return false;
-  const feedback=$('#manualAnalysisFeedback'),building=manualAnalysisState.building,field=manualAnalysisState.field,def=FIELD_MAP[field];
-  if(!def){if(feedback){feedback.textContent='Choisissez d’abord une donnée à renseigner dans le panneau de droite.';feedback.className='manual-analysis-feedback warn';}return false;}
-  const exact=String(raw??'').replace(/\s+/g,' ').trim();
-  if(!exact){if(feedback){feedback.textContent='Saisissez ou sélectionnez une valeur avant de l’appliquer.';feedback.className='manual-analysis-feedback warn';}return false;}
-  let value=exact;
-  if(def.type==='number'){const n=betaParseCorrectedNumber(exact);if(n===null){if(feedback){feedback.textContent=`La valeur « ${exact} » ne contient pas de nombre exploitable pour ${def.label}.`;feedback.className='manual-analysis-feedback error';}return false;}value=n;}
-  else if(field==='window_glazing')value=normalizeGlazingType(exact)||exact;
-  const key=`${building}|${field}`,previous=manualAnalysisCurrentValue(building,field),loc=location?{...location}:null,doc=betaLearningDoc();
-  state.manualValues[key]=value;
-  state.manualSources[key]=manualEntry
-    ? {docId:'',fileName:'Saisie manuelle',page:'',excerpt:exact,method:'manual:direct-entry',provenanceNote:'Analyse manuelle — valeur saisie directement'}
-    : {docId:loc?.docId||doc?.id||'',fileName:loc?.document||doc?.name||'Analyse manuelle',page:loc?.page||Number($('#betaLearningPage')?.value)||1,excerpt:loc?.lineText||loc?.selectedText||exact,method:`manual:${loc?.selectionMode||'document-analysis'}`,provenanceNote:'Analyse manuelle par sélection documentaire'};
-  applyManualValues();
-  learn('manual_override',{building,field,label:def.label,previousValue:previous,newValue:value,source:manualEntry?'manual_direct_entry':'manual_document_analysis',highlight:loc},activeProject());
-  // V2.2.8 — l'analyse manuelle alimente aussi la mémoire d'apprentissage.
-  // Une saisie directe est journalisée comme correction fiable, mais n'enseigne pas
-  // de position documentaire puisqu'aucune zone du document n'a été désignée.
-  if(manualEntry){
-    learn('manual_analysis_direct_value',{building,field,fieldLabel:def.label,previousValue:previous,newValue:value,enteredText:exact},activeProject());
-  }else if(loc?.docType){
-    const learnPayload={
-      field,fieldLabel:def.label||field,building,
-      docType:loc.docType,document:loc.document||doc?.name||'',page:loc.page||Number($('#betaLearningPage')?.value)||1,
-      pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,endLineIndex:loc.endLineIndex,lineRatio:loc.lineRatio,
-      lineText:loc.lineText||'',beforeLine:loc.beforeLine||'',afterLine:loc.afterLine||'',selectedText:loc.selectedText||exact,
-      selectionMode:loc.selectionMode||'manual-analysis',normalizedRects:loc.normalizedRects||[],bboxNormalized:loc.bboxNormalized||null,
-      correctedValue:value,operation:learningPayloadBase(activeProject()).operation,source:'manual_analysis'
-    };
-    recordLearningEvent('parser_location_learning',learnPayload,activeProject())
-      .then(async evt=>{
-        await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});
-        scheduleJournalUiRefresh();
-        renderLearningMemoryUi();
-      })
-      .catch(err=>console.warn('Manual analysis location learning failed',err));
-  }
-  scheduleWorkspaceCheckpoint(manualEntry?'analyse manuelle saisie directe':'analyse manuelle documentaire',80);
-  renderManualAnalysisSidebar();
-  renderSummary(); renderOccurrences();
-  if(feedback){feedback.textContent=`✓ ${def.label} = ${formatValue(value)} · ${building}${manualEntry?' · saisie manuelle':''}`;feedback.className='manual-analysis-feedback ok';}
-  return true;
-}
-function manualAnalysisAssignSelection(selectedText=betaLearningSelection?.selectedText||''){
-  return manualAnalysisStoreValue(selectedText,{location:betaLearningSelection,manualEntry:false});
-}
-function manualAnalysisApplyDirectValue(){
-  const input=$('#manualDirectValue');
-  const ok=manualAnalysisStoreValue(input?.value||'',{manualEntry:true});
-  if(ok)setTimeout(()=>input?.select?.(),0);
-  return ok;
-}
-function openManualAnalysisDialog(){
-  const docs=betaLearningDocs(),dlg=$('#betaErrorDialog');
-  if(!dlg)return;
-  if(!docs.length){toast('Ajoutez et lisez au moins un PDF ou tableur avant l’analyse manuelle.','warn');return;}
-  dlg.dataset.mode='manual'; dlg.dataset.field=''; dlg.dataset.building='';
-  $('#betaErrorTitle').textContent='Analyse manuelle du projet';
-  $('#betaErrorIntro').textContent='Choisissez un bâtiment et un champ à droite, puis surlignez la valeur dans le PDF ou cliquez une cellule du tableur. La donnée est affectée immédiatement.';
-  const correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
-  if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
-  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'general',field:''};
-  const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
-  const direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
-  if(direct){direct.value='';direct.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();manualAnalysisApplyDirectValue();}};}
-  if(directApply)directApply.onclick=manualAnalysisApplyDirectValue;
-  betaLearningSelection=null;dlg.showModal();renderManualAnalysisSidebar();syncBetaLearningDocument(docs[0]?.id||'',null);
-}
-function setCorrectionDialogMode(){
-  const dlg=$('#betaErrorDialog'),correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
-  if(dlg)dlg.dataset.mode='correction';if(correction)correction.hidden=false;if(manual)manual.hidden=true;if(submit)submit.hidden=false;if(cancel)cancel.textContent='Annuler';
-}
-
 function betaLearningDocs(){ return (activeProject()?.docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length); }
 function betaLearningDoc(){ const id=$('#betaLearningDocument')?.value||''; return betaLearningDocs().find(d=>d.id===id)||null; }
 function betaLearningIsPdf(doc){ return !!doc&&/\.pdf$/i.test(doc.name||''); }
-function betaLearningIsSpreadsheet(doc){ return !!doc&&(doc.read?.kind==='spreadsheet'||/\.(xlsx?|xls)$/i.test(doc.name||'')); }
-function betaExcelColumnLabel(index){ let n=Number(index)||0,out=''; do{out=String.fromCharCode(65+(n%26))+out;n=Math.floor(n/26)-1;}while(n>=0);return out; }
-function betaSpreadsheetCellRef(rowIndex,colIndex){ return `${betaExcelColumnLabel(colIndex)}${Number(rowIndex)+1}`; }
 function betaPdfStatus(message='',kind=''){ const el=$('#betaPdfStatus'); if(!el)return; el.textContent=message; el.className=`beta-pdf-status${kind?` ${kind}`:''}`; }
 async function disposeBetaPdfPreview({keepOcr=false}={}){
   betaPdfPreviewState.renderToken++;
@@ -1215,9 +1086,9 @@ async function renderBetaPdfPage({forceMode='native'}={}){
   const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,stage=$('#betaPdfViewport'),pageWrap=$('#betaPdfPage'),canvas=$('#betaPdfCanvas'),textLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText');
   betaLearningSelection=null; betaClearSavedHighlight(); const out=$('#betaLearningSelection'); if(out)out.textContent='Aucun surlignage sélectionné.';
   if(!doc||!stage||!pageWrap||!canvas||!textLayer||!fallback)return;
-  fallback.hidden=true; fallback.classList.toggle('beta-spreadsheet-mode',betaLearningIsSpreadsheet(doc)); stage.hidden=false; textLayer.innerHTML=''; betaPdfStatus('Préparation de la page…');
+  fallback.hidden=true; stage.hidden=false; textLayer.innerHTML=''; betaPdfStatus('Préparation de la page…');
   if(!betaLearningIsPdf(doc)){
-    stage.hidden=true; fallback.hidden=false; renderBetaLearningTextFallback(doc,pageNo); betaPdfStatus(betaLearningIsSpreadsheet(doc)?'Mode tableur : cliquez une cellule ou sélectionnez son contenu.':'Mode texte : ce document n’est pas un PDF.','ok'); return;
+    stage.hidden=true; fallback.hidden=false; renderBetaLearningTextFallback(doc,pageNo); betaPdfStatus('Mode texte : ce document n’est pas un PDF.'); return;
   }
   if(!doc.file){ stage.hidden=true; fallback.hidden=false; fallback.innerHTML='<div class="empty-small">Le PDF a été restauré depuis une session précédente. Redéposez le fichier pour surligner directement dans la page.</div>'; betaPdfStatus('PDF à redéposer','warn'); return; }
   try{
@@ -1234,48 +1105,14 @@ async function renderBetaPdfPage({forceMode='native'}={}){
     try{page.cleanup?.();}catch{}
   }catch(err){ if(err?.name==='RenderingCancelledException')return; console.error('Correction PDF preview',err); stage.hidden=true;fallback.hidden=false;renderBetaLearningTextFallback(doc,pageNo);betaPdfStatus(`Aperçu PDF impossible : ${err?.message||err}`,'error'); }
 }
-function betaSelectSpreadsheetCell(cell){
-  if(!cell)return;
-  const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0];
-  const selectedText=String(cell.dataset.value??cell.textContent??'').trim(); if(!selectedText)return;
-  const rowIndex=Number(cell.dataset.rowIndex),colIndex=Number(cell.dataset.colIndex),lineIndex=Number(cell.dataset.lineIndex); const lines=page?.lines||[]; const pos=lines.findIndex(l=>Number(l.index)===lineIndex); const line=pos>=0?lines[pos]:null; const cellRef=cell.dataset.cellRef||betaSpreadsheetCellRef(rowIndex,colIndex);
-  $('#betaLearningText')?.querySelectorAll('.beta-spreadsheet-cell-selected').forEach(el=>el.classList.remove('beta-spreadsheet-cell-selected')); cell.classList.add('beta-spreadsheet-cell-selected');
-  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:Number.isFinite(lineIndex)?lineIndex:null,endLineIndex:Number.isFinite(lineIndex)?lineIndex:null,lineCount:lines.length,selectedText,lineText:line?.text||selectedText,beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null,selectionMode:'spreadsheet-cell',cellRef,cellRow:Number.isFinite(rowIndex)?rowIndex+1:null,cellColumn:Number.isFinite(colIndex)?betaExcelColumnLabel(colIndex):'',normalizedRects:[],bboxNormalized:null};
-  $('#betaLearningSelection').textContent=`Cellule ${cellRef} : « ${selectedText} » · ${doc?.name||''}${page?.sheet?` · ${page.sheet}`:''}`; betaSetExactValueFromSelection(selectedText); $('#betaErrorFeedback').textContent=''; manualAnalysisAssignSelection(selectedText);
-}
-function renderBetaSpreadsheetPreview(doc,pageNo){
-  const box=$('#betaLearningText'); if(!box)return; const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){box.innerHTML='<div class="empty-small">Aucune feuille exploitable.</div>';return;}
-  const lines=(page.lines||[]).filter(l=>Array.isArray(l.cells)); if(!lines.length){renderBetaLearningTextFallback(doc,pageNo,true);return;}
-  const maxCols=Math.min(120,Math.max(1,...lines.map(l=>Math.max(0,(l.cells||[]).length)))); const maxRows=1500; const shown=lines.slice(0,maxRows);
-  const head=Array.from({length:maxCols},(_,c)=>`<th class="beta-sheet-col-head">${betaExcelColumnLabel(c)}</th>`).join('');
-  const body=shown.map((line,visibleIndex)=>{const rowIndex=Number.isFinite(Number(line.index))?Number(line.index):visibleIndex; const cells=Array.from({length:maxCols},(_,c)=>{const raw=(line.cells||[])[c]??''; const value=String(raw); const ref=betaSpreadsheetCellRef(rowIndex,c); return `<td class="beta-spreadsheet-cell${value.trim()?'':' is-empty'}" data-row-index="${rowIndex}" data-col-index="${c}" data-line-index="${rowIndex}" data-cell-ref="${ref}" data-value="${escapeHtml(value)}" title="${escapeHtml(ref+(value?` · ${value}`:''))}">${escapeHtml(value)}</td>`;}).join(''); return `<tr><th class="beta-sheet-row-head">${rowIndex+1}</th>${cells}</tr>`;}).join('');
-  const truncated=lines.length>maxRows||Math.max(...lines.map(l=>(l.cells||[]).length))>maxCols; box.innerHTML=`<div class="beta-spreadsheet-toolbar"><strong>${escapeHtml(page.sheet||`Feuille ${pageNo}`)}</strong><span>${shown.length} ligne${shown.length>1?'s':''} · ${maxCols} colonne${maxCols>1?'s':''}${truncated?' · aperçu limité':''}</span><small>Cliquez une cellule pour reprendre sa valeur exacte. Vous pouvez aussi sélectionner une partie du texte puis utiliser « Utiliser la sélection ».</small></div><div class="beta-spreadsheet-scroll"><table class="beta-spreadsheet-grid"><thead><tr><th class="beta-sheet-corner"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
-  box.querySelectorAll('.beta-spreadsheet-cell').forEach(cell=>cell.addEventListener('click',e=>{if(globalThis.getSelection?.()?.toString().trim())return;betaSelectSpreadsheetCell(cell);}));
-}
-function renderBetaLearningTextFallback(doc,pageNo,forceText=false){
-  const textBox=$('#betaLearningText'); if(!textBox)return; if(!forceText&&betaLearningIsSpreadsheet(doc)){renderBetaSpreadsheetPreview(doc,pageNo);return;} const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
+function renderBetaLearningTextFallback(doc,pageNo){
+  const textBox=$('#betaLearningText'); if(!textBox)return; const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
   const lines=(page.lines||String(page.text||'').split(/\r?\n/).map((t,index)=>({text:t,index}))).filter(l=>String(l.text||'').trim()); textBox.innerHTML=lines.map((l,i)=>`<div class="beta-learning-line" data-line-index="${Number.isFinite(l.index)?l.index:i}">${escapeHtml(l.text||'')}</div>`).join('')||'<div class="empty-small">Aucun texte exploitable sur cette page.</div>';
 }
-function updateBetaPageNavState(){
-  const select=$('#betaLearningPage'),prev=$('#betaPrevPage'),next=$('#betaNextPage');
-  if(!select){if(prev)prev.disabled=true;if(next)next.disabled=true;return;}
-  const idx=Math.max(0,select.selectedIndex);
-  if(prev)prev.disabled=!select.options.length||idx<=0;
-  if(next)next.disabled=!select.options.length||idx>=select.options.length-1;
-}
-async function changeBetaLearningPage(delta){
-  const select=$('#betaLearningPage'); if(!select||!select.options.length)return;
-  const idx=Math.max(0,select.selectedIndex),target=Math.min(select.options.length-1,Math.max(0,idx+delta));
-  if(target===idx){updateBetaPageNavState();return;}
-  select.selectedIndex=target;
-  await renderBetaLearningPage();
-  const stage=$('#betaPdfViewport'),fallback=$('#betaLearningText'); if(stage&&!stage.hidden)stage.scrollTop=0;if(fallback&&!fallback.hidden)fallback.scrollTop=0;
-}
 async function renderBetaLearningPage(){
-  const doc=betaLearningDoc(),pageSelect=$('#betaLearningPage'),meta=$('#betaLearningMeta'),pdfTools=$('.beta-pdf-tools'); if(!doc||!pageSelect)return; const pages=doc.read?.pages||[]; const wanted=Number(pageSelect.value)||Number(pages[0]?.page)||1;
-  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===wanted?'selected':''}>${betaLearningIsSpreadsheet(doc)?'Feuille':'Page'} ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join(''); if([...pageSelect.options].some(o=>Number(o.value)===wanted))pageSelect.value=String(wanted);
-  updateBetaPageNavState(); if(pdfTools)pdfTools.hidden=!betaLearningIsPdf(doc);
-  const pageNo=Number(pageSelect.value)||1,page=pages.find(p=>Number(p.page)===pageNo)||pages[0]; if(meta)meta.textContent=betaLearningIsSpreadsheet(doc)?`${doc.name} · ${doc.type||'Tableur'} · feuille ${page?.sheet||pageNo} (${pageNo}/${pages.length})`:`${doc.name} · ${doc.type||'Document'} · page ${pageNo} / ${pages.length}`; betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'});
+  const doc=betaLearningDoc(),pageSelect=$('#betaLearningPage'),meta=$('#betaLearningMeta'); if(!doc||!pageSelect)return; const pages=doc.read?.pages||[]; const wanted=Number(pageSelect.value)||Number(pages[0]?.page)||1;
+  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===wanted?'selected':''}>Page ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join(''); if([...pageSelect.options].some(o=>Number(o.value)===wanted))pageSelect.value=String(wanted);
+  const pageNo=Number(pageSelect.value)||1; if(meta)meta.textContent=`${doc.name} · ${doc.type||'Document'} · page ${pageNo} / ${pages.length}`; betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'});
 }
 function syncBetaLearningDocument(preferredDocId='',preferredPage=null){
   const sel=$('#betaLearningDocument'); if(!sel)return; const docs=betaLearningDocs(); sel.innerHTML=docs.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${escapeHtml(d.type||'Document')}</option>`).join(''); if(preferredDocId&&docs.some(d=>d.id===preferredDocId))sel.value=preferredDocId;else if(docs.length)sel.value=docs[0].id; const page=$('#betaLearningPage'); if(page&&preferredPage)page.value=String(preferredPage); renderBetaLearningPage();
@@ -1285,44 +1122,16 @@ function betaRangeRects(range,pageWrap){
   for(const r of range.getClientRects()){ if(r.width<1||r.height<1)continue; const x=Math.max(0,(r.left-pageRect.left)/pageRect.width),y=Math.max(0,(r.top-pageRect.top)/pageRect.height),w=Math.min(1-x,r.width/pageRect.width),h=Math.min(1-y,r.height/pageRect.height); if(w>0&&h>0)rects.push({x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000,w:Math.round(w*10000)/10000,h:Math.round(h*10000)/10000}); }
   return rects.slice(0,24);
 }
-function betaExactValueFromHighlight(selectedText,def){
-  const exact=String(selectedText??'').replace(/\s+/g,' ').trim();
-  if(!exact)return '';
-  // « Valeur exacte » doit refléter le surlignage tel quel. La conversion métier
-  // d'un champ numérique se fait seulement à la validation.
-  return exact;
-}
-function betaParseCorrectedNumber(raw){
-  const direct=parseFrNumber(raw); if(direct!==null)return direct;
-  const txt=String(raw??'').replace(/\u00a0/g,' ');
-  // Les unités (m², W/m².K, etc.) peuvent contenir d'autres chiffres : on prend
-  // le premier nombre réellement surligné au lieu de concaténer tous les chiffres.
-  const m=txt.match(/[+\-−]?\s*\d+(?:[\s\u00a0]\d{3})*(?:[.,]\d+)?/);
-  if(!m)return null;
-  return parseFrNumber(m[0].replace('−','-'));
-}
-function betaSetExactValueFromSelection(selectedText){
-  const input=$('#betaErrorCorrectValue'),hint=$('#betaExactValueHint'),def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||''];
-  if(!input)return;
-  const exact=betaExactValueFromHighlight(selectedText,def);
-  input.value=exact;
-  input.classList.toggle('beta-value-from-highlight',!!exact);
-  input.dataset.fromHighlight=exact?'1':'0';
-  if(hint){hint.textContent=exact?`Valeur reprise du surlignage : « ${exact} »`:'Aucune valeur sélectionnée.';hint.classList.toggle('ok',!!exact);}
-}
 function captureBetaLearningSelection(){
   const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,selection=globalThis.getSelection?.(),pdfLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText'),pageWrap=$('#betaPdfPage');
-  if(!selection||selection.rangeCount<1||selection.isCollapsed){if(betaLearningIsSpreadsheet(doc)&&betaLearningSelection?.selectionMode==='spreadsheet-cell'){betaSetExactValueFromSelection(betaLearningSelection.selectedText);manualAnalysisAssignSelection(betaLearningSelection.selectedText);return;}$('#betaErrorFeedback').textContent=betaLearningIsSpreadsheet(doc)?'Cliquez une cellule ou sélectionnez la donnée correcte dans le tableur.':'Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
+  if(!selection||selection.rangeCount<1||selection.isCollapsed){$('#betaErrorFeedback').textContent='Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
   const range=selection.getRangeAt(0),insidePdf=pdfLayer&&!pdfLayer.hidden&&pdfLayer.contains(range.commonAncestorContainer),insideFallback=fallback&&!fallback.hidden&&fallback.contains(range.commonAncestorContainer); if(!insidePdf&&!insideFallback){$('#betaErrorFeedback').textContent='Le surlignage doit être fait dans l’aperçu du document.';return;}
   const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){$('#betaErrorFeedback').textContent='Le surlignage est vide.';return;} const ctx=betaSelectionContext(doc,pageNo,selectedText); let rects=[];
   if(insidePdf&&pageWrap)rects=betaRangeRects(range,pageWrap);
   const bbox=rects.length?{x:Math.min(...rects.map(r=>r.x)),y:Math.min(...rects.map(r=>r.y)),x2:Math.max(...rects.map(r=>r.x+r.w)),y2:Math.max(...rects.map(r=>r.y+r.h))}:null;
-  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:ctx.lineIndex,endLineIndex:ctx.lineIndex,lineCount:ctx.lineCount,selectedText,lineText:ctx.lineText,beforeLine:ctx.beforeLine,afterLine:ctx.afterLine,pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:ctx.lineRatio,selectionMode:insidePdf?(betaPdfPreviewState.mode==='ocr'?'ocr':'pdf-text'):(betaLearningIsSpreadsheet(doc)?'spreadsheet-text':'text-fallback'),normalizedRects:rects,bboxNormalized:bbox?{x:bbox.x,y:bbox.y,w:Math.max(0,bbox.x2-bbox.x),h:Math.max(0,bbox.y2-bbox.y)}:null};
+  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:ctx.lineIndex,endLineIndex:ctx.lineIndex,lineCount:ctx.lineCount,selectedText,lineText:ctx.lineText,beforeLine:ctx.beforeLine,afterLine:ctx.afterLine,pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:ctx.lineRatio,selectionMode:insidePdf?(betaPdfPreviewState.mode==='ocr'?'ocr':'pdf-text'):'text-fallback',normalizedRects:rects,bboxNormalized:bbox?{x:bbox.x,y:bbox.y,w:Math.max(0,bbox.x2-bbox.x),h:Math.max(0,bbox.y2-bbox.y)}:null};
   if(rects.length)betaDrawSavedHighlight(rects);
-  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${insidePdf?` · ${betaLearningSelection.selectionMode==='ocr'?'OCR':'texte PDF'}`:''}`;
-  betaSetExactValueFromSelection(selectedText);
-  manualAnalysisAssignSelection(selectedText);
-  $('#betaErrorFeedback').textContent='';
+  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${insidePdf?` · ${betaLearningSelection.selectionMode==='ocr'?'OCR':'texte PDF'}`:''}`; const def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||''],input=$('#betaErrorCorrectValue'); if(input&&def){if(def.type==='number'){const n=parseFrNumber(selectedText);if(n!==null)input.value=String(n).replace('.',',');}else input.value=selectedText;} $('#betaErrorFeedback').textContent='';
 }
 async function betaEnsureOcrWorker(){
   if(betaPdfPreviewState.ocrWorker)return betaPdfPreviewState.ocrWorker; if(!globalThis.Tesseract?.createWorker)throw new Error('Tesseract.js n’est pas chargé.'); betaPdfStatus('Initialisation OCR…'); betaPdfPreviewState.ocrWorker=await globalThis.Tesseract.createWorker('fra+eng',1,{logger:m=>{if(m?.status==='recognizing text'&&Number.isFinite(m.progress))betaPdfStatus(`OCR de la page · ${Math.round(m.progress*100)} %`);}}); return betaPdfPreviewState.ocrWorker;
@@ -1336,19 +1145,18 @@ async function runBetaPageOcr(){
 }
 async function restoreBetaNativeText(){ betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'}); }
 function openBetaErrorDialog(building,field){
-  setCorrectionDialogMode();
-  if(!ownerBetaEnabled()||!state.result)return; const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog'); if(!def||!ctx.row||!dlg)return; const src=ctx.source||{},missing=ctx.value===undefined||ctx.value===null||ctx.value===''; $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée'; $('#betaErrorIntro').textContent=missing?'Choisissez la pièce puis surlignez directement la donnée correcte dans la page PDF. Utilisez l’OCR uniquement si la couche texte du PDF est mauvaise.':'Choisissez la pièce puis surlignez directement la bonne donnée dans la page PDF. ExtracTerre mémorisera le texte et sa position exacte.'; $('#betaErrorField').textContent=def.label||field;$('#betaErrorBuilding').textContent=building||'Bâtiment unique';$('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);$('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';$('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';betaSetExactValueFromSelection('');$('#betaErrorReason').value=missing?'missing_data':'wrong_value';$('#betaErrorComment').value='';$('#betaApplyCorrection').checked=true;$('#betaErrorFeedback').textContent='';dlg.dataset.building=building;dlg.dataset.field=field;dlg.dataset.wasMissing=missing?'1':'0';betaLearningSelection=null;dlg.showModal();syncBetaLearningDocument(src.docId||'',src.page||null);
+  if(!ownerBetaEnabled()||!state.result)return; const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog'); if(!def||!ctx.row||!dlg)return; const src=ctx.source||{},missing=ctx.value===undefined||ctx.value===null||ctx.value===''; $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée'; $('#betaErrorIntro').textContent=missing?'Choisissez la pièce puis surlignez directement la donnée correcte dans la page PDF. Utilisez l’OCR uniquement si la couche texte du PDF est mauvaise.':'Choisissez la pièce puis surlignez directement la bonne donnée dans la page PDF. ExtracTerre mémorisera le texte et sa position exacte.'; $('#betaErrorField').textContent=def.label||field;$('#betaErrorBuilding').textContent=building||'Bâtiment unique';$('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);$('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';$('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';$('#betaErrorCorrectValue').value='';$('#betaErrorReason').value=missing?'missing_data':'wrong_value';$('#betaErrorComment').value='';$('#betaApplyCorrection').checked=true;$('#betaErrorFeedback').textContent='';dlg.dataset.building=building;dlg.dataset.field=field;dlg.dataset.wasMissing=missing?'1':'0';betaLearningSelection=null;dlg.showModal();syncBetaLearningDocument(src.docId||'',src.page||null);
 }
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview();setCorrectionDialogMode(); }
+function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview(); }
 async function submitBetaError(){
-  if(!ownerBetaEnabled())return; const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field],ctx=betaResultContext(building,field);if(!dlg||!def||!ctx.row)return; const raw=($('#betaErrorCorrectValue')?.value||'').trim();let correctedValue=null,hasCorrection=!!raw;if(hasCorrection){if(def.type==='number'){const n=betaParseCorrectedNumber(raw);if(n===null){$('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.';return;}correctedValue=n;}else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;}if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.';return;} const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim(),loc=betaLearningSelection?{...betaLearningSelection}:null;
+  if(!ownerBetaEnabled())return; const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field],ctx=betaResultContext(building,field);if(!dlg||!def||!ctx.row)return; const raw=($('#betaErrorCorrectValue')?.value||'').trim();let correctedValue=null,hasCorrection=!!raw;if(hasCorrection){if(def.type==='number'){const n=parseFrNumber(raw);if(n===null){$('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.';return;}correctedValue=n;}else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;}if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.';return;} const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim(),loc=betaLearningSelection?{...betaLearningSelection}:null;
   const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
   try{
     await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
     if(loc){const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,selectionMode:loc.selectionMode,normalizedRects:loc.normalizedRects,bboxNormalized:loc.bboxNormalized,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});}
     const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']),srcDoc=state.docs.find(d=>d.id===src.docId);if(dlg.dataset.wasMissing!=='1'&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});}
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par sélection documentaire — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:betaLearningIsSpreadsheet(chosenDoc)?'spreadsheet_selection_learning':'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par sélection documentaire',80);}
-    closeBetaErrorDialog();renderSummary();scheduleJournalUiRefresh();renderLearningMemoryUi();toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
+    if(hasCorrection&&$('#betaApplyCorrection')?.checked){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par surlignage PDF — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par surlignage PDF',80);}
+    closeBetaErrorDialog();renderSummary();scheduleJournalUiRefresh();renderLearningMemoryUi();toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement PDF mémorisé.':'Correction appliquée et emplacement PDF mémorisé.','success');
   }catch(err){$('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`;}
 }
 
@@ -1540,7 +1348,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
@@ -1552,7 +1360,7 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
+  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const s=globalThis.getSelection?.(); if(s&&!s.isCollapsed&&betaLayer.contains(s.anchorNode)) $('#betaLearningSelection').textContent=`Sélection prête : « ${s.toString().replace(/\s+/g,' ').trim()} » — cliquez sur Utiliser le surlignage`;}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};

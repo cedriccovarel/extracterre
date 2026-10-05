@@ -27,7 +27,7 @@ Projet, opération, bâtiment, surface, année de construction, enveloppe, syst�
 Projet, opération, bâtiment, surface, année de construction, classes DPE énergie/GES avant/après. Aucun Bbio/Cep/DH/Tic/IC.
 
 ## Analyse ACV
-Projet, opération, bâtiment, IC composants, IC chantier, lots 1 à 13, IC énergie et postes énergie. Aucun Bbio/Cep/DH/Tic/DPE.
+Projet, opération, bâtiment, IC composants, IC chantier, **Stock C/m²**, lots 1 à 13, IC énergie et postes énergie. Le Stock C/m² est extrait uniquement sur le libellé explicite `Stockage carbone Stock,C (par m²)` en kgC/m². Aucun Bbio/Cep/DH/Tic/DPE.
 
 ## Documents annexes
 Pas de liste blanche spécialisée : l'ancien parseur polyvalent reste disponible pour les documents non standardisés.

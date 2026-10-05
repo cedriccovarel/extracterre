@@ -1,52 +1,10 @@
-## 2.2.10 — Analyse manuelle : onglet Généralités
-
-- Ajout de l’onglet **Généralités** à côté de Thermique / Carbone / Enveloppe.
-- Généralités regroupe les familles Administration, Programme et Certification & exigences.
-- Les champs conservent les mêmes modes de saisie : surlignage PDF, cellule Excel et saisie manuelle, avec apprentissage documentaire lorsque la provenance est sélectionnée.
-
-## 2.2.9 — Rapprochement souple des colonnes collées depuis Excel
-
-- Le copier-coller Excel/Google Sheets n’exige plus que les en-têtes soient identiques aux anciens exports.
-- Ajout d’alias explicites pour les nouveaux intitulés OPERATIONS / CRM : `Opération: Code interne`, `Opportunité: Accepté le`, `Nom de la société: ...`, `Opération: Mentions`, `Opération: Performance`, `Opération: Profil choisi`, etc.
-- Normalisation des préfixes métier et rapprochement conservateur par similarité lorsque l’équivalence est claire.
-- Les intitulés ambigus ou correspondant à une donnée inexistante dans ExtracTerre restent volontairement non reconnus au lieu d’être rattachés au mauvais champ.
-- L’aperçu du collage distingue désormais les rapprochements souples avec le symbole `≈`.
-- Le journal `manual_paste` conserve le mode de rapprochement et son score pour faciliter les audits futurs.
-
-# Changelog
-
-## 2.2.8 — Apprentissage depuis l'analyse manuelle
-- Toute valeur affectée par surlignage PDF ou clic sur une cellule Excel depuis **Analyse manuelle** crée maintenant un événement `parser_location_learning`.
-- La position documentaire est immédiatement injectée dans la mémoire d'apprentissage locale via `reinforceLearningLocation`, avec le bâtiment, le champ, le type de document, la page/feuille, le texte et la géométrie disponibles.
-- Les affectations manuelles contribuent donc aux mêmes profils de localisation que les corrections d'erreur et peuvent améliorer les analyses suivantes après confirmations répétées.
-- Une valeur saisie entièrement au clavier est journalisée (`manual_analysis_direct_value`) et reste une correction fiable, mais ne renforce pas une position documentaire en l'absence de sélection dans une source.
-
-# v2.2.6 — analyse manuelle documentaire par bâtiment
-
-- Ajout d’un bouton **Analyse manuelle** dans le bloc « Analyse du projet ».
-- Réutilisation du même lecteur documentaire que la correction : aperçu PDF avec couche texte/OCR surlignable et tableur Excel en grille.
-- Panneau latéral avec un onglet par bâtiment puis trois sous-onglets : **Thermique**, **Carbone**, **Enveloppe**.
-- Chaque donnée est présentée sous forme de bouton avec sa valeur actuelle ou « À renseigner ».
-- Après sélection d’un champ, un surlignage PDF ou un clic sur une cellule Excel affecte immédiatement la valeur au bâtiment et au champ actifs.
-- Les valeurs saisies de cette manière utilisent le mécanisme de correction manuelle existant, restent prioritaires dans la consolidation et conservent leur source documentaire.
-- Aucun changement des 167 colonnes, des parseurs spécialisés, du Cloud V2.1 ou des règles de source.
-
-# v2.2.5 — aperçu Excel dans la fenêtre de correction
-
-- Les documents `.xlsx` et `.xls` sont affichés comme une grille de tableur dans la fenêtre de correction.
-- En-têtes de colonnes A/B/C… et numéros de lignes figés pour faciliter la lecture.
-- Un clic sur une cellule sélectionne la cellule et renvoie immédiatement son contenu dans « Valeur exacte ».
-- Une sélection partielle du texte d’une cellule reste possible avec « Utiliser la sélection ».
-- Chaque feuille Excel reste accessible depuis le menu déroulant ainsi qu’avec Précédent / Suivant.
-- Les PDF conservent leur aperçu PDF/OCR actuel.
-
-## v2.2.3 — fenêtre de correction reconstruite
-
-- La valeur surlignée est recopiée immédiatement et intégralement dans « Valeur exacte ».
-- Le surlignage PDF/OCR est capturé automatiquement au relâchement de la souris ; le bouton « Utiliser la sélection » reste disponible.
-- Les champs numériques acceptent désormais un surlignage contenant une unité sans concaténer les chiffres de l’unité.
-- Fenêtre de correction reconstruite en deux colonnes : aperçu documentaire large à gauche, correction/validation à droite, sans défilement horizontal.
-- Aucun changement au Cloud V2.1, aux parseurs spécialisés, aux listes blanches ou aux 9 familles de patchs.
+# v2.2.3 — Stock C/m² ACV
+- Ajout du champ **Stock C/m²** au volet Carbone et au schéma maître (168 champs).
+- Extraction ACV stricte du libellé `Stockage carbone Stock,C (par m²)` avec unité `kgC/m²`.
+- Premier apprentissage embarqué `acv:stock-c-per-m2-seed-v1`, testé sur les valeurs 50,4 / 80,5 / 77,0 / 55,1.
+- Le Stock,C total en `kgC` est explicitement exclu.
+- Champ disponible dans le repérage/correction manuel et le surlignage PDF.
+- Cloud, OCR, listes blanches et autres parseurs inchangés.
 
 # v2.2.2 — Surlignage direct dans le PDF
 
@@ -473,8 +431,3 @@ Test réel sur `Xml_RSET_EC183200 BREUILLET V8.pdf` : 4 bâtiments annoncés →
 - RSENV : Chapitre 5 niveau bâtiment prioritaire pour Ic composant / chantier / énergie ; lots séparés du global.
 - Une ACV libre qui recopie Bbio/Cep/Tic reste une source secondaire de contrôle.
 - La consolidation tient désormais compte de `hierarchyRank` avant la confiance brute.
-
-
-## 2.2.7
-- Rend visibles les boutons de bâtiment de l’analyse manuelle.
-- Ajoute la saisie clavier directe des valeurs et l’application par bouton ou touche Entrée.
