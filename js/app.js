@@ -1022,11 +1022,12 @@ let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
 
 const MANUAL_ANALYSIS_SECTIONS={
+  general:{label:'Généralités',families:new Set(['Administration','Programme','Certification & exigences'])},
   thermal:{label:'Thermique',families:new Set(['Performance énergétique','Confort d’été','Systèmes','DPE','ENR'])},
   carbon:{label:'Carbone',families:new Set(['Carbone'])},
   envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
 };
-let manualAnalysisState={building:'',section:'thermal',field:''};
+let manualAnalysisState={building:'',section:'general',field:''};
 function manualAnalysisMode(){ return $('#betaErrorDialog')?.dataset.mode==='manual'; }
 function manualAnalysisBuildings(){
   const fromResult=(state.result?.rows||[]).map(r=>r.building).filter(Boolean);
@@ -1035,7 +1036,7 @@ function manualAnalysisBuildings(){
   return unique(fromDocs.length?fromDocs:['Bâtiment unique']);
 }
 function manualAnalysisFields(section=manualAnalysisState.section){
-  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.thermal;
+  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general;
   return FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family));
 }
 function manualAnalysisCurrentValue(building,field){
@@ -1048,7 +1049,7 @@ function renderManualAnalysisSidebar(){
   const side=$('#manualAnalysisSidebar'); if(!side)return;
   const buildings=manualAnalysisBuildings();
   if(!buildings.includes(manualAnalysisState.building))manualAnalysisState.building=buildings[0]||'Bâtiment unique';
-  if(!MANUAL_ANALYSIS_SECTIONS[manualAnalysisState.section])manualAnalysisState.section='thermal';
+  if(!MANUAL_ANALYSIS_SECTIONS[manualAnalysisState.section])manualAnalysisState.section='general';
   const fields=manualAnalysisFields();
   if(manualAnalysisState.field&&!fields.some(f=>f.key===manualAnalysisState.field))manualAnalysisState.field='';
   const bt=$('#manualBuildingTabs'),st=$('#manualSectionTabs'),fb=$('#manualFieldButtons'),target=$('#manualSelectedTarget');
@@ -1132,7 +1133,7 @@ function openManualAnalysisDialog(){
   $('#betaErrorIntro').textContent='Choisissez un bâtiment et un champ à droite, puis surlignez la valeur dans le PDF ou cliquez une cellule du tableur. La donnée est affectée immédiatement.';
   const correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
   if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
-  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'thermal',field:''};
+  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'general',field:''};
   const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
   const direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
   if(direct){direct.value='';direct.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();manualAnalysisApplyDirectValue();}};}

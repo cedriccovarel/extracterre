@@ -1,3 +1,9 @@
+## 2.2.10 — Analyse manuelle : onglet Généralités
+
+- Ajout de l’onglet **Généralités** à côté de Thermique / Carbone / Enveloppe.
+- Généralités regroupe les familles Administration, Programme et Certification & exigences.
+- Les champs conservent les mêmes modes de saisie : surlignage PDF, cellule Excel et saisie manuelle, avec apprentissage documentaire lorsque la provenance est sélectionnée.
+
 ## 2.2.9 — Rapprochement souple des colonnes collées depuis Excel
 
 - Le copier-coller Excel/Google Sheets n’exige plus que les en-têtes soient identiques aux anciens exports.
