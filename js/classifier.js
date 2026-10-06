@@ -36,7 +36,11 @@ export function classifyDocument(fileName, text='', meta={}) {
   }
   if (explicitRE2020) add(DOC_TYPES.RSET_RE2020,12);
   if (/coefficient\s+bbio|coefficients?\s+cep/i.test(t)) { if(explicitRT2012&&!explicitRE2020) add(DOC_TYPES.RT2012,5); else add(DOC_TYPES.RSET_RE2020,8); }
-  if (/rt\s*(?:existant|existante|ex|reno)|r[eé]glementation\s+thermique\s+existante|th[- ]?c(?:e|ex)\s*ex|th[- ]?cex|thcex|r[eé]novation\s+thermique/i.test(n+' '+t)) add(DOC_TYPES.RT_EXISTING,/r[eé]glementation\s+thermique\s+existante/i.test(t)?30:18);
+  // v2.3.3 — « RTEx » est aussi un en-tête de colonne ClimaWin (« RE2020 | RT2012 | RTEx | Déperditions »)
+  // et « rénovation thermique » apparaît dans bien des CCTP : dans le texte, seuls les libellés explicites comptent.
+  const rtExNameHit=/rt\s*(?:existant|existante|ex|reno)\b|th[- ]?cex|thcex|th[- ]?c(?:e|ex)\s*ex/i.test(n);
+  const rtExTextHit=/r[eé]glementation\s+thermique\s+existante|th[- ]?c(?:e|ex)\s*ex|th[- ]?cex|thcex|\brt\s*(?:existant|existante)\b|r[eé]novation\s+thermique\s+r[eé]glementaire/i.test(t);
+  if (rtExNameHit||rtExTextHit) add(DOC_TYPES.RT_EXISTING,/r[eé]glementation\s+thermique\s+existante/i.test(t)?30:18);
   if (/\bcontrat\b|convention\s+(?:de\s+)?certification|march[eé]\s+de\s+certification/i.test(n+' '+t)) add(DOC_TYPES.CONTRACT,/contrat/i.test(n)?17:9);
   if (/livret\s+d['’]?op[eé]ration|livret\s+op[eé]ration|fiche\s+op[eé]ration/i.test(n+' '+t)) add(DOC_TYPES.OPERATION_BOOKLET,17);
   if (/compte\s+rendu.{0,25}conception|\bcr\b.{0,20}conception|revue\s+de\s+conception/i.test(n+' '+t)) add(DOC_TYPES.DESIGN_REPORT,16);
@@ -74,6 +78,26 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.RSENV]=(score[DOC_TYPES.RSENV]||0)+25;
     score[DOC_TYPES.RSEE_RE2020]=(score[DOC_TYPES.RSEE_RE2020]||0)*0.25;
     score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.25;
+  }
+  // v2.3.3 — Synthèse ClimaWin 2020 (RE2020) : structure explicite, certaine.
+  const climaWinSynth=/synthese\s+d['’]?etude\s+realisee\s+avec\s+climawin\s+2020/i.test(t)&&/calcul\s+bbio\s*:\s*resultats\s+par\s+zone|bbio\s*\(points\)|exigences\s+de\s+moyens\s*\(titre\s+iii/i.test(t);
+  if(climaWinSynth){
+    score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)+40;
+    for(const k of [DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.THERMAL,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.SURFACE,DOC_TYPES.PERMIT,DOC_TYPES.AIRTIGHTNESS,DOC_TYPES.RT2012]) score[k]=(score[k]||0)*0.1;
+  }
+  // Rapport « Saisie détaillée » ClimaWin : données d'entrée (parois, menuiseries), pas un résultat réglementaire.
+  const climaWinInput=/climawin\s+2020/i.test(t)&&/rapport\s+detaille/i.test(t)&&/\b3\.\s*parois\b/i.test(t);
+  if(climaWinInput&&!climaWinSynth){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+30;
+    for(const k of [DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
+  // Récapitulatif thermique d'un BE (BE ACT « Préconisations et remarques ») : la mention « DPE » y désigne un
+  // classement informatif (« ne remplace pas un DPE »), jamais un DPE réglementaire.
+  const beRecap=/performance\s+du\s+batiment\s+selon\s+la\s+re\s*2020/i.test(t)&&/(?:precon|remarques|systemes\s+principaux)/i.test(t);
+  const dpeInformatif=/classement\s+dpe[^\n]{0,160}(?:titre\s+informatif|ne\s+remplace)/i.test(t);
+  if(beRecap||dpeInformatif){
+    if(beRecap){ score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+34; score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.3; }
+    score[DOC_TYPES.DPE]=(score[DOC_TYPES.DPE]||0)*0.1; score[DOC_TYPES.DIAGNOSTIC]=(score[DOC_TYPES.DIAGNOSTIC]||0)*0.3;
   }
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;

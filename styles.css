@@ -853,3 +853,27 @@ dialog#betaErrorDialog,
 .file-row>.file-actions{grid-column:3;grid-row:1/3;align-self:center}
 .file-row>.file-tags{grid-column:2;grid-row:2;justify-content:flex-start}
 .llm-hint{color:var(--muted,#6c7b74);font-size:.78rem}
+
+/* v2.3.2 — fenêtres adaptées à leur contenu : en-tête et pied fixes, corps défilant, hauteur = écran réel (dvh) */
+.targeted-dialog,.search-integrate-dialog,.llm-dialog{max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);overflow:hidden}
+.targeted-dialog{width:min(980px,calc(100vw - 24px))}
+.targeted-dialog-shell{max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);min-height:0;overflow:hidden}
+.targeted-review-list{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+.targeted-dialog-head,.targeted-dialog-foot{flex:0 0 auto}
+.targeted-proposal-main{min-width:0;overflow-wrap:anywhere}
+.targeted-excerpt{max-width:none}
+.llm-dialog{width:min(600px,calc(100vw - 24px));padding:0;border:0;border-radius:18px;background:#fff;box-shadow:0 28px 80px rgba(0,0,0,.28)}
+.llm-form{display:flex;flex-direction:column;gap:0;padding:0;max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);min-height:0}
+.llm-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line,#dde4df);background:#f7faf8;flex:0 0 auto}
+.llm-head h2{margin:0;font-size:17px;color:var(--forest,#173e31)}
+.llm-body{display:flex;flex-direction:column;gap:12px;padding:16px 20px;overflow:auto;min-height:0;flex:1 1 auto;overscroll-behavior:contain}
+.llm-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line,#dde4df);background:#fafcfb;flex:0 0 auto}
+.llm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.llm-grid label,.llm-body>label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600}
+.llm-body input[type=text],.llm-body input[type=password],.llm-body input[type=number],.llm-body input:not([type]),.llm-body select{padding:7px 9px;font-weight:400;min-width:0;width:100%}
+.llm-body .llm-consent{flex-direction:row;align-items:flex-start;gap:8px;font-weight:400}
+.llm-body .llm-consent input{margin-top:3px;width:auto}
+.llm-warning{margin:0;font-size:.82rem}
+@media(max-width:560px){.llm-grid{grid-template-columns:1fr}.targeted-dialog-foot{flex-direction:column;align-items:stretch}}
+.file-specialized-badge.manual{background:#fff1d7;color:#8a5a00}
+.manual-analysis-btn{border-style:dashed}

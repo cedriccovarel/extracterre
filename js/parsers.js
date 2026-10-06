@@ -4,6 +4,7 @@ import {buildingForPosition,canonicalBuilding} from './buildings.js';
 import {matchInsulationProduct,libraryNote} from './insulation-library.js';
 import {parsePatchOccurrences} from './patches.js';
 import {re2020Occurrences,re2020EnvelopeLines} from './xml-re2020.js';
+import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeActRecap,parseBeActRecap,isClimaWinInputReport} from './climawin.js';
 
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
   if(value===null||value===undefined||value==='') return null;
@@ -1524,6 +1525,8 @@ function parseTaggedFields(doc){
 function semanticHierarchyRank(doc,o){
   const m=String(o?.method||'');
   if(/^xml:re2020:/.test(m)) return /envelope/.test(m)?5:1;
+  if(/^climawin:/.test(m)) return 2;
+  if(/^recap-be:/.test(m)) return 12;
   const e=normLower(`${o?.origin||''} ${o?.excerpt||''}`);
   if(o?.userValidated) return 0;
 
@@ -1685,7 +1688,7 @@ export const DOCUMENT_FAMILIES=Object.freeze({
   cctp:{label:'CCTP',short:'CCTP',type:DOC_TYPES.CCTP},
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
-  annex:{label:'Annexe — moteur général',short:'Annexe',type:null}
+  annex:{label:'Analyse manuelle — moteur libre',short:'Manuelle',type:null}
 });
 export const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});
 export function normalizeFamilyKey(key){ const k=String(key||'').trim().toLowerCase(); const n=LEGACY_FAMILY_ALIASES[k]||k; return DOCUMENT_FAMILIES[n]?n:null; }
@@ -1808,8 +1811,42 @@ function parseRe2020Xml(doc){
   return annotateSemanticHierarchy(doc,out).map(o=>({...o,specializedFamily:'xml-re2020'}));
 }
 
+// v2.3.3 — Synthèse ClimaWin 2020 : parseur structuré par section de bâtiment + parseurs d'enveloppe/systèmes
+// existants (descriptifs de parois, vitrages). Les parseurs d'indicateurs génériques sont écartés : ils
+// confondaient lignes de tableau et bâtiments.
+function parseClimaWinDocument(doc){
+  const fdoc={...doc,type:DOC_TYPES.RSET_RE2020};
+  let out=[...parseClimaWinSynthesis(fdoc,occ)];
+  // Enveloppe : parois dominantes par bâtiment → lignes synthétiques analysées par le parseur enveloppe existant.
+  for(const l of climaWinEnvelopeLines(fdoc)){
+    const page={page:l.anchor?.page?.page??l.anchor?.page??1,text:l.text,lines:[{index:0,text:l.text}]};
+    const tmp={...fdoc,type:DOC_TYPES.CCTP,buildings:{names:[l.building],hits:[]},read:{...fdoc.read,pages:[page]}};
+    for(const o of parseEnvelope(tmp)) out.push({...o,docType:fdoc.type,building:l.building,method:`climawin:envelope:${o.method}`,structuredPdf:true,origin:'ClimaWin 2020 — enveloppe du bâtiment',excerpt:(l.anchor?.text||o.excerpt||'').slice(0,420),page:l.anchor?.page??o.page,provenanceNote:`Paroi dominante du bâtiment (${l.surface?l.surface+' m²':'menuiseries'}) — ${l.text.slice(0,160)}`});
+    // R dérivé = épaisseur / λ (λ arrondi à 3 décimales dans ClimaWin) : approximatif, donc proposé à validation (< 90 %).
+    const rField={wall:'wall_insulation_r',floor:'floor_insulation_r',roof:'roof_insulation_r'}[l.category];
+    if(rField&&l.rValue) out.push({field:rField,value:l.rValue,building:l.building,docId:fdoc.id,fileName:fdoc.name,docType:fdoc.type,page:l.anchor?.page??1,excerpt:(l.anchor?.text||'').slice(0,420),confidence:0.86,method:'climawin:envelope-r-derived',unit:'m².K/W',structuredPdf:true,derivedFromDocument:true,origin:'ClimaWin 2020 — R dérivé',provenanceNote:`R = ${l.thicknessMm} mm / λ du tableau ClimaWin (λ arrondi à 3 décimales) : à confirmer avec le R certifié du produit.`});
+  }
+  out=out.filter(o=>o&&o.field);
+  // Familles imposées par l'utilisateur : liste blanche de la/les famille(s) choisie(s).
+  if(doc.familyMode==='manual'){ const fams=resolveDocumentFamilies(doc); if(!fams.includes('annex')){ const allowed=new Set(fams.flatMap(f=>[...(FAMILY_ALLOWED_FIELDS[f]||[])])); out=out.filter(o=>allowed.has(o.field)); } }
+  else { const allowed=new Set([...FAMILY_ALLOWED_FIELDS.rset,'ic_energy']); out=out.filter(o=>allowed.has(o.field)); }
+  return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'climawin'}));
+}
+
+// v2.3.3 — Récapitulatif thermique BE (lot) : indicateurs + systèmes lus par libellés précis ; l'enveloppe, très
+// hétérogène dans ces légendes, est laissée aux synthèses par bâtiment (ClimaWin) plutôt que lue au hasard.
+function parseBeActRecapDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.THERMAL};
+  let out=parseBeActRecap(fdoc,occ).filter(Boolean);
+  if(doc.familyMode==='manual'){ const fams=resolveDocumentFamilies(doc); if(!fams.includes('annex')){ const allowed=new Set(fams.flatMap(f=>[...(FAMILY_ALLOWED_FIELDS[f]||[])])); out=out.filter(o=>allowed.has(o.field)); } }
+  return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'recap-be'}));
+}
+
 export function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
+  if(isClimaWinInputReport(doc)) return [];
+  if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
+  if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
   let out=[];

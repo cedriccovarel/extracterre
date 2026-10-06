@@ -9,6 +9,7 @@ import {classifyDocument} from './classifier.js';
 import {shouldOcrPdfPage} from './readers.js';
 import {applyLearningBoosts} from './learning-memory.js';
 import {applyCoherenceChecks} from './coherence.js';
+import {isClimaWinInputReport} from './climawin.js';
 import {autoFamiliesForType,resolveDocumentFamilies,DOCUMENT_FAMILIES} from './parsers.js';
 
 const BUILDING_SCOPED_FAMILIES=new Set(['confort d\'ete','performance energetique','carbone','dpe']);
@@ -146,11 +147,17 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         if(ar!==br) return ar-br;
         const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
         if(ah!==bh) return ah-bh;
+        // v2.3.3 — plusieurs versions d'une même étude : la date d'étude la plus récente l'emporte (à rang égal).
+        const ad=Date.parse(a.studyDate||''), bd=Date.parse(b.studyDate||''); if(Number.isFinite(ad)&&Number.isFinite(bd)&&Math.abs(ad-bd)>36e5) return bd-ad;
         if(f.key==='shab'){ const ap=Number(a.surfacePriority)||0, bp=Number(b.surfacePriority)||0; if(ap!==bp) return bp-ap; }
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
-      if(f.key==='dh') { const dhRows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+      if(f.key==='dh') {
+        // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
+        const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
+        if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
+        const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
@@ -168,8 +175,11 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
   const detailed=occurrences.map(o=>{
     const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|'));
     const directWinner=!retained&&o.libraryDerived&&(directFinalGlobal.has(o.field)||directFinalExact.has(`${o.field}|${o.building}`));
-    const unattributed=!retained&&multiBuilding&&o.building==='Bâtiment unique'&&isBuildingScopedField(o.field)&&o.sourceTier!=='forbidden';
-    return {...o,status:retained?'retenu':'rejeté',...(unattributed?{unattributedScoped:true}:{}),rejectionReason:retained?'':(unattributed?'Valeur sans bâtiment identifié dans une opération multi-bâtiments : à attribuer manuellement':o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
+    const loneScoped=!retained&&multiBuilding&&o.building==='Bâtiment unique'&&isBuildingScopedField(o.field)&&o.sourceTier!=='forbidden';
+    // Chaque bâtiment a déjà sa propre valeur : la valeur de niveau lot n'apporte rien et n'est pas proposée en revue.
+    const covered=loneScoped&&rows.length>0&&rows.every(r=>r[o.field]!==undefined&&r[o.field]!==null);
+    const unattributed=loneScoped&&!covered;
+    return {...o,status:retained?'retenu':'rejeté',...(unattributed?{unattributedScoped:true}:{}),rejectionReason:retained?'':(covered?'Valeur de niveau lot : chaque bâtiment dispose déjà de sa propre valeur':unattributed?'Valeur sans bâtiment identifié dans une opération multi-bâtiments : à attribuer manuellement':o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
   });
   return {operation,buildings,rows,finals,detailed,buildingAliases:grouping?.aliases||[],buildingSuggestions:grouping?.suggestions||[],authoritativeBuildings:grouping?.authoritative||[],buildingOverrides:grouping?.manualOverrides||{}};
 }
@@ -184,10 +194,11 @@ export function diagnostics(docs,finals,grouping=null){
     const required=expectedFieldsForDocument(d);
     for(const b of bs){
       let found=0;
-      for(const field of required){ const ok=finals.some(o=>o.docId===d.id&&o.field===field&&(o.building===b||bs.length===1)); if(ok) found++; else alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,field,message:`RSET incomplet — ${b} : ${FIELD_MAP[field].label} absent ou confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`}); }
+      for(const field of required){ const ok=finals.some(o=>o.field===field&&(o.docId===d.id||(d.type!==DOC_TYPES.RT2012&&[DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(o.docType)))&&(o.building===b||bs.length===1)); if(ok) found++; else alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,field,message:`RSET incomplet — ${b} : ${FIELD_MAP[field].label} absent ou confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`}); }
       if(found<required.length) alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,message:`Complétude réglementaire ${b} : ${found}/${required.length} champs structurés obligatoires.`});
     }
   }
+  for(const d of docs){ if(isClimaWinInputReport(d)) alerts.push({level:'info',docId:d.id,fileName:d.name,message:`Rapport de saisie ClimaWin (${d.read?.pageCount||'?'} pages) : paramètres d'entrée non exploités par l'extraction automatique. Les résultats et l'enveloppe par bâtiment viennent de la synthèse ClimaWin.`}); }
   for(const d of docs){ if(d.read?.kind==='pdf'&&d.read.text.replace(/\s/g,'').length<40) alerts.push({level:'warning',docId:d.id,fileName:d.name,message:'PDF sans couche texte exploitable — OCR probablement nécessaire.'}); if(d.error) alerts.push({level:'error',docId:d.id,fileName:d.name,message:d.error}); }
   return alerts;
 }
@@ -258,6 +269,9 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
   const occurrences=routeAndDeduplicate(remappedRaw,rules); const consolidated=consolidate(docs,occurrences,rules,operationName,grouping); const alerts=diagnostics(docs,consolidated.finals,grouping);
   if(grouping.suggestions?.length) alerts.push({level:'warning',message:`${grouping.suggestions.length} rapprochement(s) de bâtiments ambigu(s) sont proposés à la vérification manuelle.`});
   alerts.push(...familyMismatchAlerts(docs));
+  // Versions multiples d'une même étude pour un bâtiment : on indique laquelle est retenue.
+  { const seen=new Map(); for(const o of consolidated.detailed||[]){ if(o.field!=='bbio'||!o.studyDate) continue; const k=o.building; if(!seen.has(k)) seen.set(k,new Map()); seen.get(k).set(o.docId,{file:o.fileName,date:o.studyDate,retained:o.status==='retenu'}); }
+    for(const [b,m] of seen){ if(m.size<2) continue; const list=[...m.values()].sort((a,c)=>Date.parse(c.date)-Date.parse(a.date)); alerts.push({level:'warning',building:b,message:`Plusieurs versions d'étude pour ${b} : ${list.map(x=>`${x.file} (${String(x.date).slice(0,10)})`).join(' ; ')}. La plus récente est retenue ; vérifiez qu'elle est bien la version de référence.`}); } }
   const unattributedCount=consolidated.detailed.filter(o=>o.unattributedScoped).length;
   if(unattributedCount) alerts.push({level:'warning',message:`${unattributedCount} valeur(s) d'indicateur sans bâtiment identifié n'ont pas été recopiées sur chaque bâtiment : elles sont proposées dans « À vérifier ».`});
   // v2.3 — contrôles de cohérence métier : une valeur incohérente avec ses voisines quitte le tableau

@@ -1,4 +1,4 @@
-> **v2.3.1** — assistance IA au choix ChatGPT, Gemini ou Claude. **v2.3.0** — dropzone unique avec famille par fichier, lecture native des XML RE2020 (RSET/RSEE/RSEnv), contrôles de cohérence métier, assistance IA à citation vérifiée (désactivée par défaut). Voir `CHANGELOG.md` et `XML_RE2020_ET_IA_V2_3.md`.
+> **v2.3.3** — extraction thermique des synthèses ClimaWin / récap BE (multi-bâtiments, versions d'étude). **v2.3.2** — bouton 🛠 Analyse manuelle visible, fenêtres adaptées à l'écran. **v2.3.1** — assistance IA au choix ChatGPT, Gemini ou Claude. **v2.3.0** — dropzone unique avec famille par fichier, lecture native des XML RE2020 (RSET/RSEE/RSEnv), contrôles de cohérence métier, assistance IA à citation vérifiée (désactivée par défaut). Voir `CHANGELOG.md` et `XML_RE2020_ET_IA_V2_3.md`.
 
 # ExtracTerre v2.2.4
 

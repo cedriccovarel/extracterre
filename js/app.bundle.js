@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.3 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.3';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -713,6 +713,13 @@ function looksLikeBuildingId(raw){
 }
 
 function detectBuildings(doc){
+  // v2.3.3 — synthèse ClimaWin : les bâtiments sont les titres de section « N. Bâtiment X » (jamais les lignes de tableau).
+  if(isClimaWinSynthesis(doc)){
+    const secs=climaWinBuildingSections(doc);
+    if(secs.length){ const names=[...new Set(secs.map(x=>x.name))]; return {names,expectedCount:names.length,source:'climawin-sections',hits:secs.map(x=>({page:x.page,line:x.line,building:x.name}))}; }
+  }
+  // Rapport de saisie ClimaWin : données d'entrée, non exploitées (numérotation « Bâtiment 1/2/3 » ≠ synthèse A/B/C).
+  if(isClimaWinInputReport(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'climawin-input-skipped'};
   // v2.3 — XML RE2020 : la liste des bâtiments est donnée par les balises Index/Name, sans heuristique.
   if(doc?.read?.re2020?.buildings?.length){
     const names=doc.read.re2020.buildings.map(b=>b.name);
@@ -834,6 +841,9 @@ function detectBuildings(doc){
   const hits=[];
   for(const h of allHits){ const p=hits[hits.length-1]; if(p&&p.building===h.building&&p.page===h.page&&Math.abs((p.line??0)-(h.line??0))<=1) continue; hits.push(h); }
 
+  // v2.3.3 — une ligne de tableau (« Bâtiment A 19.00 7.20 1.90 … ») n'est jamais un bâtiment.
+  const rowLike=n=>/(?:\s\d+[.,]\d+){3,}/.test(String(n))||/\s\d+[.,]\d+\s*%/.test(String(n));
+  if(master.some(rowLike)){ const keep=master.filter(n=>!rowLike(n)); if(keep.length){ master.length=0; master.push(...keep); } for(let i=hits.length-1;i>=0;i--) if(rowLike(hits[i].building)) hits.splice(i,1); }
   return {names:master,hits,expectedCount,complete:!expectedCount||master.length===expectedCount,aliases:Object.fromEntries([...aliasMap].map(([k,v])=>[k,[...(v.aliases||[]),v.short].filter(Boolean)]))};
 }
 
@@ -849,6 +859,239 @@ function operationNameFromFiles(docs){
   if(!docs.length) return 'Opération';
   let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
   return s||'Opération';
+}
+
+/* ---- climawin.js ---- */
+// ExtracTerre v2.3.3 — synthèse d'étude ClimaWin 2020 (RE2020), PDF multi-bâtiments.
+// Structure stable : « N. Bâtiment X » → N.1 Étude / N.2 Bâtiment / N.3 Enveloppe / N.4 Synthèse RE2020.
+// Chaque indicateur est lu dans sa propre table, rattaché au bâtiment de sa section (jamais deviné par
+// proximité de mots), et contrôlé par recoupement (Σ zones = Sref, gains recalculés, etc.).
+
+
+const cw_NUM='-?\\d+(?:[.,]\\d+)?';
+const cw_num=s=>{ const v=Number(String(s).replace(/\s+/g,'').replace(',','.')); return Number.isFinite(v)?v:null; };
+const cw_round=(v,d=2)=>{ const f=10**d; return Math.round(v*f)/f; };
+
+function isClimaWinSynthesis(doc){
+  const t=String(doc?.read?.text||'').slice(0,400000);
+  return /synthese\s+d['’]?etude\s+realisee\s+avec\s+climawin\s+2020/i.test(t)&&/calcul\s+bbio\s*:\s*resultats\s+par\s+zone|bbio\s*\(points\)/i.test(t);
+}
+
+// Rapport « Saisie détaillée » ClimaWin : paramètres d'entrée (parois, menuiseries, locaux). Volumineux (300 à 700 pages),
+// numéroté « Bâtiment 1/2/3 » et sans résultat réglementaire : il n'est pas exploité par l'extraction automatique.
+function isClimaWinInputReport(doc){
+  const t=String(doc?.read?.text||'').slice(0,60000);
+  return /climawin\s+2020/i.test(t)&&/rapport\s+detaille/i.test(t)&&/\b3\.\s*parois\b/i.test(t)&&!/synthese\s+d['’]?etude\s+realisee\s+avec\s+climawin/i.test(t);
+}
+
+// Sections « N. Bâtiment X » (hors sommaire : le vrai titre est suivi de « N.1. Étude »).
+function climaWinBuildingSections(doc){
+  const out=[];
+  for(const page of doc?.read?.pages||[]){
+    const lines=page.lines||[];
+    for(let i=0;i<lines.length;i++){
+      const m=String(lines[i].text||'').match(/^\d+\.\s+(Batiment\s+.+)$/i);
+      if(!m) continue;
+      const next=String(lines[i+1]?.text||'');
+      if(!/^\d+\.1\.\s+Etude\s*$/i.test(next)) continue;
+      out.push({name:canonicalBuilding(m[1].trim()),page:page.page,line:lines[i].index});
+    }
+  }
+  return out;
+}
+
+function cw_studyDateOf(lines){
+  for(const l of lines){ const m=String(l.text).match(/^Date\s+(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?/i); if(m) return `${m[3]}-${m[2]}-${m[1]}${m[4]?'T'+m[4]:''}`; }
+  return null;
+}
+
+const cw_USAGE_FIELDS={fr:'cep_cooling',ecl:'cep_lighting',vent:'cep_aux_vent',dist:'cep_aux_dist',depl:'cep_mobility'};
+const cw_VECTOR_LABEL={elec:'Électricité',gaz:'Gaz',fioul:'Fioul',bois:'Bois / biomasse',reseau:'Réseau de chaleur urbain'};
+const cw_VECTOR_FIELD={elec:'cep_electricity',gaz:'cep_gas',reseau:'cep_district',bois:'cep_biomass'};
+
+function parseClimaWinSynthesis(doc,occ){
+  const sections=climaWinBuildingSections(doc); if(!sections.length) return [];
+  const pages=doc.read.pages||[]; const out=[];
+  // Lignes aplaties avec leur page, pour borner chaque section jusqu'au titre suivant.
+  const flat=[]; for(const p of pages) for(const l of p.lines||[]) flat.push({page:p,line:l,text:String(l.text||'')});
+  const posOf=(s)=>flat.findIndex(f=>f.page.page===s.page&&f.line.index===s.line);
+  for(let si=0;si<sections.length;si++){
+    const sec=sections[si]; const from=posOf(sec); const to=si+1<sections.length?posOf(sections[si+1]):flat.length;
+    if(from<0) continue; const seg=flat.slice(from,to); const building=sec.name;
+    const emit=(f,field,value,method,conf,unit='',extra={})=>{ if(value===null||value===undefined||(typeof value==='number'&&!Number.isFinite(value))) return;
+      const o=occ(doc,f.page,f.line,field,value,`climawin:${method}`,conf,unit,{building,structuredPdf:true,studyDate:studyDate,origin:'ClimaWin 2020 — synthèse d\'étude RE2020',...extra}); if(o) out.push(o); };
+    const studyDate=cw_studyDateOf(seg);
+    const find=(re)=>{ for(const f of seg){ const m=f.text.match(re); if(m) return {f,m}; } return null; };
+    const gain=(v,max)=>max?cw_round((max-v)/max*100,2):null;
+
+    // ---- Indicateurs réglementaires (boîtes « VALEUR / EXIGENCE ») ----
+    const rows=[['bbio',/^BBio \(points\)\s+(cw_NUM)\s+(cw_NUM)\s+-?\d+\s*%/,'bbio','bbio_max','bbio_gain','points'],
+                ['cepnr',/^Cep,nr \(kWhep\/\(m².an\)\)\s+(cw_NUM)\s+(cw_NUM)\s+-?\d+\s*%/,'cepnr','cepnr_max','cepnr_gain','kWhEP/m².an'],
+                ['cep',/^Cep \(kWhep\/\(m².an\)\)\s+(cw_NUM)\s+(cw_NUM)\s+-?\d+\s*%/,'cep','cep_max','cep_gain','kWhEP/m².an'],
+                ['ic',/^Ic,energie\b.*?\s(cw_NUM)\s+(cw_NUM)\s+-?\d+\s*%/,'ic_energy',null,null,'kgCO2e/m²']];
+    let cepVal=null;
+    for(const [,reTpl,fv,fmax,fgain,unit] of rows){
+      const re=new RegExp(reTpl.source.replace(/cw_NUM/g,cw_NUM),'i'); const hit=find(re); if(!hit) continue;
+      const v=cw_num(hit.m[1]), mx=cw_num(hit.m[2]); if(fv==='cep') cepVal=v;
+      emit(hit.f,fv,v,'indicator-box',0.995,unit,{excerpt:hit.f.text});
+      if(fmax) emit(hit.f,fmax,mx,'indicator-box',0.995,unit,{excerpt:hit.f.text});
+      if(fgain&&mx) emit(hit.f,fgain,gain(v,mx),'indicator-gain-calc',0.99,'%',{derivedFromDocument:true,excerpt:hit.f.text,provenanceNote:`Gain = (exigence − valeur) / exigence, calculé sur les deux valeurs de la même ligne ClimaWin (écart ClimaWin arrondi : ${hit.m[0].match(/-?\d+\s*%$/)?.[0]}).`});
+    }
+    // ---- Confort d'été : groupe le plus défavorable (DH le plus élevé), DH max du même groupe ----
+    let worst=null;
+    for(const f of seg){ const m=f.text.match(new RegExp(`^DH de Groupe d'usage.*?\\s(${cw_NUM})\\s+(${cw_NUM})\\s+-?\\d+\\s*%$`,'i')); if(!m) continue; const dh=cw_num(m[1]), mx=cw_num(m[2]); if(!worst||dh>worst.dh) worst={dh,mx,f,count:(worst?.count||0)+1}; else worst.count++; }
+    if(worst){ emit(worst.f,'dh',worst.dh,'dh-worst-group',0.99,'°C.h',{excerpt:worst.f.text,provenanceNote:`Groupe le plus défavorable parmi ${worst.count} groupe(s) du bâtiment.`}); emit(worst.f,'dh_max',worst.mx,'dh-worst-group',0.99,'°C.h',{excerpt:worst.f.text}); }
+    // ---- Surface : « Enveloppe : détails par entité » (ligne bâtiment) > Σ zones > « Surface totale » ----
+    let sref=null, srefLine=null;
+    const sameBuilding=(label)=>canonicalBuilding(String(label).trim())===building;
+    for(const f of seg){ const m=f.text.match(new RegExp(`^(Batiment\\s+.+?)\\s(${cw_NUM})\\s+${cw_NUM}\\s+${cw_NUM}\\s+${cw_NUM}\\s+${cw_NUM}\\s+${cw_NUM}\\s*%\\s+${cw_NUM}`,'i')); if(m&&sameBuilding(m[1])){ sref=cw_num(m[2]); srefLine=f; break; } }
+    // ---- Zones : logements, traversant ----
+    let housing=0, zoneArea=0, zoneLine=null, trav=false, nonTrav=false, zoneHits=0;
+    for(const f of seg){ const m=f.text.match(new RegExp(`\\(RE2020\\)\\s*-\\s*(${cw_NUM})\\s*m².*?-\\s*(\\d+)\\s+logements?\\b.*?-\\s*(Non traversante|Traversante)`,'i')); if(m){ housing+=Number(m[2]); zoneArea+=cw_num(m[1]); zoneLine=zoneLine||f; zoneHits++; if(/^non/i.test(m[3])) nonTrav=true; else trav=true; continue; }
+      const mb=f.text.match(new RegExp(`\\(RE2020\\)\\s*-\\s*(${cw_NUM})\\s*m²`,'i')); if(mb&&/Bureaux|Commerce|Enseignement|Sante/i.test(f.text)) zoneArea+=cw_num(mb[1]); }
+    if(sref!==null) emit(srefLine,'shab',sref,'entity-table-sref',0.995,'m²',{excerpt:srefLine.text,provenanceNote:'Sref du bâtiment (tableau « Enveloppe : détails par entité »).'});
+    else if(zoneArea>0&&zoneLine) emit(zoneLine,'shab',cw_round(zoneArea,2),'zones-sum',0.97,'m²',{derivedFromDocument:true,excerpt:zoneLine.text});
+    if(zoneHits){ emit(zoneLine,'housing_count',housing,'zones-sum',0.98,'',{derivedFromDocument:zoneHits>1,excerpt:zoneLine.text,provenanceNote:`Somme des logements des ${zoneHits} zone(s) d'usage résidentielles du bâtiment.`});
+      if(trav) emit(zoneLine,'cross_ventilated','Oui','zone-type',0.98,'',{excerpt:zoneLine.text}); if(nonTrav) emit(zoneLine,'non_cross_ventilated','Oui','zone-type',0.98,'',{excerpt:zoneLine.text}); }
+    // ---- Production locale d'électricité (10 valeurs sur la ligne du bâtiment) ----
+    for(const f of seg){ const m=f.text.match(new RegExp(`^(Batiment\\s+.+?)\\s((?:${cw_NUM}\\s+){9}${cw_NUM})$`,'i')); if(!m||!sameBuilding(m[1])) continue; const v=m[2].split(/\s+/).map(cw_num); if(v.length!==10) continue; const efPv=v[4];
+      if(efPv>0){ emit(f,'enr','Oui','pv-balance',0.97,'',{excerpt:f.text,provenanceNote:`Production PV ${efPv} kWhef/m².an (bilan de la production locale d'électricité).`}); emit(f,'enr_type','Photovoltaïque','pv-balance',0.97,'',{excerpt:f.text}); }
+      else if(!(v[7]>0)) { emit(f,'enr','Non','pv-balance',0.96,'',{excerpt:f.text,provenanceNote:'Bilan de production locale d\'électricité nul pour ce bâtiment (PV = 0).'}); emit(f,'enr_type','Aucun','pv-balance',0.96,'',{excerpt:f.text}); }
+      if(v[7]>0) emit(f,'enr_type','Cogénération','pv-balance',0.9,'',{excerpt:f.text}); break; }
+    // ---- Consommations par usage et par vecteur (colonne « Tot EP ») ----
+    const vecEP={}; const useEP={}; let sawVector=new Set(); let lastLine=null;
+    for(const f of seg){ const m=f.text.match(new RegExp(`^Cef (elec|gaz|fioul|bois|reseau)-(ch|fr|ecs|ecl|vent|dist|depl|mobi)\\s+((?:${cw_NUM}\\s+){12})(${cw_NUM})(?:\\s+(${cw_NUM}))?$`,'i')); if(!m) continue;
+      const vec=m[1].toLowerCase(), use=m[2].toLowerCase(); const ep=m[5]!==undefined?cw_num(m[5]):null; sawVector.add(vec); lastLine=f;
+      if(ep===null) continue; (useEP[use]=useEP[use]||{})[vec]=ep; if(use!=='mobi') vecEP[vec]=(vecEP[vec]||0)+ep;
+      if(vec==='elec'&&cw_USAGE_FIELDS[use]) emit(f,cw_USAGE_FIELDS[use],ep,'usage-ep',0.99,'kWhEP/m².an',{excerpt:f.text,provenanceNote:`Colonne « Tot EP » de la ligne « Cef ${vec}-${use} ».`}); }
+    for(const [vec,total] of Object.entries(vecEP)){ const field=cw_VECTOR_FIELD[vec]; if(field&&lastLine) emit(lastLine,field,cw_round(total,1),'vector-ep-sum',0.95,'kWhEP/m².an',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:`Somme des « Tot EP » du vecteur ${cw_VECTOR_LABEL[vec]} (hors mobilier).`}); }
+    const dominant=(use)=>{ const row=useEP[use]; if(!row) return null; const e=Object.entries(row).sort((a,b)=>b[1]-a[1]); if(!e.length||e[0][1]<=0) return null; const tot=e.reduce((s,x)=>s+x[1],0); return e[0][1]/tot>=0.7?cw_VECTOR_LABEL[e[0][0]]:'Hybride'; };
+    const hv=dominant('ch'), ev=dominant('ecs');
+    if(hv&&lastLine) emit(lastLine,'heating_vector_after',hv,'vector-dominant',0.93,'',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:'Vecteur énergétique majoritaire de la ligne « Cef …-ch » (consommations importées).'});
+    if(ev&&lastLine) emit(lastLine,'ecs_vector_after',ev,'vector-dominant',0.93,'',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:'Vecteur énergétique majoritaire de la ligne « Cef …-ecs ».'});
+    void cepVal;
+  }
+  return out;
+}
+
+// Étude présente en plusieurs versions : on garde la date d'étude la plus récente par bâtiment.
+function studyDateRank(o){ const d=Date.parse(o?.studyDate||''); return Number.isFinite(d)?d:0; }
+
+// ---------------------------------------------------------------------------
+// Enveloppe : les cellules d'un tableau ClimaWin sont éclatées sur plusieurs lignes PDF. Chaque ligne
+// d'« ancre » (surface + type de paroi) est entourée de ses cellules : on rattache chaque ligne à
+// l'ancre la plus proche verticalement, puis on retient la paroi dominante (surface) par catégorie.
+// ---------------------------------------------------------------------------
+const cw_ANCHOR=/(\d+(?:\.\d+)?)\s+(Mur exterieur|Mur sur LNC|Pl\. ?bas sur sol|Pl\. ?bas sur LNC|Pl\. haut sur LNC|Pl\. haut exter\.|Rampants?)(?=\s|$)/i;
+const cw_CATEGORY=t=>/^mur exterieur/i.test(t)?'wall':/bas sur sol/i.test(t)?'floor':/^pl\. ?bas sur lnc/i.test(t)?'floor_lnc':/^(?:pl\. haut|rampant)/i.test(t)?'roof':null;
+function cw_sanitizeCell(s){
+  return String(s).replace(/\b\d+\.\d{2,3}(?:\/\d?\.?\d*)?\b/g,' ').replace(/\b\d+(?:\.\d+)?\s*%/g,' ')
+    .replace(/\(\s*\d+(?:\.\d+)?\s*cm\s*\)/gi,' ').replace(/\(\s*\d+(?:\.\d+)?(?=\s|$)/g,' ').replace(/\bcm\)/gi,' ')
+    .replace(/\bR\s*=\s*[\d,.]+/gi,' ').replace(/\b\d{3,4}\s*x\s*\d{3,4}(?:\s*x\s*\d+)?\b/gi,' ').replace(/\b\d+\s*mm\b/gi,' ').replace(/\s+/g,' ').trim();
+}
+// Les colonnes « Type » et « Nature » (Mur extérieur, Pl. haut sur LNC, ITI…) trompent le parseur d'enveloppe :
+// on les retire pour les planchers et toitures, et le libellé de catégorie garde la main.
+function cw_categoryClean(cat,text){
+  let t=String(text);
+  if(cat==='wall') return t;
+  t=t.replace(/\bPl\. ?(?:bas|haut)[^\s]*\s+sur\s+\w+/gi,' ').replace(/\bMur\s+exterieur\b/gi,' ').replace(/\bRampants?\b/gi,'rampant').replace(/\bIT[IER]\b/g,' ').replace(/\bB[eé]ton\b|\bBeton\b/g,' ').replace(/\bParpaing\b/gi,' ');
+  return t.replace(/\s+/g,' ').trim();
+}
+// Regroupe les lignes d'un tableau en « rangées » : l'interligne intra-cellule (~3-4 pt) est très inférieur
+// à l'espace entre deux rangées (≥ 8 pt) dans les tableaux ClimaWin.
+function cw_clusterRows(lines,gap=7.5){
+  const sorted=[...lines].sort((a,b)=>(b.line.y??0)-(a.line.y??0)||a.line.index-b.line.index); const rows=[]; let cur=null,prevY=null;
+  for(const f of sorted){ const y=f.line.y??0; if(!cur||prevY-y>gap){ cur=[]; rows.push(cur); } cur.push(f); prevY=y; }
+  return rows;
+}
+function climaWinEnvelopeLines(doc){
+  const sections=climaWinBuildingSections(doc); if(!sections.length) return [];
+  const flat=[]; for(const p of doc.read.pages||[]) for(const l of p.lines||[]) flat.push({page:p.page,line:l,text:String(l.text||'')});
+  const posOf=s=>flat.findIndex(f=>f.page===s.page&&f.line.index===s.line);
+  const out=[];
+  for(let si=0;si<sections.length;si++){
+    const sec=sections[si]; const from=posOf(sec), to=si+1<sections.length?posOf(sections[si+1]):flat.length; if(from<0) continue;
+    const seg=flat.slice(from,to); const building=sec.name;
+    const byPage=new Map(); for(const f of seg){ if(!byPage.has(f.page)) byPage.set(f.page,[]); byPage.get(f.page).push(f); }
+    const opaque=[], glazed=[];
+    for(const [,lines] of byPage){
+      let mode=null; const hasHeader=lines.some(x=>/Enveloppe du batiment\s*:/i.test(x.text)); const regO=[], regG=[];
+      for(const f of lines){
+        if(/Enveloppe du batiment\s*:\s*parois opaques/i.test(f.text)){ mode='o'; continue; }
+        if(/Enveloppe du batiment\s*:\s*menuiseries/i.test(f.text)){ mode='g'; continue; }
+        if(/Enveloppe du batiment\s*:\s*ponts thermiques|Enveloppe\s*:\s*details/i.test(f.text)){ mode=null; continue; }
+        if(/^Construction de .* Page \d+|^ClimaWin 2020|^Surface Type |^m² (?:W|\()/i.test(f.text)) continue;
+        // page de continuation sans titre : le type de tableau se déduit des ancres
+        const m=mode||(!hasHeader?(cw_ANCHOR.test(f.text)?'o':(/Fenetre|Porte\s+Alu/i.test(f.text)?'g':null)):null);
+        if(m==='o') regO.push(f); else if(m==='g') regG.push(f);
+      }
+      if(!hasHeader&&regO.length===0&&regG.length===0){ for(const f of lines) { if(/^Construction de|^ClimaWin/i.test(f.text)) continue; (lines.some(x=>cw_ANCHOR.test(x.text))?regO:regG).push(f); } }
+      for(const r of cw_clusterRows(regO)) opaque.push(r); for(const r of cw_clusterRows(regG)) glazed.push(r);
+    }
+    const rows=[];
+    for(const r of opaque){
+      const blob=r.map(x=>x.text).join(' '); const anchor=r.find(x=>cw_ANCHOR.test(x.text)); if(!anchor) continue; const m=anchor.text.match(cw_ANCHOR); const cat=cw_CATEGORY(m[2]); if(!cat||/coffre/i.test(blob)) continue;
+      const lam=(anchor.text.match(/\s(\d\.\d{3})(?:\/|\s)/)||[])[1];
+      const cms=[...blob.matchAll(/\((\d+(?:\.\d+)?)(?!\d|\.\d|\s*\)|\s*(?:mm|m²))/g)].map(x=>Number(x[1]));
+      rows.push({cat,surface:Number(m[1]),blob,lambda:lam?Number(lam):null,cms,anchor});
+    }
+    for(const cat of ['wall','floor','roof']){
+      let cand=rows.filter(r=>r.cat===cat); if(cat==='floor'&&!cand.length) cand=rows.filter(r=>r.cat==='floor_lnc'); if(!cand.length) continue;
+      const r=cand.sort((a,b)=>b.surface-a.surface)[0]; const single=r.cms.length===1; const e=single?Math.round(r.cms[0]*10):null; const R=e&&r.lambda?Math.round(e/1000/r.lambda*100)/100:null;
+      const label={wall:'Mur extérieur isolation',floor:'Plancher bas isolation',roof:'Toiture combles isolation'}[cat];
+      out.push({building,category:cat,anchor:r.anchor,surface:r.surface,thicknessMm:e,rValue:R,text:`${label} : ${cw_categoryClean(cat,cw_sanitizeCell(r.blob))}${e?` ${e} mm`:''}`});
+    }
+    // --- menuiseries : vitrage et protection majoritaires (en surface) ---
+    const glaz=new Map(), prot=new Map(); const matCount=new Map(); let matLine=null;
+    for(const r of glazed){
+      const blob=r.map(x=>x.text).join(' '); const m=blob.match(/(\d+\.\d+)\s+(Fenetre|Porte)\s+(Alu\.|PVC|Bois|Mixte)/i); if(!m||/^porte/i.test(m[2])) continue;
+      const surf=Number(m[1]); const g=blob.match(/\b(DV|TV|SV)\s*([\d/]+)\s*(Argon|Air|Krypton)?/i); const gk=g?`${g[1].toUpperCase()} ${g[2]}${g[3]?' '+g[3]:''}`:null;
+      if(gk) glaz.set(gk,(glaz.get(gk)||0)+surf); const pk=/Volet moto/i.test(blob)?'volet roulant motorisé':/Volet/i.test(blob)?'volet roulant':null; if(pk) prot.set(pk,(prot.get(pk)||0)+surf);
+      const mk={'alu.':'aluminium',pvc:'PVC',bois:'bois',mixte:'mixte bois-alu'}[m[3].toLowerCase()]; matCount.set(mk,(matCount.get(mk)||0)+surf); matLine=matLine||r[0];
+    }
+    const top=m=>[...m.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0];
+    if(matLine) out.push({building,category:'window',anchor:matLine,text:`Menuiseries ${top(matCount)||''} ${top(glaz)||''} ${top(prot)||''}`.replace(/\s+/g,' ').trim()});
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Récapitulatif thermique d'un BE (modèle « BE ACT — Préconisations et remarques Thermique »).
+// Résultats du lot (bâtiment le plus défavorable) + descriptif des systèmes. Les valeurs de performance
+// sont rattachées à « Bâtiment unique » : elles ne sont jamais recopiées sur chaque bâtiment d'un lot.
+// ---------------------------------------------------------------------------
+function isBeActRecap(doc){
+  const t=String(doc?.read?.text||'').slice(0,200000);
+  return /performance\s+du\s+batiment\s+selon\s+la\s+re\s*2020/i.test(t)&&/systemes\s+principaux\s+du\s+projet|gestionnaire\s+d['’]?energie|analyse\s+thermique\s+du\s+projet|respect\s+des\s+exigences\s+de\s+moyens/i.test(t);
+}
+function parseBeActRecap(doc,occ){
+  const out=[]; const pages=doc.read.pages||[];
+  const lotM=String(doc.read.text||'').match(/Etude realisee pour le (Lot\s*\w+)/i); const lot=lotM?lotM[1]:null;
+  const base={structuredPdf:true,lotLevel:true,origin:`Récapitulatif thermique BE${lot?' — '+lot:''}`,};
+  const emit=(page,line,field,value,method,conf,unit='',extra={})=>{ const o=occ(doc,page,line,field,value,`recap-be:${method}`,conf,unit,{...base,...extra}); if(o) out.push(o); };
+  const cw_NUMC='[-+]?\\s*\\d+(?:[.,]\\d+)?';
+  const perf=[[/^Bbio projet\s*=\s*(§)\s*points\s*Bbiomax\s*=\s*(§)\s*points\s*Gain\s*=\s*(§)\s*%/i,'bbio','bbio_max','bbio_gain','points'],
+              [/^Cep nr projet\s*=\s*(§)\s*kWhep\/m².*?Cep nr max\s*=\s*(§)\s*kWhep\/m².*?Gain\s*=\s*(§)\s*%/i,'cepnr','cepnr_max','cepnr_gain','kWhEP/m².an'],
+              [/^Cep projet\s*=\s*(§)\s*kWhep\/m².*?Cepmax\s*=\s*(§)\s*kWhep\/m².*?Gain\s*=\s*(§)\s*%/i,'cep','cep_max','cep_gain','kWhEP/m².an']];
+  for(const page of pages) for(const line of page.lines||[]){
+    const t=String(line.text||'');
+    for(const [reTpl,fv,fmax,fgain,unit] of perf){ const m=t.match(new RegExp(reTpl.source.replace(/§/g,cw_NUMC),'i')); if(!m) continue;
+      const ex={excerpt:t,provenanceNote:`Résultat du lot${lot?' ('+lot+')':''} sur le bâtiment le plus défavorable : à attribuer au bâtiment concerné.`};
+      emit(page,line,fv,cw_num(m[1]),'performance',0.97,unit,ex); emit(page,line,fmax,cw_num(m[2]),'performance',0.97,unit,ex); emit(page,line,fgain,cw_num(m[3]),'performance',0.97,'%',ex); }
+  }
+  const all=[]; for(const p of pages) for(const l of p.lines||[]) all.push({p,l,t:String(l.text||'')});
+  const findLine=(re)=>all.find(x=>re.test(x.t));
+  const rev=findLine(/Reversible\s*:\s*OUI/i); if(rev) emit(rev.p,rev.l,'cooling','PAC réversible','systems',0.96,'',{excerpt:rev.t});
+  const pac=findLine(/PAC\s+AIR\/EAU/i); if(pac){ emit(pac.p,pac.l,'heating_mode_after','PAC air/eau','systems',0.96,'',{excerpt:pac.t}); emit(pac.p,pac.l,'heating_vector_after','Électricité','systems-vector',0.92,'',{derivedFromDocument:true,excerpt:pac.t,provenanceNote:'Pompe à chaleur : vecteur électrique.'}); }
+  const thermo=findLine(/Ballons?\s+thermo/i), elec=findLine(/Ballons?\s+electriques?|^electriques\s+\w+|T2 et moins\s*:\s*Ballons/i);
+  if(thermo) emit(thermo.p,thermo.l,'ecs','Chauffe-eau thermodynamique','systems',0.94,'',{excerpt:thermo.t});
+  if(elec) emit(elec.p,elec.l,'ecs','Ballon électrique','systems',0.92,'',{excerpt:elec.t});
+  if(thermo||elec) emit((thermo||elec).p,(thermo||elec).l,'ecs_vector_after','Électricité','systems-vector',0.92,'',{derivedFromDocument:true,excerpt:(thermo||elec).t});
+  const vent=findLine(/Hygroreglable\s+type\s+B/i); if(vent) emit(vent.p,vent.l,'ventilation','VMC Hygro B','systems',0.95,'',{excerpt:vent.t});
+  const pv=findLine(/Nombre\s*:\s*(\d+)\s*panneaux/i); if(pv){ emit(pv.p,pv.l,'enr','Oui','systems',0.95,'',{excerpt:pv.t}); emit(pv.p,pv.l,'enr_type','Photovoltaïque','systems',0.95,'',{excerpt:pv.t}); }
+  const vre=findLine(/Fenetre\s+ALU\s*\+\s*VRE/i); if(vre){ emit(vre.p,vre.l,'window_material','Aluminium','windows',0.95,'',{excerpt:vre.t}); emit(vre.p,vre.l,'window_shading','Volet roulant','windows',0.93,'',{excerpt:vre.t,provenanceNote:'VRE = volet roulant électrique (type de menuiserie majoritaire).'}); }
+  const gl=all.map(x=>x.t.match(/\b(\d)\s*-\s*(\d{1,2})\s*-\s*(\d)\b/)).find(Boolean); if(gl&&vre) emit(vre.p,vre.l,'window_glazing',`${gl[1]}/${gl[2]}/${gl[3]}`,'windows',0.9,'',{excerpt:vre.t});
+  return out;
 }
 
 /* ---- xml-re2020.js ---- */
@@ -1345,7 +1588,11 @@ function classifyDocument(fileName, text='', meta={}) {
   }
   if (explicitRE2020) add(DOC_TYPES.RSET_RE2020,12);
   if (/coefficient\s+bbio|coefficients?\s+cep/i.test(t)) { if(explicitRT2012&&!explicitRE2020) add(DOC_TYPES.RT2012,5); else add(DOC_TYPES.RSET_RE2020,8); }
-  if (/rt\s*(?:existant|existante|ex|reno)|r[eé]glementation\s+thermique\s+existante|th[- ]?c(?:e|ex)\s*ex|th[- ]?cex|thcex|r[eé]novation\s+thermique/i.test(n+' '+t)) add(DOC_TYPES.RT_EXISTING,/r[eé]glementation\s+thermique\s+existante/i.test(t)?30:18);
+  // v2.3.3 — « RTEx » est aussi un en-tête de colonne ClimaWin (« RE2020 | RT2012 | RTEx | Déperditions »)
+  // et « rénovation thermique » apparaît dans bien des CCTP : dans le texte, seuls les libellés explicites comptent.
+  const rtExNameHit=/rt\s*(?:existant|existante|ex|reno)\b|th[- ]?cex|thcex|th[- ]?c(?:e|ex)\s*ex/i.test(n);
+  const rtExTextHit=/r[eé]glementation\s+thermique\s+existante|th[- ]?c(?:e|ex)\s*ex|th[- ]?cex|thcex|\brt\s*(?:existant|existante)\b|r[eé]novation\s+thermique\s+r[eé]glementaire/i.test(t);
+  if (rtExNameHit||rtExTextHit) add(DOC_TYPES.RT_EXISTING,/r[eé]glementation\s+thermique\s+existante/i.test(t)?30:18);
   if (/\bcontrat\b|convention\s+(?:de\s+)?certification|march[eé]\s+de\s+certification/i.test(n+' '+t)) add(DOC_TYPES.CONTRACT,/contrat/i.test(n)?17:9);
   if (/livret\s+d['’]?op[eé]ration|livret\s+op[eé]ration|fiche\s+op[eé]ration/i.test(n+' '+t)) add(DOC_TYPES.OPERATION_BOOKLET,17);
   if (/compte\s+rendu.{0,25}conception|\bcr\b.{0,20}conception|revue\s+de\s+conception/i.test(n+' '+t)) add(DOC_TYPES.DESIGN_REPORT,16);
@@ -1383,6 +1630,26 @@ function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.RSENV]=(score[DOC_TYPES.RSENV]||0)+25;
     score[DOC_TYPES.RSEE_RE2020]=(score[DOC_TYPES.RSEE_RE2020]||0)*0.25;
     score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.25;
+  }
+  // v2.3.3 — Synthèse ClimaWin 2020 (RE2020) : structure explicite, certaine.
+  const climaWinSynth=/synthese\s+d['’]?etude\s+realisee\s+avec\s+climawin\s+2020/i.test(t)&&/calcul\s+bbio\s*:\s*resultats\s+par\s+zone|bbio\s*\(points\)|exigences\s+de\s+moyens\s*\(titre\s+iii/i.test(t);
+  if(climaWinSynth){
+    score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)+40;
+    for(const k of [DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.THERMAL,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.SURFACE,DOC_TYPES.PERMIT,DOC_TYPES.AIRTIGHTNESS,DOC_TYPES.RT2012]) score[k]=(score[k]||0)*0.1;
+  }
+  // Rapport « Saisie détaillée » ClimaWin : données d'entrée (parois, menuiseries), pas un résultat réglementaire.
+  const climaWinInput=/climawin\s+2020/i.test(t)&&/rapport\s+detaille/i.test(t)&&/\b3\.\s*parois\b/i.test(t);
+  if(climaWinInput&&!climaWinSynth){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+30;
+    for(const k of [DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
+  // Récapitulatif thermique d'un BE (BE ACT « Préconisations et remarques ») : la mention « DPE » y désigne un
+  // classement informatif (« ne remplace pas un DPE »), jamais un DPE réglementaire.
+  const beRecap=/performance\s+du\s+batiment\s+selon\s+la\s+re\s*2020/i.test(t)&&/(?:precon|remarques|systemes\s+principaux)/i.test(t);
+  const dpeInformatif=/classement\s+dpe[^\n]{0,160}(?:titre\s+informatif|ne\s+remplace)/i.test(t);
+  if(beRecap||dpeInformatif){
+    if(beRecap){ score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+34; score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.3; }
+    score[DOC_TYPES.DPE]=(score[DOC_TYPES.DPE]||0)*0.1; score[DOC_TYPES.DIAGNOSTIC]=(score[DOC_TYPES.DIAGNOSTIC]||0)*0.3;
   }
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
@@ -3289,6 +3556,8 @@ function parseTaggedFields(doc){
 function semanticHierarchyRank(doc,o){
   const m=String(o?.method||'');
   if(/^xml:re2020:/.test(m)) return /envelope/.test(m)?5:1;
+  if(/^climawin:/.test(m)) return 2;
+  if(/^recap-be:/.test(m)) return 12;
   const e=normLower(`${o?.origin||''} ${o?.excerpt||''}`);
   if(o?.userValidated) return 0;
 
@@ -3450,7 +3719,7 @@ const DOCUMENT_FAMILIES=Object.freeze({
   cctp:{label:'CCTP',short:'CCTP',type:DOC_TYPES.CCTP},
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
-  annex:{label:'Annexe — moteur général',short:'Annexe',type:null}
+  annex:{label:'Analyse manuelle — moteur libre',short:'Manuelle',type:null}
 });
 const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});
 function normalizeFamilyKey(key){ const k=String(key||'').trim().toLowerCase(); const n=LEGACY_FAMILY_ALIASES[k]||k; return DOCUMENT_FAMILIES[n]?n:null; }
@@ -3573,8 +3842,42 @@ function parseRe2020Xml(doc){
   return annotateSemanticHierarchy(doc,out).map(o=>({...o,specializedFamily:'xml-re2020'}));
 }
 
+// v2.3.3 — Synthèse ClimaWin 2020 : parseur structuré par section de bâtiment + parseurs d'enveloppe/systèmes
+// existants (descriptifs de parois, vitrages). Les parseurs d'indicateurs génériques sont écartés : ils
+// confondaient lignes de tableau et bâtiments.
+function parseClimaWinDocument(doc){
+  const fdoc={...doc,type:DOC_TYPES.RSET_RE2020};
+  let out=[...parseClimaWinSynthesis(fdoc,occ)];
+  // Enveloppe : parois dominantes par bâtiment → lignes synthétiques analysées par le parseur enveloppe existant.
+  for(const l of climaWinEnvelopeLines(fdoc)){
+    const page={page:l.anchor?.page?.page??l.anchor?.page??1,text:l.text,lines:[{index:0,text:l.text}]};
+    const tmp={...fdoc,type:DOC_TYPES.CCTP,buildings:{names:[l.building],hits:[]},read:{...fdoc.read,pages:[page]}};
+    for(const o of parseEnvelope(tmp)) out.push({...o,docType:fdoc.type,building:l.building,method:`climawin:envelope:${o.method}`,structuredPdf:true,origin:'ClimaWin 2020 — enveloppe du bâtiment',excerpt:(l.anchor?.text||o.excerpt||'').slice(0,420),page:l.anchor?.page??o.page,provenanceNote:`Paroi dominante du bâtiment (${l.surface?l.surface+' m²':'menuiseries'}) — ${l.text.slice(0,160)}`});
+    // R dérivé = épaisseur / λ (λ arrondi à 3 décimales dans ClimaWin) : approximatif, donc proposé à validation (< 90 %).
+    const rField={wall:'wall_insulation_r',floor:'floor_insulation_r',roof:'roof_insulation_r'}[l.category];
+    if(rField&&l.rValue) out.push({field:rField,value:l.rValue,building:l.building,docId:fdoc.id,fileName:fdoc.name,docType:fdoc.type,page:l.anchor?.page??1,excerpt:(l.anchor?.text||'').slice(0,420),confidence:0.86,method:'climawin:envelope-r-derived',unit:'m².K/W',structuredPdf:true,derivedFromDocument:true,origin:'ClimaWin 2020 — R dérivé',provenanceNote:`R = ${l.thicknessMm} mm / λ du tableau ClimaWin (λ arrondi à 3 décimales) : à confirmer avec le R certifié du produit.`});
+  }
+  out=out.filter(o=>o&&o.field);
+  // Familles imposées par l'utilisateur : liste blanche de la/les famille(s) choisie(s).
+  if(doc.familyMode==='manual'){ const fams=resolveDocumentFamilies(doc); if(!fams.includes('annex')){ const allowed=new Set(fams.flatMap(f=>[...(FAMILY_ALLOWED_FIELDS[f]||[])])); out=out.filter(o=>allowed.has(o.field)); } }
+  else { const allowed=new Set([...FAMILY_ALLOWED_FIELDS.rset,'ic_energy']); out=out.filter(o=>allowed.has(o.field)); }
+  return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'climawin'}));
+}
+
+// v2.3.3 — Récapitulatif thermique BE (lot) : indicateurs + systèmes lus par libellés précis ; l'enveloppe, très
+// hétérogène dans ces légendes, est laissée aux synthèses par bâtiment (ClimaWin) plutôt que lue au hasard.
+function parseBeActRecapDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.THERMAL};
+  let out=parseBeActRecap(fdoc,occ).filter(Boolean);
+  if(doc.familyMode==='manual'){ const fams=resolveDocumentFamilies(doc); if(!fams.includes('annex')){ const allowed=new Set(fams.flatMap(f=>[...(FAMILY_ALLOWED_FIELDS[f]||[])])); out=out.filter(o=>allowed.has(o.field)); } }
+  return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'recap-be'}));
+}
+
 function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
+  if(isClimaWinInputReport(doc)) return [];
+  if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
+  if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
   let out=[];
@@ -4009,11 +4312,17 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         if(ar!==br) return ar-br;
         const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
         if(ah!==bh) return ah-bh;
+        // v2.3.3 — plusieurs versions d'une même étude : la date d'étude la plus récente l'emporte (à rang égal).
+        const ad=Date.parse(a.studyDate||''), bd=Date.parse(b.studyDate||''); if(Number.isFinite(ad)&&Number.isFinite(bd)&&Math.abs(ad-bd)>36e5) return bd-ad;
         if(f.key==='shab'){ const ap=Number(a.surfacePriority)||0, bp=Number(b.surfacePriority)||0; if(ap!==bp) return bp-ap; }
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
-      if(f.key==='dh') { const dhRows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+      if(f.key==='dh') {
+        // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
+        const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
+        if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
+        const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
@@ -4031,8 +4340,11 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
   const detailed=occurrences.map(o=>{
     const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|'));
     const directWinner=!retained&&o.libraryDerived&&(directFinalGlobal.has(o.field)||directFinalExact.has(`${o.field}|${o.building}`));
-    const unattributed=!retained&&multiBuilding&&o.building==='Bâtiment unique'&&isBuildingScopedField(o.field)&&o.sourceTier!=='forbidden';
-    return {...o,status:retained?'retenu':'rejeté',...(unattributed?{unattributedScoped:true}:{}),rejectionReason:retained?'':(unattributed?'Valeur sans bâtiment identifié dans une opération multi-bâtiments : à attribuer manuellement':o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
+    const loneScoped=!retained&&multiBuilding&&o.building==='Bâtiment unique'&&isBuildingScopedField(o.field)&&o.sourceTier!=='forbidden';
+    // Chaque bâtiment a déjà sa propre valeur : la valeur de niveau lot n'apporte rien et n'est pas proposée en revue.
+    const covered=loneScoped&&rows.length>0&&rows.every(r=>r[o.field]!==undefined&&r[o.field]!==null);
+    const unattributed=loneScoped&&!covered;
+    return {...o,status:retained?'retenu':'rejeté',...(unattributed?{unattributedScoped:true}:{}),rejectionReason:retained?'':(covered?'Valeur de niveau lot : chaque bâtiment dispose déjà de sa propre valeur':unattributed?'Valeur sans bâtiment identifié dans une opération multi-bâtiments : à attribuer manuellement':o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
   });
   return {operation,buildings,rows,finals,detailed,buildingAliases:grouping?.aliases||[],buildingSuggestions:grouping?.suggestions||[],authoritativeBuildings:grouping?.authoritative||[],buildingOverrides:grouping?.manualOverrides||{}};
 }
@@ -4047,10 +4359,11 @@ function diagnostics(docs,finals,grouping=null){
     const required=expectedFieldsForDocument(d);
     for(const b of bs){
       let found=0;
-      for(const field of required){ const ok=finals.some(o=>o.docId===d.id&&o.field===field&&(o.building===b||bs.length===1)); if(ok) found++; else alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,field,message:`RSET incomplet — ${b} : ${FIELD_MAP[field].label} absent ou confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`}); }
+      for(const field of required){ const ok=finals.some(o=>o.field===field&&(o.docId===d.id||(d.type!==DOC_TYPES.RT2012&&[DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(o.docType)))&&(o.building===b||bs.length===1)); if(ok) found++; else alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,field,message:`RSET incomplet — ${b} : ${FIELD_MAP[field].label} absent ou confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`}); }
       if(found<required.length) alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,message:`Complétude réglementaire ${b} : ${found}/${required.length} champs structurés obligatoires.`});
     }
   }
+  for(const d of docs){ if(isClimaWinInputReport(d)) alerts.push({level:'info',docId:d.id,fileName:d.name,message:`Rapport de saisie ClimaWin (${d.read?.pageCount||'?'} pages) : paramètres d'entrée non exploités par l'extraction automatique. Les résultats et l'enveloppe par bâtiment viennent de la synthèse ClimaWin.`}); }
   for(const d of docs){ if(d.read?.kind==='pdf'&&d.read.text.replace(/\s/g,'').length<40) alerts.push({level:'warning',docId:d.id,fileName:d.name,message:'PDF sans couche texte exploitable — OCR probablement nécessaire.'}); if(d.error) alerts.push({level:'error',docId:d.id,fileName:d.name,message:d.error}); }
   return alerts;
 }
@@ -4121,6 +4434,9 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   const occurrences=routeAndDeduplicate(remappedRaw,rules); const consolidated=consolidate(docs,occurrences,rules,operationName,grouping); const alerts=diagnostics(docs,consolidated.finals,grouping);
   if(grouping.suggestions?.length) alerts.push({level:'warning',message:`${grouping.suggestions.length} rapprochement(s) de bâtiments ambigu(s) sont proposés à la vérification manuelle.`});
   alerts.push(...familyMismatchAlerts(docs));
+  // Versions multiples d'une même étude pour un bâtiment : on indique laquelle est retenue.
+  { const seen=new Map(); for(const o of consolidated.detailed||[]){ if(o.field!=='bbio'||!o.studyDate) continue; const k=o.building; if(!seen.has(k)) seen.set(k,new Map()); seen.get(k).set(o.docId,{file:o.fileName,date:o.studyDate,retained:o.status==='retenu'}); }
+    for(const [b,m] of seen){ if(m.size<2) continue; const list=[...m.values()].sort((a,c)=>Date.parse(c.date)-Date.parse(a.date)); alerts.push({level:'warning',building:b,message:`Plusieurs versions d'étude pour ${b} : ${list.map(x=>`${x.file} (${String(x.date).slice(0,10)})`).join(' ; ')}. La plus récente est retenue ; vérifiez qu'elle est bien la version de référence.`}); } }
   const unattributedCount=consolidated.detailed.filter(o=>o.unattributedScoped).length;
   if(unattributedCount) alerts.push({level:'warning',message:`${unattributedCount} valeur(s) d'indicateur sans bâtiment identifié n'ont pas été recopiées sur chaque bâtiment : elles sont proposées dans « À vérifier ».`});
   // v2.3 — contrôles de cohérence métier : une valeur incohérente avec ses voisines quitte le tableau
@@ -5801,7 +6117,7 @@ const FAMILY_CHOICES=Object.freeze([
   ['cctp','CCTP'],
   ['dpgf','DPGF'],
   ['dpe','DPE / 3CL'],
-  ['annex','Annexe — moteur général']
+  ['annex','🛠 Analyse manuelle — moteur libre']
 ]);
 function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
 function specializedConfig(family){ const k=normalizeFamilyKey(family)||'annex'; return {label:DOCUMENT_FAMILIES[k]?.label||'Annexe',type:DOCUMENT_FAMILIES[k]?.type||null}; }
@@ -6180,7 +6496,7 @@ function renderFiles(){
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
-    const spec=d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':''; const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
+    const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Analyse manuelle</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
     return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
@@ -6192,7 +6508,7 @@ function renderFiles(){
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
-function addFiles(fileList,specializedFamily=null){
+function addFiles(fileList,specializedFamily=null,opts={}){
   const allowed=/\.(pdf|xml|xlsx?|xls)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
@@ -6204,6 +6520,8 @@ function addFiles(fileList,specializedFamily=null){
     }
     const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null;
     const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
+    // v2.3.2 — Analyse manuelle : moteur libre (famille « annex » imposée), sans liste blanche de champs.
+    if(opts.manualAnalysis){ rec.familyMode='manual'; rec.families=['annex']; }
     state.docs.push(rec); added++;
   }
   if(rehydrated) toast(`${rehydrated} fichier(s) rechargé(s) pour permettre une nouvelle analyse OCR.`,'success');
@@ -7130,15 +7448,22 @@ function ensureLlmDialog(){
 }
 function openLlmSettings(onReady=null){
   const dlg=ensureLlmDialog(); const cfg=getLlmConfig();
-  dlg.innerHTML=`<form method="dialog" class="llm-form"><h2>🤖 Assistance IA — réglages</h2>
-  <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
-  <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
-  <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
-  <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"><small class="llm-hint">Modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small></label>
-  <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
-  <label id="llmKeyWrap">Clé API <span id="llmKeyProvider"></span> (conservée pour cette session seulement)<input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
-  <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</label>
-  <menu><button value="cancel" class="btn light">Annuler</button><button id="llmSave" value="default" class="btn primary">Enregistrer</button></menu></form>`;
+  // v2.3.2 — structure en trois blocs : en-tête fixe, corps défilant, pied fixe (Enregistrer toujours visible).
+  dlg.innerHTML=`<form method="dialog" class="llm-form">
+  <header class="llm-head"><h2>🤖 Assistance IA — réglages</h2><button value="cancel" class="icon-btn llm-close" type="submit" aria-label="Fermer">×</button></header>
+  <div class="llm-body">
+    <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+    <div class="llm-grid">
+      <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
+      <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+      <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"></label>
+      <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
+    </div>
+    <small class="llm-hint">Le modèle est modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small>
+    <label id="llmKeyWrap"><span>Clé API <span id="llmKeyProvider"></span> — conservée pour cette session seulement</span><input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
+    <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> <span>J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</span></label>
+  </div>
+  <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="llmSave" value="default" class="btn primary" type="submit">Enregistrer</button></footer></form>`;
   let lastProvider=cfg.provider;
   const sync=()=>{ const prov=$('#llmProvider').value, p=LLM_PROVIDERS[prov];
     $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct';
@@ -7193,6 +7518,7 @@ function wire(){
   dz.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
   dz.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } });
   fi.addEventListener('change',e=>{ addFiles(e.target.files||[]); fi.value=''; });
+  const manualInput=$('#manualFileInput'); if(manualInput){ manualInput.addEventListener('click',e=>e.stopPropagation()); manualInput.addEventListener('change',e=>{ addFiles(e.target.files||[],null,{manualAnalysis:true}); manualInput.value=''; }); }
   if(folderInput) folderInput.addEventListener('change',e=>{ addFiles(e.target.files||[]); folderInput.value=''; });
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.

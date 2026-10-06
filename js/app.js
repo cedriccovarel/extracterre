@@ -31,7 +31,7 @@ const FAMILY_CHOICES=Object.freeze([
   ['cctp','CCTP'],
   ['dpgf','DPGF'],
   ['dpe','DPE / 3CL'],
-  ['annex','Annexe — moteur général']
+  ['annex','🛠 Analyse manuelle — moteur libre']
 ]);
 function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
 function specializedConfig(family){ const k=normalizeFamilyKey(family)||'annex'; return {label:DOCUMENT_FAMILIES[k]?.label||'Annexe',type:DOCUMENT_FAMILIES[k]?.type||null}; }
@@ -410,7 +410,7 @@ function renderFiles(){
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
-    const spec=d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':''; const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
+    const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Analyse manuelle</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
     return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
@@ -422,7 +422,7 @@ function renderFiles(){
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
-function addFiles(fileList,specializedFamily=null){
+function addFiles(fileList,specializedFamily=null,opts={}){
   const allowed=/\.(pdf|xml|xlsx?|xls)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
@@ -434,6 +434,8 @@ function addFiles(fileList,specializedFamily=null){
     }
     const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null;
     const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
+    // v2.3.2 — Analyse manuelle : moteur libre (famille « annex » imposée), sans liste blanche de champs.
+    if(opts.manualAnalysis){ rec.familyMode='manual'; rec.families=['annex']; }
     state.docs.push(rec); added++;
   }
   if(rehydrated) toast(`${rehydrated} fichier(s) rechargé(s) pour permettre une nouvelle analyse OCR.`,'success');
@@ -1360,15 +1362,22 @@ function ensureLlmDialog(){
 }
 function openLlmSettings(onReady=null){
   const dlg=ensureLlmDialog(); const cfg=getLlmConfig();
-  dlg.innerHTML=`<form method="dialog" class="llm-form"><h2>🤖 Assistance IA — réglages</h2>
-  <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
-  <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
-  <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
-  <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"><small class="llm-hint">Modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small></label>
-  <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
-  <label id="llmKeyWrap">Clé API <span id="llmKeyProvider"></span> (conservée pour cette session seulement)<input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
-  <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</label>
-  <menu><button value="cancel" class="btn light">Annuler</button><button id="llmSave" value="default" class="btn primary">Enregistrer</button></menu></form>`;
+  // v2.3.2 — structure en trois blocs : en-tête fixe, corps défilant, pied fixe (Enregistrer toujours visible).
+  dlg.innerHTML=`<form method="dialog" class="llm-form">
+  <header class="llm-head"><h2>🤖 Assistance IA — réglages</h2><button value="cancel" class="icon-btn llm-close" type="submit" aria-label="Fermer">×</button></header>
+  <div class="llm-body">
+    <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+    <div class="llm-grid">
+      <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
+      <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+      <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"></label>
+      <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
+    </div>
+    <small class="llm-hint">Le modèle est modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small>
+    <label id="llmKeyWrap"><span>Clé API <span id="llmKeyProvider"></span> — conservée pour cette session seulement</span><input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
+    <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> <span>J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</span></label>
+  </div>
+  <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="llmSave" value="default" class="btn primary" type="submit">Enregistrer</button></footer></form>`;
   let lastProvider=cfg.provider;
   const sync=()=>{ const prov=$('#llmProvider').value, p=LLM_PROVIDERS[prov];
     $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct';
@@ -1423,6 +1432,7 @@ function wire(){
   dz.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
   dz.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } });
   fi.addEventListener('change',e=>{ addFiles(e.target.files||[]); fi.value=''; });
+  const manualInput=$('#manualFileInput'); if(manualInput){ manualInput.addEventListener('click',e=>e.stopPropagation()); manualInput.addEventListener('change',e=>{ addFiles(e.target.files||[],null,{manualAnalysis:true}); manualInput.value=''; }); }
   if(folderInput) folderInput.addEventListener('change',e=>{ addFiles(e.target.files||[]); folderInput.value=''; });
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.

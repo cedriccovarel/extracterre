@@ -1,3 +1,21 @@
+# v2.3.3 — Thermique : synthèses ClimaWin 2020, récap BE, versions multiples
+**Cause des mauvais résultats thermiques** : types de documents erronés. « RTEx » (en-tête de colonne ClimaWin) déclenchait « RT Existant » ; la mention « classement DPE informatif » des récap BE les classait « DPE » ; les parseurs RE2020 ne tournaient donc jamais.
+- **Classifieur** : signatures explicites synthèse ClimaWin (→ RSET RE2020), récap BE (→ Étude thermique), rapport de saisie ClimaWin ; « RT Existant » exige un libellé explicite dans le texte.
+- **Synthèse ClimaWin (`js/climawin.js`)** : bâtiments = titres de section « N. Bâtiment X » (ni sommaire, ni lignes de tableau) ; par bâtiment : Bbio, Cep, Cep,nr (+ max, gains), Ic énergie, DH du groupe le plus défavorable (+ DH max du même groupe), Sref (tableau par entité), logements (Σ zones), traversant, PV présent / absent, postes Cep (« Tot EP »), vecteurs, enveloppe dominante (rangées de tableaux reconstituées par espacement vertical), vitrage et protection.
+- **Récap BE** : performances et gains lus tels quels, systèmes (PAC, réversible, ECS, VMC, PV, volets). Valeurs de lot jamais recopiées sur chaque bâtiment ; légende des parois non lue.
+- **Versions multiples** : l'étude la plus récente l'emporte (date d'étude), y compris pour le DH ; alerte « Plusieurs versions d'étude ».
+- **Valeurs de niveau lot redondantes** écartées de « À vérifier » quand chaque bâtiment a la sienne.
+- **Rapport de saisie ClimaWin** (300–700 p.) : non exploité (alerte d'information), plus de valeurs parasites ni de faux bâtiments.
+- **Détection de bâtiments** : une ligne de tableau (« Bâtiment A 19.00 7.20 … ») n'est jamais un bâtiment.
+- R dérivé (épaisseur / λ) proposé à validation (< 90 %), jamais retenu seul.
+- Note : un RSET ClimaWin imprimé depuis le navigateur n'a pas de couche texte → OCR requis (lent) ; la synthèse suffit.
+
+# v2.3.2 — Analyse manuelle visible + fenêtres adaptées à leur contenu
+- **🛠 Analyse manuelle** : bouton dédié dans la zone de dépôt (à côté de « Ajouter des fichiers » et « Ajouter un dossier »). Moteur libre : classification automatique, tous les parseurs pertinents, **aucune liste blanche de champs** ; OCR ciblé, Crible fin et assistance IA restent disponibles. Les fichiers concernés portent le badge « 🛠 Analyse manuelle » et peuvent être basculés vers une famille précise depuis leur sélecteur (et inversement). Jamais d'alerte « ≠ détection » pour ce mode.
+- **Fenêtre de réglages IA** : refonte en trois blocs (en-tête fixe, corps défilant, pied fixe). Le bouton *Enregistrer* et la case de consentement sont désormais toujours visibles, y compris sur un écran de 480 px de haut ou sur mobile ; champs Mode/Fournisseur/Modèle/Pages sur deux colonnes.
+- **Fenêtres de revue (Crible fin, À vérifier, IA)** : hauteur calée sur l'écran réel (dvh), en-tête et pied fixes, liste défilante, texte long qui passe à la ligne, plus de débordement horizontal.
+- Numéro de version corrigé dans la pastille d'en-tête et la fenêtre Cloud (affichaient encore 2.2.4).
+
 # v2.3.1 — Assistance IA : ChatGPT et Gemini
 - Choix du fournisseur dans les réglages 🤖 IA : **ChatGPT (OpenAI)** par défaut, **Gemini (Google)**, Claude (Anthropic) conservé en option.
 - Modèles par défaut modifiables : `gpt-5.4-mini` (Chat Completions, sortie JSON forcée) et `gemini-3.5-flash` (generateContent, `responseMimeType: application/json`, température 0).

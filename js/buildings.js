@@ -1,3 +1,4 @@
+import {isClimaWinSynthesis,climaWinBuildingSections,isClimaWinInputReport} from './climawin.js';
 import {normalizeText,normLower,unique} from './utils.js';
 
 export function canonicalBuilding(raw){
@@ -76,6 +77,13 @@ function looksLikeBuildingId(raw){
 }
 
 export function detectBuildings(doc){
+  // v2.3.3 — synthèse ClimaWin : les bâtiments sont les titres de section « N. Bâtiment X » (jamais les lignes de tableau).
+  if(isClimaWinSynthesis(doc)){
+    const secs=climaWinBuildingSections(doc);
+    if(secs.length){ const names=[...new Set(secs.map(x=>x.name))]; return {names,expectedCount:names.length,source:'climawin-sections',hits:secs.map(x=>({page:x.page,line:x.line,building:x.name}))}; }
+  }
+  // Rapport de saisie ClimaWin : données d'entrée, non exploitées (numérotation « Bâtiment 1/2/3 » ≠ synthèse A/B/C).
+  if(isClimaWinInputReport(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'climawin-input-skipped'};
   // v2.3 — XML RE2020 : la liste des bâtiments est donnée par les balises Index/Name, sans heuristique.
   if(doc?.read?.re2020?.buildings?.length){
     const names=doc.read.re2020.buildings.map(b=>b.name);
@@ -197,6 +205,9 @@ export function detectBuildings(doc){
   const hits=[];
   for(const h of allHits){ const p=hits[hits.length-1]; if(p&&p.building===h.building&&p.page===h.page&&Math.abs((p.line??0)-(h.line??0))<=1) continue; hits.push(h); }
 
+  // v2.3.3 — une ligne de tableau (« Bâtiment A 19.00 7.20 1.90 … ») n'est jamais un bâtiment.
+  const rowLike=n=>/(?:\s\d+[.,]\d+){3,}/.test(String(n))||/\s\d+[.,]\d+\s*%/.test(String(n));
+  if(master.some(rowLike)){ const keep=master.filter(n=>!rowLike(n)); if(keep.length){ master.length=0; master.push(...keep); } for(let i=hits.length-1;i>=0;i--) if(rowLike(hits[i].building)) hits.splice(i,1); }
   return {names:master,hits,expectedCount,complete:!expectedCount||master.length===expectedCount,aliases:Object.fromEntries([...aliasMap].map(([k,v])=>[k,[...(v.aliases||[]),v.short].filter(Boolean)]))};
 }
 
