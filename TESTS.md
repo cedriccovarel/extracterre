@@ -336,3 +336,13 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 ## v2.3.1
 - `test_v2_3_0.mjs` : 162 vérifications, dont formats de requête/réponse ChatGPT et Gemini, clés isolées par fournisseur, erreurs API, consentement et réglages mémorisés.
 - Test navigateur : réglages (3 fournisseurs, modèle par défaut adapté au changement de fournisseur), appel ChatGPT simulé, proposition vérifiée, validée et appliquée ; aucune erreur JavaScript.
+
+
+## v2.3.2
+- `test_v2_3_0.mjs` : 167 vérifications (analyse manuelle = moteur libre sans filtre, pas d'alerte de famille).
+- Test navigateur : fenêtre de réglages IA et fenêtre de revue (12 propositions longues) à 1366×768, 1024×600, 1024×480 et 390×700 : pied toujours visible, aucun débordement horizontal ; bouton Analyse manuelle et badge vérifiés ; aucune erreur JavaScript.
+
+
+## v2.3.3
+- `node test_v2_3_3.mjs` : 73 vérifications sur documents fictifs (synthèse ClimaWin 2 bâtiments, récap BE, versions multiples, lot + détail).
+- Test Chromium avec 6 PDF réels (Lots 1 et 2, 2 récap, saisie) : 6 bâtiments, valeurs attendues présentes, aucune erreur JavaScript.

@@ -15,7 +15,7 @@ const near=(a,b,m,t=0.01)=>{ assert.ok(a!=null&&Math.abs(a-b)<=t,`${m} : ${a} �
 const rules=structuredClone(DEFAULT_SOURCE_RULES);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind,re2020:d.read.re2020||null}); d.classification={...c,automaticType:c.type}; d.type=d.type||c.type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
 
-eq(APP_VERSION,'2.3.1','version');
+eq(APP_VERSION,'2.3.3','version');
 eq(runSelfTests().passed,runSelfTests().total,'auto-tests moteur historiques');
 
 // ---------- 1. XML RE2020 fictif, 2 bâtiments ----------
@@ -82,10 +82,21 @@ const ro=parseDocument(rsetCarbon);
 ok(ro.some(o=>o.field==='bbio')&&ro.some(o=>o.field==='ic_components'),'un seul dépôt : thermique ET carbone');
 for(const [f,list] of Object.entries(FAMILY_EXPECTED_FIELDS)) for(const e of list.flat()) ok(f==='annex'||FAMILY_ALLOWED_FIELDS[f].has(e),`attendu ${e} autorisé pour ${f}`);
 eq(resolveDocumentFamilies({specializedFamily:'acv'}),['carbone'],'alias acv'); eq(resolveDocumentFamilies({specializedFamily:'3cl'}),['dpe'],'alias 3cl'); eq(resolveDocumentFamilies({specializedFamily:'manual'}),['annex'],'alias manuel');
+const appSrc=(await import('node:fs')).readFileSync('./js/app.js','utf8');
+ok(/const mismatch=d\.familyMode==='manual'&&!\(d\.families\|\|\[\]\)\.includes\('annex'\)/.test(appSrc),'badge ⚠ jamais affiché en analyse manuelle');
 const wrong=prep(textDoc('w1','RSET_RT2012.pdf',undefined,'Récapitulatif standardisé d’étude thermique\nRéglementation thermique 2012\nBbio : 50\nTic : 27'));
 wrong.familyMode='manual'; wrong.families=['rset'];
 ok(familyMismatchAlerts([wrong]).length===1,'alerte famille choisie ≠ détection');
 eq(documentExpectedFields({familyMode:'manual',families:['dpe']}).length,2,'complétude DPE : énergie + GES (avant ou après)');
+
+// Analyse manuelle = moteur libre, sans liste blanche (famille « annex » imposée)
+const mixed=prep(textDoc('m1','Etude_libre.pdf',DOC_TYPES.RSET_RE2020,'Récapitulatif standardisé d’étude thermique RE2020\nBbio : 45,2\nIc composants : 650,2 kgCO2/m²'));
+mixed.familyMode='manual'; mixed.families=['rset'];
+ok(!parseDocument(mixed).some(o=>o.field==='ic_components'),'famille RSET imposée : IC hors liste blanche ignoré');
+mixed.families=['annex'];
+ok(resolveDocumentFamilies(mixed).join()==='annex','analyse manuelle → famille annex');
+ok(parseDocument(mixed).some(o=>o.field==='ic_components')&&parseDocument(mixed).some(o=>o.field==='bbio'),'analyse manuelle : aucun filtre, Bbio ET IC extraits');
+ok(familyMismatchAlerts([mixed]).length===0,'analyse manuelle : jamais d’alerte de famille');
 
 // ---------- 5. Consolidation multi-bâtiments ----------
 const o=(field,value,building,docType,extra={})=>({field,value,building,docId:extra.docId||'doc',docType,confidence:0.97,page:1,excerpt:`${field} ${value} ${building}`,method:extra.method||'test',...extra});
@@ -167,4 +178,4 @@ saveLlmConfig({mode:'direct',provider:'gemini',model:'gemini-x'}); eq(getLlmConf
 saveLlmConfig({provider:'inconnu'}); eq(getLlmConfig().provider,'openai','fournisseur inconnu → ChatGPT par défaut');
 eq(providerResponseText('openai',{choices:[{message:{content:'{}'}}]}).text,'{}','lecture réponse OpenAI');
 
-console.log(`v2.3.1 — ${n} vérifications OK (documents fictifs)`);
+console.log(`v2.3.3 — ${n} vérifications OK (documents fictifs)`);

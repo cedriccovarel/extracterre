@@ -1,6 +1,7 @@
 # ExtracTerre v2.3 — guide rapide
 
 ## Importer
+Trois boutons : **Ajouter des fichiers**, **Ajouter un dossier**, **🛠 Analyse manuelle** (moteur libre, sans liste blanche : pour un document hors standard).
 Déposez tout dans la zone unique. Chaque fichier affiche son type détecté, un sélecteur de famille (« Auto » par défaut) et sa complétude (`x/y attendus`). Si vous changez la famille, le document est réanalysé et la consolidation recalculée. Un ⚠ signale un choix contraire à la détection.
 
 ## Préférez le XML au PDF pour les RSET / RSEE
