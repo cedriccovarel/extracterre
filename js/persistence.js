@@ -58,6 +58,7 @@ function serializeRead(read){
       ...(page.textSource?{textSource:page.textSource}:{}),
       ...(Number.isFinite(page.pdfTextQuality)?{pdfTextQuality:page.pdfTextQuality}:{}),
       ...(Number.isFinite(page.ocrConfidence)?{ocrConfidence:page.ocrConfidence}:{}),
+      ...(Number.isFinite(page.re2020Building)?{re2020Building:page.re2020Building}:{}),
     };
     // PDF/XML : une seule chaîne par page suffit pour restaurer la recherche libre et les tags.
     // Excel : conserver les cellules, nécessaires au parseur économique DPGF lors d'une restauration.
@@ -65,7 +66,7 @@ function serializeRead(read){
     else base.text=String(page.text||lines.map(l=>String(l.text||'')).join('\n'));
     return base;
   });
-  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null)};
+  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null),...(read.re2020?{re2020:safeJsonClone(read.re2020,null),xmlFormat:read.xmlFormat||'re2020'}:{})};
 }
 function hydrateRead(read){
   if(!read) return null;
@@ -104,6 +105,8 @@ function serializeDocMeta(doc={}){
     cloudFallback:doc.cloudFallback||null,
     specializedFamily:doc.specializedFamily||'annex',
     specializedLabel:doc.specializedLabel||'',
+    families:safeJsonClone(doc.families,null),
+    familyMode:doc.familyMode||'auto',
     persistedAnalysis:hasAnalysis
   };
 }
@@ -169,6 +172,8 @@ function serializeDocAnalysis(projectId,doc,compact=false,minimal=false){
     type:doc.type||'En attente',
     specializedFamily:doc.specializedFamily||'annex',
     specializedLabel:doc.specializedLabel||'',
+    families:safeJsonClone(doc.families,null),
+    familyMode:doc.familyMode||'auto',
     analysisCachedAt:doc.analysisCachedAt||Date.now(),
     storageMode:minimal?'results-only':compact?'compact':'full-index'
   };

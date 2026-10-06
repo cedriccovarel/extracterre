@@ -76,6 +76,11 @@ function looksLikeBuildingId(raw){
 }
 
 export function detectBuildings(doc){
+  // v2.3 — XML RE2020 : la liste des bâtiments est donnée par les balises Index/Name, sans heuristique.
+  if(doc?.read?.re2020?.buildings?.length){
+    const names=doc.read.re2020.buildings.map(b=>b.name);
+    return {names,expectedCount:names.length,source:'xml-re2020',hits:[]};
+  }
   const expectedCount=expectedBuildingCount(doc);
   const strong=[];
   let genericSingleHeadingSeen=false;

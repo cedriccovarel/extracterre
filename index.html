@@ -8,16 +8,16 @@
   <link rel="icon" href="assets/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="assets/favicon-512.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=2.2.3">
-  <script defer src="js/journal-config.js?v=2.2.3"></script>
-  <script defer src="js/security.js?v=2.2.3"></script>
+  <link rel="stylesheet" href="styles.css?v=2.3.1">
+  <script defer src="js/journal-config.js?v=2.3.1"></script>
+  <script defer src="js/security.js?v=2.3.1"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.2.3"></script>
-  <script defer src="js/app.bundle.js?v=2.2.3"></script>
+  <script defer src="js/cloud-config.js?v=2.3.1"></script>
+  <script defer src="js/app.bundle.js?v=2.3.1"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -38,7 +38,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v2.2.3</span>
+      <span class="ux-version-chip" id="version">v2.2.4</span>
     </div>
   </header>
 
@@ -78,25 +78,17 @@
               </div>
             </div>
 
-            <div class="specialized-import-intro">
-              <strong>Déposez chaque pièce dans sa famille documentaire</strong>
-              <span>Le type choisi pilote directement le parseur. La détection automatique reste active uniquement comme contrôle de cohérence.</span>
-            </div>
-            <div id="specializedDropzones" class="specialized-dropzones">
-              <div class="specialized-dropzone" data-family="rset" tabindex="0"><span class="specialized-code">RSET</span><strong>RSET / RSEE</strong><small>RE2020 standardisé · Chapitres 2/4 · résultats détaillés</small><label for="file-rset">＋ Ajouter</label><input id="file-rset" data-family="rset" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml" multiple></div>
-              <div class="specialized-dropzone" data-family="rt2012" tabindex="0"><span class="specialized-code">RT12</span><strong>RSET RT2012</strong><small>Th-BCE 2012 · Bbio/Cep/Tic · enveloppe et systèmes</small><label for="file-rt2012">＋ Ajouter</label><input id="file-rt2012" data-family="rt2012" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml" multiple></div>
-              <div class="specialized-dropzone" data-family="thcex" tabindex="0"><span class="specialized-code">TH-C-E ex</span><strong>THCex / RT Existant</strong><small>Avant/après · Ubat · Cep · enveloppe · systèmes</small><label for="file-thcex">＋ Ajouter</label><input id="file-thcex" data-family="thcex" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple></div>
-              <div class="specialized-dropzone" data-family="rsenv" tabindex="0"><span class="specialized-code">RSENV</span><strong>RSEE / RSENV</strong><small>ACV standardisée · bâtiment · lots 1–13 · énergie</small><label for="file-rsenv">＋ Ajouter</label><input id="file-rsenv" data-family="rsenv" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml" multiple></div>
-              <div class="specialized-dropzone" data-family="cctp" tabindex="0"><span class="specialized-code">CCTP</span><strong>CCTP</strong><small>Structure · isolants · menuiseries · CVC · ECS · ventilation</small><label for="file-cctp">＋ Ajouter</label><input id="file-cctp" data-family="cctp" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xlsx,.xls" multiple></div>
-              <div class="specialized-dropzone" data-family="dpgf" tabindex="0"><span class="specialized-code">DPGF</span><strong>DPGF</strong><small>Lots · produits · équipements · montants et quantités explicites</small><label for="file-dpgf">＋ Ajouter</label><input id="file-dpgf" data-family="dpgf" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xlsx,.xls" multiple></div>
-              <div class="specialized-dropzone" data-family="3cl" tabindex="0"><span class="specialized-code">3CL</span><strong>3CL</strong><small>Méthode conventionnelle · consommations · systèmes · état énergétique</small><label for="file-3cl">＋ Ajouter</label><input id="file-3cl" data-family="3cl" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple></div>
-              <div class="specialized-dropzone" data-family="dpe" tabindex="0"><span class="specialized-code">DPE</span><strong>DPE</strong><small>Énergie/GES · avant/après · caractéristiques explicitement établies</small><label for="file-dpe">＋ Ajouter</label><input id="file-dpe" data-family="dpe" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml" multiple></div>
-              <div class="specialized-dropzone" data-family="acv" tabindex="0"><span class="specialized-code">ACV</span><strong>Analyse ACV</strong><small>IC composants · chantier · énergie · lots · postes énergie</small><label for="file-acv">＋ Ajouter</label><input id="file-acv" data-family="acv" class="file-input-native specialized-file-input" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple></div>
-              <div id="dropzone" class="specialized-dropzone annex-dropzone" data-family="annex" tabindex="0"><span class="specialized-code">ANNEXE</span><strong>Documents annexes</strong><small>Études thermiques non standardisées, notices, contrats, plans, autres pièces</small><label for="fileInput">＋ Ajouter</label><input id="fileInput" data-family="annex" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple></div>
-            </div>
-            <div class="ux-drop-actions drop-actions specialized-folder-action">
-              <label id="addFolderBtn" class="btn light file-picker-label" for="folderInput">▱ Importer un dossier dans Annexes</label>
-              <input id="folderInput" class="file-input-native" type="file" webkitdirectory directory multiple>
+            <div id="dropzone" class="single-dropzone" tabindex="0" aria-label="Déposer des documents ou un dossier">
+              <div class="single-dropzone-icon">⇪</div>
+              <strong>Déposez ici toutes les pièces du projet</strong>
+              <span>PDF, XML (RSET / RSEE / RSEnv RE2020), Excel — fichiers ou dossier complet. La famille documentaire est détectée automatiquement pour chaque fichier ; vous pouvez la corriger dans la liste ci-dessous.</span>
+              <div class="single-dropzone-actions">
+                <label class="btn primary file-picker-label" for="fileInput">＋ Ajouter des fichiers</label>
+                <input id="fileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple>
+                <label id="addFolderBtn" class="btn light file-picker-label" for="folderInput">▱ Ajouter un dossier</label>
+                <input id="folderInput" class="file-input-native" type="file" webkitdirectory directory multiple>
+              </div>
+              <small class="single-dropzone-hint">Les XML RE2020 sont lus balise par balise (valeurs exactes, multi-bâtiments). Un RSEE est traité à la fois en thermique et en carbone.</small>
             </div>
           </section>
 
@@ -115,6 +107,7 @@
                     <option value="off">Désactivé</option>
                   </select>
                 </label>
+                <button id="llmSettingsBtn" class="btn light llm-settings-btn" type="button" title="Assistance IA (désactivée par défaut) : réglages et confidentialité">🤖 IA</button>
                 <label class="ocr-control analysis-mode-control" title="Nombre maximum de documents et de workers OCR traités en parallèle">
                   <span>Vitesse</span>
                   <select id="analysisMode">
@@ -427,7 +420,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.2.3</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.2.4</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>

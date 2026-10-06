@@ -41,3 +41,11 @@ Chaque famille dispose maintenant d'une liste blanche de champs autorisés. Une 
 
 ### Analyse ACV — Stock C/m²
 Le parseur ACV recherche explicitement `Stockage carbone Stock,C (par m²)` et restitue la valeur en kgC/m². Le Stock,C total en kgC est exclu.
+
+## Mode Analyse manuelle de document (v2.2.4)
+
+La dropzone **Analyse manuelle de document** restaure le moteur libre historique. Le document est classifié automatiquement puis parcourt tous les parseurs pertinents à son type, sans whitelist imposée par une dropzone spécialisée. Ce mode conserve OCR ciblé, Crible fin, correction/surlignage et mémoire d’apprentissage.
+
+## ACV ClimaWin renforcée (v2.2.4)
+
+Pour les synthèses d’étude ACV ClimaWin, le parseur reconnaît au niveau de chaque bâtiment : Ic énergie, Ic composants, Ic chantier, Stock C/m², lots 1 à 13 et postes énergie. Si plusieurs zones existent, les postes énergie sont consolidés au niveau bâtiment par pondération Sref lorsque les Sref sont explicitement disponibles.

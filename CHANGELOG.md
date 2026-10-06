@@ -1,4 +1,46 @@
-# v2.2.3 — Stock C/m² ACV
+# v2.3.1 — Assistance IA : ChatGPT et Gemini
+- Choix du fournisseur dans les réglages 🤖 IA : **ChatGPT (OpenAI)** par défaut, **Gemini (Google)**, Claude (Anthropic) conservé en option.
+- Modèles par défaut modifiables : `gpt-5.4-mini` (Chat Completions, sortie JSON forcée) et `gemini-3.5-flash` (generateContent, `responseMimeType: application/json`, température 0).
+- Clé personnelle : une clé par fournisseur, en sessionStorage uniquement ; message clair si la clé manque ou est refusée.
+- Edge Function `extracterre-llm-extract` multi-fournisseurs : secrets `OPENAI_API_KEY`, `GEMINI_API_KEY` (et `ANTHROPIC_API_KEY` optionnel) ; liste blanche de modèles optionnelle `EXTRACTERRE_LLM_MODELS`.
+- Les garde-fous sont identiques quel que soit le fournisseur : citation mot pour mot, valeur présente dans la citation, confiance plafonnée à 85 %, validation ✓ / ✕ obligatoire.
+- Correctif détecté par le test navigateur : la mémorisation du consentement IA.
+
+# v2.3.0 — XML RE2020 natif, dropzone unique, cohérence métier, assistance IA vérifiée
+**Import**
+- Une seule zone de dépôt (fichiers ou dossier). La famille documentaire est détectée à la lecture et modifiable fichier par fichier (sélecteur « Auto / RSET RE2020 / RSEE thermique + carbone / RT2012 / THCex / Carbone / CCTP / DPGF / DPE-3CL / Annexe »). Changer la famille invalide le cache et réanalyse immédiatement le document.
+- Un document peut porter plusieurs familles : un RSEE (ou un RSET contenant les sorties ACV) est traité en thermique ET en carbone.
+- Familles fusionnées : LIBRE = ANNEXE ; 3CL = DPE ; RSENV + ACV = Carbone. Les anciennes clés restent reconnues (restauration des sessions v2.2).
+- Alerte si la famille choisie contredit le type détecté (confiance ≥ 75 %).
+
+**XML RE2020 (RSET + RSEnv + Datas_Comp) lu par balises** — `js/xml-re2020.js`
+- Bbio, Cep, Cep,nr (+ max), DH / DH max du groupe le plus défavorable, logements, SHAB, traversant, climatisation, IC composants / chantier / énergie, lots 1–13, 6 postes énergie, Stock C, enveloppe (paroi principale par surface + vitrage majoritaire), multi-bâtiments par Index.
+- Gains, Cep par poste et par vecteur calculés (Cef × 2,3 pour l'électricité) avec contrôle Σ vecteurs = Cep : pas d'émission si l'écart dépasse 3 %.
+- Le texte conservé est une synthèse d'une page par bâtiment (l'arbre complet faisait jusqu'à 16 Mo). 16 Mo traités en < 2 s dans le navigateur.
+
+**Correctifs de l'audit**
+- DPE : lettre lue sur la ligne (plus de fenêtre qui prenait la première classe), énergie/GES distingués par le libellé, phase par section, mise en page éclatée gérée, DPE isolé = état existant (confiance 88 %, validation conseillée).
+- DPE/3CL : sections recommandations / scénarios / préconisations ignorées pour les équipements ; équipements décrits = état existant.
+- Consolidation : une valeur « Bâtiment unique » n'est plus recopiée sur tous les bâtiments pour les indicateurs propres à un bâtiment (performance, confort d'été, carbone, DPE, surface, logements) ; elle part en « À vérifier ». Une valeur attribuée au bâtiment l'emporte toujours sur une valeur générale.
+- Apprentissage : le bonus ne peut plus être la seule raison du franchissement du seuil de 90 % (plafonné à 89,9 %).
+- Stock C/m² : variantes reconnues par l'unité explicite kgC/m² (confiance 95 %).
+- Lecture PDF : tri des fragments transitif, tolérance adaptée à la police ; OCR Tesseract géolocalisé (boîtes de mots reprojetées) et lignes OCR insérées à leur position verticale.
+- Complétude par document alignée sur les listes blanches (« au moins un de » pour DPE avant/après).
+- Source Stock C/m² : RSEE et RSENV ajoutés aux sources principales.
+
+**Cohérence métier** — `js/coherence.js`
+- Σ lots 1–13 = IC composants ; Σ postes énergie ≤ IC énergie ; Cep,nr ≤ Cep ; gains recalculés (ou calculés s'ils manquent) ; plages plausibles ; dépassements de seuils signalés.
+- Une valeur incohérente quitte le tableau et rejoint « À vérifier » avec la raison. Les valeurs XML et validées ne sont jamais retirées (alerte « erreur » seulement).
+
+**Assistance IA (désactivée par défaut)** — `js/llm-assist.js`, `supabase/functions/extracterre-llm-extract`
+- Bouton 🤖 IA (réglages + consentement explicite) et bouton 🤖 IA par document.
+- Envoie uniquement les pages qui mentionnent les champs manquants autorisés pour la famille du document.
+- Proposition acceptée seulement si la citation est retrouvée mot pour mot dans la page ET contient la valeur ; confiance plafonnée à 85 % ; validation ✓ / ✕ obligatoire (fenêtre du Crible fin) ; rejets journalisés.
+- Deux transports : Edge Function Supabase (clé dans les secrets serveur, session Cloud requise) ou clé personnelle conservée en sessionStorage.
+
+**Sécurité** : `tools/compute_sri.py` épingle les scripts CDN et ajoute les empreintes SRI (à lancer une fois avec un accès internet).
+
+# v2.2.4 — Stock C/m² ACV
 - Ajout du champ **Stock C/m²** au volet Carbone et au schéma maître (168 champs).
 - Extraction ACV stricte du libellé `Stockage carbone Stock,C (par m²)` avec unité `kgC/m²`.
 - Premier apprentissage embarqué `acv:stock-c-per-m2-seed-v1`, testé sur les valeurs 50,4 / 80,5 / 77,0 / 55,1.

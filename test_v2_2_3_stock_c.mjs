@@ -9,7 +9,7 @@ function mk(text){
   const doc={id:'acv-stock-c',name:'LOT 1 - Résultats ACV.pdf',type:DOC_TYPES.CARBON,specializedFamily:'acv',read:{kind:'pdf',text:chunks.join('\n'),pages},buildings:{names:[],hits:[]}};
   doc.buildings=detectBuildings(doc); return doc;
 }
-assert.equal(APP_VERSION,'2.2.3');
+assert.equal(APP_VERSION,'2.3.1');
 assert.equal(FIELD_DEFS.length,168);
 const text=[
 '1. Bâtiment A\nStockage carbone Stock,C 39068.7 kgC\nTotal hors parcelle Ic,bâtiment 715.9 Stockage carbone Stock,C (par m²) 50.4 kgC/m²',
@@ -26,4 +26,4 @@ assert.deepEqual(out.map(o=>o.value),[50.4,80.5,77.0,55.1]);
 assert(out.every(o=>o.unit==='kgC/m²'));
 assert(out.every(o=>o.method==='acv:stock-c-per-m2-seed-v1'));
 assert(!out.some(o=>o.value>1000),'le Stock,C total en kgC ne doit jamais être pris');
-console.log('v2.2.3 Stock C/m²: OK');
+console.log('v2.2.4 Stock C/m²: OK');

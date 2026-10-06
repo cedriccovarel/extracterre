@@ -9,53 +9,73 @@ import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType} fro
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {analyzeEconomicData} from './economics.js';
-import {parseDocument} from './parsers.js';
+import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
+import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
 import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
-import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud} from './cloud.js';
+import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud,invokeLlmCloudFunction} from './cloud.js';
 
 function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
 
-const SPECIALIZED_FAMILIES=Object.freeze({
-  rset:{label:'RSET / RSEE',type:DOC_TYPES.RSET_RE2020},
-  rt2012:{label:'RSET RT2012',type:DOC_TYPES.RT2012},
-  thcex:{label:'THCex / RT Existant',type:DOC_TYPES.RT_EXISTING},
-  rsenv:{label:'RSEE / RSENV',type:DOC_TYPES.RSENV},
-  cctp:{label:'CCTP',type:DOC_TYPES.CCTP},
-  dpgf:{label:'DPGF',type:DOC_TYPES.DPGF},
-  '3cl':{label:'3CL',type:DOC_TYPES.DPE},
-  dpe:{label:'DPE',type:DOC_TYPES.DPE},
-  acv:{label:'Analyse ACV',type:DOC_TYPES.CARBON},
-  annex:{label:'Documents annexes',type:null}
-});
-const SPECIALIZED_EXPECTED=Object.freeze({
-  rset:['housing_count','shab','bbio','bbio_max','cep','cep_max','cepnr','cepnr_max','dh','dh_max','heating_vector_after','heating_mode_after','ecs_vector_after','ventilation'],
-  rt2012:['housing_count','shab','bbio','bbio_max','cep','cep_max','tic','tic_ref','heating_vector_after','heating_mode_after','ecs_vector_after','ventilation'],
-  thcex:['shab','ubat_before','ubat_after','cep_before','cep_after_final','heating_vector_before','heating_vector_after','ecs_vector_before','ecs_vector_after','ventilation'],
-  rsenv:['ic_components','ic_site','ic_energy','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13'],
-  cctp:['roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','heating_mode_after','ecs','ventilation'],
-  dpgf:['roof_insulation','wall_insulation','floor_insulation','window_material','window_glazing','heating_mode_after','ecs','ventilation'],
-  '3cl':['shab','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','heating_mode_after','ecs_vector_before','ecs','ventilation'],
-  dpe:['shab','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'],
-  acv:['ic_components','ic_site','stock_c_per_m2','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']
-});
-function specializedConfig(family){return SPECIALIZED_FAMILIES[family]||SPECIALIZED_FAMILIES.annex;}
+// v2.3 — une seule dropzone : la famille documentaire est détectée à la lecture, modifiable par fichier.
+// Options proposées dans la liste des fichiers (valeur = familles séparées par « + »).
+const FAMILY_CHOICES=Object.freeze([
+  ['rset','RSET RE2020 — thermique'],
+  ['rset+carbone','RSEE RE2020 — thermique + carbone'],
+  ['rt2012','RSET RT2012'],
+  ['thcex','THCex / RT Existant'],
+  ['carbone','Carbone — RSENV / ACV'],
+  ['cctp','CCTP'],
+  ['dpgf','DPGF'],
+  ['dpe','DPE / 3CL'],
+  ['annex','Annexe — moteur général']
+]);
+function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
+function specializedConfig(family){ const k=normalizeFamilyKey(family)||'annex'; return {label:DOCUMENT_FAMILIES[k]?.label||'Annexe',type:DOCUMENT_FAMILIES[k]?.type||null}; }
 function classifyForSelectedFamily(doc){
-  const auto=classifyDocument(doc.name,doc.read.text,{kind:doc.read.kind});
-  const family=doc.specializedFamily||'annex', cfg=specializedConfig(family);
-  const forced=cfg.type;
-  if(family==='annex'||!forced) return auto;
-  return {...auto,automaticType:auto.type,type:forced,forcedByDropzone:true,specializedFamily:family,specializedLabel:cfg.label};
+  const auto=classifyDocument(doc.name,doc.read?.text||'',{kind:doc.read?.kind,re2020:doc.read?.re2020||null});
+  const families=resolveDocumentFamilies({...doc,classification:{...auto,automaticType:auto.type},type:auto.type});
+  const forcedManual=doc.familyMode==='manual';
+  // Le type affiché suit la famille choisie manuellement ; la détection automatique reste mémorisée pour le contrôle.
+  const primary=families.find(f=>f!=='annex');
+  const forcedType=forcedManual&&primary&&!autoFamiliesForType(auto.type).includes(primary)?DOCUMENT_FAMILIES[primary]?.type:null;
+  return {...auto,automaticType:auto.type,type:forcedType||auto.type,families,familyMode:doc.familyMode||'auto',forcedByUser:!!forcedType};
 }
 function documentCompleteness(doc){
-  const expected=SPECIALIZED_EXPECTED[doc.specializedFamily]; if(!expected?.length||!Array.isArray(doc.cachedOccurrences)) return null;
+  if(!Array.isArray(doc.cachedOccurrences)) return null;
+  const expected=documentExpectedFields(doc); if(!expected.length) return null;
   const found=new Set(doc.cachedOccurrences.map(o=>o?.field).filter(Boolean));
-  const checked=[...expected];
-  const hits=checked.filter(k=>found.has(k)), missing=checked.filter(k=>!found.has(k));
-  return {hits:hits.length,total:checked.length,missing,ratio:checked.length?hits.length/checked.length:1};
+  const ok=e=>Array.isArray(e)?e.some(k=>found.has(k)):found.has(e);
+  const name=e=>Array.isArray(e)?e.map(k=>FIELD_MAP[k]?.label||k).join(' ou '):(FIELD_MAP[e]?.label||e);
+  const hits=expected.filter(ok), missing=expected.filter(e=>!ok(e));
+  return {hits:hits.length,total:expected.length,missing:missing.map(name),missingKeys:missing.flatMap(e=>Array.isArray(e)?e:[e]),ratio:hits.length/expected.length};
+}
+function familySelectHtml(d){
+  const detected=d.classification?autoFamiliesForType(d.classification.automaticType||d.classification.type):null;
+  const current=d.familyMode==='manual'&&Array.isArray(d.families)?d.families.join('+'):'auto';
+  const autoLabel=detected?`Auto · ${familiesLabel(d.read?.re2020?['rset','carbone']:resolveDocumentFamilies(d))}`:'Auto (détection à la lecture)';
+  return `<select class="family-select" data-id="${d.id}" title="Famille documentaire : pilote les parseurs et la liste blanche de champs">${[['auto',autoLabel],...FAMILY_CHOICES].map(([v,l])=>`<option value="${v}" ${v===current?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
+}
+async function changeDocumentFamily(id,value){
+  const d=state.docs.find(x=>x.id===id); if(!d) return;
+  if(value==='auto'){ d.familyMode='auto'; d.families=null; }
+  else { d.familyMode='manual'; d.families=value.split('+').map(normalizeFamilyKey).filter(Boolean); }
+  d.specializedFamily=null;
+  // Invalidation : les occurrences en cache venaient de l'ancienne famille.
+  d.cachedOccurrences=null; d.analysisCachedAt=null;
+  if(d.status==='ready'&&d.read?.text){
+    try{
+      d.classification=classifyForSelectedFamily(d); d.type=d.classification.type; d.buildings=detectBuildings(d);
+      d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now();
+      await checkpointDocument(activeProject(),d);
+      learn('family_change',{docId:d.id,fileName:d.name,familyMode:d.familyMode,families:d.families||resolveDocumentFamilies(d),detectedType:d.classification.automaticType},activeProject());
+      if(state.result) recomputeProject(`Famille modifiée pour ${d.name} : document réanalysé et consolidation recalculée.`);
+      else { renderAll(); toast(`Famille modifiée pour ${d.name}.`,'success'); }
+    }catch(err){ toast(`Réanalyse impossible : ${err?.message||err}`,'error'); }
+  } else { renderFiles(); scheduleWorkspaceCheckpoint('famille documentaire',80); }
 }
 
 
@@ -390,27 +410,31 @@ function renderFiles(){
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
-    const spec=d.specializedFamily&&d.specializedFamily!=='annex'?`<span class="file-specialized-badge">${escapeHtml(specializedConfig(d.specializedFamily).label)}</span>`:''; const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="${escapeHtml(completeness.missing.map(k=>FIELD_MAP[k]?.label||k).join(', '))}">${completeness.hits}/${completeness.total} attendus</span>`:'';
+    const spec=d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':''; const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div>${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${comp}<div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
   $$('.targeted-file').forEach(b=>b.onclick=()=>targetedReanalysis(b.dataset.id));
+  $$('.family-select').forEach(sel=>{ sel.onchange=()=>changeDocumentFamily(sel.dataset.id,sel.value); sel.onclick=e=>e.stopPropagation(); });
+  $$('.llm-file').forEach(b=>b.onclick=()=>llmAssistDocument(b.dataset.id));
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
-function addFiles(fileList,specializedFamily='annex'){
+function addFiles(fileList,specializedFamily=null){
   const allowed=/\.(pdf|xml|xlsx?|xls)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
     const rel=file._relativePath||file.webkitRelativePath||file.name;
     const existing=state.docs.find(d=>(d.relativePath||d.name)===rel&&d.size===file.size);
     if(existing){
-      if(!existing.file){ existing.file=file; existing.relativePath=rel; if(specializedFamily) existing.specializedFamily=specializedFamily; if(['missing','error'].includes(existing.status)) existing.status='pending'; rehydrated++; continue; }
+      if(!existing.file){ existing.file=file; existing.relativePath=rel; if(['missing','error'].includes(existing.status)) existing.status='pending'; rehydrated++; continue; }
       toast(`Déjà ajouté : ${rel}`,'warn'); continue;
     }
-    const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.specializedFamily=specializedFamily||'annex'; rec.specializedLabel=specializedConfig(rec.specializedFamily).label; state.docs.push(rec); added++;
+    const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null;
+    const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
+    state.docs.push(rec); added++;
   }
   if(rehydrated) toast(`${rehydrated} fichier(s) rechargé(s) pour permettre une nouvelle analyse OCR.`,'success');
   if(added) toast(state.result?`${added} nouveau${added>1?'x':''} document${added>1?'s':''} ajouté${added>1?'s':''} — prêt${added>1?'s':''} à compléter l’analyse.`:`${added} fichier${added>1?'s':''} ajouté${added>1?'s':''}`,'success');
@@ -890,12 +914,12 @@ function buildTargetedCandidates(doc,tempDoc,parsed){
   return [...best.values()].sort((a,b)=>a.building.localeCompare(b.building,'fr')||String(FIELD_MAP[a.field]?.family||'').localeCompare(String(FIELD_MAP[b.field]?.family||''),'fr')||String(FIELD_MAP[a.field]?.label||a.field).localeCompare(String(FIELD_MAP[b.field]?.label||b.field),'fr'));
 }
 
-function showTargetedReview(doc,candidates,ocrMeta){
+function showTargetedReview(doc,candidates,ocrMeta,opts={}){
   const dlg=$('#targetedReviewDialog'), list=$('#targetedReviewList'), title=$('#targetedReviewTitle'), sub=$('#targetedReviewSub'), apply=$('#targetedReviewApply'), close=$('#targetedReviewClose');
   if(!dlg||!list) return;
   const decisions=new Map(),logged=new Set();
-  title.textContent=`Crible fin — ${doc.name}`;
-  sub.textContent=`${candidates.length} information(s) nouvelle(s) trouvée(s). OCR maximal sur ${ocrMeta?.pages?.length||0} page(s). Aucune valeur existante n’est remplacée automatiquement : chaque proposition reste soumise à ✓ / ✕.`;
+  title.textContent=opts.title||`Crible fin — ${doc.name}`;
+  sub.textContent=opts.sub||`${candidates.length} information(s) nouvelle(s) trouvée(s). OCR maximal sur ${ocrMeta?.pages?.length||0} page(s). Aucune valeur existante n’est remplacée automatiquement : chaque proposition reste soumise à ✓ / ✕.`;
   const render=()=>{
     list.innerHTML=candidates.map((c,i)=>{ const decision=decisions.get(i)||''; const def=FIELD_MAP[c.field]; return `<article class="targeted-proposal ${decision?`decision-${decision}`:''}" data-targeted-index="${i}"><div class="targeted-proposal-main"><div class="targeted-field"><span>${escapeHtml(c.building)}</span><strong>${escapeHtml(def?.label||c.field)}</strong></div><div class="targeted-new-value">${escapeHtml(formatValue(c.value))}${c.unit?` <small>${escapeHtml(c.unit)}</small>`:''}</div><div class="targeted-source">p.${c.page} · confiance moteur ${Math.round((c.confidence||0)*100)} % · ${escapeHtml(c.method||'OCR')}</div><div class="targeted-excerpt">${escapeHtml(c.excerpt||'')}</div></div><div class="targeted-actions"><button class="targeted-accept" data-targeted-accept="${i}" title="Accepter">✓</button><button class="targeted-reject" data-targeted-reject="${i}" title="Refuser">✕</button></div></article>`; }).join('');
     const accepted=[...decisions.values()].filter(x=>x==='accept').length, rejected=[...decisions.values()].filter(x=>x==='reject').length;
@@ -1324,8 +1348,67 @@ async function handlePatchFile(file){
   }catch(err){toast(`Patch refusé : ${err.message||err}`,'error');}
 }
 
+// ---------------------------------------------------------------------------
+// v2.3 — assistance IA (point 9 de l'audit) : secours sur les champs manquants d'un document.
+// Les propositions sont vérifiées mot pour mot (llm-assist.js) puis présentées dans la même
+// fenêtre ✓ / ✕ que le Crible fin ; rien n'entre dans le tableau sans validation humaine.
+// ---------------------------------------------------------------------------
+function ensureLlmDialog(){
+  let dlg=$('#llmSettingsDialog'); if(dlg) return dlg;
+  dlg=document.createElement('dialog'); dlg.id='llmSettingsDialog'; dlg.className='llm-dialog';
+  document.body.appendChild(dlg); return dlg;
+}
+function openLlmSettings(onReady=null){
+  const dlg=ensureLlmDialog(); const cfg=getLlmConfig();
+  dlg.innerHTML=`<form method="dialog" class="llm-form"><h2>🤖 Assistance IA — réglages</h2>
+  <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+  <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
+  <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+  <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"><small class="llm-hint">Modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small></label>
+  <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
+  <label id="llmKeyWrap">Clé API <span id="llmKeyProvider"></span> (conservée pour cette session seulement)<input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
+  <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</label>
+  <menu><button value="cancel" class="btn light">Annuler</button><button id="llmSave" value="default" class="btn primary">Enregistrer</button></menu></form>`;
+  let lastProvider=cfg.provider;
+  const sync=()=>{ const prov=$('#llmProvider').value, p=LLM_PROVIDERS[prov];
+    $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct';
+    $('#llmKeyProvider').textContent=p.label; $('#llmKey').placeholder=p.keyHint;
+    $('#llmKeyState').textContent=llmHasDirectKey(prov)?'Une clé est déjà enregistrée pour cette session (laisser vide pour la conserver).':'Aucune clé enregistrée pour cette session.';
+    // Changement de fournisseur : on propose son modèle par défaut si l'utilisateur n'a pas personnalisé le champ.
+    if(prov!==lastProvider){ const cur=$('#llmModel').value.trim(); if(!cur||cur===LLM_PROVIDERS[lastProvider]?.defaultModel) $('#llmModel').value=p.defaultModel; lastProvider=prov; } };
+  $('#llmMode').onchange=sync; $('#llmProvider').onchange=sync; sync();
+  $('#llmSave').onclick=e=>{ e.preventDefault(); const mode=$('#llmMode').value; const consent=$('#llmConsent').checked;
+    if(mode!=='off'&&!consent){ toast('Cochez la case de consentement pour activer l’assistance IA.','warn'); return; }
+    const provider=$('#llmProvider').value;
+    saveLlmConfig({mode,provider,model:$('#llmModel').value.trim()||LLM_PROVIDERS[provider].defaultModel,maxPages:Number($('#llmMaxPages').value)||6}); setLlmConsent(consent);
+    const key=$('#llmKey')?.value; if(key) setLlmDirectKey(key,provider);
+    learn('llm_settings',{mode,provider,model:$('#llmModel').value.trim()},activeProject());
+    dlg.close(); toast(mode==='off'?'Assistance IA désactivée.':`Assistance IA activée · ${LLM_PROVIDERS[provider].label}.`,'success'); if(mode!=='off'&&typeof onReady==='function') onReady(); };
+  dlg.showModal();
+}
+async function llmAssistDocument(id){
+  const doc=state.docs.find(x=>x.id===id); if(!doc||doc.status!=='ready') return;
+  const cfg=getLlmConfig();
+  if(cfg.mode==='off'||!llmConsentGiven()){ openLlmSettings(()=>llmAssistDocument(id)); return; }
+  if(!state.result){ toast('Lancez d’abord l’analyse du projet.','warn'); return; }
+  const docRows=state.result.rows||[];
+  const missing=[...new Set(Object.keys(FIELD_MAP).filter(k=>docRows.some(r=>isMissingTableValue(r[k])&&!Object.prototype.hasOwnProperty.call(state.manualValues||{},`${r.building}|${k}`))))];
+  doc.llmStatus='running'; renderFiles(); setStatus(`Assistance IA — ${doc.name}`,20);
+  try{
+    const res=await runLlmAssist(doc,{missingFields:missing,config:cfg,invokeFunction:invokeLlmCloudFunction});
+    const candidates=buildTargetedCandidates(doc,doc,res.accepted);
+    learn('llm_assist',{docId:doc.id,fileName:doc.name,docType:doc.type,provider:cfg.provider,model:cfg.model,mode:cfg.mode,fields:res.fields?.length||0,pages:res.pages||[],accepted:res.accepted.length,rejected:res.rejected.map(r=>({field:r.proposal?.field,value:r.proposal?.value,page:r.proposal?.page,reason:r.reason})),usage:res.usage||null},activeProject());
+    setStatus(`Assistance IA terminée — ${candidates.length} proposition(s) vérifiée(s)`,100); setTimeout(()=>{ const p=$('#progress'); if(p) p.hidden=true; },900);
+    if(res.note&&!res.accepted.length&&!res.rejected.length){ toast(res.note,'info'); return; }
+    if(!candidates.length){ toast(`Aucune proposition exploitable${res.rejected.length?` (${res.rejected.length} rejetée(s) par la vérification littérale)`:''}.`,'info'); return; }
+    showTargetedReview(doc,candidates,{pages:[]},{title:`Assistance IA (${LLM_PROVIDERS[cfg.provider]?.label||cfg.provider}) — ${doc.name}`,sub:`${candidates.length} proposition(s) dont la citation a été retrouvée mot pour mot dans le document${res.rejected.length?` · ${res.rejected.length} rejetée(s) automatiquement (citation introuvable ou valeur absente)`:''}. Confiance plafonnée à 85 % : chaque valeur doit être validée ✓ / ✕.`});
+  }catch(err){ learn('analysis_error',{scope:'llm_assist',docId:doc.id,fileName:doc.name,error:err?.message||String(err)},activeProject()); toast(`Assistance IA impossible : ${err?.message||err}`,'error'); setStatus('Assistance IA interrompue'); }
+  finally{ doc.llmStatus=null; renderFiles(); }
+}
+
 function wire(){
   const dz=$('#dropzone'), fi=$('#fileInput'), folderInput=$('#folderInput');
+  $('#llmSettingsBtn')?.addEventListener('click',()=>openLlmSettings());
   // Les labels ouvrent nativement les sélecteurs Finder. Le clic sur le fond de la dropzone
   // ouvre aussi les fichiers, mais on ignore impérativement les inputs/labels : sinon input.click()
   // reboucle sur le gestionnaire parent et le sélecteur peut ne plus s'ouvrir.
@@ -1335,16 +1418,13 @@ function wire(){
   });
   fi.addEventListener('click',e=>e.stopPropagation());
   folderInput?.addEventListener('click',e=>e.stopPropagation());
-  document.querySelectorAll('.specialized-file-input').forEach(inp=>inp.addEventListener('change',e=>{ const family=inp.dataset.family||'annex'; addFiles(e.target.files||[],family); inp.value=''; }));
-  document.querySelectorAll('.specialized-dropzone').forEach(zone=>{
-    const family=zone.dataset.family||'annex';
-    for(const ev of ['dragenter','dragover']) zone.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';zone.classList.add('drag');});
-    zone.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!zone.contains(e.relatedTarget))zone.classList.remove('drag');});
-    zone.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();zone.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs,family);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
-  });
-  fi.addEventListener('change',e=>{ addFiles(e.target.files||[],'annex'); fi.value=''; });
-  if(folderInput) folderInput.addEventListener('change',e=>{ addFiles(e.target.files||[],'annex'); folderInput.value=''; });
-  // Le drag & drop est géré par chaque zone documentaire spécialisée.
+  for(const ev of ['dragenter','dragover']) dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';dz.classList.add('drag');});
+  dz.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!dz.contains(e.relatedTarget))dz.classList.remove('drag');});
+  dz.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
+  dz.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } });
+  fi.addEventListener('change',e=>{ addFiles(e.target.files||[]); fi.value=''; });
+  if(folderInput) folderInput.addEventListener('change',e=>{ addFiles(e.target.files||[]); folderInput.value=''; });
+  // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);

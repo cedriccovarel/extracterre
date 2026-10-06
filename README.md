@@ -1,6 +1,8 @@
-# ExtracTerre v2.2.3
+> **v2.3.1** — assistance IA au choix ChatGPT, Gemini ou Claude. **v2.3.0** — dropzone unique avec famille par fichier, lecture native des XML RE2020 (RSET/RSEE/RSEnv), contrôles de cohérence métier, assistance IA à citation vérifiée (désactivée par défaut). Voir `CHANGELOG.md` et `XML_RE2020_ET_IA_V2_3.md`.
 
-## v2.2.3 — Stock C/m² dans le volet Carbone
+# ExtracTerre v2.2.4
+
+## v2.2.4 — Stock C/m² dans le volet Carbone
 - Nouveau champ canonique **Stock C/m²** (unité `kgC/m²`) dans le volet Carbone et dans l’export maître, qui passe à 168 colonnes.
 - Source automatique autorisée : **Analyse ACV** ; entrée manuelle toujours disponible.
 - Premier apprentissage embarqué : détection stricte du motif `Stockage carbone Stock,C (par m²) <valeur> kgC/m²`.

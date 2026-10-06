@@ -3,6 +3,12 @@ import {normLower} from './utils.js';
 import {patchClassifierScores} from './patches.js';
 
 export function classifyDocument(fileName, text='', meta={}) {
+  // v2.3 — XML RE2020 lu par balises : le type est certain (présence des blocs RSET / RSEnv).
+  if(meta?.re2020){
+    const g=meta.re2020.general||{};
+    const type=g.hasRsenv?DOC_TYPES.RSEE_RE2020:DOC_TYPES.RSET_RE2020;
+    return {type,confidence:0.99,scores:{[type]:99},reason:[[type,99]],structured:'xml-re2020'};
+  }
   const n=normLower(fileName), t=normLower(text).slice(0,120000), head=normLower(text).slice(0,18000);
   const has=(re)=>re.test(n)||re.test(t);
   const score={}; const add=(k,v)=>score[k]=(score[k]||0)+v;

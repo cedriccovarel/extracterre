@@ -201,3 +201,14 @@ export async function analyzePdfInCloud(file,{ocrMode='auto',onProgress=()=>{},s
   }
   } finally { releaseCloud(); }
 }
+
+// v2.3 — appel générique d'une Edge Function avec la session Cloud courante (utilisé par l'assistance IA).
+export async function invokeLlmCloudFunction(name,body){
+  if(!cloudConfigured()) throw new Error('Cloud Supabase non configuré.');
+  const client=getCloudClient();
+  const {data:sess}=await client.auth.getSession();
+  if(!sess?.session) throw new Error('Connectez-vous au compte Cloud pour utiliser l’assistance IA serveur.');
+  const {data,error}=await client.functions.invoke(name,{body});
+  if(error){ let detail=error.message||String(error); try{ const j=await error.context?.json?.(); if(j?.error) detail=j.error; }catch{} throw new Error(detail); }
+  return data;
+}

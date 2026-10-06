@@ -19,7 +19,7 @@ const { APP_VERSION, FIELD_DEFS, DOC_TYPES } = await import('./js/config.js');
 const { shouldUseCloudForFile } = await import('./js/cloud.js');
 const { importImprovementPatchObject, parsePatchOccurrences } = await import('./js/patches.js');
 
-assert.equal(APP_VERSION, '2.2.3', 'La version doit être 2.2.3');
+assert.equal(APP_VERSION, '2.3.1', 'La version doit être 2.3.1');
 assert.equal(FIELD_DEFS.length, 168, 'Le catalogue moteur doit garder 168 champs');
 
 const catalog = JSON.parse(fs.readFileSync('./data/field-catalog.json', 'utf8'));

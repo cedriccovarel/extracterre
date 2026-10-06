@@ -1,5 +1,6 @@
 import {MAX_OCR_WORKERS} from './config.js';
 import {normalizeText, uid} from './utils.js';
+import {parseXmlDocument,isRe2020XmlDocument,extractRe2020,re2020SummaryPages} from './xml-re2020.js';
 
 const OCR_DEFAULTS={mode:'auto',lang:'fra+eng',scale:1.85,maxPixels:5200000,minChars:150};
 function throwIfAborted(signal){ if(signal?.aborted){ const e=new Error(signal.reason==='analysis-timeout'?'Analyse interrompue après 5 minutes.':'Analyse annulée.'); e.name='AbortError'; throw e; } }
@@ -36,28 +37,43 @@ export function setOcrConcurrencyLimit(limit=MAX_OCR_WORKERS){
 }
 export function ocrPoolStatus(){ return {active:OCR_ACTIVE,waiting:OCR_WAITING.length,max:OCR_LIMIT}; }
 
-function groupItemsIntoLines(items, yTolerance=2.8) {
-  const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,idx})).filter(i=>i.text.trim());
-  enriched.sort((a,b)=>Math.abs(b.y-a.y)>yTolerance?b.y-a.y:a.x-b.x);
-  // Parcours linéaire après tri. L'ancienne version faisait lines.find() pour chaque item,
-  // soit un coût quadratique sur les pages PDF très denses.
+export function groupItemsIntoLines(items, yTolerance=2.8) {
+  const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,h:Math.abs(it.transform?.[3]||it.height||0),idx})).filter(i=>i.text.trim());
+  // v2.3 — tri strict (ordre total) : y décroissant puis x croissant. L'ancien comparateur intégrait
+  // la tolérance et n'était pas transitif, ce qui pouvait mélanger les fragments des pages denses.
+  enriched.sort((a,b)=>(b.y-a.y)||(a.x-b.x));
+  // Regroupement linéaire ; la tolérance s'adapte à la hauteur de police et compare au y moyen de la ligne.
   const lines=[]; let current=null;
   for(const item of enriched){
-    if(!current || Math.abs(current.y-item.y)>yTolerance){
-      current={y:item.y,items:[]}; lines.push(current);
-    }
-    current.items.push(item);
+    const tol=Math.max(yTolerance,Math.min(6,(item.h||0)*0.45));
+    if(!current || Math.abs(current.y-item.y)>tol){ current={y:item.y,sumY:0,n:0,items:[]}; lines.push(current); }
+    current.items.push(item); current.sumY+=item.y; current.n++; current.y=current.sumY/current.n;
   }
   return lines.map((line,index)=>{
     line.items.sort((a,b)=>a.x-b.x);
     let text=''; let prev=null;
     for(const it of line.items){ if(prev){ const gap=it.x-(prev.x+prev.w); if(gap>2) text+=' '; } text+=it.text; prev=it; }
-    return {index,text:normalizeText(text),items:line.items.map(it=>({text:it.text,x:it.x}))};
+    return {index,y:line.y,text:normalizeText(text),items:line.items.map(it=>({text:it.text,x:it.x}))};
   }).filter(l=>l.text);
 }
 
 function ocrTextToLines(text=''){
   return String(text||'').split(/\r?\n/).map(normalizeText).filter(Boolean).map((text,index)=>({index,y:null,text,items:[],ocr:true}));
+}
+// v2.3 — lignes OCR géolocalisées : les boîtes Tesseract (pixels du canvas, origine en haut)
+// sont reconverties dans le repère PDF.js (points, origine en bas) pour que les parseurs
+// positionnels (colonnes, bâtiment courant, contexte avant/après) fonctionnent aussi sur l'OCR.
+export function ocrBlocksToLines(blocks,geometry={}){
+  const scale=Number(geometry.scale)||1, baseHeight=Number(geometry.baseHeight)||0;
+  const out=[];
+  for(const block of blocks||[]) for(const para of block?.paragraphs||[]) for(const line of para?.lines||[]){
+    const text=normalizeText(line?.text||''); if(!text) continue;
+    const bb=line.bbox||{}; const yPix=((Number(bb.y0)||0)+(Number(bb.y1)||0))/2;
+    const words=(line.words||[]).filter(w=>String(w?.text||'').trim()).map(w=>({text:String(w.text),x:(Number(w.bbox?.x0)||0)/scale}));
+    out.push({y:baseHeight?baseHeight-yPix/scale:-yPix/scale,text,items:words,ocr:true});
+  }
+  out.sort((a,b)=>b.y-a.y);
+  return out.map((l,index)=>({...l,index}));
 }
 
 export function pdfTextQuality(text='',items=[]){
@@ -152,7 +168,7 @@ export function shouldOcrPdfPage(text='',items=[],mode='auto'){
   return q.score<0.43 || q.weirdRatio>0.03 || q.fragmentRatio>0.24;
 }
 
-function mergePdfAndOcrLines(pdfLines=[],ocrLines=[],pdfQuality=null,ocrQuality=null){
+export function mergePdfAndOcrLines(pdfLines=[],ocrLines=[],pdfQuality=null,ocrQuality=null){
   if(!ocrLines.length) return {lines:pdfLines,source:'pdf'};
   if(!pdfLines.length) return {lines:ocrLines,source:'ocr'};
   const pq=pdfQuality?.score??0, oq=ocrQuality?.score??0;
@@ -161,7 +177,12 @@ function mergePdfAndOcrLines(pdfLines=[],ocrLines=[],pdfQuality=null,ocrQuality=
   // Sinon on garde la géométrie PDF.js et on ajoute seulement les lignes OCR nouvelles.
   const seen=new Set(pdfLines.map(l=>normalizeText(l.text).toLowerCase()));
   const extra=ocrLines.filter(l=>{ const k=normalizeText(l.text).toLowerCase(); if(!k||seen.has(k)) return false; seen.add(k); return true; });
-  return {lines:[...pdfLines,...extra.map((l,i)=>({...l,index:pdfLines.length+i}))],source:extra.length?'hybrid':'pdf'};
+  if(!extra.length) return {lines:pdfLines,source:'pdf'};
+  // v2.3 — insertion à leur position verticale réelle quand les deux couches sont géolocalisées,
+  // au lieu d'un ajout en fin de page qui cassait les contextes avant/après.
+  const geo=pdfLines.every(l=>Number.isFinite(l.y))&&extra.every(l=>Number.isFinite(l.y));
+  const merged=geo?[...pdfLines,...extra].sort((a,b)=>b.y-a.y):[...pdfLines,...extra];
+  return {lines:merged.map((l,i)=>({...l,index:i})),source:'hybrid'};
 }
 
 async function renderPdfPageForOcr(page,opts={}){
@@ -175,6 +196,7 @@ async function renderPdfPageForOcr(page,opts={}){
   const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
   ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
   await page.render({canvasContext:ctx,viewport,background:'white'}).promise;
+  try{ canvas._etGeometry={scale:viewport.width/Math.max(1,base.width),baseHeight:base.height}; }catch{}
   return canvas;
 }
 
@@ -239,11 +261,14 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
           } else {
             try{
               canvas=await renderPdfPageForOcr(page,opts);
-              const ret=await worker.recognize(canvas);
+              let ret;
+              try{ ret=await worker.recognize(canvas,{},{text:true,blocks:true}); }
+              catch(optErr){ ret=await worker.recognize(canvas); }
               throwIfAborted(opts.signal);
               const ocrText=String(ret?.data?.text||'');
               ocrConfidence=Number.isFinite(ret?.data?.confidence)?ret.data.confidence:null;
-              const ocrLines=ocrTextToLines(ocrText);
+              const geoLines=Array.isArray(ret?.data?.blocks)?ocrBlocksToLines(ret.data.blocks,canvas._etGeometry):[];
+              const ocrLines=geoLines.length?geoLines:ocrTextToLines(ocrText);
               const ocrQuality=pdfTextQuality(ocrText,ocrLines.map(l=>({str:l.text})));
               const merged=mergePdfAndOcrLines(pdfLines,ocrLines,pdfQuality,ocrQuality);
               finalLines=merged.lines; textSource=merged.source; ocrPages.push(p);
@@ -293,7 +318,7 @@ export function compactReadForRetention(read){
     page.lines=compactLines;
     page.text=String(page.text||compactLines.map(l=>l.text).join('\n'));
     // Ces propriétés sont les seules métadonnées de page conservées volontairement.
-    for(const key of Object.keys(page)) if(!['page','sheet','text','lines','textSource','pdfTextQuality','ocrConfidence'].includes(key)) delete page[key];
+    for(const key of Object.keys(page)) if(!['page','sheet','text','lines','textSource','pdfTextQuality','ocrConfidence','re2020Building'].includes(key)) delete page[key];
   }
   read.text=String(read.text||(read.pages||[]).map(p=>p.text||'').join('\n\f\n'));
   read.pageCount=Number.isFinite(read.pageCount)?read.pageCount:(read.pages||[]).length;
@@ -302,11 +327,23 @@ export function compactReadForRetention(read){
 }
 
 export async function readXml(file){
-  const text=await file.text(); const parser=new DOMParser(); const xml=parser.parseFromString(text,'application/xml');
-  if(xml.querySelector('parsererror')) throw new Error('XML illisible ou invalide.');
+  const text=await file.text();
+  return readXmlText(text);
+}
+export function readXmlText(text){
+  const xml=parseXmlDocument(text);
+  // v2.3 — XML RE2020 (RSEE / RSET / RSEnv) : extraction structurée par balises normalisées.
+  // Le texte conservé est une synthèse lisible (une page par bâtiment) et non l'arbre complet,
+  // qui pèse souvent plus de 10 Mo et noyait les parseurs texte sous les sorties mensuelles.
+  if(isRe2020XmlDocument(xml)){
+    const re2020=extractRe2020(xml);
+    const pages=re2020SummaryPages(re2020);
+    const normalized=pages.map(p=>p.text).join('\n\f\n');
+    return {kind:'xml',xmlFormat:'re2020',re2020,pages,text:normalized,pageCount:pages.length};
+  }
   const rows=[]; let idx=0;
   const walk=(node,path=[])=>{
-    for(const child of node.children||[]){ const p=[...path,child.tagName]; const value=(child.children.length===0?child.textContent:'').trim(); if(value) rows.push(`${p.join(' > ')} = ${value}`); walk(child,p); }
+    for(const child of Array.from(node.children||[])){ const p=[...path,child.tagName]; const kids=Array.from(child.children||[]); const value=(kids.length===0?String(child.textContent||''):'').trim(); if(value) rows.push(`${p.join(' > ')} = ${value}`); walk(child,p); }
   }; walk(xml.documentElement,[xml.documentElement.tagName]);
   const normalized=rows.join('\n'); return {kind:'xml',pages:[{page:1,text:normalized,lines:rows.map(text=>({index:idx++,text}))}],text:normalized,pageCount:1};
 }

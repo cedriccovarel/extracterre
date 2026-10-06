@@ -1,5 +1,5 @@
 
-## v2.2.3 — Stock C/m² ACV
+## v2.2.4 — Stock C/m² ACV
 - `test_v2_2_3_stock_c.mjs` vérifie l’extraction du Stock C/m² sur 4 bâtiments (50,4 ; 80,5 ; 77,0 ; 55,1 kgC/m²).
 - vérifie que le Stock,C total en kgC n’est pas confondu avec la valeur surfacique.
 - vérifie que le champ est autorisé dans la dropzone Analyse ACV et reste disponible pour saisie/surlignage manuel.
@@ -318,3 +318,21 @@ Tests ajoutés dans `test_v2_1_hybrid.mjs` :
 - conservation d’items positionnés dans l’index distant pour les parseurs de tableaux.
 
 La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et v1.1.23 restent verts.
+
+## v2.2.4 — Analyse manuelle + ACV ClimaWin
+
+- Vérifie que la dropzone `manual` utilise le moteur générique et n’applique pas de whitelist spécialisée.
+- Vérifie l’extraction ACV ClimaWin : Ic énergie, Ic composants, Ic chantier, Stock C/m² et lots.
+- Vérifie la pondération Sref des postes énergie lorsqu’un bâtiment contient plusieurs zones.
+- Jeu réel contrôlé : `LOT 1 - Résultats ACV.pdf`, 4 bâtiments, Stock C/m² = 50.4 / 80.5 / 77.0 / 55.1.
+
+
+## v2.3.0
+- `node test_v2_3_0.mjs` — 144 vérifications sur documents **fictifs** (`test_fixtures_v2_3.mjs`) : XML RE2020 2 bâtiments, DPE (avant/après, éclaté, isolé, neuf, phrases réglementaires), 3CL avec recommandations, familles multiples, consolidation multi-bâtiments, plafond d'apprentissage, cohérence, lecture PDF/OCR, assistance IA simulée (citations inventées rejetées).
+- Toutes les suites : `for t in test_v*.mjs; do node $t; done` ; auto-tests moteur 149/149.
+- Test navigateur réalisé avant livraison (Chromium) : dropzone unique, 3 fichiers fictifs (XML/DPE/CCTP), changement de famille, IA simulée validée et appliquée, deux XML réels de 16 Mo et 6,7 Mo analysés en 1,8 s, aucune erreur JavaScript.
+
+
+## v2.3.1
+- `test_v2_3_0.mjs` : 162 vérifications, dont formats de requête/réponse ChatGPT et Gemini, clés isolées par fournisseur, erreurs API, consentement et réglages mémorisés.
+- Test navigateur : réglages (3 fournisseurs, modèle par défaut adapté au changement de fournisseur), appel ChatGPT simulé, proposition vérifiée, validée et appliquée ; aucune erreur JavaScript.

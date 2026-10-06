@@ -8,7 +8,15 @@ import {buildProjectTags} from './tags.js';
 import {classifyDocument} from './classifier.js';
 import {shouldOcrPdfPage} from './readers.js';
 import {applyLearningBoosts} from './learning-memory.js';
+import {applyCoherenceChecks} from './coherence.js';
+import {autoFamiliesForType,resolveDocumentFamilies,DOCUMENT_FAMILIES} from './parsers.js';
 
+const BUILDING_SCOPED_FAMILIES=new Set(['confort d\'ete','performance energetique','carbone','dpe']);
+export function isBuildingScopedField(field){
+  if(['shab','housing_count','construction_year'].includes(field)) return true;
+  const fam=normLower(FIELD_MAP[field]?.family||'');
+  return BUILDING_SCOPED_FAMILIES.has(fam);
+}
 function valueKey(v){ return typeof v==='number'?v.toFixed(6):normLower(v); }
 export function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
@@ -19,6 +27,9 @@ export function routeAndDeduplicate(raw,rules){
   const agreement=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building].join('|'); if(!agreement.has(k)) agreement.set(k,new Set()); agreement.get(k).add(o.docId); }
   routed=routed.map(o=>{ const n=agreement.get([o.field,valueKey(o.value),o.building].join('|'))?.size||1; const boost=n>=3?0.05:n>=2?0.03:0; return {...o,confidence:Math.max(0,Math.min(1,o.confidence+boost)),agreementSources:n}; });
+  // v2.3 — la mémoire d'apprentissage peut faire remonter un candidat en tête de la file « À vérifier »,
+  // mais elle ne peut jamais être, à elle seule, la raison du franchissement du seuil de remplissage automatique.
+  routed=routed.map(o=>{ const b=Number(o.learningBoost)||0; if(b>0&&!o.userValidated&&o.confidence>=MIN_RETAINED_CONFIDENCE&&o.confidence-b<MIN_RETAINED_CONFIDENCE) return {...o,confidence:MIN_RETAINED_CONFIDENCE-0.001,learningCappedForReview:true}; return o; });
   const seen=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building,o.docId,o.page,o.excerpt].join('|'); const prev=seen.get(k); if(!prev||o.confidence>prev.confidence) seen.set(k,o); }
   return [...seen.values()];
@@ -98,11 +109,19 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
     const key=`${o.field}|${o.building||'Bâtiment unique'}`;
     const list=byFieldBuilding.get(key); if(list) list.push(o); else byFieldBuilding.set(key,[o]);
   }
+  // v2.3 — une valeur non attribuée à un bâtiment ne remplit plus silencieusement tous les bâtiments.
+  // Pour les indicateurs propres à un bâtiment (performance, confort d'été, carbone, DPE, surface,
+  // logements), elle est réservée à la file « À vérifier » dès que l'opération compte plusieurs bâtiments.
+  // Pour les autres champs (enveloppe, systèmes, administratif), elle reste utilisable mais une valeur
+  // attribuée au bâtiment l'emporte toujours, quel que soit le rang de la source.
+  const multiBuilding=buildings.length>1;
   const candidatesFor=(field,building)=>{
     const exact=byFieldBuilding.get(`${field}|${building}`)||[];
     if(building==='Bâtiment unique') return exact;
     const global=byFieldBuilding.get(`${field}|Bâtiment unique`)||[];
-    return global.length?exact.concat(global):exact;
+    if(!global.length) return exact;
+    if(multiBuilding&&isBuildingScopedField(field)) return exact;
+    return exact.concat(global.map(o=>({...o,_globalCandidate:true})));
   };
 
   for(const building of buildings){
@@ -122,6 +141,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       if(directRset.length) pool=directRset;
       else { const directPool=pool.filter(o=>!o.libraryDerived); if(directPool.length) pool=directPool; }
       pool=[...pool].sort((a,b)=>{
+        const ag=a._globalCandidate?1:0, bg=b._globalCandidate?1:0; if(ag!==bg) return ag-bg;
         const ar=Number.isFinite(a.sourceRank)?a.sourceRank:sourceRank(f.key,a.docType,rules), br=Number.isFinite(b.sourceRank)?b.sourceRank:sourceRank(f.key,b.docType,rules);
         if(ar!==br) return ar-br;
         const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
@@ -131,7 +151,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       });
       let chosen=pool[0];
       if(f.key==='dh') { const dhRows=pool.filter(o=>o.method==='rset:dh-row'); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
-      row[f.key]=chosen.value; finals.push({...chosen,status:'retenu',operation});
+      { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
     if(row.operation_name===undefined&&operationName) row.operation_name=operationName;
@@ -148,7 +168,8 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
   const detailed=occurrences.map(o=>{
     const retained=finalIds.has([o.field,o.building,o.docId,o.page,o.excerpt,valueKey(o.value)].join('|'));
     const directWinner=!retained&&o.libraryDerived&&(directFinalGlobal.has(o.field)||directFinalExact.has(`${o.field}|${o.building}`));
-    return {...o,status:retained?'retenu':'rejeté',rejectionReason:retained?'':(o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
+    const unattributed=!retained&&multiBuilding&&o.building==='Bâtiment unique'&&isBuildingScopedField(o.field)&&o.sourceTier!=='forbidden';
+    return {...o,status:retained?'retenu':'rejeté',...(unattributed?{unattributedScoped:true}:{}),rejectionReason:retained?'':(unattributed?'Valeur sans bâtiment identifié dans une opération multi-bâtiments : à attribuer manuellement':o.sourceTier==='unrouted'?'Source non autorisée pour remplissage automatique':o.confidence<MIN_RETAINED_CONFIDENCE?`Confiance < ${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`:directWinner?'Valeur documentaire directe prioritaire sur la bibliothèque':'Non retenu après consolidation')};
   });
   return {operation,buildings,rows,finals,detailed,buildingAliases:grouping?.aliases||[],buildingSuggestions:grouping?.suggestions||[],authoritativeBuildings:grouping?.authoritative||[],buildingOverrides:grouping?.manualOverrides||{}};
 }
@@ -203,6 +224,7 @@ function buildUncertain(detailed=[]){
   const best=new Map();
   for(const o of detailed){
     if(o.sourceTier==='forbidden'||o.confidence<MIN_REVIEW_CONFIDENCE) continue;
+    if(o.unattributedScoped){ const k=`${o.building}|${o.field}|unattributed`; const prev=best.get(k); if(!prev||o.confidence>prev.confidence) best.set(k,o); continue; }
     // Les candidats non routés restent à vérifier même au-dessus de 90 % :
     // une bonne ressemblance textuelle ne remplace pas une source métier autorisée.
     if(o.sourceTier!=='unrouted'&&o.confidence>=MIN_RETAINED_CONFIDENCE) continue;
@@ -213,6 +235,18 @@ function buildUncertain(detailed=[]){
   return [...best.values()].sort((a,b)=>b.confidence-a.confidence);
 }
 
+// v2.3 — contrôle « famille choisie / type détecté » : la détection reste un garde-fou visible.
+export function familyMismatchAlerts(docs=[]){
+  const alerts=[];
+  for(const d of docs){
+    if(d?.familyMode!=='manual'||!d.classification) continue;
+    const detectedType=d.classification.automaticType||d.classification.type; const conf=Number(d.classification.confidence)||0;
+    const auto=autoFamiliesForType(detectedType); const chosen=resolveDocumentFamilies(d);
+    if(conf<0.75||auto.includes('annex')||chosen.includes('annex')) continue;
+    if(!auto.some(f=>chosen.includes(f))) alerts.push({level:'warning',docId:d.id,fileName:d.name,message:`Famille choisie « ${chosen.map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + ')} » différente du type détecté « ${detectedType} » (confiance ${Math.round(conf*100)} %). Vérifiez le choix : le parseur et la liste blanche suivent la famille choisie.`});
+  }
+  return alerts;
+}
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
@@ -223,9 +257,16 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
   const occurrences=routeAndDeduplicate(remappedRaw,rules); const consolidated=consolidate(docs,occurrences,rules,operationName,grouping); const alerts=diagnostics(docs,consolidated.finals,grouping);
   if(grouping.suggestions?.length) alerts.push({level:'warning',message:`${grouping.suggestions.length} rapprochement(s) de bâtiments ambigu(s) sont proposés à la vérification manuelle.`});
+  alerts.push(...familyMismatchAlerts(docs));
+  const unattributedCount=consolidated.detailed.filter(o=>o.unattributedScoped).length;
+  if(unattributedCount) alerts.push({level:'warning',message:`${unattributedCount} valeur(s) d'indicateur sans bâtiment identifié n'ont pas été recopiées sur chaque bâtiment : elles sont proposées dans « À vérifier ».`});
+  // v2.3 — contrôles de cohérence métier : une valeur incohérente avec ses voisines quitte le tableau
+  // et part en revue ; les valeurs structurées (XML) et les validations utilisateur ne sont jamais retirées.
+  const coherence=applyCoherenceChecks(consolidated);
+  alerts.push(...coherence.alerts);
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
-  const uncertain=buildUncertain(consolidated.detailed);
-  return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,newlyParsedCount,reusedParsedCount};
+  const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
+  return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
 }
 
 export function freeSearch(docs,query){

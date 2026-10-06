@@ -31,3 +31,7 @@ Projet, opération, bâtiment, IC composants, IC chantier, **Stock C/m²**, lots
 
 ## Documents annexes
 Pas de liste blanche spécialisée : l'ancien parseur polyvalent reste disponible pour les documents non standardisés.
+
+## Analyse manuelle de document — v2.2.4
+
+Aucune whitelist spécialisée n’est imposée. La classification automatique décide des parseurs métier applicables ; les règles de source et garde-fous habituels continuent de s’appliquer.
