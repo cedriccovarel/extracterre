@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.4 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.3';
+const APP_VERSION = '2.3.4';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -222,7 +222,115 @@ function normalizeFieldHeader(value=''){
 }
 const HEADER_LOOKUP=new Map();
 for(const f of FIELD_DEFS) for(const tag of f.tags){ const n=normalizeFieldHeader(tag); if(n&&!HEADER_LOOKUP.has(n)) HEADER_LOOKUP.set(n,f.key); }
-function matchFieldByHeader(header=''){ const key=HEADER_LOOKUP.get(normalizeFieldHeader(header)); return key?FIELD_MAP[key]:null; }
+
+// V2.2.9 — compatibilité souple des exports Excel successifs.
+// On conserve les intitulés historiques mais on accepte aussi les nouveaux noms
+// de colonnes CRM / OPERATIONS sans créer de nouveaux champs ExtracTerre.
+const HEADER_ALIASES={
+  'numero du contrat':'contract_number',
+  'operation code interne':'internal_code',
+  'statut':'contract_status',
+  'operation etape':'stage',
+  'opportunite accepte le':'case_accepted_date',
+  'date de creation de l affaire':'case_creation_date',
+  'date d activation':'contract_activation_date',
+  'nom de la societe societe principale nom de la societe':'owner_main_company',
+  'nom de la societe nom de la societe':'owner_company',
+  'nom de la societe hierarchie':'owner_hierarchy',
+  'opportunite nom de l affaire':'case_name',
+  'nom de l operation':'operation_name',
+  'departement de l operation':'department',
+  'referentiel':'reference_name',
+  'version':'reference_version',
+  'opportunite montant ht':'case_amount_ht',
+  'operation mentions':'mentions',
+  'operation performance':'performance',
+  'operation profil choisi':'selected_profile',
+  'date de decision ap':'certification_ap_date',
+  'date de decision de certification':'certification_cd_date',
+  'operation evaluation code interne':'evaluation_internal_code',
+  'operation evaluation statut':'evaluation_status',
+  'operation avancement de l operation':'progress_status',
+  'operation evaluation date de premiere reception du dossier':'evaluation_creation_date',
+  'annee':'construction_year',
+  'ecs apres travaux':'ecs',
+  'refroidissement apres travaux':'cooling',
+  'ventilation apres travaux':'ventilation',
+  'mode constructif':'structure',
+  'planchers hauts structure':'roof_structure',
+  'planchers hauts type isolant':'roof_insulation',
+  'parois verticales type d isolant':'wall_insulation',
+  'planchers bas type isolant':'floor_insulation',
+  'menuiseries exterieures materiau':'window_material',
+  'menuiseries exterieures vitrage':'window_glazing',
+  'menuiseries exterieures occultations':'window_shading',
+  'dh projet':'dh',
+  'tic projet':'tic',
+  'bbio projet':'bbio',
+  'cep projet':'cep',
+  'cep nr projet':'cepnr',
+  'cep,nr projet':'cepnr',
+  'cep nr max':'cepnr_max',
+  'cep,nr max':'cepnr_max',
+  'ubat initial':'ubat_before',
+  'ubat projet':'ubat_after',
+  'cep initial':'cep_before',
+  'ic composants batiment':'ic_components',
+  'dpe energie avant travaux':'dpe_energy_before',
+  'dpe energie apres travaux final':'dpe_energy_after',
+  'dpe ges avant travaux':'dpe_ges_before',
+  'dpe ges apres travaux final':'dpe_ges_after'
+};
+const NORMALIZED_HEADER_ALIASES=new Map(Object.entries(HEADER_ALIASES).map(([k,v])=>[normalizeFieldHeader(k),v]));
+
+const HEADER_STOPWORDS=new Set(['de','du','des','la','le','les','l','d','un','une','pour','operation','opportunite','certification','evaluation','societe','nom']);
+function headerTokens(value=''){
+  return normalizeFieldHeader(value).replace(/[,:/.-]+/g,' ').split(/\s+/).filter(t=>t&&t.length>1&&!HEADER_STOPWORDS.has(t));
+}
+function headerVariants(value=''){
+  const n=normalizeFieldHeader(value),out=new Set([n]);
+  const prefixes=['operation ','opportunite ','certification ','evaluation ','operation evaluation ','nom de la societe ','maitre d ouvrage ','affaire ','contrat '];
+  for(const p of prefixes) if(n.startsWith(p)) out.add(n.slice(p.length).trim());
+  out.add(n.replace(/\bde l operation\b/g,'').replace(/\bde la societe\b/g,'').replace(/\s+/g,' ').trim());
+  return [...out].filter(Boolean);
+}
+const HEADER_CANDIDATES=[];
+for(const f of FIELD_DEFS){
+  const seen=new Set();
+  for(const label of [f.label,...f.tags]) for(const variant of headerVariants(label)) if(variant&&!seen.has(variant)){seen.add(variant);HEADER_CANDIDATES.push({key:f.key,text:variant,tokens:headerTokens(variant)});}
+}
+function fuzzyHeaderMatch(header=''){
+  const src=headerTokens(header); if(src.length<2)return null;
+  const srcSet=new Set(src); let best=null,second=0;
+  // Ces qualificatifs changent le sens métier. Un en-tête « max », « seuil 2028 »,
+  // « avant », etc. ne doit jamais être rapproché d'un champ qui ne porte pas
+  // le même qualificatif uniquement parce que le reste du libellé se ressemble.
+  const semanticQualifiers=new Set(['max','maximum','min','minimum','seuil','initial','avant','apres','final','projet','ref','reference','2025','2028','2031']);
+  const srcQual=[...srcSet].filter(t=>semanticQualifiers.has(t));
+  for(const c of HEADER_CANDIDATES){
+    if(!c.tokens.length)continue; const cand=new Set(c.tokens);
+    if(srcQual.some(q=>!cand.has(q)))continue;
+    const inter=[...srcSet].filter(t=>cand.has(t)).length;
+    if(!inter)continue;
+    const union=new Set([...srcSet,...cand]).size;
+    const jacc=inter/Math.max(1,union),coverage=inter/Math.max(1,Math.min(srcSet.size,cand.size));
+    const score=.58*coverage+.42*jacc;
+    if(!best||score>best.score){second=best?.score||0;best={key:c.key,score};} else if(score>second)second=score;
+  }
+  if(!best||best.score<.84||(best.score-second)<.08)return null;
+  return best;
+}
+function matchFieldByHeaderDetailed(header=''){
+  const normalized=normalizeFieldHeader(header);
+  let key=HEADER_LOOKUP.get(normalized); if(key)return {def:FIELD_MAP[key],mode:'exact',score:1};
+  key=NORMALIZED_HEADER_ALIASES.get(normalized); if(key)return {def:FIELD_MAP[key],mode:'alias',score:.99};
+  for(const variant of headerVariants(header)){
+    key=HEADER_LOOKUP.get(variant); if(key)return {def:FIELD_MAP[key],mode:'normalized',score:.97};
+    key=NORMALIZED_HEADER_ALIASES.get(variant); if(key)return {def:FIELD_MAP[key],mode:'alias',score:.96};
+  }
+  const fuzzy=fuzzyHeaderMatch(header); return fuzzy?{def:FIELD_MAP[fuzzy.key],mode:'fuzzy',score:fuzzy.score}:null;
+}
+function matchFieldByHeader(header=''){ return matchFieldByHeaderDetailed(header)?.def||null; }
 
 const SOURCE_ADMIN=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.DESIGN_REPORT,DOC_TYPES.MANUAL];
 const SOURCE_CERT=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.REQUIREMENTS,DOC_TYPES.ENV_REPORT,DOC_TYPES.MANUAL];
@@ -1091,6 +1199,171 @@ function parseBeActRecap(doc,occ){
   const pv=findLine(/Nombre\s*:\s*(\d+)\s*panneaux/i); if(pv){ emit(pv.p,pv.l,'enr','Oui','systems',0.95,'',{excerpt:pv.t}); emit(pv.p,pv.l,'enr_type','Photovoltaïque','systems',0.95,'',{excerpt:pv.t}); }
   const vre=findLine(/Fenetre\s+ALU\s*\+\s*VRE/i); if(vre){ emit(vre.p,vre.l,'window_material','Aluminium','windows',0.95,'',{excerpt:vre.t}); emit(vre.p,vre.l,'window_shading','Volet roulant','windows',0.93,'',{excerpt:vre.t,provenanceNote:'VRE = volet roulant électrique (type de menuiserie majoritaire).'}); }
   const gl=all.map(x=>x.t.match(/\b(\d)\s*-\s*(\d{1,2})\s*-\s*(\d)\b/)).find(Boolean); if(gl&&vre) emit(vre.p,vre.l,'window_glazing',`${gl[1]}/${gl[2]}/${gl[3]}`,'windows',0.9,'',{excerpt:vre.t});
+  return out;
+}
+
+/* ---- acv-ec.js ---- */
+// v2.3.4 — Notice ACV E+C- (RSEnv Pléiades / « Récapitulatif Energie Environnement »).
+// Format type : notice de BET (introduction, résultats globaux) + annexe RSEnv structurée :
+// « Données générales <bâtiment> », « Niveaux ENERGIE-CARBONE » (BEPOS, Eges, Eges PCE, niveaux),
+// quantitatifs par contributeur (« <bâtiment> - SRT : 713.30 m2 »).
+// Les valeurs de l'annexe RSEnv (sortie logiciel) priment sur les valeurs arrondies du texte de la notice.
+// Les graphiques par lot sont des images : aucune valeur de lot n'est inventée.
+
+const NUM='([-+]?\\d+(?:[.,]\\d+)?)';
+const lineText=l=>normalizeText(l?.text||'');
+
+function isEcAcvNotice(doc){
+  const t=String(doc?.read?.text||'').slice(0,600000);
+  const ec=/niveaux?\s+energie\s*-\s*carbone/i.test(t)||/recapitulatif\s+energie\s+environnement/i.test(t);
+  return ec&&/eges\s*,?\s*pce/i.test(t)&&/\beges\b/i.test(t);
+}
+
+function allLines(doc){
+  const out=[];
+  for(const page of doc.read?.pages||[]) (page.lines||[]).forEach((line,pos)=>out.push({page,line,pos,t:lineText(line)}));
+  return out;
+}
+const levelNumber=s=>{ const m=String(s||'').match(/niveau\s*(\d)/i); return m?Number(m[1]):null; };
+
+// Libellés du tableau « Données générales » : sur une ligne (« Libellé valeur ») ou coupés
+// autour de la valeur (« Energie principale pour le » / « Electricite » / « chauffage »).
+const GENERAL_LABELS={
+  structureType:'type de structure principale',
+  material:'materiau principal',
+  infill:'materiaux de remplissage de facade',
+  floor:'type de plancher',
+  ventilation:'type de ventilation principale',
+  heatingEnergy:'energie principale pour le chauffage',
+  ecsEnergy:"energie principale pour l'ecs",
+  coolingEnergy:'energie principale pour le froid',
+  heatingGen:'generateur principal pour le chauffage',
+  ecsGen:"generateur principal pour l'ecs"
+};
+function readGeneralBlock(lines){
+  const found={};
+  const low=lines.map(x=>x.t.toLowerCase());
+  for(const [key,label] of Object.entries(GENERAL_LABELS)){
+    for(let i=0;i<lines.length&&!found[key];i++){
+      const l=low[i];
+      if(l.startsWith(label+' ')){ const v=lines[i].t.slice(label.length).trim(); if(v) found[key]={value:v,at:lines[i]}; continue; }
+      if(label.startsWith(l+' ')&&i+2<lines.length){
+        const rest=label.slice(l.length+1);
+        if(low[i+2]===rest||low[i+2].startsWith(rest)) { const v=lines[i+1].t.trim(); if(v) found[key]={value:v,at:lines[i+1],label:lines[i]}; }
+      }
+    }
+  }
+  return found;
+}
+
+function heatingMode(gen=''){
+  const s=gen.toLowerCase();
+  if(/pac|pompe\s+a\s+chaleur/.test(s)){
+    if(/nappe|eau\s*\/\s*eau|eau\s+glycolee|sol\s*\/\s*eau|geotherm|sonde/.test(s)) return /nappe/.test(s)?'PAC eau/eau (eau de nappe)':'PAC géothermique';
+    if(/air\s*\/\s*eau/.test(s)) return 'PAC air/eau';
+    if(/air\s*\/\s*air/.test(s)) return 'PAC air/air';
+    return 'PAC';
+  }
+  if(/chaudiere.*gaz|gaz.*condensation/.test(s)) return 'Chaudière gaz';
+  if(/bois|granul|biomasse/.test(s)) return 'Chaudière bois';
+  if(/effet\s+joule|convecteur|radiateur\s+electrique|panneau\s+rayonnant/.test(s)) return 'Effet Joule';
+  if(/reseau\s+de\s+chaleur/.test(s)) return 'Réseau de chaleur';
+  return null;
+}
+function energyVector(v=''){
+  const s=v.toLowerCase();
+  if(/electric/.test(s)) return 'Électricité';
+  if(/gaz/.test(s)) return 'Gaz';
+  if(/reseau/.test(s)) return 'Réseau de chaleur';
+  if(/bois|biomasse|granul/.test(s)) return 'Bois / biomasse';
+  if(/fioul/.test(s)) return 'Fioul';
+  return null;
+}
+function ecsSystem(v=''){
+  const s=v.toLowerCase();
+  if(/thermodynamique/.test(s)) return 'Chauffe-eau thermodynamique';
+  if(/instantane/.test(s)) return 'Chauffe-eau électrique instantané';
+  if(/chauffe-eau\s+electrique|ballon\s+electrique|cumulus/.test(s)) return 'Ballon électrique';
+  if(/solaire/.test(s)) return 'Chauffe-eau solaire';
+  return null;
+}
+function ventilationSystem(v=''){
+  const s=v.toLowerCase();
+  if(/double\s+flux/.test(s)) return 'VMC double flux';
+  if(/hygro\w*\s*b/.test(s)) return 'VMC Hygro B';
+  if(/hygro\w*\s*a/.test(s)) return 'VMC Hygro A';
+  if(/simple\s+flux/.test(s)) return 'VMC simple flux';
+  if(/naturelle/.test(s)) return 'Ventilation naturelle';
+  return null;
+}
+const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+
+function parseEcAcvNotice(doc,occ){
+  const out=[]; const lines=allLines(doc);
+  const origin='Notice ACV E+C- — annexe RSEnv';
+  const emit=(at,field,value,method,conf,unit='',extra={})=>{ if(!at||value===null||value===undefined||value==='') return; const o=occ(doc,at.page,at.line,field,value,`acv-ec:${method}`,conf,unit,{structuredPdf:true,origin,...extra}); if(o) out.push(o); };
+  const find=re=>lines.find(x=>re.test(x.t));
+  const numAfter=(re)=>{ const x=lines.find(l=>re.test(l.t)); if(!x) return null; const m=x.t.match(re); const v=m?parseFrNumber(m[1]):null; return v===null?null:{value:v,at:x}; };
+
+  // --- Carbone : Eges PCE (contributeur Produits de construction et équipements) --------------------
+  const egesPce=numAfter(new RegExp(`^Eges\\s*,?\\s*PCE\\s+${NUM}\\s*$`,'i'));
+  const egesTotal=numAfter(new RegExp(`^Eges\\s+${NUM}\\s*$`,'i'));
+  const egesPceSummary=numAfter(new RegExp(`Eges\\s*,?\\s*PCE\\s*=\\s*${NUM}\\s*kg`,'i'));
+  const egesSummary=numAfter(new RegExp(`(?:^|[-•]\\s*)Eges\\s*=\\s*${NUM}\\s*kg`,'i'));
+  const pce=egesPce||egesPceSummary;
+  if(pce){
+    const v=Math.round(pce.value*100)/100;
+    const totalTxt=(egesTotal||egesSummary)?` Eges total (tous contributeurs) = ${Math.round((egesTotal||egesSummary).value*100)/100} kg éq.CO2/m².`:'';
+    emit(pce.at,'ic_components',v,egesPce?'eges-pce':'eges-pce-summary',egesPce?0.95:0.92,'kgCO2e/m²',{
+      provenanceNote:`Indicateur E+C- « Eges PCE » (Produits de construction et équipements, ACV statique sur 50 ans, kg éq.CO2/m² SDP) — équivalent E+C- de l'IC composants ; non comparable à l'Ic,composant RE2020 (ACV dynamique).${totalTxt}`});
+  }
+
+  // --- Niveaux Énergie / Carbone ------------------------------------------------------------------
+  const bepos=find(/^Niveau\s+BEPOS\s+Niveau\s*\d/i);
+  const carbon=find(/^Niveau\s+E\s*ges\s+Niveau\s*\d/i);
+  const eLevel=bepos?levelNumber(bepos.t.replace(/^Niveau\s+BEPOS/i,'')):null;
+  const cLevel=carbon?levelNumber(carbon.t.replace(/^Niveau\s+E\s*ges/i,'')):null;
+  if(eLevel) emit(bepos,'energy_level',`E${eLevel}`,'bepos-level',0.95,'',{provenanceNote:`Niveau BEPOS du référentiel E+C- (« Niveau ${eLevel} »).`});
+  if(eLevel&&cLevel) emit(carbon,'performance',`E${eLevel}C${cLevel}`,'energy-carbon-level',0.88,'',{provenanceNote:`Niveaux E+C- de l'annexe RSEnv : Énergie ${eLevel} (BEPOS), Carbone ${cLevel} (Eges). À valider : le libellé « Performance » attendu peut différer.`});
+
+  // --- Surface de référence du RSEnv (« <bâtiment> - SRT : 713.30 m2 ») ------------------------------
+  const srt=numAfter(new RegExp(`-\\s*SRT\\s*:\\s*${NUM}\\s*m(?:2|²)`,'i'));
+  if(srt){
+    const sdp=numAfter(new RegExp(`^SDP\\s+${NUM}\\s*m(?:2|²)`,'i')), srtNotice=numAfter(new RegExp(`^SRT\\s+${NUM}\\s*m(?:2|²)`,'i'));
+    const other=[srtNotice&&`SRT ${srtNotice.value} m² (p.${srtNotice.at.page.page})`,sdp&&`SDP ${sdp.value} m² (p.${sdp.at.page.page})`].filter(Boolean);
+    const diverge=other.length&&[srtNotice,sdp].some(x=>x&&Math.abs(x.value-srt.value)>0.5);
+    emit(srt.at,'shab',srt.value,'rsenv-srt',diverge?0.86:0.93,'m²',{provenanceNote:`SRT déclarée dans les quantitatifs du RSEnv.${diverge?` Le texte de la notice indique une autre surface (${other.join(', ')}) : à vérifier.`:''}`});
+  }
+
+  // --- Données générales du bâtiment (tableau RSEnv) -----------------------------------------------
+  // Dernière occurrence du titre : la première est souvent l'entrée du sommaire (« ....... 12 »).
+  const start=lines.map((x,i)=>/^\d+\.\s*Donnees\s+generales\b/i.test(x.t)&&!/\.{4,}|\s\d+\s*$/.test(x.t)?i:-1).filter(i=>i>=0).pop()??-1;
+  if(start>=0){
+    let end=lines.findIndex((x,i)=>i>start&&/niveaux?\s+energie\s*-\s*carbone/i.test(x.t)); if(end<0) end=Math.min(lines.length,start+60);
+    const g=readGeneralBlock(lines.slice(start,end));
+    const gNote='Tableau « Données générales » de l’annexe RSEnv.';
+    if(g.structureType||g.material){
+      const mat=g.material?.value, typ=g.structureType?.value;
+      const value=mat&&typ?`${cap(mat)} (${typ.toLowerCase()})`:cap(mat||typ);
+      emit((g.material||g.structureType).at,'structure',value,'general-structure',0.92,'',{provenanceNote:gNote});
+    }
+    if(g.infill){ const v=g.infill.value.toLowerCase(); const ins=/paille/.test(v)?'Paille':/chanvre/.test(v)?'Chanvre':/laine\s+de\s+bois|fibre\s+de\s+bois/.test(v)?'Laine de bois':/ouate/.test(v)?'Ouate de cellulose':null; if(ins) emit(g.infill.at,'wall_insulation',ins,'general-infill',0.9,'',{provenanceNote:`${gNote} Matériau de remplissage de façade : ${g.infill.value}.`}); }
+    if(g.floor) emit(g.floor.at,'floor_structure',cap(g.floor.value),'general-floor',0.9,'',{provenanceNote:gNote});
+    if(g.ventilation){ const v=ventilationSystem(g.ventilation.value); if(v) emit(g.ventilation.at,'ventilation',v,'general-ventilation',0.96,'',{provenanceNote:`${gNote} ${g.ventilation.value}.`}); }
+    if(g.heatingEnergy){ const v=energyVector(g.heatingEnergy.value); if(v) emit(g.heatingEnergy.at,'heating_vector_after',v,'general-heating-energy',0.95,'',{provenanceNote:gNote}); }
+    if(g.heatingGen){ const v=heatingMode(g.heatingGen.value); if(v) emit(g.heatingGen.at,'heating_mode_after',v,'general-heating-generator',0.95,'',{provenanceNote:`${gNote} Générateur : ${g.heatingGen.value}.`}); }
+    if(g.ecsEnergy){ const v=energyVector(g.ecsEnergy.value); if(v) emit(g.ecsEnergy.at,'ecs_vector_after',v,'general-ecs-energy',0.95,'',{provenanceNote:gNote}); }
+    if(g.ecsGen){ const v=ecsSystem(g.ecsGen.value); if(v) emit(g.ecsGen.at,'ecs',v,'general-ecs-generator',0.94,'',{provenanceNote:`${gNote} Générateur ECS : ${g.ecsGen.value}.`}); }
+  }
+
+  // --- ENR : panneaux photovoltaïques saisis dans les quantitatifs (lot 13) ------------------------------
+  const pvLine=lines.find(x=>/photovoltaiques?/i.test(x.t)&&/\b(?:PEP|FDES|INIES|Wc|kWc)\b/i.test(x.t));
+  if(pvLine){ emit(pvLine,'enr','Oui','pv-quantities',0.93,'',{provenanceNote:'Panneaux photovoltaïques saisis dans le contributeur Composants (lot 13).'}); emit(pvLine,'enr_type','Photovoltaïque','pv-quantities',0.93,'',{provenanceNote:'Panneaux photovoltaïques saisis dans le contributeur Composants (lot 13).'}); }
+
+  // --- Département (« Département 69 - Rhône (H1 c) ») ---------------------------------------------------
+  const dep=find(/^Departement\s+(\d{2,3}|2A|2B)\s*-/i);
+  if(dep){ const d=dep.t.match(/^Departement\s+(\d{2,3}|2A|2B)/i)[1].padStart(2,'0'); emit(dep,'department',d,'department',0.97,'',{provenanceNote:'Données administratives de l’opération (RSEnv).'}); }
+
   return out;
 }
 
@@ -3719,7 +3992,7 @@ const DOCUMENT_FAMILIES=Object.freeze({
   cctp:{label:'CCTP',short:'CCTP',type:DOC_TYPES.CCTP},
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
-  annex:{label:'Analyse manuelle — moteur libre',short:'Manuelle',type:null}
+  annex:{label:'Moteur libre — sans liste blanche',short:'Libre',type:null}
 });
 const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});
 function normalizeFamilyKey(key){ const k=String(key||'').trim().toLowerCase(); const n=LEGACY_FAMILY_ALIASES[k]||k; return DOCUMENT_FAMILIES[n]?n:null; }
@@ -3873,11 +4146,24 @@ function parseBeActRecapDocument(doc){
   return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'recap-be'}));
 }
 
+// v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
+// le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
+function parseEcAcvDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.RSENV};
+  let out=parseEcAcvNotice(fdoc,occ).filter(Boolean);
+  const fams=resolveDocumentFamilies(doc);
+  if(doc.familyMode==='manual'&&!fams.includes('annex')){ const allowed=new Set(fams.flatMap(f=>[...(FAMILY_ALLOWED_FIELDS[f]||[])])); out=out.filter(o=>allowed.has(o.field)); }
+  out=annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'acv-ec'}));
+  if(fams.includes('annex')){ const have=new Set(out.map(o=>o.field)); out.push(...parseDocument({...doc,__skipEcAcv:true}).filter(o=>!have.has(o.field))); }
+  return out;
+}
+
 function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
+  if(!doc.__skipEcAcv&&isEcAcvNotice(doc)) return parseEcAcvDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
   let out=[];
@@ -6117,7 +6403,7 @@ const FAMILY_CHOICES=Object.freeze([
   ['cctp','CCTP'],
   ['dpgf','DPGF'],
   ['dpe','DPE / 3CL'],
-  ['annex','🛠 Analyse manuelle — moteur libre']
+  ['annex','🛠 Moteur libre — sans liste blanche']
 ]);
 function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
 function specializedConfig(family){ const k=normalizeFamilyKey(family)||'annex'; return {label:DOCUMENT_FAMILIES[k]?.label||'Annexe',type:DOCUMENT_FAMILIES[k]?.type||null}; }
@@ -6496,7 +6782,7 @@ function renderFiles(){
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
-    const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Analyse manuelle</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
+    const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Moteur libre</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
     return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
@@ -6588,11 +6874,11 @@ function parseManualClipboard(raw=''){
   const split=line=>line.includes('\t')?line.split('\t'):(line.includes(';')?line.split(';'):[line]);
   let best={index:-1,count:0,cells:[],defs:[]};
   for(let i=0;i<Math.min(lines.length,8);i++){
-    const cells=split(lines[i]); const defs=cells.map(c=>matchFieldByHeader(c)); const count=defs.filter(Boolean).length;
-    if(count>best.count) best={index:i,count,cells,defs};
+    const cells=split(lines[i]); const matches=cells.map(c=>matchFieldByHeaderDetailed(c)); const defs=matches.map(m=>m?.def||null); const count=defs.filter(Boolean).length;
+    if(count>best.count) best={index:i,count,cells,defs,matches};
   }
   if(best.index<0||best.count===0) return {rows:[],columns:[],unrecognized:best.cells||[],recognized:0};
-  const columns=best.cells.map((header,i)=>({header:String(header||'').trim(),def:best.defs[i]||null,index:i}));
+  const columns=best.cells.map((header,i)=>({header:String(header||'').trim(),def:best.defs[i]||null,index:i,matchMode:best.matches?.[i]?.mode||'',matchScore:best.matches?.[i]?.score||0}));
   const rows=[];
   for(let i=best.index+1;i<lines.length;i++){
     const cells=split(lines[i]); const values={}; let nonEmpty=0;
@@ -6626,17 +6912,18 @@ function openManualDataDialog(){
 function renderManualPastePreview(parsed){
   const box=$('#manualDataPreview'); if(!box) return;
   if(!parsed.recognized){ box.innerHTML='<div class="empty-small">Collez au minimum une ligne d’en-têtes puis une ligne de données.</div>'; return; }
-  const recognized=parsed.columns.filter(c=>c.def).map(c=>c.def.label);
-  box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span><span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span>${escapeHtml(x)}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
+  const recognized=parsed.columns.filter(c=>c.def).map(c=>({label:c.def.label,mode:c.matchMode||'exact'}));
+  const flexible=recognized.filter(x=>x.mode!=='exact').length;
+  box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span>${flexible?`<span><b>${flexible}</b> rapprochement(s) souple(s)</span>`:''}<span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span title="${x.mode==='exact'?'Intitulé exact':'Intitulé rapproché automatiquement'}">${escapeHtml(x.label)}${x.mode==='exact'?'':' ≈'}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus (aucun équivalent existant suffisamment fiable) : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
 }
 function applyManualPaste(){
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
-  state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null}));
+  state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
   $('#manualDataDialog')?.close();
-  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
+  learn('manual_paste',{rows:parsed.rows.length,recognizedColumns:parsed.columns.filter(c=>c.def).map(c=>({header:c.header,field:c.def.key,label:c.def.label,matchMode:c.matchMode||'exact',matchScore:c.matchScore||1})),unrecognizedHeaders:parsed.unrecognized||[]},activeProject());
   recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
@@ -7131,9 +7418,137 @@ function renderSummary(){
 
 let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
+
+const MANUAL_ANALYSIS_SECTIONS={
+  general:{label:'Généralités',families:new Set(['Administration','Programme','Certification & exigences'])},
+  thermal:{label:'Thermique',families:new Set(['Performance énergétique','Confort d’été','Systèmes','DPE','ENR'])},
+  carbon:{label:'Carbone',families:new Set(['Carbone'])},
+  envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
+};
+let manualAnalysisState={building:'',section:'general',field:''};
+function manualAnalysisMode(){ return $('#betaErrorDialog')?.dataset.mode==='manual'; }
+function manualAnalysisBuildings(){
+  const fromResult=(state.result?.rows||[]).map(r=>r.building).filter(Boolean);
+  if(fromResult.length)return unique(fromResult);
+  const fromDocs=state.docs.flatMap(d=>d.buildings?.names||[]).filter(Boolean);
+  return unique(fromDocs.length?fromDocs:['Bâtiment unique']);
+}
+function manualAnalysisFields(section=manualAnalysisState.section){
+  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general;
+  return FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family));
+}
+function manualAnalysisCurrentValue(building,field){
+  const key=`${building}|${field}`;
+  if(Object.prototype.hasOwnProperty.call(state.manualValues||{},key))return state.manualValues[key];
+  const row=state.result?.rows?.find(r=>r.building===building);
+  return row?.[field];
+}
+function renderManualAnalysisSidebar(){
+  const side=$('#manualAnalysisSidebar'); if(!side)return;
+  const buildings=manualAnalysisBuildings();
+  if(!buildings.includes(manualAnalysisState.building))manualAnalysisState.building=buildings[0]||'Bâtiment unique';
+  if(!MANUAL_ANALYSIS_SECTIONS[manualAnalysisState.section])manualAnalysisState.section='general';
+  const fields=manualAnalysisFields();
+  if(manualAnalysisState.field&&!fields.some(f=>f.key===manualAnalysisState.field))manualAnalysisState.field='';
+  const bt=$('#manualBuildingTabs'),st=$('#manualSectionTabs'),fb=$('#manualFieldButtons'),target=$('#manualSelectedTarget');
+  const buildingCount=$('#manualBuildingCount'),direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
+  if(buildingCount)buildingCount.textContent=`${buildings.length} bâtiment${buildings.length>1?'s':''}`;
+  if(bt)bt.innerHTML=buildings.map((b,i)=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}" title="${escapeHtml(b)}">${escapeHtml(b||`Bâtiment ${i+1}`)}</button>`).join('');
+  if(st)st.innerHTML=Object.entries(MANUAL_ANALYSIS_SECTIONS).map(([key,cfg])=>`<button type="button" class="manual-section-tab ${key===manualAnalysisState.section?'active':''}" data-section="${key}">${escapeHtml(cfg.label)}</button>`).join('');
+  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=v!==undefined&&v!==null&&v!=='';return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):'À renseigner'}</strong></button>`;}).join('')||'<div class="empty-small">Aucun champ dans cette famille.</div>';
+  const def=FIELD_MAP[manualAnalysisState.field];
+  if(target)target.innerHTML=def?`<span>Cible active</span><strong>${escapeHtml(manualAnalysisState.building)} · ${escapeHtml(def.label)}</strong><small>Surlignez la valeur à gauche, cliquez une cellule Excel ou saisissez-la manuellement ci-dessous.</small>`:'<span>Cible active</span><strong>Sélectionnez une donnée à renseigner</strong><small>Puis utilisez le document ou la saisie manuelle.</small>';
+  if(direct){
+    direct.disabled=!def;
+    direct.placeholder=def?`Saisir la valeur exacte pour « ${def.label} »`:'Choisissez d’abord un champ';
+    if(def&&document.activeElement!==direct){const current=manualAnalysisCurrentValue(manualAnalysisState.building,manualAnalysisState.field);direct.value=(current!==undefined&&current!==null)?String(current):'';}
+    if(!def)direct.value='';
+  }
+  if(directApply)directApply.disabled=!def;
+  bt?.querySelectorAll('.manual-building-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.building=b.dataset.building||'Bâtiment unique';manualAnalysisState.field='';renderManualAnalysisSidebar();});
+  st?.querySelectorAll('.manual-section-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.section=b.dataset.section||'thermal';manualAnalysisState.field='';renderManualAnalysisSidebar();});
+  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document ou saisissez directement la bonne valeur.`:'';feedback.className='manual-analysis-feedback';}setTimeout(()=>$('#manualDirectValue')?.select?.(),0);});
+}
+function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
+  if(!manualAnalysisMode())return false;
+  const feedback=$('#manualAnalysisFeedback'),building=manualAnalysisState.building,field=manualAnalysisState.field,def=FIELD_MAP[field];
+  if(!def){if(feedback){feedback.textContent='Choisissez d’abord une donnée à renseigner dans le panneau de droite.';feedback.className='manual-analysis-feedback warn';}return false;}
+  const exact=String(raw??'').replace(/\s+/g,' ').trim();
+  if(!exact){if(feedback){feedback.textContent='Saisissez ou sélectionnez une valeur avant de l’appliquer.';feedback.className='manual-analysis-feedback warn';}return false;}
+  let value=exact;
+  if(def.type==='number'){const n=betaParseCorrectedNumber(exact);if(n===null){if(feedback){feedback.textContent=`La valeur « ${exact} » ne contient pas de nombre exploitable pour ${def.label}.`;feedback.className='manual-analysis-feedback error';}return false;}value=n;}
+  else if(field==='window_glazing')value=normalizeGlazingType(exact)||exact;
+  const key=`${building}|${field}`,previous=manualAnalysisCurrentValue(building,field),loc=location?{...location}:null,doc=betaLearningDoc();
+  state.manualValues[key]=value;
+  state.manualSources[key]=manualEntry
+    ? {docId:'',fileName:'Saisie manuelle',page:'',excerpt:exact,method:'manual:direct-entry',provenanceNote:'Analyse manuelle — valeur saisie directement'}
+    : {docId:loc?.docId||doc?.id||'',fileName:loc?.document||doc?.name||'Analyse manuelle',page:loc?.page||Number($('#betaLearningPage')?.value)||1,excerpt:loc?.lineText||loc?.selectedText||exact,method:`manual:${loc?.selectionMode||'document-analysis'}`,provenanceNote:'Analyse manuelle par sélection documentaire'};
+  applyManualValues();
+  learn('manual_override',{building,field,label:def.label,previousValue:previous,newValue:value,source:manualEntry?'manual_direct_entry':'manual_document_analysis',highlight:loc},activeProject());
+  // V2.2.8 — l'analyse manuelle alimente aussi la mémoire d'apprentissage.
+  // Une saisie directe est journalisée comme correction fiable, mais n'enseigne pas
+  // de position documentaire puisqu'aucune zone du document n'a été désignée.
+  if(manualEntry){
+    learn('manual_analysis_direct_value',{building,field,fieldLabel:def.label,previousValue:previous,newValue:value,enteredText:exact},activeProject());
+  }else if(loc?.docType){
+    const learnPayload={
+      field,fieldLabel:def.label||field,building,
+      docType:loc.docType,document:loc.document||doc?.name||'',page:loc.page||Number($('#betaLearningPage')?.value)||1,
+      pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,endLineIndex:loc.endLineIndex,lineRatio:loc.lineRatio,
+      lineText:loc.lineText||'',beforeLine:loc.beforeLine||'',afterLine:loc.afterLine||'',selectedText:loc.selectedText||exact,
+      selectionMode:loc.selectionMode||'manual-analysis',normalizedRects:loc.normalizedRects||[],bboxNormalized:loc.bboxNormalized||null,
+      correctedValue:value,operation:learningPayloadBase(activeProject()).operation,source:'manual_analysis'
+    };
+    recordLearningEvent('parser_location_learning',learnPayload,activeProject())
+      .then(async evt=>{
+        await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});
+        scheduleJournalUiRefresh();
+        renderLearningMemoryUi();
+      })
+      .catch(err=>console.warn('Manual analysis location learning failed',err));
+  }
+  scheduleWorkspaceCheckpoint(manualEntry?'analyse manuelle saisie directe':'analyse manuelle documentaire',80);
+  renderManualAnalysisSidebar();
+  renderSummary(); renderOccurrences();
+  if(feedback){feedback.textContent=`✓ ${def.label} = ${formatValue(value)} · ${building}${manualEntry?' · saisie manuelle':''}`;feedback.className='manual-analysis-feedback ok';}
+  return true;
+}
+function manualAnalysisAssignSelection(selectedText=betaLearningSelection?.selectedText||''){
+  return manualAnalysisStoreValue(selectedText,{location:betaLearningSelection,manualEntry:false});
+}
+function manualAnalysisApplyDirectValue(){
+  const input=$('#manualDirectValue');
+  const ok=manualAnalysisStoreValue(input?.value||'',{manualEntry:true});
+  if(ok)setTimeout(()=>input?.select?.(),0);
+  return ok;
+}
+function openManualAnalysisDialog(){
+  const docs=betaLearningDocs(),dlg=$('#betaErrorDialog');
+  if(!dlg)return;
+  if(!docs.length){toast('Ajoutez et lisez au moins un PDF ou tableur avant l’analyse manuelle.','warn');return;}
+  dlg.dataset.mode='manual'; dlg.dataset.field=''; dlg.dataset.building='';
+  $('#betaErrorTitle').textContent='Analyse manuelle du projet';
+  $('#betaErrorIntro').textContent='Choisissez un bâtiment et un champ à droite, puis surlignez la valeur dans le PDF ou cliquez une cellule du tableur. La donnée est affectée immédiatement.';
+  const correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
+  if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
+  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'general',field:''};
+  const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
+  const direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
+  if(direct){direct.value='';direct.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();manualAnalysisApplyDirectValue();}};}
+  if(directApply)directApply.onclick=manualAnalysisApplyDirectValue;
+  betaLearningSelection=null;dlg.showModal();renderManualAnalysisSidebar();syncBetaLearningDocument(docs[0]?.id||'',null);
+}
+function setCorrectionDialogMode(){
+  const dlg=$('#betaErrorDialog'),correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
+  if(dlg)dlg.dataset.mode='correction';if(correction)correction.hidden=false;if(manual)manual.hidden=true;if(submit)submit.hidden=false;if(cancel)cancel.textContent='Annuler';
+}
+
 function betaLearningDocs(){ return (activeProject()?.docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length); }
 function betaLearningDoc(){ const id=$('#betaLearningDocument')?.value||''; return betaLearningDocs().find(d=>d.id===id)||null; }
 function betaLearningIsPdf(doc){ return !!doc&&/\.pdf$/i.test(doc.name||''); }
+function betaLearningIsSpreadsheet(doc){ return !!doc&&(doc.read?.kind==='spreadsheet'||/\.(xlsx?|xls)$/i.test(doc.name||'')); }
+function betaExcelColumnLabel(index){ let n=Number(index)||0,out=''; do{out=String.fromCharCode(65+(n%26))+out;n=Math.floor(n/26)-1;}while(n>=0);return out; }
+function betaSpreadsheetCellRef(rowIndex,colIndex){ return `${betaExcelColumnLabel(colIndex)}${Number(rowIndex)+1}`; }
 function betaPdfStatus(message='',kind=''){ const el=$('#betaPdfStatus'); if(!el)return; el.textContent=message; el.className=`beta-pdf-status${kind?` ${kind}`:''}`; }
 async function disposeBetaPdfPreview({keepOcr=false}={}){
   betaPdfPreviewState.renderToken++;
@@ -7198,9 +7613,9 @@ async function renderBetaPdfPage({forceMode='native'}={}){
   const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,stage=$('#betaPdfViewport'),pageWrap=$('#betaPdfPage'),canvas=$('#betaPdfCanvas'),textLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText');
   betaLearningSelection=null; betaClearSavedHighlight(); const out=$('#betaLearningSelection'); if(out)out.textContent='Aucun surlignage sélectionné.';
   if(!doc||!stage||!pageWrap||!canvas||!textLayer||!fallback)return;
-  fallback.hidden=true; stage.hidden=false; textLayer.innerHTML=''; betaPdfStatus('Préparation de la page…');
+  fallback.hidden=true; fallback.classList.toggle('beta-spreadsheet-mode',betaLearningIsSpreadsheet(doc)); stage.hidden=false; textLayer.innerHTML=''; betaPdfStatus('Préparation de la page…');
   if(!betaLearningIsPdf(doc)){
-    stage.hidden=true; fallback.hidden=false; renderBetaLearningTextFallback(doc,pageNo); betaPdfStatus('Mode texte : ce document n’est pas un PDF.'); return;
+    stage.hidden=true; fallback.hidden=false; renderBetaLearningTextFallback(doc,pageNo); betaPdfStatus(betaLearningIsSpreadsheet(doc)?'Mode tableur : cliquez une cellule ou sélectionnez son contenu.':'Mode texte : ce document n’est pas un PDF.','ok'); return;
   }
   if(!doc.file){ stage.hidden=true; fallback.hidden=false; fallback.innerHTML='<div class="empty-small">Le PDF a été restauré depuis une session précédente. Redéposez le fichier pour surligner directement dans la page.</div>'; betaPdfStatus('PDF à redéposer','warn'); return; }
   try{
@@ -7217,14 +7632,48 @@ async function renderBetaPdfPage({forceMode='native'}={}){
     try{page.cleanup?.();}catch{}
   }catch(err){ if(err?.name==='RenderingCancelledException')return; console.error('Correction PDF preview',err); stage.hidden=true;fallback.hidden=false;renderBetaLearningTextFallback(doc,pageNo);betaPdfStatus(`Aperçu PDF impossible : ${err?.message||err}`,'error'); }
 }
-function renderBetaLearningTextFallback(doc,pageNo){
-  const textBox=$('#betaLearningText'); if(!textBox)return; const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
+function betaSelectSpreadsheetCell(cell){
+  if(!cell)return;
+  const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0];
+  const selectedText=String(cell.dataset.value??cell.textContent??'').trim(); if(!selectedText)return;
+  const rowIndex=Number(cell.dataset.rowIndex),colIndex=Number(cell.dataset.colIndex),lineIndex=Number(cell.dataset.lineIndex); const lines=page?.lines||[]; const pos=lines.findIndex(l=>Number(l.index)===lineIndex); const line=pos>=0?lines[pos]:null; const cellRef=cell.dataset.cellRef||betaSpreadsheetCellRef(rowIndex,colIndex);
+  $('#betaLearningText')?.querySelectorAll('.beta-spreadsheet-cell-selected').forEach(el=>el.classList.remove('beta-spreadsheet-cell-selected')); cell.classList.add('beta-spreadsheet-cell-selected');
+  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:Number.isFinite(lineIndex)?lineIndex:null,endLineIndex:Number.isFinite(lineIndex)?lineIndex:null,lineCount:lines.length,selectedText,lineText:line?.text||selectedText,beforeLine:pos>0?lines[pos-1]?.text||'':'',afterLine:pos>=0&&pos<lines.length-1?lines[pos+1]?.text||'':'',pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:lines.length&&pos>=0?Math.round(((pos+1)/lines.length)*1000)/1000:null,selectionMode:'spreadsheet-cell',cellRef,cellRow:Number.isFinite(rowIndex)?rowIndex+1:null,cellColumn:Number.isFinite(colIndex)?betaExcelColumnLabel(colIndex):'',normalizedRects:[],bboxNormalized:null};
+  $('#betaLearningSelection').textContent=`Cellule ${cellRef} : « ${selectedText} » · ${doc?.name||''}${page?.sheet?` · ${page.sheet}`:''}`; betaSetExactValueFromSelection(selectedText); $('#betaErrorFeedback').textContent=''; manualAnalysisAssignSelection(selectedText);
+}
+function renderBetaSpreadsheetPreview(doc,pageNo){
+  const box=$('#betaLearningText'); if(!box)return; const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){box.innerHTML='<div class="empty-small">Aucune feuille exploitable.</div>';return;}
+  const lines=(page.lines||[]).filter(l=>Array.isArray(l.cells)); if(!lines.length){renderBetaLearningTextFallback(doc,pageNo,true);return;}
+  const maxCols=Math.min(120,Math.max(1,...lines.map(l=>Math.max(0,(l.cells||[]).length)))); const maxRows=1500; const shown=lines.slice(0,maxRows);
+  const head=Array.from({length:maxCols},(_,c)=>`<th class="beta-sheet-col-head">${betaExcelColumnLabel(c)}</th>`).join('');
+  const body=shown.map((line,visibleIndex)=>{const rowIndex=Number.isFinite(Number(line.index))?Number(line.index):visibleIndex; const cells=Array.from({length:maxCols},(_,c)=>{const raw=(line.cells||[])[c]??''; const value=String(raw); const ref=betaSpreadsheetCellRef(rowIndex,c); return `<td class="beta-spreadsheet-cell${value.trim()?'':' is-empty'}" data-row-index="${rowIndex}" data-col-index="${c}" data-line-index="${rowIndex}" data-cell-ref="${ref}" data-value="${escapeHtml(value)}" title="${escapeHtml(ref+(value?` · ${value}`:''))}">${escapeHtml(value)}</td>`;}).join(''); return `<tr><th class="beta-sheet-row-head">${rowIndex+1}</th>${cells}</tr>`;}).join('');
+  const truncated=lines.length>maxRows||Math.max(...lines.map(l=>(l.cells||[]).length))>maxCols; box.innerHTML=`<div class="beta-spreadsheet-toolbar"><strong>${escapeHtml(page.sheet||`Feuille ${pageNo}`)}</strong><span>${shown.length} ligne${shown.length>1?'s':''} · ${maxCols} colonne${maxCols>1?'s':''}${truncated?' · aperçu limité':''}</span><small>Cliquez une cellule pour reprendre sa valeur exacte. Vous pouvez aussi sélectionner une partie du texte puis utiliser « Utiliser la sélection ».</small></div><div class="beta-spreadsheet-scroll"><table class="beta-spreadsheet-grid"><thead><tr><th class="beta-sheet-corner"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  box.querySelectorAll('.beta-spreadsheet-cell').forEach(cell=>cell.addEventListener('click',e=>{if(globalThis.getSelection?.()?.toString().trim())return;betaSelectSpreadsheetCell(cell);}));
+}
+function renderBetaLearningTextFallback(doc,pageNo,forceText=false){
+  const textBox=$('#betaLearningText'); if(!textBox)return; if(!forceText&&betaLearningIsSpreadsheet(doc)){renderBetaSpreadsheetPreview(doc,pageNo);return;} const page=doc?.read?.pages?.find(p=>Number(p.page)===Number(pageNo))||doc?.read?.pages?.[0]; if(!page){textBox.innerHTML='<div class="empty-small">Aucun texte exploitable.</div>';return;}
   const lines=(page.lines||String(page.text||'').split(/\r?\n/).map((t,index)=>({text:t,index}))).filter(l=>String(l.text||'').trim()); textBox.innerHTML=lines.map((l,i)=>`<div class="beta-learning-line" data-line-index="${Number.isFinite(l.index)?l.index:i}">${escapeHtml(l.text||'')}</div>`).join('')||'<div class="empty-small">Aucun texte exploitable sur cette page.</div>';
 }
+function updateBetaPageNavState(){
+  const select=$('#betaLearningPage'),prev=$('#betaPrevPage'),next=$('#betaNextPage');
+  if(!select){if(prev)prev.disabled=true;if(next)next.disabled=true;return;}
+  const idx=Math.max(0,select.selectedIndex);
+  if(prev)prev.disabled=!select.options.length||idx<=0;
+  if(next)next.disabled=!select.options.length||idx>=select.options.length-1;
+}
+async function changeBetaLearningPage(delta){
+  const select=$('#betaLearningPage'); if(!select||!select.options.length)return;
+  const idx=Math.max(0,select.selectedIndex),target=Math.min(select.options.length-1,Math.max(0,idx+delta));
+  if(target===idx){updateBetaPageNavState();return;}
+  select.selectedIndex=target;
+  await renderBetaLearningPage();
+  const stage=$('#betaPdfViewport'),fallback=$('#betaLearningText'); if(stage&&!stage.hidden)stage.scrollTop=0;if(fallback&&!fallback.hidden)fallback.scrollTop=0;
+}
 async function renderBetaLearningPage(){
-  const doc=betaLearningDoc(),pageSelect=$('#betaLearningPage'),meta=$('#betaLearningMeta'); if(!doc||!pageSelect)return; const pages=doc.read?.pages||[]; const wanted=Number(pageSelect.value)||Number(pages[0]?.page)||1;
-  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===wanted?'selected':''}>Page ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join(''); if([...pageSelect.options].some(o=>Number(o.value)===wanted))pageSelect.value=String(wanted);
-  const pageNo=Number(pageSelect.value)||1; if(meta)meta.textContent=`${doc.name} · ${doc.type||'Document'} · page ${pageNo} / ${pages.length}`; betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'});
+  const doc=betaLearningDoc(),pageSelect=$('#betaLearningPage'),meta=$('#betaLearningMeta'),pdfTools=$('.beta-pdf-tools'); if(!doc||!pageSelect)return; const pages=doc.read?.pages||[]; const wanted=Number(pageSelect.value)||Number(pages[0]?.page)||1;
+  pageSelect.innerHTML=pages.map(p=>`<option value="${Number(p.page)||1}" ${Number(p.page)===wanted?'selected':''}>${betaLearningIsSpreadsheet(doc)?'Feuille':'Page'} ${Number(p.page)||1}${p.sheet?` · ${escapeHtml(p.sheet)}`:''}</option>`).join(''); if([...pageSelect.options].some(o=>Number(o.value)===wanted))pageSelect.value=String(wanted);
+  updateBetaPageNavState(); if(pdfTools)pdfTools.hidden=!betaLearningIsPdf(doc);
+  const pageNo=Number(pageSelect.value)||1,page=pages.find(p=>Number(p.page)===pageNo)||pages[0]; if(meta)meta.textContent=betaLearningIsSpreadsheet(doc)?`${doc.name} · ${doc.type||'Tableur'} · feuille ${page?.sheet||pageNo} (${pageNo}/${pages.length})`:`${doc.name} · ${doc.type||'Document'} · page ${pageNo} / ${pages.length}`; betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'});
 }
 function syncBetaLearningDocument(preferredDocId='',preferredPage=null){
   const sel=$('#betaLearningDocument'); if(!sel)return; const docs=betaLearningDocs(); sel.innerHTML=docs.map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${escapeHtml(d.type||'Document')}</option>`).join(''); if(preferredDocId&&docs.some(d=>d.id===preferredDocId))sel.value=preferredDocId;else if(docs.length)sel.value=docs[0].id; const page=$('#betaLearningPage'); if(page&&preferredPage)page.value=String(preferredPage); renderBetaLearningPage();
@@ -7234,16 +7683,44 @@ function betaRangeRects(range,pageWrap){
   for(const r of range.getClientRects()){ if(r.width<1||r.height<1)continue; const x=Math.max(0,(r.left-pageRect.left)/pageRect.width),y=Math.max(0,(r.top-pageRect.top)/pageRect.height),w=Math.min(1-x,r.width/pageRect.width),h=Math.min(1-y,r.height/pageRect.height); if(w>0&&h>0)rects.push({x:Math.round(x*10000)/10000,y:Math.round(y*10000)/10000,w:Math.round(w*10000)/10000,h:Math.round(h*10000)/10000}); }
   return rects.slice(0,24);
 }
+function betaExactValueFromHighlight(selectedText,def){
+  const exact=String(selectedText??'').replace(/\s+/g,' ').trim();
+  if(!exact)return '';
+  // « Valeur exacte » doit refléter le surlignage tel quel. La conversion métier
+  // d'un champ numérique se fait seulement à la validation.
+  return exact;
+}
+function betaParseCorrectedNumber(raw){
+  const direct=parseFrNumber(raw); if(direct!==null)return direct;
+  const txt=String(raw??'').replace(/\u00a0/g,' ');
+  // Les unités (m², W/m².K, etc.) peuvent contenir d'autres chiffres : on prend
+  // le premier nombre réellement surligné au lieu de concaténer tous les chiffres.
+  const m=txt.match(/[+\-−]?\s*\d+(?:[\s\u00a0]\d{3})*(?:[.,]\d+)?/);
+  if(!m)return null;
+  return parseFrNumber(m[0].replace('−','-'));
+}
+function betaSetExactValueFromSelection(selectedText){
+  const input=$('#betaErrorCorrectValue'),hint=$('#betaExactValueHint'),def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||''];
+  if(!input)return;
+  const exact=betaExactValueFromHighlight(selectedText,def);
+  input.value=exact;
+  input.classList.toggle('beta-value-from-highlight',!!exact);
+  input.dataset.fromHighlight=exact?'1':'0';
+  if(hint){hint.textContent=exact?`Valeur reprise du surlignage : « ${exact} »`:'Aucune valeur sélectionnée.';hint.classList.toggle('ok',!!exact);}
+}
 function captureBetaLearningSelection(){
   const doc=betaLearningDoc(),pageNo=Number($('#betaLearningPage')?.value)||1,selection=globalThis.getSelection?.(),pdfLayer=$('#betaPdfTextLayer'),fallback=$('#betaLearningText'),pageWrap=$('#betaPdfPage');
-  if(!selection||selection.rangeCount<1||selection.isCollapsed){$('#betaErrorFeedback').textContent='Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
+  if(!selection||selection.rangeCount<1||selection.isCollapsed){if(betaLearningIsSpreadsheet(doc)&&betaLearningSelection?.selectionMode==='spreadsheet-cell'){betaSetExactValueFromSelection(betaLearningSelection.selectedText);manualAnalysisAssignSelection(betaLearningSelection.selectedText);return;}$('#betaErrorFeedback').textContent=betaLearningIsSpreadsheet(doc)?'Cliquez une cellule ou sélectionnez la donnée correcte dans le tableur.':'Surlignez d’abord la donnée correcte directement dans la page PDF.';return;}
   const range=selection.getRangeAt(0),insidePdf=pdfLayer&&!pdfLayer.hidden&&pdfLayer.contains(range.commonAncestorContainer),insideFallback=fallback&&!fallback.hidden&&fallback.contains(range.commonAncestorContainer); if(!insidePdf&&!insideFallback){$('#betaErrorFeedback').textContent='Le surlignage doit être fait dans l’aperçu du document.';return;}
   const selectedText=selection.toString().replace(/\s+/g,' ').trim(); if(!selectedText){$('#betaErrorFeedback').textContent='Le surlignage est vide.';return;} const ctx=betaSelectionContext(doc,pageNo,selectedText); let rects=[];
   if(insidePdf&&pageWrap)rects=betaRangeRects(range,pageWrap);
   const bbox=rects.length?{x:Math.min(...rects.map(r=>r.x)),y:Math.min(...rects.map(r=>r.y)),x2:Math.max(...rects.map(r=>r.x+r.w)),y2:Math.max(...rects.map(r=>r.y+r.h))}:null;
-  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:ctx.lineIndex,endLineIndex:ctx.lineIndex,lineCount:ctx.lineCount,selectedText,lineText:ctx.lineText,beforeLine:ctx.beforeLine,afterLine:ctx.afterLine,pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:ctx.lineRatio,selectionMode:insidePdf?(betaPdfPreviewState.mode==='ocr'?'ocr':'pdf-text'):'text-fallback',normalizedRects:rects,bboxNormalized:bbox?{x:bbox.x,y:bbox.y,w:Math.max(0,bbox.x2-bbox.x),h:Math.max(0,bbox.y2-bbox.y)}:null};
+  betaLearningSelection={docId:doc?.id||'',document:doc?.name||'',docType:doc?.type||'',page:pageNo,pageCount:doc?.read?.pages?.length||0,lineIndex:ctx.lineIndex,endLineIndex:ctx.lineIndex,lineCount:ctx.lineCount,selectedText,lineText:ctx.lineText,beforeLine:ctx.beforeLine,afterLine:ctx.afterLine,pageRatio:(doc?.read?.pages?.length?Math.round((pageNo/doc.read.pages.length)*1000)/1000:null),lineRatio:ctx.lineRatio,selectionMode:insidePdf?(betaPdfPreviewState.mode==='ocr'?'ocr':'pdf-text'):(betaLearningIsSpreadsheet(doc)?'spreadsheet-text':'text-fallback'),normalizedRects:rects,bboxNormalized:bbox?{x:bbox.x,y:bbox.y,w:Math.max(0,bbox.x2-bbox.x),h:Math.max(0,bbox.y2-bbox.y)}:null};
   if(rects.length)betaDrawSavedHighlight(rects);
-  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${insidePdf?` · ${betaLearningSelection.selectionMode==='ocr'?'OCR':'texte PDF'}`:''}`; const def=FIELD_MAP[$('#betaErrorDialog')?.dataset.field||''],input=$('#betaErrorCorrectValue'); if(input&&def){if(def.type==='number'){const n=parseFrNumber(selectedText);if(n!==null)input.value=String(n).replace('.',',');}else input.value=selectedText;} $('#betaErrorFeedback').textContent='';
+  $('#betaLearningSelection').textContent=`Surligné : « ${selectedText} » · ${doc?.name||''} · p.${pageNo}${insidePdf?` · ${betaLearningSelection.selectionMode==='ocr'?'OCR':'texte PDF'}`:''}`;
+  betaSetExactValueFromSelection(selectedText);
+  manualAnalysisAssignSelection(selectedText);
+  $('#betaErrorFeedback').textContent='';
 }
 async function betaEnsureOcrWorker(){
   if(betaPdfPreviewState.ocrWorker)return betaPdfPreviewState.ocrWorker; if(!globalThis.Tesseract?.createWorker)throw new Error('Tesseract.js n’est pas chargé.'); betaPdfStatus('Initialisation OCR…'); betaPdfPreviewState.ocrWorker=await globalThis.Tesseract.createWorker('fra+eng',1,{logger:m=>{if(m?.status==='recognizing text'&&Number.isFinite(m.progress))betaPdfStatus(`OCR de la page · ${Math.round(m.progress*100)} %`);}}); return betaPdfPreviewState.ocrWorker;
@@ -7257,18 +7734,19 @@ async function runBetaPageOcr(){
 }
 async function restoreBetaNativeText(){ betaPdfPreviewState.mode='native';betaPdfPreviewState.ocrWords=[];await renderBetaPdfPage({forceMode:'native'}); }
 function openBetaErrorDialog(building,field){
-  if(!ownerBetaEnabled()||!state.result)return; const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog'); if(!def||!ctx.row||!dlg)return; const src=ctx.source||{},missing=ctx.value===undefined||ctx.value===null||ctx.value===''; $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée'; $('#betaErrorIntro').textContent=missing?'Choisissez la pièce puis surlignez directement la donnée correcte dans la page PDF. Utilisez l’OCR uniquement si la couche texte du PDF est mauvaise.':'Choisissez la pièce puis surlignez directement la bonne donnée dans la page PDF. ExtracTerre mémorisera le texte et sa position exacte.'; $('#betaErrorField').textContent=def.label||field;$('#betaErrorBuilding').textContent=building||'Bâtiment unique';$('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);$('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';$('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';$('#betaErrorCorrectValue').value='';$('#betaErrorReason').value=missing?'missing_data':'wrong_value';$('#betaErrorComment').value='';$('#betaApplyCorrection').checked=true;$('#betaErrorFeedback').textContent='';dlg.dataset.building=building;dlg.dataset.field=field;dlg.dataset.wasMissing=missing?'1':'0';betaLearningSelection=null;dlg.showModal();syncBetaLearningDocument(src.docId||'',src.page||null);
+  setCorrectionDialogMode();
+  if(!ownerBetaEnabled()||!state.result)return; const def=FIELD_MAP[field],ctx=betaResultContext(building,field),dlg=$('#betaErrorDialog'); if(!def||!ctx.row||!dlg)return; const src=ctx.source||{},missing=ctx.value===undefined||ctx.value===null||ctx.value===''; $('#betaErrorTitle').textContent=missing?'Renseigner une donnée manquante':'Corriger une donnée'; $('#betaErrorIntro').textContent=missing?'Choisissez la pièce puis surlignez directement la donnée correcte dans la page PDF. Utilisez l’OCR uniquement si la couche texte du PDF est mauvaise.':'Choisissez la pièce puis surlignez directement la bonne donnée dans la page PDF. ExtracTerre mémorisera le texte et sa position exacte.'; $('#betaErrorField').textContent=def.label||field;$('#betaErrorBuilding').textContent=building||'Bâtiment unique';$('#betaErrorDetected').textContent=missing?'Donnée vide':formatValue(ctx.value);$('#betaErrorSource').textContent=src.fileName?`${src.fileName}${src.page?` · p.${src.page}`:''}${Number.isFinite(src.confidence)?` · ${Math.round(src.confidence*100)} %`:''}`:'Aucune source retenue';$('#betaErrorExcerpt').textContent=src.excerpt||'Aucun extrait source disponible.';betaSetExactValueFromSelection('');$('#betaErrorReason').value=missing?'missing_data':'wrong_value';$('#betaErrorComment').value='';$('#betaApplyCorrection').checked=true;$('#betaErrorFeedback').textContent='';dlg.dataset.building=building;dlg.dataset.field=field;dlg.dataset.wasMissing=missing?'1':'0';betaLearningSelection=null;dlg.showModal();syncBetaLearningDocument(src.docId||'',src.page||null);
 }
-function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview(); }
+function closeBetaErrorDialog(){ const dlg=$('#betaErrorDialog');if(dlg?.open)dlg.close();betaLearningSelection=null;disposeBetaPdfPreview();setCorrectionDialogMode(); }
 async function submitBetaError(){
-  if(!ownerBetaEnabled())return; const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field],ctx=betaResultContext(building,field);if(!dlg||!def||!ctx.row)return; const raw=($('#betaErrorCorrectValue')?.value||'').trim();let correctedValue=null,hasCorrection=!!raw;if(hasCorrection){if(def.type==='number'){const n=parseFrNumber(raw);if(n===null){$('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.';return;}correctedValue=n;}else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;}if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.';return;} const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim(),loc=betaLearningSelection?{...betaLearningSelection}:null;
+  if(!ownerBetaEnabled())return; const dlg=$('#betaErrorDialog'),building=dlg?.dataset.building||'',field=dlg?.dataset.field||'',def=FIELD_MAP[field],ctx=betaResultContext(building,field);if(!dlg||!def||!ctx.row)return; const raw=($('#betaErrorCorrectValue')?.value||'').trim();let correctedValue=null,hasCorrection=!!raw;if(hasCorrection){if(def.type==='number'){const n=betaParseCorrectedNumber(raw);if(n===null){$('#betaErrorFeedback').textContent='La bonne valeur doit être numérique pour ce champ.';return;}correctedValue=n;}else correctedValue=field==='window_glazing'?(normalizeGlazingType(raw)||raw):raw;}if(!hasCorrection&&dlg.dataset.wasMissing==='1'){ $('#betaErrorFeedback').textContent='Pour renseigner une donnée vide, surlignez ou saisissez la bonne valeur.';return;} const src=ctx.source||{},chosenDoc=betaLearningDoc(),reason=$('#betaErrorReason')?.value||'other',comment=($('#betaErrorComment')?.value||'').trim(),loc=betaLearningSelection?{...betaLearningSelection}:null;
   const payload={beta:true,learningLocation:true,field,fieldLabel:def.label||field,building,wasMissing:dlg.dataset.wasMissing==='1',detectedValue:ctx.value??null,correctedValue:hasCorrection?correctedValue:null,hasCorrectedValue:hasCorrection,reason,comment,sourceDocument:src.fileName||'',sourceDocId:src.docId||'',sourcePage:src.page||null,sourceConfidence:Number.isFinite(src.confidence)?src.confidence:null,sourceMethod:src.method||'',sourceExcerpt:src.excerpt||'',sourceBuilding:src.originalBuilding||src.building||'',selectedSourceDocument:loc?.document||chosenDoc?.name||'',selectedSourceDocId:loc?.docId||chosenDoc?.id||'',selectedSourceDocType:loc?.docType||chosenDoc?.type||'',selectedSourcePage:loc?.page||Number($('#betaLearningPage')?.value)||null,highlight:loc,operation:activeProject()?.operationName||state.result?.operation||'',resultView:activeProject()?.resultView||'generic'};
   try{
     await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
     if(loc){const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,selectionMode:loc.selectionMode,normalizedRects:loc.normalizedRects,bboxNormalized:loc.bboxNormalized,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});}
     const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']),srcDoc=state.docs.find(d=>d.id===src.docId);if(dlg.dataset.wasMissing!=='1'&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});}
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par surlignage PDF — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par surlignage PDF',80);}
-    closeBetaErrorDialog();renderSummary();scheduleJournalUiRefresh();renderLearningMemoryUi();toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement PDF mémorisé.':'Correction appliquée et emplacement PDF mémorisé.','success');
+    if(hasCorrection&&$('#betaApplyCorrection')?.checked){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par sélection documentaire — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:betaLearningIsSpreadsheet(chosenDoc)?'spreadsheet_selection_learning':'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par sélection documentaire',80);}
+    closeBetaErrorDialog();renderSummary();scheduleJournalUiRefresh();renderLearningMemoryUi();toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
   }catch(err){$('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`;}
 }
 
@@ -7524,7 +8002,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
@@ -7536,7 +8014,7 @@ function wire(){
   const journalConfigClear=$('#journalConfigClear'); if(journalConfigClear) journalConfigClear.onclick=()=>{ clearRemoteJournalConfig(); const cfg=getRemoteJournalConfig(); $('#journalSupabaseUrl').value=cfg.supabaseUrl||''; $('#journalSupabaseKey').value=cfg.supabaseAnonKey||''; const fb=$('#journalConfigFeedback'); if(fb){fb.textContent=cfg.configured?'Configuration du site restaurée.':'Configuration locale supprimée. Aucun journal partagé configuré dans le site.';fb.className='journal-config-feedback';} refreshJournalUi(); };
   const packClose=$('#journalPackPasswordClose'); if(packClose) packClose.onclick=()=>$('#journalPackPasswordDialog')?.close();
   const packSubmit=$('#journalPackPasswordSubmit'); if(packSubmit) packSubmit.onclick=()=>submitJournalPackPassword();
-  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const s=globalThis.getSelection?.(); if(s&&!s.isCollapsed&&betaLayer.contains(s.anchorNode)) $('#betaLearningSelection').textContent=`Sélection prête : « ${s.toString().replace(/\s+/g,' ').trim()} » — cliquez sur Utiliser le surlignage`;}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
+  const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};

@@ -3,7 +3,7 @@ import {APP_VERSION,DOC_TYPES} from './js/config.js';
 import {detectBuildings} from './js/buildings.js';
 import {parseDocument} from './js/parsers.js';
 
-assert.equal(APP_VERSION,'2.3.3');
+assert.equal(APP_VERSION,'2.3.4');
 const page=(n,text)=>({page:n,text,lines:text.split(/\n/).map((text,index)=>({text,index}))});
 const pages=[
   page(1,`SYNTHESE D’ÉTUDE ACV RÉALISÉE AVEC CLIMAWIN 2020\n1. Bâtiment A\n1.2. Exigences ACV\nZone n°1 : Zone d'usage logements TRAVERSANTS 633.1 560.0 -0.100 0.075\nZone n°2 : Zone d'usage logements NON TRAVERSANTS 142.3 560.0 -0.100 0.075\nIc,énergie 73.4 533.7 -86 %\n1.3. Résultats ACV\nContributeur composant Ic,composant 579.7\nContributeur chantier Ic,chantier 14.5\nTotal hors parcelle Ic,bâtiment 715.9 Stockage carbone Stock,C (par m²) 50.4 kgC/m²`),
