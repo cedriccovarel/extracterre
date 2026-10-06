@@ -5,6 +5,7 @@ import {matchInsulationProduct,libraryNote} from './insulation-library.js';
 import {parsePatchOccurrences} from './patches.js';
 import {re2020Occurrences,re2020EnvelopeLines} from './xml-re2020.js';
 import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeActRecap,parseBeActRecap,isClimaWinInputReport} from './climawin.js';
+import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
   if(value===null||value===undefined||value==='') return null;
@@ -1688,7 +1689,7 @@ export const DOCUMENT_FAMILIES=Object.freeze({
   cctp:{label:'CCTP',short:'CCTP',type:DOC_TYPES.CCTP},
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
-  annex:{label:'Analyse manuelle — moteur libre',short:'Manuelle',type:null}
+  annex:{label:'Moteur libre — sans liste blanche',short:'Libre',type:null}
 });
 export const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});
 export function normalizeFamilyKey(key){ const k=String(key||'').trim().toLowerCase(); const n=LEGACY_FAMILY_ALIASES[k]||k; return DOCUMENT_FAMILIES[n]?n:null; }
@@ -1842,11 +1843,24 @@ function parseBeActRecapDocument(doc){
   return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'recap-be'}));
 }
 
+// v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
+// le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
+function parseEcAcvDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.RSENV};
+  let out=parseEcAcvNotice(fdoc,occ).filter(Boolean);
+  const fams=resolveDocumentFamilies(doc);
+  if(doc.familyMode==='manual'&&!fams.includes('annex')){ const allowed=new Set(fams.flatMap(f=>[...(FAMILY_ALLOWED_FIELDS[f]||[])])); out=out.filter(o=>allowed.has(o.field)); }
+  out=annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'acv-ec'}));
+  if(fams.includes('annex')){ const have=new Set(out.map(o=>o.field)); out.push(...parseDocument({...doc,__skipEcAcv:true}).filter(o=>!have.has(o.field))); }
+  return out;
+}
+
 export function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
+  if(!doc.__skipEcAcv&&isEcAcvNotice(doc)) return parseEcAcvDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
   let out=[];

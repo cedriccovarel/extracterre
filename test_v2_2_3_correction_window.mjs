@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const html=fs.readFileSync('index.html','utf8');
+const css=fs.readFileSync('styles.css','utf8');
+const app=fs.readFileSync('js/app.js','utf8');
+assert.match(html,/id="betaErrorCorrectValue"/,'champ valeur exacte absent');
+assert.match(html,/beta-error-workspace/,'nouvelle fenêtre deux colonnes absente');
+assert.match(html,/Valeur exacte/,'libellé valeur exacte absent');
+assert.match(css,/grid-template-columns:minmax\(0,1\.75fr\)/,'layout aperçu/correction absent');
+assert.match(app,/betaSetExactValueFromSelection\(selectedText\)/,'surlignage non recopié');
+assert.match(app,/input\.value=exact/,'valeur exacte non affectée');
+assert.match(app,/betaLayer\.addEventListener\('mouseup'.*captureBetaLearningSelection/s,'capture automatique PDF absente');
+assert.match(app,/betaFallback.*addEventListener\('mouseup'.*captureBetaLearningSelection/s,'capture automatique texte absent');
+assert.match(app,/betaParseCorrectedNumber/,'parse numérique robuste absent');
+console.log('OK v2.2.3 — fenêtre correction + valeur exacte depuis surlignage');

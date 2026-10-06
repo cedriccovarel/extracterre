@@ -1,3 +1,16 @@
+# v2.3.4 — Fenêtre de correction et Analyse manuelle restaurées + notices ACV E+C-
+**Régression corrigée** : la v2.3 avait été construite sur une base 2.2.3 antérieure aux versions 2.2.4 → 2.2.10. Les fonctions suivantes sont réintégrées (fusion à trois voies, sans perte des apports 2.3) :
+- **Fenêtre de correction** (2.2.3 / 2.2.4) : deux colonnes (aperçu document à gauche, correction à droite), dimensionnée sur l'écran réel (`100dvh`), en-tête et pied toujours visibles, boutons **← Précédent / Suivant →** autour du sélecteur de page, champ « Valeur exacte » alimenté par le surlignage. Vérifiée à 1920×1080, 1366×768, 1280×640 et 390×844 (mobile).
+- **Aperçu Excel** (2.2.5) : grille de tableur, clic sur une cellule = valeur reprise.
+- **✦ Analyse manuelle** (2.2.6 → 2.2.10) : bouton dans « Analyse du projet » ; onglet par bâtiment, familles Généralités / Thermique / Carbone / Enveloppe, affectation par surlignage PDF, clic Excel ou saisie directe ; apprentissage d'emplacement (`parser_location_learning`).
+- **Copier-coller Excel souple** (2.2.9) : alias d'en-têtes CRM/OPERATIONS et rapprochement prudent (≈).
+- Le bouton d'import 2.3.2 est renommé **🛠 Moteur libre** pour ne plus être confondu avec l'outil ✦ Analyse manuelle.
+
+**Notice ACV E+C- (annexe RSEnv Pléiades)** — `js/acv-ec.js`
+- Détection : « Niveaux ENERGIE-CARBONE » / « Récapitulatif Energie Environnement » + Eges / Eges PCE.
+- Extraits : Eges PCE → IC composants bâtiment (valeur précise de l'annexe, note E+C- ≠ RE2020), Niveau BEPOS → Niveau Énergie (E1–E4), niveaux E/C → Performance (« E3C1 », à valider), SRT du RSEnv (à vérifier si la notice indique une autre surface), tableau « Données générales » (structure, isolant de remplissage, plancher, ventilation, vecteurs et générateurs chauffage/ECS), PV saisi (ENR), département.
+- Les graphiques par lot sont des images : aucune valeur de lot n'est inventée. En moteur libre, le moteur générique complète uniquement les champs non trouvés.
+
 # v2.3.3 — Thermique : synthèses ClimaWin 2020, récap BE, versions multiples
 **Cause des mauvais résultats thermiques** : types de documents erronés. « RTEx » (en-tête de colonne ClimaWin) déclenchait « RT Existant » ; la mention « classement DPE informatif » des récap BE les classait « DPE » ; les parseurs RE2020 ne tournaient donc jamais.
 - **Classifieur** : signatures explicites synthèse ClimaWin (→ RSET RE2020), récap BE (→ Étude thermique), rapport de saisie ClimaWin ; « RT Existant » exige un libellé explicite dans le texte.

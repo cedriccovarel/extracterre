@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const html=fs.readFileSync('index.html','utf8');
+const css=fs.readFileSync('styles.css','utf8');
+const app=fs.readFileSync('js/app.js','utf8');
+assert.match(html,/id="manualBuildingCount"/);
+assert.match(html,/id="manualDirectValue"/);
+assert.match(html,/id="manualDirectApply"/);
+assert.match(css,/manual-building-block/);
+assert.match(css,/manual-building-tab\.active/);
+assert.match(app,/function manualAnalysisStoreValue/);
+assert.match(app,/function manualAnalysisApplyDirectValue/);
+assert.match(app,/manual:direct-entry/);
+console.log('v2.2.7 manual building buttons + direct entry: OK');
