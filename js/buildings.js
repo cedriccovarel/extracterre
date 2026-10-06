@@ -2,6 +2,8 @@ import {isClimaWinSynthesis,climaWinBuildingSections,isClimaWinInputReport} from
 import {normalizeText,normLower,unique} from './utils.js';
 import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-sortie.js';
 import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
+import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.js';
+import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
 export function canonicalBuilding(raw){
   let s=normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim();
@@ -89,6 +91,17 @@ export function detectBuildings(doc){
     const names=pleiadesThermalBuildingNames(doc).map(canonicalBuilding);
     if(names.length) return {names:[...new Set(names)],expectedCount:names.length,source:'pleiades-sortie-sections',hits:[]};
   }
+  // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
+  if(isCarbonNoticeRe2020(doc)){
+    const names=carbonNoticeBuildingNames(doc).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'notice-carbone-sections',hits:[]};
+  }
+  if(isThermalNoticeColumns(doc)){
+    const names=thermalNoticeBuildingNames(doc).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'notice-thermique-colonnes',hits:[]};
+  }
+  // Notice label biosourcé : tableaux FDES (identifiants numériques) — jamais de bâtiments détectés depuis ces lignes.
+  if(isBiosourcedLabelNotice(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'notice-biosource'};
   // v2.3.5 — fiche RSET / RSEE CSTB : bâtiments = marqueurs « Bâtiment : X », « "X" », « Nom du bâtiment X ».
   if(isCstbRseeFiche(doc)){
     const names=cstbBuildingNames(doc).map(canonicalBuilding);

@@ -99,6 +99,18 @@ export function classifyDocument(fileName, text='', meta={}) {
     if(beRecap){ score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+34; score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.3; }
     score[DOC_TYPES.DPE]=(score[DOC_TYPES.DPE]||0)*0.1; score[DOC_TYPES.DIAGNOSTIC]=(score[DOC_TYPES.DIAGNOSTIC]||0)*0.3;
   }
+  // v2.3.6 — notices de bureau d'études reconnues par leur structure.
+  if(/evaluation\s+du\s+bilan\s+carbone\s*[–-]\s*batiment/i.test(t)&&/ic\s*-?\s*construction/i.test(t)){
+    score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
+    for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.DPE,DOC_TYPES.THERMAL]) score[k]=(score[k]||0)*0.2;
+  }
+  if(/note\s*thermique|notice\s+thermique/i.test(t.slice(0,6000))&&/poste\s+batiment\s+\S+\s+batiment/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
+    for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.RSET_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
+  if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
+    score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
+  }
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
   const confidence=ranked.length ? Math.min(0.99,0.45+(ranked[0][1]/22)) : 0.25;

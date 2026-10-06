@@ -7,7 +7,7 @@ function doc(family,type,text){
   return {id:`test-${family}`,name:`${family}.pdf`,type,specializedFamily:family,read:{kind:'pdf',text,pages:[{page:1,text,lines}]},buildings:{names:['Bâtiment A'],hits:[]}};
 }
 function fields(d){ return new Set(parseDocument(d).map(o=>o.field)); }
-assert.equal(APP_VERSION,'2.3.5');
+assert.equal(APP_VERSION,'2.3.6');
 
 let f=fields(doc('rsenv',DOC_TYPES.RSENV,'Bâtiment: A\nDH: 900\nBbio: 50\nCep: 70\nIC chantier: 20\nIC énergie: 100'));
 assert(!f.has('dh'),'RSENV ne doit jamais produire DH');

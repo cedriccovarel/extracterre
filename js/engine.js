@@ -211,7 +211,10 @@ function expectedFieldsForDocument(doc){
   if(doc.type===DOC_TYPES.RT2012) return [...REQUIRED_RT2012_RSET_FIELDS];
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(doc.type)){
     const base=[...REQUIRED_RE2020_RSET_FIELDS];
-    if(/ic\s*(?:composants?|construction)|(?:1\s*[-–—]\s*vrd)|energie\s*\(\s*ce\s*\)/i.test(text)) base.push('ic_components','ic_energy','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`));
+    // v2.3.6 — les IC ne sont exigés que si ce document en publie réellement (un RSET seul ne contient pas l'ACV,
+    // même s'il cite « Ic construction » dans le rappel des exigences).
+    const publishesIc=!Array.isArray(doc.cachedOccurrences)||doc.cachedOccurrences.some(o=>/^ic_(?:components|lot_\d+)$/.test(o?.field||''));
+    if(publishesIc&&/ic\s*(?:composants?|construction)|(?:1\s*[-–—]\s*vrd)|energie\s*\(\s*ce\s*\)/i.test(text)) base.push('ic_components','ic_energy','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`));
     return unique(base);
   }
   if([DOC_TYPES.RSENV,DOC_TYPES.CARBON].includes(doc.type)) return ['ic_components','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy'];

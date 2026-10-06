@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.5 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.6 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.5';
+const APP_VERSION = '2.3.6';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -371,7 +371,7 @@ for(const key of ['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','ce
 for(const key of ['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['ic_construction','ic_construction_max','ic_construction_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
 // Ic énergie max : également publié par les sorties thermiques RE2020 (RSET, synthèses logiciel).
-for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
+for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.stock_c_per_m2=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
 for(const key of ['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
@@ -839,6 +839,17 @@ function detectBuildings(doc){
     const names=pleiadesThermalBuildingNames(doc).map(canonicalBuilding);
     if(names.length) return {names:[...new Set(names)],expectedCount:names.length,source:'pleiades-sortie-sections',hits:[]};
   }
+  // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
+  if(isCarbonNoticeRe2020(doc)){
+    const names=carbonNoticeBuildingNames(doc).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'notice-carbone-sections',hits:[]};
+  }
+  if(isThermalNoticeColumns(doc)){
+    const names=thermalNoticeBuildingNames(doc).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'notice-thermique-colonnes',hits:[]};
+  }
+  // Notice label biosourcé : tableaux FDES (identifiants numériques) — jamais de bâtiments détectés depuis ces lignes.
+  if(isBiosourcedLabelNotice(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'notice-biosource'};
   // v2.3.5 — fiche RSET / RSEE CSTB : bâtiments = marqueurs « Bâtiment : X », « "X" », « Nom du bâtiment X ».
   if(isCstbRseeFiche(doc)){
     const names=cstbBuildingNames(doc).map(canonicalBuilding);
@@ -1414,13 +1425,16 @@ function pleiadesThermalSections(doc){
   let chapter=null;
   lines.forEach((x,i)=>{
     const ch=x.t.match(/^(\d)\s+[A-Z]/); if(ch&&!/^\d\s+\d/.test(x.t)) chapter=Number(ch[1]);
-    const m=x.t.match(/^([15])\.(\d{1,2})\s+(.{2,60})$/); if(!m) return;
+    // Titres « 1.N Nom » ou, selon la version de Pléiades, « .N Nom » (numérotation continue sans chapitre).
+    const m=x.t.match(/^([15])?\.(\d{1,2})\s+(.{2,60})$/); if(!m) return; m[1]=m[1]||String(chapter||'');
     if(/[.]{4,}|\d+\s*$/.test(m[3])) return; // sommaire
     const name=pl_titleName(m[3]);
     if(m[1]==='1'&&chapter===1) res.push({index:i,name,pl_num:Number(m[2]),page:x.page.page});
     if(m[1]==='5'&&chapter===5&&!/^environnement$/i.test(m[3])) car.push({index:i,name,pl_num:Number(m[2]),page:x.page.page});
   });
-  return {lines,res,car};
+  // Chapitre 5 : ne garder que les sections qui portent le nom d'un bâtiment des résultats (pas « Systèmes de chauffage »…).
+  const resNames=new Set(res.map(r=>r.name.toLowerCase()));
+  return {lines,res,car:car.filter(c=>resNames.has(c.name.toLowerCase())||!res.length)};
 }
 function pleiadesThermalBuildingNames(doc){ const {res}=pleiadesThermalSections(doc); return [...new Set(res.map(s=>s.name))]; }
 
@@ -1443,6 +1457,9 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     if(cepnr){ emit(cepnr.x,b,'cepnr',cepnr.v,'cepnr',0.995,'kWhEP/m².an'); emit(cepnr.x,b,'cepnr_max',cepnr.max,'cepnr-max',0.995,'kWhEP/m².an'); }
     const ic=pair(new RegExp(`^Indice\\s+Carbone\\s+Energie\\s+${pl_N}\\s*kg\\s*eq\\.?\\s*CO2\\s+${pl_N}`,'i'));
     if(ic){ emit(ic.x,b,'ic_energy',ic.v,'ic-energie',0.995,'kgCO2e/m²'); emit(ic.x,b,'ic_energy_max',ic.max,'ic-energie-max',0.995,'kgCO2e/m²'); }
+    // Seuils Ic énergie par période (« Cible 2022 / 2025 / 2028 ») : la cible 2028 alimente « IC énergie Max 2028 ».
+    const c28=block.find(l=>new RegExp(`^Cible\\s+2028\\s+${pl_N}\\s*kg`,'i').test(l.t));
+    if(c28) emit(c28,b,'ic_energy_max_2028',pl_num(c28.t.match(new RegExp(`^Cible\\s+2028\\s+${pl_N}`,'i'))[1]),'ic-energie-cible-2028',0.995,'kgCO2e/m²');
 
     // Postes du Cep (premier bloc « Consommations de … » qui précède le total Cep, pas celui du Cep,nr).
     const cepIdx=cep?block.indexOf(cep.x):-1;
@@ -1470,7 +1487,11 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     const end=k+1<car.length?car[k+1].index:lines.length;
     const block=lines.slice(sec.index,end); const b=sec.name;
     const srt=block.find(l=>new RegExp(`^SRT\\s+declaree\\s+${pl_N}\\s*m`,'i').test(l.t));
-    if(srt) emit(srt,b,'shab',pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1]),'srt-declaree',0.97,'m²',{provenanceNote:'SRT déclarée du bâtiment (chapitre 5).'});
+    if(srt&&pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1])>0) emit(srt,b,'shab',pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1]),'srt-declaree',0.97,'m²',{provenanceNote:'SRT déclarée du bâtiment (chapitre 5).'});
+    // SRT déclarée absente ou nulle : somme des surfaces utiles des groupes (SHAB / SURT) du bâtiment.
+    const srtVal=srt?pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1]):null;
+    if(!srtVal){ const grp=block.filter(l=>new RegExp(`^Surface\\s+utile\\s+du\\s+groupe\\s*\\(SHAB\\s*\\/\\s*SURT\\)\\s+${pl_N}\\s*m`,'i').test(l.t));
+      if(grp.length){ const sum=grp.reduce((a,l)=>a+pl_num(l.t.match(new RegExp(`\\)\\s+${pl_N}`))[1]),0); emit(grp[0],b,'shab',Math.round(sum*100)/100,'surface-utile-groupes',grp.length>1?0.93:0.96,'m²',{provenanceNote:`Somme des surfaces utiles (SHAB / SURT) de ${grp.length} groupe(s) : la SRT déclarée est absente ou nulle.`}); } }
     const lg=block.find(l=>/^Nombre\s+de\s+logements?\s+\d+/i.test(l.t));
     if(lg) emit(lg,b,'housing_count',Number(lg.t.match(/(\d+)\s*$/)?.[1]),'nombre-logements',0.97);
     const clim=block.filter(l=>/^Climatisation\s+(?:Oui|Non)\b/i.test(l.t));
@@ -1616,6 +1637,178 @@ function parseStdReport(doc,occ){
   const cta=base.find(x=>/\bCTA\b/.test(x.t));
   if(cta) emit(cta,'ventilation','CTA','ventilation-hypothesis',0.85,'Ventilation mécanique par CTA citée dans les hypothèses de la STD.');
   return out;
+}
+
+/* ---- notice-carbone.js ---- */
+// v2.3.6 — Notice carbone RE2020 de bureau d'études (ex. « Analyse du cycle de vie », éventuellement BBCA) :
+// une section « N EVALUATION DU BILAN CARBONE – BATIMENT X (CAGE n) » par bâtiment avec
+//  • le tableau « Evaluation projet / Seuils RE2020 » (Ic construction et Ic énergie + seuils),
+//  • la calculette par lot (« 1.VRD … », « 2.1. Fondations … », « Ic Composants = »,  « Ic Chantier = »),
+//  • les postes Ic énergie (« Chauffage 114 », « ECS 65 »…), et la ligne « Ic-Energie 214 ».
+// Les seuils sont rangés dans « Max 2028 » quand la notice déclare viser le seuil 2028, sinon dans « Max ».
+
+const nc_lineText=l=>normalizeText(l?.text||'');
+const nc_num=s=>{ const m=String(s||'').match(/[-+]?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/[  ]/g,'')):null; };
+
+function isCarbonNoticeRe2020(doc){
+  const t=String(doc?.read?.text||'').slice(0,800000);
+  return /evaluation\s+du\s+bilan\s+carbone\s*[–-]\s*batiment/i.test(t)&&/ic\s*-?\s*construction/i.test(t);
+}
+
+function nc_allLines(doc){
+  const out=[];
+  for(const page of doc.read?.pages||[]) (page.lines||[]).forEach((line,pos)=>out.push({page,line,pos,t:nc_lineText(line)}));
+  return out;
+}
+const nc_cleanName=s=>String(s||'').replace(/\(\s*cage\s*\d+\s*\)/i,'').replace(/\s+/g,' ').trim();
+
+function carbonNoticeSections(doc){
+  const lines=nc_allLines(doc); const secs=[];
+  lines.forEach((x,i)=>{
+    const m=x.t.match(/^\d+\s+EVALUATION\s+DU\s+BILAN\s+CARBONE\s*[–-]\s*BATIMENT\s*(.*)$/i); if(!m||/\.{4,}/.test(x.t)) return;
+    let name=m[1].trim(); if(!name||name.length<3) name=lines[i+1]?.t||'';
+    name=nc_cleanName(name); if(name) secs.push({index:i,name:`Batiment ${name}`});
+  });
+  return {lines,secs};
+}
+function carbonNoticeBuildingNames(doc){ return [...new Set(carbonNoticeSections(doc).secs.map(s=>s.name))]; }
+
+function parseCarbonNoticeRe2020(doc,occ,canonical=(s)=>s){
+  const out=[]; const {lines,secs}=carbonNoticeSections(doc);
+  const target2028=lines.some(x=>/seuils?\s+2028/i.test(x.t));
+  const origin='Notice carbone RE2020 (bureau d’études)';
+  const emit=(x,b,field,value,method,conf,unit='kgCO2e/m²',extra={})=>{ if(!x||value===null||value===undefined) return; const o=occ(doc,x.page,x.line,field,value,`notice-carbone:${method}`,conf,unit,{building:canonical(b),structuredPdf:true,origin,...extra}); if(o) out.push(o); };
+  secs.forEach((sec,k)=>{
+    const block=lines.slice(sec.index,k+1<secs.length?secs[k+1].index:lines.length); const b=sec.name;
+    const find=re=>block.find(l=>re.test(l.t));
+    // Tableau de synthèse : « max 519 565 -8% » (construction) puis « 214 284 -25% » (énergie).
+    const consIdx=block.findIndex(l=>/^Seuil\s+IC\s+Construction/i.test(l.t)); const eneIdx=block.findIndex(l=>/^Seuil\s+IC\s+Energie/i.test(l.t));
+    const triple=(from,to)=>{ for(const l of block.slice(Math.max(0,from),Math.max(from+1,to))){ const m=l.t.match(/(?:^|max\s+)([\d ,.]+?)\s+([\d ,.]+?)\s+[-+]?\d+\s*%/i); if(m) return {l,v:nc_num(m[1]),max:nc_num(m[2])}; } return null; };
+    const cons=consIdx>=0?triple(consIdx,consIdx+4):null, ene=eneIdx>=0?triple(eneIdx,eneIdx+4):null;
+    const maxField=target2028?'_max_2028':'_max';
+    const note=target2028?'Seuil indiqué par la notice, qui vise la RE2020 seuil 2028.':'Seuil indiqué par la notice (période non précisée).';
+    if(cons){ emit(cons.l,b,'ic_construction',cons.v,'synthese-ic-construction',0.97); emit(cons.l,b,`ic_construction${maxField}`,cons.max,'seuil-ic-construction',target2028?0.95:0.88,'kgCO2e/m²',{provenanceNote:note}); }
+    if(ene){ emit(ene.l,b,'ic_energy',ene.v,'synthese-ic-energie',0.97); emit(ene.l,b,`ic_energy${maxField}`,ene.max,'seuil-ic-energie',target2028?0.95:0.88,'kgCO2e/m²',{provenanceNote:note}); }
+    // Calculette : Ic composants / chantier / construction et lots.
+    const eq=(re)=>{ const l=find(re); return l?{l,v:nc_num(l.t.replace(re,''))}:null; };
+    const comp=eq(/^Ic\s+Composants\s*=\s*/i), site=eq(/^Ic\s+Chantier\s*=\s*/i), ic=eq(/^Ic\s+Construction\s*=\s*/i);
+    if(comp) emit(comp.l,b,'ic_components',comp.v,'ic-composants',0.97);
+    if(site) emit(site.l,b,'ic_site',site.v,'ic-chantier',0.97);
+    if(ic&&!cons) emit(ic.l,b,'ic_construction',ic.v,'ic-construction',0.97);
+    const lots={}; let firstLotLine=null;
+    for(const l of block){ const m=l.t.match(/^(\d{1,2})\.(?:(\d)\.?)?\s*[A-Za-z].*?\s([-+]?\d+(?:[.,]\d+)?)$/); if(!m) continue; const lot=Number(m[1]); if(lot<1||lot>13) continue; const v=parseFrNumber(m[3]); if(v===null) continue; lots[lot]=(lots[lot]||0)+v; firstLotLine=firstLotLine||l; if(lot===13) break; }
+    const lotSum=Object.values(lots).reduce((a,v)=>a+v,0);
+    const lotsOk=comp&&Object.keys(lots).length>=10&&Math.abs(lotSum-comp.v)<=Math.max(2,comp.v*0.02);
+    for(const [lot,v] of Object.entries(lots)) emit(firstLotLine,b,`ic_lot_${lot}`,Math.round(v*100)/100,'calculette-lot',lotsOk?0.95:0.86,'kgCO2e/m²',{provenanceNote:lotsOk?'Calculette par lot (Σ lots = Ic composants).':'Calculette par lot : somme non vérifiée.'});
+    // Postes Ic énergie (calculette « Exploitation maîtrisée »).
+    const posts=[[/^Chauffage\s+/i,'ic_energy_heating'],[/^Refroidissement\s+/i,'ic_energy_cooling'],[/^ECS\s+/i,'ic_energy_ecs'],[/^Auxiliaires\s+de\s+distribution\s+/i,'ic_energy_aux_dist'],[/^Auxiliaires\s+de\s+ventilation\s+/i,'ic_energy_aux_vent'],[/^Deplacements?\s+des\s+occupants/i,'ic_energy_mobility']];
+    const expl=block.findIndex(l=>/Exploitation\s+Maitrisee/i.test(l.t));
+    if(expl>=0) for(const [re,field] of posts){ const l=block.slice(expl).find(x=>re.test(x.t)&&/\s[-+]?\d+(?:[.,]\d+)?$/.test(x.t)); if(l) emit(l,b,field,nc_num(l.t.match(/([-+]?\d+(?:[.,]\d+)?)$/)[1]),'calculette-poste',0.93); }
+  });
+  // Mention BBCA visée.
+  const bbca=lines.find(x=>/labelisation\s+(?:du\s+projet\s+)?BBCA|label\s+BBCA/i.test(x.t));
+  if(bbca){ const o=occ(doc,bbca.page,bbca.line,'mention_bbca','Oui','notice-carbone:bbca',0.9,'',{building:'Bâtiment unique',origin,provenanceNote:'Labellisation BBCA visée par la notice carbone.'}); if(o) out.push(o); }
+  return out;
+}
+
+/* ---- notice-thermique.js ---- */
+// v2.3.6 — Notice thermique RE2020 de bureau d'études avec tableaux de synthèse en colonnes par bâtiment :
+//   « POSTE | BATIMENT CENTRAL | BATIMENT NORD | BATIMENT SUD » puis « BBIO 56,40 59,00 62,20 », « CEP_MAX … »,
+//   « CEP,NR … », « ICENERGIE … », « GAIN … % » (selon le tableau), « Nombre total des logements 37 14 10 »,
+//   « Surface habitable totale (Sref) 2521,3 m² … », DH par bâtiment (« GROUPE CHAUFFE 412,90 1250 »).
+// Les colonnes sont associées aux bâtiments de l'en-tête, dans l'ordre : aucune valeur n'est recopiée d'un bâtiment à l'autre.
+// Notice « label bâtiment biosourcé » : seule la démarche de labellisation est relevée (les tableaux FDES ne décrivent pas le projet).
+
+const nt_lineText=l=>normalizeText(l?.text||'');
+const nt_nums=s=>(String(s||'').match(/[-+]?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
+
+function isThermalNoticeColumns(doc){
+  const t=String(doc?.read?.text||'').slice(0,400000);
+  return /note\s*thermique|notice\s+thermique/i.test(t)&&/poste\s+batiment\s+\S+\s+batiment\s+\S+/i.test(t)&&/\bbbio\b/i.test(t);
+}
+function isBiosourcedLabelNotice(doc){
+  const t=String(doc?.read?.text||'').slice(0,200000);
+  return /label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t);
+}
+
+function nt_allLines(doc){
+  const out=[];
+  for(const page of doc.read?.pages||[]) (page.lines||[]).forEach((line,pos)=>out.push({page,line,pos,t:nt_lineText(line)}));
+  return out;
+}
+// En-tête « POSTE BATIMENT A BATIMENT B … » ou « BATIMENT A BATIMENT B … » (noms d'un mot).
+function nt_header(t){
+  const s=t.replace(/^POSTE\s+/i,'');
+  if(!/^BATIMENT\s+\S+(?:\s+BATIMENT\s+\S+)+\s*$/i.test(s)) return null;
+  return s.split(/\s*BATIMENT\s+/i).map(x=>x.trim()).filter(Boolean);
+}
+function thermalNoticeBuildingNames(doc){
+  for(const x of nt_allLines(doc)){ const h=nt_header(x.t); if(h&&h.length>=2) return h.map(n=>`Batiment ${n}`); }
+  return [];
+}
+
+function parseThermalNoticeColumns(doc,occ,canonical=(s)=>s){
+  const out=[]; const lines=nt_allLines(doc);
+  const origin='Notice thermique RE2020 — tableaux de synthèse par bâtiment';
+  const emit=(x,b,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined) return; const o=occ(doc,x.page,x.line,field,value,`notice-thermique:${method}`,conf,unit,{building:canonical(`Batiment ${b}`),structuredPdf:true,origin,...extra}); if(o) out.push(o); };
+  let names=null, table='', gainDone=new Set();
+  const ROWS={
+    bbio:[[/^BBIO\s/i,'bbio','points'],[/^BBIO_?MAX\s/i,'bbio_max','points'],[/^GAIN\s/i,'bbio_gain','%']],
+    cep:[[/^CEP\s/i,'cep','kWhEP/m².an'],[/^CEP_?MAX\s/i,'cep_max','kWhEP/m².an'],[/^GAIN\s/i,'cep_gain','%'],[/^REFROIDISSEMENT\s/i,'cep_cooling','kWhEP/m².an'],[/^ECLAIRAGE\s/i,'cep_lighting','kWhEP/m².an'],[/^AUX\.?\s*DE\s+DISTRIBUTION\s/i,'cep_aux_dist','kWhEP/m².an'],[/^AUX\.?\s*DE\s+VENTILATION\s/i,'cep_aux_vent','kWhEP/m².an'],[/^ASCENSEUR/i,'cep_mobility','kWhEP/m².an']],
+    cepnr:[[/^CEP\s*,\s*NR\s/i,'cepnr','kWhEP/m².an'],[/^CEP\s*,\s*NR_?MAX\s/i,'cepnr_max','kWhEP/m².an'],[/^GAIN\s/i,'cepnr_gain','%']],
+    ic:[[/^ICENERGIE\s/i,'ic_energy','kgCO2e/m²'],[/^ICENERGIE_?MAX\s/i,'ic_energy_max','kgCO2e/m²']]
+  };
+  for(let i=0;i<lines.length;i++){
+    const x=lines[i], t=x.t;
+    if(/BESOINS\s+BIOCLIMATIQUES/i.test(t)) table='bbio';
+    else if(/ENERGIE\s+PRIMAIRE\s+NON\s+RENOUVELABLE|\(CEP\s*,\s*NR/i.test(t)) table='cepnr';
+    else if(/CONSOMMATIONS\s+D'ENERGIE\s+PRIMAIRE|\(CEP\s+EN/i.test(t)) table='cep';
+    else if(/ICENERGIE\s+EN|CHANGEMENT\s+CLIMATIQUE\s+DES\s+CONSOMMATIONS/i.test(t)) table='ic';
+    else if(/RESULTATS?\s+BBIO\s+RT\s*2012|PARTIE\s+COMMERCES/i.test(t)) table='';
+    const h=nt_header(t); if(h&&h.length>=2){ names=h; continue; }
+    if(!names||!table) continue;
+    for(const [re,field,unit] of ROWS[table]){
+      if(!re.test(t)) continue;
+      if(field.endsWith('_gain')&&gainDone.has(field)) continue;
+      const v=nt_nums(t.replace(re,' ')); if(v.length!==names.length) continue;
+      names.forEach((n,k)=>emit(x,n,field,v[k],`${table}-colonnes`,0.97,unit));
+      if(field.endsWith('_gain')) gainDone.add(field);
+      break;
+    }
+  }
+  // Données générales : « BATIMENT HABITATION COLLECTIVE CENTRAL NORD SUD » puis logements / Sref.
+  const gi=lines.findIndex(x=>/^BATIMENT\s+HABITATION\s+COLLECTIVE\s+(.+)$/i.test(x.t));
+  if(gi>=0){
+    const cols=lines[gi].t.replace(/^BATIMENT\s+HABITATION\s+COLLECTIVE\s+/i,'').split(/\s+/).filter(Boolean);
+    for(const x of lines.slice(gi+1,gi+8)){
+      if(/^Nombre\s+total\s+des\s+logements/i.test(x.t)){ const v=nt_nums(x.t); if(v.length===cols.length) cols.forEach((n,k)=>emit(x,n,'housing_count',v[k],'logements-colonnes',0.97)); }
+      if(/^Surface\s+habitable\s+totale/i.test(x.t)){ const v=nt_nums(x.t.replace(/^.*?\)/,'')); if(v.length===cols.length) cols.forEach((n,k)=>emit(x,n,'shab',v[k],'sref-colonnes',0.97,'m²')); }
+    }
+  }
+  // DH : « BATIMENT X » seul sur sa ligne, puis lignes de groupes « … DH DH_MAX ✓ ».
+  for(let i=0;i<lines.length;i++){
+    const m=lines[i].t.match(/^BATIMENT\s+(\S+)\s*$/i); if(!m) continue;
+    let worst=null;
+    for(const y of lines.slice(i+1,i+12)){ if(/^BATIMENT\s+\S+\s*$/i.test(y.t)) break; const g=y.t.match(/^(.+?)\s+([\d.,]+)\s+(\d{3,4})\s*✓?\s*$/); if(g&&!/^DH\b|GROUPE\s+DH/i.test(y.t)){ const dh=parseFrNumber(g[2]),mx=Number(g[3]); if(dh!==null&&(!worst||dh>worst.dh)) worst={y,dh,mx,group:g[1]}; } }
+    if(worst&&lines.slice(i+1,i+4).some(y=>/DH\s*\(/i.test(y.t))){ emit(worst.y,m[1],'dh',worst.dh,'dh-groupe',0.97,'°C.h',{provenanceNote:`Groupe : ${worst.group}.`}); emit(worst.y,m[1],'dh_max',worst.mx,'dh-max-groupe',0.97,'°C.h'); }
+  }
+  // Ventilation par bâtiment : « … hygroréglable type B … Localisation : tous les logements … bâtiment X ».
+  lines.forEach((x,i)=>{
+    const m=x.t.match(/^Localisation\s*:.*batiment\s+(\S+)\s*$/i); if(!m) return;
+    const ctx=lines.slice(Math.max(0,i-8),i).map(y=>y.t).join(' ');
+    const v=/hygro\w*\s+type\s+B/i.test(ctx)?'VMC Hygro B':/hygro\w*\s+type\s+A/i.test(ctx)?'VMC Hygro A':/double\s+flux/i.test(ctx)?'VMC double flux':/simple\s+flux|autoreglable/i.test(ctx)?'VMC simple flux':null;
+    if(v&&/ventilation|VMC|extracteur/i.test(ctx)) emit(x,m[1],'ventilation',v,'ventilation-localisation',0.93);
+  });
+  return out;
+}
+
+function parseBiosourcedLabelNotice(doc,occ){
+  const lines=nt_allLines(doc);
+  const x=lines.find(y=>/label\s+batiment\s+biosource/i.test(y.t)); if(!x) return [];
+  const lvl=x.t.match(/niveau\s+(\d)\s+du\s+label\s+2012/i);
+  const out=[occ(doc,x.page,x.line,'mention_biosourced_building','Oui','biosource:label-vise',0.92,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Notice label bâtiment biosourcé',provenanceNote:'Estimation des quantités de matières biosourcées pour le label Bâtiment Biosourcé.'})];
+  if(lvl) out.push(occ(doc,x.page,x.line,'biosourced_2013',`Niveau ${lvl[1]}`,'biosource:niveau-2012',0.88,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Notice label bâtiment biosourcé',provenanceNote:`Objectif « niveau ${lvl[1]} du label 2012 » cité par la notice.`}));
+  return out.filter(Boolean);
 }
 
 /* ---- xml-re2020.js ---- */
@@ -2177,6 +2370,18 @@ function classifyDocument(fileName, text='', meta={}) {
   if(beRecap||dpeInformatif){
     if(beRecap){ score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+34; score[DOC_TYPES.RSET_RE2020]=(score[DOC_TYPES.RSET_RE2020]||0)*0.3; }
     score[DOC_TYPES.DPE]=(score[DOC_TYPES.DPE]||0)*0.1; score[DOC_TYPES.DIAGNOSTIC]=(score[DOC_TYPES.DIAGNOSTIC]||0)*0.3;
+  }
+  // v2.3.6 — notices de bureau d'études reconnues par leur structure.
+  if(/evaluation\s+du\s+bilan\s+carbone\s*[–-]\s*batiment/i.test(t)&&/ic\s*-?\s*construction/i.test(t)){
+    score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
+    for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.DPE,DOC_TYPES.THERMAL]) score[k]=(score[k]||0)*0.2;
+  }
+  if(/note\s*thermique|notice\s+thermique/i.test(t.slice(0,6000))&&/poste\s+batiment\s+\S+\s+batiment/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
+    for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.RSET_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
+  if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
+    score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
   }
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
@@ -4464,6 +4669,27 @@ function parseStdDocument(doc){
   return annotateSemanticHierarchy(fdoc,[...dedicated,...generic]);
 }
 
+// v2.3.6 — Notice carbone RE2020 (sections par bâtiment) : parseur dédié ; l'enveloppe et les systèmes cités
+// dans le texte d'une notice carbone ne sont pas repris (les PDF annexes listent des fiches FDES, pas le projet).
+function parseCarbonNoticeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
+  return annotateSemanticHierarchy(fdoc,parseCarbonNoticeRe2020(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'notice-carbone'}));
+}
+
+// v2.3.6 — Notice thermique BE (tableaux en colonnes) : résultats par bâtiment via le parseur dédié ; l'enveloppe
+// et les systèmes du moteur générique sont proposés à validation (les articles de l'arrêté y sont recopiés).
+function parseThermalNoticeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.THERMAL};
+  const dedicated=annotateSemanticHierarchy(fdoc,parseThermalNoticeColumns(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'notice-thermique'}));
+  const haveField=new Set(dedicated.map(o=>o.field));
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>!haveField.has(o.field)&&!/(?:^|\s)Titre\s+I{1,3}\s*[–-]\s*chapitre|\bArt\.?\s*\d+\s*:/i.test(o.excerpt||'')).map(o=>({...o,confidence:Math.min(o.confidence||0,0.86),reviewCap:0.86,building:'Bâtiment unique'}));
+  return [...dedicated,...generic];
+}
+function parseBiosourcedNoticeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.ENV_REPORT};
+  return annotateSemanticHierarchy(fdoc,parseBiosourcedLabelNotice(fdoc,occ)).map(o=>({...o,specializedFamily:'notice-biosource'}));
+}
+
 // v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
 // le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
 function parseEcAcvDocument(doc){
@@ -4484,6 +4710,9 @@ function parseDocument(doc){
   if(!doc.__skipEcAcv&&isEcAcvNotice(doc)) return parseEcAcvDocument(doc);
   if(!doc.__skipDedicated&&isPleiadesThermalOutput(doc)) return parsePleiadesThermalDocument(doc);
   if(!doc.__skipDedicated&&isCstbRseeFiche(doc)) return parseCstbRseeDocument(doc);
+  if(!doc.__skipDedicated&&isCarbonNoticeRe2020(doc)) return parseCarbonNoticeDocument(doc);
+  if(!doc.__skipDedicated&&isThermalNoticeColumns(doc)) return parseThermalNoticeDocument(doc);
+  if(!doc.__skipDedicated&&isBiosourcedLabelNotice(doc)) return parseBiosourcedNoticeDocument(doc);
   if(!doc.__skipDedicated&&isStdReport(doc)) return parseStdDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
@@ -4983,7 +5212,10 @@ function expectedFieldsForDocument(doc){
   if(doc.type===DOC_TYPES.RT2012) return [...REQUIRED_RT2012_RSET_FIELDS];
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(doc.type)){
     const base=[...REQUIRED_RE2020_RSET_FIELDS];
-    if(/ic\s*(?:composants?|construction)|(?:1\s*[-–—]\s*vrd)|energie\s*\(\s*ce\s*\)/i.test(text)) base.push('ic_components','ic_energy','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`));
+    // v2.3.6 — les IC ne sont exigés que si ce document en publie réellement (un RSET seul ne contient pas l'ACV,
+    // même s'il cite « Ic construction » dans le rappel des exigences).
+    const publishesIc=!Array.isArray(doc.cachedOccurrences)||doc.cachedOccurrences.some(o=>/^ic_(?:components|lot_\d+)$/.test(o?.field||''));
+    if(publishesIc&&/ic\s*(?:composants?|construction)|(?:1\s*[-–—]\s*vrd)|energie\s*\(\s*ce\s*\)/i.test(text)) base.push('ic_components','ic_energy','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`));
     return unique(base);
   }
   if([DOC_TYPES.RSENV,DOC_TYPES.CARBON].includes(doc.type)) return ['ic_components','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy'];

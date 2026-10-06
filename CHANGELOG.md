@@ -1,3 +1,12 @@
+# v2.3.6 — Notices de bureau d'études (carbone, thermique, biosourcé) et sorties Pléiades récentes
+Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites des PDF sont identiques à celles du XML.
+- **Notice carbone RE2020 / BBCA** (`js/notice-carbone.js`) : sections « EVALUATION DU BILAN CARBONE – BATIMENT X (CAGE n) » → Ic construction, Ic énergie, Ic composants, Ic chantier, lots 1–13 (sous-lots additionnés, Σ lots = Ic composants contrôlée), postes Ic énergie. Les seuils vont dans **IC construction Max 2028 / IC énergie Max 2028** quand la notice déclare viser le seuil 2028, sinon dans « Max » (à valider). Classée « Étude carbone / ACV » (et non plus RSET).
+- **Notice thermique BE en colonnes** (`js/notice-thermique.js`) : tableaux « POSTE | BATIMENT A | BATIMENT B … » → Bbio, Cep, Cep,nr (+ max, gains rattachés au bon tableau), postes Cep, Ic énergie (+ max), logements, Sref, DH par bâtiment, ventilation par bâtiment. Articles de l'arrêté recopiés ignorés. Classée « Étude thermique » (et non plus DPE).
+- **Notice label bâtiment biosourcé** : seule la démarche de labellisation (et le niveau 2012 visé) est relevée ; plus de faux bâtiments créés à partir des identifiants FDES.
+- **Sortie Pléiades 6.26** : titres « .N Bâtiment » (sans numéro de chapitre), **Cible 2028 → IC énergie Max 2028**, SRT déclarée nulle → somme des surfaces utiles des groupes.
+- Alertes « RSET incomplet — IC … absent » supprimées quand le RSET ne contient pas l'ACV.
+- Source « Étude thermique » autorisée pour IC énergie Max.
+
 # v2.3.5 — Colonnes IC construction / énergie, colonne Tags, 4 nouveaux formats de documents
 **Schéma et export**
 - 5 nouvelles colonnes Carbone, **ajoutées à la fin** de l'export (l'ordre des 168 colonnes historiques ne change pas) : IC construction, IC construction Max, IC construction Max 2028, IC énergie Max, IC énergie Max 2028 (IC énergie existait déjà). Schéma : 173 colonnes.

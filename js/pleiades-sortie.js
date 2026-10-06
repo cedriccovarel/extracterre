@@ -27,13 +27,16 @@ export function pleiadesThermalSections(doc){
   let chapter=null;
   lines.forEach((x,i)=>{
     const ch=x.t.match(/^(\d)\s+[A-Z]/); if(ch&&!/^\d\s+\d/.test(x.t)) chapter=Number(ch[1]);
-    const m=x.t.match(/^([15])\.(\d{1,2})\s+(.{2,60})$/); if(!m) return;
+    // Titres « 1.N Nom » ou, selon la version de Pléiades, « .N Nom » (numérotation continue sans chapitre).
+    const m=x.t.match(/^([15])?\.(\d{1,2})\s+(.{2,60})$/); if(!m) return; m[1]=m[1]||String(chapter||'');
     if(/[.]{4,}|\d+\s*$/.test(m[3])) return; // sommaire
     const name=pl_titleName(m[3]);
     if(m[1]==='1'&&chapter===1) res.push({index:i,name,pl_num:Number(m[2]),page:x.page.page});
     if(m[1]==='5'&&chapter===5&&!/^environnement$/i.test(m[3])) car.push({index:i,name,pl_num:Number(m[2]),page:x.page.page});
   });
-  return {lines,res,car};
+  // Chapitre 5 : ne garder que les sections qui portent le nom d'un bâtiment des résultats (pas « Systèmes de chauffage »…).
+  const resNames=new Set(res.map(r=>r.name.toLowerCase()));
+  return {lines,res,car:car.filter(c=>resNames.has(c.name.toLowerCase())||!res.length)};
 }
 export function pleiadesThermalBuildingNames(doc){ const {res}=pleiadesThermalSections(doc); return [...new Set(res.map(s=>s.name))]; }
 
@@ -56,6 +59,9 @@ export function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     if(cepnr){ emit(cepnr.x,b,'cepnr',cepnr.v,'cepnr',0.995,'kWhEP/m².an'); emit(cepnr.x,b,'cepnr_max',cepnr.max,'cepnr-max',0.995,'kWhEP/m².an'); }
     const ic=pair(new RegExp(`^Indice\\s+Carbone\\s+Energie\\s+${pl_N}\\s*kg\\s*eq\\.?\\s*CO2\\s+${pl_N}`,'i'));
     if(ic){ emit(ic.x,b,'ic_energy',ic.v,'ic-energie',0.995,'kgCO2e/m²'); emit(ic.x,b,'ic_energy_max',ic.max,'ic-energie-max',0.995,'kgCO2e/m²'); }
+    // Seuils Ic énergie par période (« Cible 2022 / 2025 / 2028 ») : la cible 2028 alimente « IC énergie Max 2028 ».
+    const c28=block.find(l=>new RegExp(`^Cible\\s+2028\\s+${pl_N}\\s*kg`,'i').test(l.t));
+    if(c28) emit(c28,b,'ic_energy_max_2028',pl_num(c28.t.match(new RegExp(`^Cible\\s+2028\\s+${pl_N}`,'i'))[1]),'ic-energie-cible-2028',0.995,'kgCO2e/m²');
 
     // Postes du Cep (premier bloc « Consommations de … » qui précède le total Cep, pas celui du Cep,nr).
     const cepIdx=cep?block.indexOf(cep.x):-1;
@@ -83,7 +89,11 @@ export function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     const end=k+1<car.length?car[k+1].index:lines.length;
     const block=lines.slice(sec.index,end); const b=sec.name;
     const srt=block.find(l=>new RegExp(`^SRT\\s+declaree\\s+${pl_N}\\s*m`,'i').test(l.t));
-    if(srt) emit(srt,b,'shab',pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1]),'srt-declaree',0.97,'m²',{provenanceNote:'SRT déclarée du bâtiment (chapitre 5).'});
+    if(srt&&pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1])>0) emit(srt,b,'shab',pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1]),'srt-declaree',0.97,'m²',{provenanceNote:'SRT déclarée du bâtiment (chapitre 5).'});
+    // SRT déclarée absente ou nulle : somme des surfaces utiles des groupes (SHAB / SURT) du bâtiment.
+    const srtVal=srt?pl_num(srt.t.match(new RegExp(`^SRT\\s+declaree\\s+${pl_N}`,'i'))[1]):null;
+    if(!srtVal){ const grp=block.filter(l=>new RegExp(`^Surface\\s+utile\\s+du\\s+groupe\\s*\\(SHAB\\s*\\/\\s*SURT\\)\\s+${pl_N}\\s*m`,'i').test(l.t));
+      if(grp.length){ const sum=grp.reduce((a,l)=>a+pl_num(l.t.match(new RegExp(`\\)\\s+${pl_N}`))[1]),0); emit(grp[0],b,'shab',Math.round(sum*100)/100,'surface-utile-groupes',grp.length>1?0.93:0.96,'m²',{provenanceNote:`Somme des surfaces utiles (SHAB / SURT) de ${grp.length} groupe(s) : la SRT déclarée est absente ou nulle.`}); } }
     const lg=block.find(l=>/^Nombre\s+de\s+logements?\s+\d+/i.test(l.t));
     if(lg) emit(lg,b,'housing_count',Number(lg.t.match(/(\d+)\s*$/)?.[1]),'nombre-logements',0.97);
     const clim=block.filter(l=>/^Climatisation\s+(?:Oui|Non)\b/i.test(l.t));

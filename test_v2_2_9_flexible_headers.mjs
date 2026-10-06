@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {APP_VERSION,matchFieldByHeaderDetailed} from './js/config.js';
-assert.equal(APP_VERSION,'2.3.5');
+assert.equal(APP_VERSION,'2.3.6');
 const expected={
   'Numéro du contrat':'contract_number',
   'Opération: Code interne':'internal_code',
@@ -32,7 +32,7 @@ const expected={
   'DPE énergie après travaux final':'dpe_energy_after'
 };
 for(const [header,key] of Object.entries(expected)) assert.equal(matchFieldByHeaderDetailed(header)?.def?.key,key,header);
-// v2.3.5 — ces colonnes existent désormais : elles doivent être reconnues.
+// v2.3.6 — ces colonnes existent désormais : elles doivent être reconnues.
 assert.equal(matchFieldByHeaderDetailed('IC énergie max')?.def?.key,'ic_energy_max');
 assert.equal(matchFieldByHeaderDetailed('IC construction max')?.def?.key,'ic_construction_max');
 for(const header of ['Région de l’opération','Code postal']) assert.equal(matchFieldByHeaderDetailed(header),null,`Ne pas inventer un rapprochement pour ${header}`);

@@ -7,6 +7,8 @@ import {re2020Occurrences,re2020EnvelopeLines} from './xml-re2020.js';
 import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeActRecap,parseBeActRecap,isClimaWinInputReport} from './climawin.js';
 import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
+import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
+import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
 import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
 
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
@@ -1891,6 +1893,27 @@ function parseStdDocument(doc){
   return annotateSemanticHierarchy(fdoc,[...dedicated,...generic]);
 }
 
+// v2.3.6 — Notice carbone RE2020 (sections par bâtiment) : parseur dédié ; l'enveloppe et les systèmes cités
+// dans le texte d'une notice carbone ne sont pas repris (les PDF annexes listent des fiches FDES, pas le projet).
+function parseCarbonNoticeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
+  return annotateSemanticHierarchy(fdoc,parseCarbonNoticeRe2020(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'notice-carbone'}));
+}
+
+// v2.3.6 — Notice thermique BE (tableaux en colonnes) : résultats par bâtiment via le parseur dédié ; l'enveloppe
+// et les systèmes du moteur générique sont proposés à validation (les articles de l'arrêté y sont recopiés).
+function parseThermalNoticeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.THERMAL};
+  const dedicated=annotateSemanticHierarchy(fdoc,parseThermalNoticeColumns(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'notice-thermique'}));
+  const haveField=new Set(dedicated.map(o=>o.field));
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>!haveField.has(o.field)&&!/(?:^|\s)Titre\s+I{1,3}\s*[–-]\s*chapitre|\bArt\.?\s*\d+\s*:/i.test(o.excerpt||'')).map(o=>({...o,confidence:Math.min(o.confidence||0,0.86),reviewCap:0.86,building:'Bâtiment unique'}));
+  return [...dedicated,...generic];
+}
+function parseBiosourcedNoticeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.ENV_REPORT};
+  return annotateSemanticHierarchy(fdoc,parseBiosourcedLabelNotice(fdoc,occ)).map(o=>({...o,specializedFamily:'notice-biosource'}));
+}
+
 // v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
 // le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
 function parseEcAcvDocument(doc){
@@ -1911,6 +1934,9 @@ export function parseDocument(doc){
   if(!doc.__skipEcAcv&&isEcAcvNotice(doc)) return parseEcAcvDocument(doc);
   if(!doc.__skipDedicated&&isPleiadesThermalOutput(doc)) return parsePleiadesThermalDocument(doc);
   if(!doc.__skipDedicated&&isCstbRseeFiche(doc)) return parseCstbRseeDocument(doc);
+  if(!doc.__skipDedicated&&isCarbonNoticeRe2020(doc)) return parseCarbonNoticeDocument(doc);
+  if(!doc.__skipDedicated&&isThermalNoticeColumns(doc)) return parseThermalNoticeDocument(doc);
+  if(!doc.__skipDedicated&&isBiosourcedLabelNotice(doc)) return parseBiosourcedNoticeDocument(doc);
   if(!doc.__skipDedicated&&isStdReport(doc)) return parseStdDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
