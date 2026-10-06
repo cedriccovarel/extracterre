@@ -6,8 +6,8 @@
 // Les graphiques par lot sont des images : aucune valeur de lot n'est inventée.
 import {normalizeText,parseFrNumber} from './utils.js';
 
-const NUM='([-+]?\\d+(?:[.,]\\d+)?)';
-const lineText=l=>normalizeText(l?.text||'');
+const ec_NUM='([-+]?\\d+(?:[.,]\\d+)?)';
+const ec_lineText=l=>normalizeText(l?.text||'');
 
 export function isEcAcvNotice(doc){
   const t=String(doc?.read?.text||'').slice(0,600000);
@@ -15,16 +15,16 @@ export function isEcAcvNotice(doc){
   return ec&&/eges\s*,?\s*pce/i.test(t)&&/\beges\b/i.test(t);
 }
 
-function allLines(doc){
+function ec_allLines(doc){
   const out=[];
-  for(const page of doc.read?.pages||[]) (page.lines||[]).forEach((line,pos)=>out.push({page,line,pos,t:lineText(line)}));
+  for(const page of doc.read?.pages||[]) (page.lines||[]).forEach((line,pos)=>out.push({page,line,pos,t:ec_lineText(line)}));
   return out;
 }
-const levelNumber=s=>{ const m=String(s||'').match(/niveau\s*(\d)/i); return m?Number(m[1]):null; };
+const ec_levelNumber=s=>{ const m=String(s||'').match(/niveau\s*(\d)/i); return m?Number(m[1]):null; };
 
 // Libellés du tableau « Données générales » : sur une ligne (« Libellé valeur ») ou coupés
 // autour de la valeur (« Energie principale pour le » / « Electricite » / « chauffage »).
-const GENERAL_LABELS={
+const ec_GENERAL_LABELS={
   structureType:'type de structure principale',
   material:'materiau principal',
   infill:'materiaux de remplissage de facade',
@@ -36,10 +36,10 @@ const GENERAL_LABELS={
   heatingGen:'generateur principal pour le chauffage',
   ecsGen:"generateur principal pour l'ecs"
 };
-function readGeneralBlock(lines){
+function ec_readGeneralBlock(lines){
   const found={};
   const low=lines.map(x=>x.t.toLowerCase());
-  for(const [key,label] of Object.entries(GENERAL_LABELS)){
+  for(const [key,label] of Object.entries(ec_GENERAL_LABELS)){
     for(let i=0;i<lines.length&&!found[key];i++){
       const l=low[i];
       if(l.startsWith(label+' ')){ const v=lines[i].t.slice(label.length).trim(); if(v) found[key]={value:v,at:lines[i]}; continue; }
@@ -52,7 +52,7 @@ function readGeneralBlock(lines){
   return found;
 }
 
-function heatingMode(gen=''){
+function ec_heatingMode(gen=''){
   const s=gen.toLowerCase();
   if(/pac|pompe\s+a\s+chaleur/.test(s)){
     if(/nappe|eau\s*\/\s*eau|eau\s+glycolee|sol\s*\/\s*eau|geotherm|sonde/.test(s)) return /nappe/.test(s)?'PAC eau/eau (eau de nappe)':'PAC géothermique';
@@ -66,7 +66,7 @@ function heatingMode(gen=''){
   if(/reseau\s+de\s+chaleur/.test(s)) return 'Réseau de chaleur';
   return null;
 }
-function energyVector(v=''){
+function ec_energyVector(v=''){
   const s=v.toLowerCase();
   if(/electric/.test(s)) return 'Électricité';
   if(/gaz/.test(s)) return 'Gaz';
@@ -75,7 +75,7 @@ function energyVector(v=''){
   if(/fioul/.test(s)) return 'Fioul';
   return null;
 }
-function ecsSystem(v=''){
+function ec_ecsSystem(v=''){
   const s=v.toLowerCase();
   if(/thermodynamique/.test(s)) return 'Chauffe-eau thermodynamique';
   if(/instantane/.test(s)) return 'Chauffe-eau électrique instantané';
@@ -83,7 +83,7 @@ function ecsSystem(v=''){
   if(/solaire/.test(s)) return 'Chauffe-eau solaire';
   return null;
 }
-function ventilationSystem(v=''){
+function ec_ventilationSystem(v=''){
   const s=v.toLowerCase();
   if(/double\s+flux/.test(s)) return 'VMC double flux';
   if(/hygro\w*\s*b/.test(s)) return 'VMC Hygro B';
@@ -92,20 +92,20 @@ function ventilationSystem(v=''){
   if(/naturelle/.test(s)) return 'Ventilation naturelle';
   return null;
 }
-const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+const ec_cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
 
 export function parseEcAcvNotice(doc,occ){
-  const out=[]; const lines=allLines(doc);
+  const out=[]; const lines=ec_allLines(doc);
   const origin='Notice ACV E+C- — annexe RSEnv';
   const emit=(at,field,value,method,conf,unit='',extra={})=>{ if(!at||value===null||value===undefined||value==='') return; const o=occ(doc,at.page,at.line,field,value,`acv-ec:${method}`,conf,unit,{structuredPdf:true,origin,...extra}); if(o) out.push(o); };
   const find=re=>lines.find(x=>re.test(x.t));
   const numAfter=(re)=>{ const x=lines.find(l=>re.test(l.t)); if(!x) return null; const m=x.t.match(re); const v=m?parseFrNumber(m[1]):null; return v===null?null:{value:v,at:x}; };
 
   // --- Carbone : Eges PCE (contributeur Produits de construction et équipements) --------------------
-  const egesPce=numAfter(new RegExp(`^Eges\\s*,?\\s*PCE\\s+${NUM}\\s*$`,'i'));
-  const egesTotal=numAfter(new RegExp(`^Eges\\s+${NUM}\\s*$`,'i'));
-  const egesPceSummary=numAfter(new RegExp(`Eges\\s*,?\\s*PCE\\s*=\\s*${NUM}\\s*kg`,'i'));
-  const egesSummary=numAfter(new RegExp(`(?:^|[-•]\\s*)Eges\\s*=\\s*${NUM}\\s*kg`,'i'));
+  const egesPce=numAfter(new RegExp(`^Eges\\s*,?\\s*PCE\\s+${ec_NUM}\\s*$`,'i'));
+  const egesTotal=numAfter(new RegExp(`^Eges\\s+${ec_NUM}\\s*$`,'i'));
+  const egesPceSummary=numAfter(new RegExp(`Eges\\s*,?\\s*PCE\\s*=\\s*${ec_NUM}\\s*kg`,'i'));
+  const egesSummary=numAfter(new RegExp(`(?:^|[-•]\\s*)Eges\\s*=\\s*${ec_NUM}\\s*kg`,'i'));
   const pce=egesPce||egesPceSummary;
   if(pce){
     const v=Math.round(pce.value*100)/100;
@@ -117,15 +117,15 @@ export function parseEcAcvNotice(doc,occ){
   // --- Niveaux Énergie / Carbone ------------------------------------------------------------------
   const bepos=find(/^Niveau\s+BEPOS\s+Niveau\s*\d/i);
   const carbon=find(/^Niveau\s+E\s*ges\s+Niveau\s*\d/i);
-  const eLevel=bepos?levelNumber(bepos.t.replace(/^Niveau\s+BEPOS/i,'')):null;
-  const cLevel=carbon?levelNumber(carbon.t.replace(/^Niveau\s+E\s*ges/i,'')):null;
+  const eLevel=bepos?ec_levelNumber(bepos.t.replace(/^Niveau\s+BEPOS/i,'')):null;
+  const cLevel=carbon?ec_levelNumber(carbon.t.replace(/^Niveau\s+E\s*ges/i,'')):null;
   if(eLevel) emit(bepos,'energy_level',`E${eLevel}`,'bepos-level',0.95,'',{provenanceNote:`Niveau BEPOS du référentiel E+C- (« Niveau ${eLevel} »).`});
   if(eLevel&&cLevel) emit(carbon,'performance',`E${eLevel}C${cLevel}`,'energy-carbon-level',0.88,'',{provenanceNote:`Niveaux E+C- de l'annexe RSEnv : Énergie ${eLevel} (BEPOS), Carbone ${cLevel} (Eges). À valider : le libellé « Performance » attendu peut différer.`});
 
   // --- Surface de référence du RSEnv (« <bâtiment> - SRT : 713.30 m2 ») ------------------------------
-  const srt=numAfter(new RegExp(`-\\s*SRT\\s*:\\s*${NUM}\\s*m(?:2|²)`,'i'));
+  const srt=numAfter(new RegExp(`-\\s*SRT\\s*:\\s*${ec_NUM}\\s*m(?:2|²)`,'i'));
   if(srt){
-    const sdp=numAfter(new RegExp(`^SDP\\s+${NUM}\\s*m(?:2|²)`,'i')), srtNotice=numAfter(new RegExp(`^SRT\\s+${NUM}\\s*m(?:2|²)`,'i'));
+    const sdp=numAfter(new RegExp(`^SDP\\s+${ec_NUM}\\s*m(?:2|²)`,'i')), srtNotice=numAfter(new RegExp(`^SRT\\s+${ec_NUM}\\s*m(?:2|²)`,'i'));
     const other=[srtNotice&&`SRT ${srtNotice.value} m² (p.${srtNotice.at.page.page})`,sdp&&`SDP ${sdp.value} m² (p.${sdp.at.page.page})`].filter(Boolean);
     const diverge=other.length&&[srtNotice,sdp].some(x=>x&&Math.abs(x.value-srt.value)>0.5);
     emit(srt.at,'shab',srt.value,'rsenv-srt',diverge?0.86:0.93,'m²',{provenanceNote:`SRT déclarée dans les quantitatifs du RSEnv.${diverge?` Le texte de la notice indique une autre surface (${other.join(', ')}) : à vérifier.`:''}`});
@@ -136,20 +136,20 @@ export function parseEcAcvNotice(doc,occ){
   const start=lines.map((x,i)=>/^\d+\.\s*Donnees\s+generales\b/i.test(x.t)&&!/\.{4,}|\s\d+\s*$/.test(x.t)?i:-1).filter(i=>i>=0).pop()??-1;
   if(start>=0){
     let end=lines.findIndex((x,i)=>i>start&&/niveaux?\s+energie\s*-\s*carbone/i.test(x.t)); if(end<0) end=Math.min(lines.length,start+60);
-    const g=readGeneralBlock(lines.slice(start,end));
+    const g=ec_readGeneralBlock(lines.slice(start,end));
     const gNote='Tableau « Données générales » de l’annexe RSEnv.';
     if(g.structureType||g.material){
       const mat=g.material?.value, typ=g.structureType?.value;
-      const value=mat&&typ?`${cap(mat)} (${typ.toLowerCase()})`:cap(mat||typ);
+      const value=mat&&typ?`${ec_cap(mat)} (${typ.toLowerCase()})`:ec_cap(mat||typ);
       emit((g.material||g.structureType).at,'structure',value,'general-structure',0.92,'',{provenanceNote:gNote});
     }
     if(g.infill){ const v=g.infill.value.toLowerCase(); const ins=/paille/.test(v)?'Paille':/chanvre/.test(v)?'Chanvre':/laine\s+de\s+bois|fibre\s+de\s+bois/.test(v)?'Laine de bois':/ouate/.test(v)?'Ouate de cellulose':null; if(ins) emit(g.infill.at,'wall_insulation',ins,'general-infill',0.9,'',{provenanceNote:`${gNote} Matériau de remplissage de façade : ${g.infill.value}.`}); }
-    if(g.floor) emit(g.floor.at,'floor_structure',cap(g.floor.value),'general-floor',0.9,'',{provenanceNote:gNote});
-    if(g.ventilation){ const v=ventilationSystem(g.ventilation.value); if(v) emit(g.ventilation.at,'ventilation',v,'general-ventilation',0.96,'',{provenanceNote:`${gNote} ${g.ventilation.value}.`}); }
-    if(g.heatingEnergy){ const v=energyVector(g.heatingEnergy.value); if(v) emit(g.heatingEnergy.at,'heating_vector_after',v,'general-heating-energy',0.95,'',{provenanceNote:gNote}); }
-    if(g.heatingGen){ const v=heatingMode(g.heatingGen.value); if(v) emit(g.heatingGen.at,'heating_mode_after',v,'general-heating-generator',0.95,'',{provenanceNote:`${gNote} Générateur : ${g.heatingGen.value}.`}); }
-    if(g.ecsEnergy){ const v=energyVector(g.ecsEnergy.value); if(v) emit(g.ecsEnergy.at,'ecs_vector_after',v,'general-ecs-energy',0.95,'',{provenanceNote:gNote}); }
-    if(g.ecsGen){ const v=ecsSystem(g.ecsGen.value); if(v) emit(g.ecsGen.at,'ecs',v,'general-ecs-generator',0.94,'',{provenanceNote:`${gNote} Générateur ECS : ${g.ecsGen.value}.`}); }
+    if(g.floor) emit(g.floor.at,'floor_structure',ec_cap(g.floor.value),'general-floor',0.9,'',{provenanceNote:gNote});
+    if(g.ventilation){ const v=ec_ventilationSystem(g.ventilation.value); if(v) emit(g.ventilation.at,'ventilation',v,'general-ventilation',0.96,'',{provenanceNote:`${gNote} ${g.ventilation.value}.`}); }
+    if(g.heatingEnergy){ const v=ec_energyVector(g.heatingEnergy.value); if(v) emit(g.heatingEnergy.at,'heating_vector_after',v,'general-heating-energy',0.95,'',{provenanceNote:gNote}); }
+    if(g.heatingGen){ const v=ec_heatingMode(g.heatingGen.value); if(v) emit(g.heatingGen.at,'heating_mode_after',v,'general-heating-generator',0.95,'',{provenanceNote:`${gNote} Générateur : ${g.heatingGen.value}.`}); }
+    if(g.ecsEnergy){ const v=ec_energyVector(g.ecsEnergy.value); if(v) emit(g.ecsEnergy.at,'ecs_vector_after',v,'general-ecs-energy',0.95,'',{provenanceNote:gNote}); }
+    if(g.ecsGen){ const v=ec_ecsSystem(g.ecsGen.value); if(v) emit(g.ecsGen.at,'ecs',v,'general-ecs-generator',0.94,'',{provenanceNote:`${gNote} Générateur ECS : ${g.ecsGen.value}.`}); }
   }
 
   // --- ENR : panneaux photovoltaïques saisis dans les quantitatifs (lot 13) ------------------------------

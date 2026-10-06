@@ -170,6 +170,7 @@ const RESULT_VIEWS = Object.freeze({
   ]},
   carbon:{label:'Carbone',groups:[
     {title:'IC composants & chantier',keys:['ic_components','ic_site','stock_c_per_m2','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
+    {title:'IC construction & seuils',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028']},
     {title:'IC énergie',keys:['ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   envelope:{label:'Structure & enveloppe',groups:[

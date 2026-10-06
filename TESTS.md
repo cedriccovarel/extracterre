@@ -351,3 +351,7 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 ## v2.3.4
 - `node test_v2_3_4_acv_ec.mjs` : notice ACV E+C- (document fictif reproduisant l'annexe RSEnv Pléiades).
 - Tests 2.2.3 → 2.2.10 réintégrés : `test_v2_2_3_correction_window.mjs`, `test_v2_2_4_window_navigation.mjs`, `test_v2_2_5_excel_preview.mjs`, `test_v2_2_6_manual_analysis.mjs`, `test_v2_2_7_manual_buildings_entry.mjs`, `test_v2_2_8_manual_learning.mjs`, `test_v2_2_9_flexible_headers.mjs`, `test_v2_2_10_general_manual.mjs`.
+
+
+## v2.3.5
+- `node test_v2_3_5.mjs` : sortie Pléiades, fiche RSET/RSEE CSTB (thermique + environnement OCR), STD, couche texte brouillée, colonnes IC et colonne Tags de l’export (documents fictifs).

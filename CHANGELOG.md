@@ -1,3 +1,17 @@
+# v2.3.5 — Colonnes IC construction / énergie, colonne Tags, 4 nouveaux formats de documents
+**Schéma et export**
+- 5 nouvelles colonnes Carbone, **ajoutées à la fin** de l'export (l'ordre des 168 colonnes historiques ne change pas) : IC construction, IC construction Max, IC construction Max 2028, IC énergie Max, IC énergie Max 2028 (IC énergie existait déjà). Schéma : 173 colonnes.
+- Nouvelle colonne **Tags** en dernière position de la feuille « Données par bâtiment » : tags du projet (détectés + manuels), séparés par « ; ».
+- XML RE2020 : Ic construction / Ic construction max / Ic énergie max lus dans les balises RSEnv.
+- Copier-coller Excel : les en-têtes « IC énergie max », « IC construction max », « … 2028 » sont désormais reconnus.
+
+**Nouveaux formats**
+- **Sortie logiciel Pléiades — partie thermique** (`js/pleiades-sortie.js`) : bâtiments = titres « 1.N » ; Bbio / Bbiomax, Cep / Cepmax, Cep,nr / Cep,nrmax, Ic énergie / Ic énergie max, postes Cep et Ic énergie, DH du groupe le plus défavorable avec son DH max, SRT déclarée, logements, climatisation par groupe. Enveloppe / systèmes du moteur générique proposés à validation (rattachement au bâtiment non garanti).
+- **Fiche RSET / RSEE CSTB « Récapitulatif standardisé »** (`js/rset-cstb.js`) : partie thermique (SRef, logements, Bbio, Cep et Cep,nr dans leurs colonnes — corrige Cep,nr = Cep —, gains, DH par groupe) et partie environnementale (Ic construction + max, Ic énergie + max, Ic composant, Ic chantier, stockage carbone), uniquement à l'échelle du bâtiment (zones et parcelle ignorées). Plus de faux bâtiments issus de lignes de tableau ; le texte des exigences de moyens n'est plus lu comme une description du projet ; les feuillets Génération (communs) sont proposés à validation.
+- **PDF à police sans table Unicode** (ex. RSEE Pavillon Keller) : la couche texte « brouillée » est détectée et l'OCR prend le relais automatiquement. Valeurs OCR contrôlées : Ic ≤ max, Ic construction = Ic composant + Ic chantier ; une lecture incohérente part en « À vérifier ».
+- **STD (simulation thermique dynamique)** : seule la variante de base est lue (pas de « climatisation active » issue d'une variante adiabatique / détente directe) ; BSO, triple vitrage, CTA et absence de rafraîchissement actif proposés à validation.
+- Ligature « fi » perdue par PDF.js (« Coef\0cient ») restaurée.
+
 # v2.3.4 — Fenêtre de correction et Analyse manuelle restaurées + notices ACV E+C-
 **Régression corrigée** : la v2.3 avait été construite sur une base 2.2.3 antérieure aux versions 2.2.4 → 2.2.10. Les fonctions suivantes sont réintégrées (fusion à trois voies, sans perte des apports 2.3) :
 - **Fenêtre de correction** (2.2.3 / 2.2.4) : deux colonnes (aperçu document à gauche, correction à droite), dimensionnée sur l'écran réel (`100dvh`), en-tête et pied toujours visibles, boutons **← Précédent / Suivant →** autour du sélecteur de page, champ « Valeur exacte » alimenté par le surlignage. Vérifiée à 1920×1080, 1366×768, 1280×640 et 390×844 (mobile).

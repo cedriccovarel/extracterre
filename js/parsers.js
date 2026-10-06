@@ -6,6 +6,8 @@ import {parsePatchOccurrences} from './patches.js';
 import {re2020Occurrences,re2020EnvelopeLines} from './xml-re2020.js';
 import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeActRecap,parseBeActRecap,isClimaWinInputReport} from './climawin.js';
 import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
+import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
+import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
 
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
   if(value===null||value===undefined||value==='') return null;
@@ -1718,6 +1720,8 @@ export function resolveDocumentFamilies(doc){
   return fams;
 }
 const CARBON_CONTENT_SIGNATURE=/ic\s*(?:composants?|construction|[eé]nergie)\b|contributeur\s+(?:composant|[eé]nergie)|indicateur\s+co\s*2?\s*dynamique|(?:^|\n)\s*0?1\s*[-–]\s*vrd\b|total\s+lot\s*:/i;
+// v2.3.5 — indicateurs RE2020 Ic construction / Ic énergie et leurs seuils (max courant et max 2028).
+const IC_LIMIT_FIELDS=['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'];
 export const FAMILY_ALLOWED_FIELDS=Object.freeze({
   rset:new Set([...ADMIN_FIELDS,'housing_count','shab','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type',...ENVELOPE_FIELDS,
     'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain',...CEP_DETAIL,'enr','enr_type','department']),
@@ -1725,7 +1729,7 @@ export const FAMILY_ALLOWED_FIELDS=Object.freeze({
     'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain',...CEP_DETAIL,'enr','enr_type','department']),
   thcex:new Set([...ADMIN_FIELDS,'housing_count','shab','construction_year',...ENVELOPE_FIELDS,
     'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','ubat_before','ubat_after','cep_before','cep_after_final','enr','enr_type']),
-  carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS]),
+  carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS]),
   cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
@@ -1843,6 +1847,50 @@ function parseBeActRecapDocument(doc){
   return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:'recap-be'}));
 }
 
+// v2.3.5 — Sortie logiciel Pléiades (partie thermique) : indicateurs par section de bâtiment (parseur dédié).
+// Enveloppe et systèmes : le moteur générique ne sait pas rattacher les bibliothèques de parois / générateurs
+// à un bâtiment précis ; ses valeurs sont conservées mais plafonnées à 88 % (validation ✓ / ✕).
+function parsePleiadesThermalDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.RSET_RE2020};
+  const dedicated=annotateSemanticHierarchy(fdoc,parsePleiadesThermalOutput(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'pleiades-sortie'}));
+  const have=new Set(dedicated.map(o=>`${o.building}|${o.field}`)); const haveField=new Set(dedicated.map(o=>o.field));
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>!haveField.has(o.field)&&!have.has(`${o.building}|${o.field}`)&&!/pleiades\s*,?\s*version/i.test(o.excerpt||'')).map(o=>({...o,confidence:Math.min(o.confidence||0,0.88),reviewCap:0.88,provenanceNote:[o.provenanceNote,'Sortie Pléiades : rattachement au bâtiment à confirmer.'].filter(Boolean).join(' ')}));
+  return [...dedicated,...generic];
+}
+
+// v2.3.5 — Fiche RSET / RSEE au format CSTB : indicateurs réglementaires lus par le parseur dédié (par bâtiment) ;
+// le moteur générique complète l'enveloppe et les systèmes, rattachés au bâtiment de la section où ils sont lus
+// (plus de faux bâtiments créés à partir de lignes de tableau).
+function parseCstbRseeDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.RSEE_RE2020};
+  const dedicated=annotateSemanticHierarchy(fdoc,parseCstbRseeFiche(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'cstb-rsee'}));
+  const {lines,names}=cstbBuildingContext(fdoc); const known=new Set(names.map(canonicalBuilding));
+  const ctx=new Map(lines.map(x=>[`${x.page.page}|${x.line.index}`,x.building])); const scopeAt=new Map(lines.map(x=>[`${x.page.page}|${x.line.index}`,x.scope]));
+  const haveField=new Set(dedicated.map(o=>o.field));
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>!haveField.has(o.field)).map(o=>{
+    const pl=doc.read?.pages?.find(p=>p.page===o.page)?.lines||[]; const ex=String(o.excerpt||'');
+    // L'extrait peut être une fenêtre de plusieurs lignes : on retient la ligne exacte, sinon la première ligne contenue.
+    const lineIdx=(pl.find(l=>normalizeText(l.text).slice(0,420)===ex)||pl.find(l=>{ const t=normalizeText(l.text); return t.length>=12&&ex.includes(t); }))?.index;
+    // Feuillets « Génération » : communs à plusieurs bâtiments et mêlant chauffage / ECS (ballon d'appoint
+    // à effet Joule…) → proposés à validation, jamais retenus d'office pour un bâtiment.
+    // Exigences de moyens (articles de l'arrêté recopiés) : texte réglementaire, jamais une description du projet.
+    if(scopeAt.get(`${o.page}|${lineIdx}`)==='requirements') return null;
+    if(scopeAt.get(`${o.page}|${lineIdx}`)==='generation') return {...o,confidence:Math.min(o.confidence||0,0.86),reviewCap:0.86,provenanceNote:[o.provenanceNote,'Lu dans un feuillet Génération (commun) : à confirmer pour ce bâtiment.'].filter(Boolean).join(' ')};
+    if(known.has(o.building)||!known.size) return o;
+    const b=ctx.get(`${o.page}|${lineIdx}`); return b?{...o,building:canonicalBuilding(b),originalBuilding:o.building}:(known.size===1?{...o,building:[...known][0],originalBuilding:o.building}:{...o,building:'Bâtiment unique'});
+  }).filter(Boolean);
+  return [...dedicated,...generic];
+}
+
+// v2.3.5 — STD : parseur dédié (variante de base uniquement) + données administratives du moteur générique.
+function parseStdDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.THERMAL};
+  const dedicated=parseStdReport(fdoc,occ).filter(Boolean).map(o=>({...o,specializedFamily:'std'}));
+  const admin=new Set([...ADMIN_FIELDS,'operation_name','owner_company','department']);
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field));
+  return annotateSemanticHierarchy(fdoc,[...dedicated,...generic]);
+}
+
 // v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
 // le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
 function parseEcAcvDocument(doc){
@@ -1861,6 +1909,9 @@ export function parseDocument(doc){
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
   if(!doc.__skipEcAcv&&isEcAcvNotice(doc)) return parseEcAcvDocument(doc);
+  if(!doc.__skipDedicated&&isPleiadesThermalOutput(doc)) return parsePleiadesThermalDocument(doc);
+  if(!doc.__skipDedicated&&isCstbRseeFiche(doc)) return parseCstbRseeDocument(doc);
+  if(!doc.__skipDedicated&&isStdReport(doc)) return parseStdDocument(doc);
   const families=resolveDocumentFamilies(doc);
   if(families.some(f=>f!=='annex')) return parseSpecializedDocument(doc,families.filter(f=>f!=='annex'));
   let out=[];

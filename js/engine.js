@@ -31,6 +31,8 @@ export function routeAndDeduplicate(raw,rules){
   // v2.3 — la mémoire d'apprentissage peut faire remonter un candidat en tête de la file « À vérifier »,
   // mais elle ne peut jamais être, à elle seule, la raison du franchissement du seuil de remplissage automatique.
   routed=routed.map(o=>{ const b=Number(o.learningBoost)||0; if(b>0&&!o.userValidated&&o.confidence>=MIN_RETAINED_CONFIDENCE&&o.confidence-b<MIN_RETAINED_CONFIDENCE) return {...o,confidence:MIN_RETAINED_CONFIDENCE-0.001,learningCappedForReview:true}; return o; });
+  // v2.3.5 — plafond explicite posé par un parseur (valeur à faire valider) : aucun bonus ne le franchit.
+  routed=routed.map(o=>Number.isFinite(o.reviewCap)&&!o.userValidated&&o.confidence>o.reviewCap?{...o,confidence:o.reviewCap}:o);
   const seen=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building,o.docId,o.page,o.excerpt].join('|'); const prev=seen.get(k); if(!prev||o.confidence>prev.confidence) seen.set(k,o); }
   return [...seen.values()];
@@ -103,7 +105,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
   const finals=[]; const rows=[];
 
   // Index field+bâtiment : l'ancienne consolidation refiltrait toutes les occurrences pour chacun
-  // des 168 champs et chacun des bâtiments. Avec plusieurs centaines de dossiers cela pouvait
+  // des champs et chacun des bâtiments. Avec plusieurs centaines de dossiers cela pouvait
   // bloquer le thread principal plusieurs secondes.
   const byFieldBuilding=new Map();
   for(const o of occurrences){
@@ -740,8 +742,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v1.1.1 : 168 colonnes exactes, chacune avec des tags reconnus.
-  assert('Schéma métier = 168 colonnes',FIELD_DEFS.length===168,String(FIELD_DEFS.length));
+  // Contrat de schéma v2.3.5 : 173 colonnes exactes (168 historiques + 5 IC ajoutées en fin), chacune avec des tags reconnus.
+  assert('Schéma métier = 173 colonnes',FIELD_DEFS.length===173,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));

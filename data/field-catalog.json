@@ -1,7 +1,7 @@
 {
-  "version": "2.2.4",
+  "version": "2.3.5",
   "generatedAt": "2026-10-05T17:02:00+02:00",
-  "count": 168,
+  "count": 173,
   "fields": [
     {
       "position": 1,
@@ -4384,6 +4384,127 @@
           "RT Existant",
           "CCTP",
           "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 169,
+      "key": "ic_construction",
+      "label": "IC construction",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC construction",
+        "Ic construction",
+        "Icconstruction",
+        "Ic_construction",
+        "contribution construction"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 170,
+      "key": "ic_construction_max",
+      "label": "IC construction Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC construction Max",
+        "Ic construction max",
+        "Icconstruction_max",
+        "Ic_construction_max"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 171,
+      "key": "ic_construction_max_2028",
+      "label": "IC construction Max 2028",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC construction Max 2028",
+        "Ic construction max 2028",
+        "Icconstruction_max 2028",
+        "seuil 2028 Ic construction"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 172,
+      "key": "ic_energy_max",
+      "label": "IC énergie Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie Max",
+        "Ic énergie max",
+        "Icenergie_max",
+        "Ic_energie_max"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 173,
+      "key": "ic_energy_max_2028",
+      "label": "IC énergie Max 2028",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "IC énergie Max 2028",
+        "Ic énergie max 2028",
+        "Icenergie_max 2028",
+        "seuil 2028 Ic énergie"
+      ],
+      "sources": {
+        "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Étude carbone / ACV",
           "Entrée manuelle"
         ],
         "secondary": [],

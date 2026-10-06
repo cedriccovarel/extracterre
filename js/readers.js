@@ -76,6 +76,22 @@ export function ocrBlocksToLines(blocks,geometry={}){
   return out.map((l,index)=>({...l,index}));
 }
 
+// v2.3.5 — couche texte « brouillée » : certaines polices (Type 3 / sous-ensembles sans table Unicode)
+// produisent des lettres et symboles plausibles mais qui ne forment aucun mot (« %&'()*+,+-(./ »).
+// Les mesures alphanumériques ne la détectent pas : on mesure la part de mots français / techniques courants.
+const COMMON_WORDS=new Set(('de des du la le les et en a au aux un une pour par sur dans avec sans est sont ou que qui ne pas '+
+  'total valeur projet batiment batiments zone zones surface page lot lots energie chauffage eau ecs ventilation type nom date '+
+  'operation etude reference indicateur donnees contribution composant chantier mois an annee nombre logement logements usage '+
+  'max min moyenne plancher planchers toiture mur murs paroi parois isolant isolation menuiseries fenetre vitrage beton bois acier '+
+  'reseau chaleur electricite gaz conforme non oui unite quantite chapitre fiche base resultat resultats exigence exigences').split(' '));
+export function garbledTextRatio(text=''){
+  const norm=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const toks=(norm.match(/[a-z]{3,}/g)||[]);
+  if(toks.length<20) return null;
+  return toks.filter(t=>COMMON_WORDS.has(t)).length/toks.length;
+}
+function symbolRatio(text=''){ const raw=String(text||'').replace(/\s+/g,''); if(raw.length<80) return 0; return (raw.match(/[!"#$%&()*+\/:;<=>?@[\]^_`{|}~]/g)||[]).length/raw.length; }
+export function isGarbledTextLayer(text=''){ const r=garbledTextRatio(text); return symbolRatio(text)>0.12||(r!==null&&r<0.02); }
 export function pdfTextQuality(text='',items=[]){
   const raw=String(text||'').replace(/\s+/g,' ').trim();
   if(!raw) return {score:0,chars:0,alnumRatio:0,weirdRatio:1,fragmentRatio:1};
@@ -90,6 +106,8 @@ export function pdfTextQuality(text='',items=[]){
   const lengthScore=Math.min(1,chars/520);
   const itemScore=Math.min(1,(items?.length||0)/65);
   const score=Math.max(0,Math.min(1,lengthScore*.28+alnumRatio*.38+itemScore*.20+(1-Math.min(1,weirdRatio*7))*.09+(1-Math.min(1,fragmentRatio*4))*.05));
+  // Une couche brouillée vaut une couche vide : l'OCR devient la base principale.
+  if(isGarbledTextLayer(raw)) return {score:0.05,chars,alnumRatio,weirdRatio,fragmentRatio,garbled:true};
   return {score,chars,alnumRatio,weirdRatio,fragmentRatio};
 }
 

@@ -291,6 +291,9 @@ export function re2020Occurrences(doc,makeOcc){
     add(b,'ic_components',b.icComponents,'rsenv-ic','kgCO2e/m²',/Ic composants :/);
     add(b,'ic_site',b.icSite,'rsenv-ic','kgCO2e/m²',/Ic chantier/);
     add(b,'ic_energy',b.icEnergy,'rsenv-ic','kgCO2e/m²',/Ic énergie/);
+    add(b,'ic_energy_max',b.icEnergyMax,'rsenv-ic-max','kgCO2e/m²',/Ic énergie/);
+    add(b,'ic_construction',b.icConstruction,'rsenv-ic','kgCO2e/m²',/Ic construction/);
+    add(b,'ic_construction_max',b.icConstructionMax,'rsenv-ic-max','kgCO2e/m²',/Ic construction/);
     add(b,'stock_c_per_m2',b.stockC,'rsenv-stock-c','kgC/m²',/Stock C/,{note:'Balise stock_c_batiment (stockage carbone du bâtiment rapporté au m²).'});
     for(const [ref,val] of Object.entries(b.lots||{})) add(b,`ic_lot_${ref}`,re20Round(val,3),'rsenv-lot','kgCO2e/m²',new RegExp(`lot ${ref} :`),{note:`Balise contributeur/composant/lot[ref=${ref}]/ic.`});
     for(const [ref,val] of Object.entries(b.energy||{})){ const f=RE2020_ENERGY_SUBCONTRIBUTORS[ref]; if(f) add(b,f,re20Round(val,2),'rsenv-energie','kgCO2e/m²',/Ic énergie/,{confidence:0.99,derived:true,note:`Somme des phases du sous-contributeur énergie ${ref} (indicateur CO2 dynamique).`}); }

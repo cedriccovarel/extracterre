@@ -1,5 +1,7 @@
 import {isClimaWinSynthesis,climaWinBuildingSections,isClimaWinInputReport} from './climawin.js';
 import {normalizeText,normLower,unique} from './utils.js';
+import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-sortie.js';
+import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
 
 export function canonicalBuilding(raw){
   let s=normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim();
@@ -81,6 +83,16 @@ export function detectBuildings(doc){
   if(isClimaWinSynthesis(doc)){
     const secs=climaWinBuildingSections(doc);
     if(secs.length){ const names=[...new Set(secs.map(x=>x.name))]; return {names,expectedCount:names.length,source:'climawin-sections',hits:secs.map(x=>({page:x.page,line:x.line,building:x.name}))}; }
+  }
+  // v2.3.5 — sortie Pléiades : bâtiments = titres « 1.N <nom> » des résultats RE2020.
+  if(isPleiadesThermalOutput(doc)){
+    const names=pleiadesThermalBuildingNames(doc).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:names.length,source:'pleiades-sortie-sections',hits:[]};
+  }
+  // v2.3.5 — fiche RSET / RSEE CSTB : bâtiments = marqueurs « Bâtiment : X », « "X" », « Nom du bâtiment X ».
+  if(isCstbRseeFiche(doc)){
+    const names=cstbBuildingNames(doc).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'cstb-rsee-sections',hits:[]};
   }
   // Rapport de saisie ClimaWin : données d'entrée, non exploitées (numérotation « Bâtiment 1/2/3 » ≠ synthèse A/B/C).
   if(isClimaWinInputReport(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'climawin-input-skipped'};

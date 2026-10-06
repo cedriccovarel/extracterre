@@ -1,5 +1,5 @@
 export function normalizeText(s='') {
-  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
+  return String(s).replace(/\u0000/g,'fi').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
 }
 export function normLower(s=''){ return normalizeText(s).toLowerCase(); }
 
