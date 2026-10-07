@@ -8,6 +8,7 @@ import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeAct
 import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
+import {isBbcaCalculette,parseBbcaCalculette} from './calculette-bbca.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
 import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
@@ -1935,8 +1936,16 @@ function parseEcAcvDocument(doc){
   return out;
 }
 
+// v2.3.9 — Calculette BBCA (PDF ou classeur Excel) : parseur dédié uniquement (les textes d'aide de la calculette
+// ne décrivent pas le projet).
+function parseBbcaCalculetteDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
+  return annotateSemanticHierarchy(fdoc,parseBbcaCalculette(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'calculette-bbca'}));
+}
+
 export function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
+  if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);

@@ -1,3 +1,12 @@
+# v2.3.9 — Calculette BBCA (PDF et classeur Excel)
+- **Calculette BBCA V4.x** (`js/calculette-bbca.js`), exportée en PDF ou déposée telle quelle en `.xlsx` : un bâtiment par fichier (« Projet …_Bat A », sinon le nom du fichier).
+  - **IC composants lots 1 à 13**, avec les sous-lots 2.1 / 2.2 / 2.3 additionnés et Σ lots contrôlée contre Ic composants.
+  - Ic composants, Ic chantier, Ic construction (contrôle composants + chantier), Ic énergie et ses postes (chauffage, refroidissement, ECS, auxiliaires, déplacements).
+  - Sref projet, nombre de logements et mention BBCA (« Oui »), avec en note le niveau visé d’après le score, Ic eau, Ic projet BBCA et les seuils BBCA.
+- Les seuils BBCA ne sont pas des seuils RE2020 : ils ne remplissent pas les colonnes IC Max / Max 2028.
+- Classeur Excel : valeurs affichées par SheetJS (« 3,000 m² » = 3000) correctement lues ; le classeur est classé « Étude carbone / ACV » et non plus « Entrée manuelle ».
+- Règles de sources : l'étude carbone devient une source secondaire de la Sref, du nombre de logements et de la mention BBCA.
+
 # v2.3.8 — RSEE imprimés en image, données techniques, systèmes Pléiades par bâtiment
 - **OCR des pages sans couche texte** (RSEE / RSET imprimés depuis le navigateur) : rendu ≈ 216 dpi et segmentation Tesseract « colonne de blocs » (PSM 4). Les lignes de tableaux (Bbio, Cep / Cep,nr + max + gains, DH par groupe) sont désormais conservées : sur un RSEE de 55 pages entièrement en image, les valeurs lues sont identiques à la sortie logiciel du même projet.
 - Fiche CSTB lue par OCR : séparateurs « | » ignorés, DH hors 0–2000 °C.h écarté (virgule perdue), libellé SRef déformé (« Srer », « She ») reconnu, logements et DH contrôlés.

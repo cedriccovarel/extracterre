@@ -7,7 +7,7 @@ import {parseDocument} from './js/parsers.js';
 import {isEcAcvNotice} from './js/acv-ec.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
-assert.equal(APP_VERSION,'2.3.8');
+assert.equal(APP_VERSION,'2.3.9');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const pages=[
   mkPage(1,rows(['SOMMAIRE','3. Donnees generales Ecole ........ 12','4. Niveaux ENERGIE-CARBONE ........ 12'])),

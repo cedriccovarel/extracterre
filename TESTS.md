@@ -367,3 +367,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.8
 - `node test_v2_3_8.mjs` : données techniques, étude env et sortie thermique Pléiades, fiche RSET lue par OCR, réglages OCR (documents fictifs).
+
+## v2.3.9
+- `node test_v2_3_9.mjs` : calculette BBCA en PDF et en classeur Excel (lots 1 à 13, Ic, postes énergie, Sref, mention BBCA, consolidation de deux bâtiments) — documents fictifs.

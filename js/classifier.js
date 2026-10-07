@@ -112,6 +112,11 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
+  // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
+  if(/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t)){
+    score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
+    for(const k of [DOC_TYPES.MANUAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.CONTRACT]) score[k]=(score[k]||0)*0.2;
+  }
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
   }

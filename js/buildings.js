@@ -3,6 +3,7 @@ import {normalizeText,normLower,unique} from './utils.js';
 import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-sortie.js';
 import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
 import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.js';
+import {isBbcaCalculette,bbcaBuildingName} from './calculette-bbca.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
@@ -96,6 +97,11 @@ export function detectBuildings(doc){
   if(isPleiadesAcvReport(doc)||isPleiadesServicesSummary(doc)||isHeatLossReport(doc)){
     const names=pleiadesReportBuildingNames(doc).map(canonicalBuilding);
     return names.length?{names:[...new Set(names)],expectedCount:new Set(names).size,source:'pleiades-rapport',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'pleiades-rapport'};
+  }
+  // v2.3.9 — calculette BBCA : un bâtiment par fichier (« Projet …_Bat A » ou nom de fichier).
+  if(isBbcaCalculette(doc)){
+    const n=bbcaBuildingName(doc);
+    return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'calculette-bbca',hits:[]};
   }
   // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
   if(isCarbonNoticeRe2020(doc)){
