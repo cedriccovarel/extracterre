@@ -60,7 +60,7 @@ export function insulationName(v=''){
   if(/polyurethane|\(pu\)|\bpur\b|\bpir\b/.test(s)) return 'PUR';
   if(/extrude|\bxps\b/.test(s)) return 'XPS';
   if(/polystyrene|\bpse\b/.test(s)) return 'PSE';
-  if(/ouate/.test(s)) return 'Ouate de cellulose';
+  if(/ouate|fibre\s+de\s+cellulose|\bcellulose\b/.test(s)) return 'Ouate de cellulose';
   if(/chanvre|\blin\b|coton/.test(s)) return 'Biosourcé chanvre/lin/coton';
   if(/paille/.test(s)) return 'Paille';
   if(/liege/.test(s)) return 'Liège';

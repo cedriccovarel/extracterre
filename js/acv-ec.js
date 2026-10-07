@@ -112,7 +112,12 @@ export function parseEcAcvNotice(doc,occ){
     const totalTxt=(egesTotal||egesSummary)?` Eges total (tous contributeurs) = ${Math.round((egesTotal||egesSummary).value*100)/100} kg éq.CO2/m².`:'';
     emit(pce.at,'ic_components',v,egesPce?'eges-pce':'eges-pce-summary',egesPce?0.95:0.92,'kgCO2e/m²',{
       provenanceNote:`Indicateur E+C- « Eges PCE » (Produits de construction et équipements, ACV statique sur 50 ans, kg éq.CO2/m² SDP) — équivalent E+C- de l'IC composants ; non comparable à l'Ic,composant RE2020 (ACV dynamique).${totalTxt}`});
+    // v2.3.11 — colonnes Eges dédiées.
+    emit(pce.at,'eges_pce',v,egesPce?'eges-pce-col':'eges-pce-summary-col',egesPce?0.96:0.93,'kgCO2e/m²',{provenanceNote:'Indicateur E+C- « Eges PCE » (kg éq.CO2/m² SDP, ACV statique 50 ans).'});
   }
+  { const tot=egesTotal||egesSummary; if(tot) emit(tot.at,'eges_total',Math.round(tot.value*100)/100,egesTotal?'eges-total':'eges-total-summary',egesTotal?0.96:0.93,'kgCO2e/m²',{provenanceNote:'Indicateur E+C- « Eges » tous contributeurs (kg éq.CO2/m² SDP).'}); }
+  { const max=numAfter(new RegExp(`^Eges\\s*,?\\s*PCE\\s*,?\\s*max\\s+${ec_NUM}\\s*$`,'i')); if(max) emit(max.at,'eges_pce_max',Math.round(max.value*100)/100,'eges-pce-max',0.93,'kgCO2e/m²'); }
+  { const max=numAfter(new RegExp(`^Eges\\s*,?\\s*max\\s+${ec_NUM}\\s*$`,'i')); if(max) emit(max.at,'eges_total_max',Math.round(max.value*100)/100,'eges-max',0.93,'kgCO2e/m²'); }
 
   // --- Niveaux Énergie / Carbone ------------------------------------------------------------------
   const bepos=find(/^Niveau\s+BEPOS\s+Niveau\s*\d/i);

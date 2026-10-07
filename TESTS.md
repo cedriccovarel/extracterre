@@ -373,3 +373,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.10
 - `node test_v2_3_10.mjs` : calculette BBCA Rénovation (colonne « Impact carbone du lot rénové », Eges, données projet), routage `secondarySourceOk` (documents fictifs).
+
+## v2.3.11
+- `node test_v2_3_11.mjs` : colonnes Eges, notice ACV BBCA Rénovation multi-bâtiments, notice thermique RT existant, rapport Pléiades Th-C-E ex, plan de repérage des isolants, noms « sur cour », rang des sources dédiées (documents fictifs).

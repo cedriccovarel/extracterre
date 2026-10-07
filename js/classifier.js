@@ -113,9 +113,18 @@ export function classifyDocument(fileName, text='', meta={}) {
     for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
-  if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s+reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov/i.test(t))){
+  if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s*-?\s*reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov|perimetre\s+de\s+la\s+renovation|eges\s*pce/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
     for(const k of [DOC_TYPES.MANUAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.CONTRACT]) score[k]=(score[k]||0)*0.2;
+  }
+  // v2.3.11 — plan de repérage des isolants (bureau d'études thermiques) : pièce de l'étude thermique.
+  if(/reperage\s+des\s+isolants/i.test(t)&&/isolation\s+[^:\n]{0,80}:\s*e\s*=\s*\d/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+40;
+    for(const k of [DOC_TYPES.PLAN,DOC_TYPES.UNKNOWN]) score[k]=(score[k]||0)*0.2;
+  }
+  // v2.3.11 — études RT existant (notice BE RT-Ex, rapport Pléiades Th-C-E ex).
+  if(/resultats\s+rt\s+existant\s+suivant\s+la\s+methode|notice\s+thermique[\s\S]{0,4000}rt[- ]?ex\b/i.test(t)){
+    score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+30;
   }
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;

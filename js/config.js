@@ -1,4 +1,4 @@
-export const APP_VERSION = '2.3.10';
+export const APP_VERSION = '2.3.11';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -211,7 +211,20 @@ export const FIELD_DEFS = [
   {key:"ic_construction_max",label:"IC construction Max",family:"Carbone",type:"number",tags:["IC construction Max", "Ic construction max", "Icconstruction_max", "Ic_construction_max"] ,presence:false},
   {key:"ic_construction_max_2028",label:"IC construction Max 2028",family:"Carbone",type:"number",tags:["IC construction Max 2028", "Ic construction max 2028", "Icconstruction_max 2028", "seuil 2028 Ic construction"] ,presence:false},
   {key:"ic_energy_max",label:"IC énergie Max",family:"Carbone",type:"number",tags:["IC énergie Max", "Ic énergie max", "Icenergie_max", "Ic_energie_max"] ,presence:false},
-  {key:"ic_energy_max_2028",label:"IC énergie Max 2028",family:"Carbone",type:"number",tags:["IC énergie Max 2028", "Ic énergie max 2028", "Icenergie_max 2028", "seuil 2028 Ic énergie"] ,presence:false}
+  {key:"ic_energy_max_2028",label:"IC énergie Max 2028",family:"Carbone",type:"number",tags:["IC énergie Max 2028", "Ic énergie max 2028", "Icenergie_max 2028", "seuil 2028 Ic énergie"] ,presence:false},
+  // v2.3.11 — indicateurs Eges (méthode E+C- / BBCA Rénovation, kg CO2 eq/m² SDP) et leurs seuils.
+  {key:"eges_pce",label:"Eges PCE",family:"Carbone",type:"number",tags:["Eges PCE", "EgesPCE", "Eges produits de construction et équipements"] ,presence:false},
+  {key:"eges_pcena",label:"Eges PCENA",family:"Carbone",type:"number",tags:["Eges PCENA", "EgesPCENA", "Eges PCE non amortis"] ,presence:false},
+  {key:"eges_energy",label:"Eges énergie",family:"Carbone",type:"number",tags:["Eges énergie", "Eges energie", "Eges consommations d’énergie"] ,presence:false},
+  {key:"eges_site",label:"Eges chantier",family:"Carbone",type:"number",tags:["Eges chantier", "EgesChantier"] ,presence:false},
+  {key:"eges_water",label:"Eges eau",family:"Carbone",type:"number",tags:["Eges eau", "EgesEau", "Eges consommations et rejets d’eau"] ,presence:false},
+  {key:"eges_total",label:"Eges total",family:"Carbone",type:"number",tags:["Eges total", "Eges global"] ,presence:false},
+  {key:"eges_pce_max",label:"Eges PCE Max",family:"Carbone",type:"number",tags:["Eges PCE Max", "Eges PCE max", "EgesPCE max"] ,presence:false},
+  {key:"eges_pcena_max",label:"Eges PCENA Max",family:"Carbone",type:"number",tags:["Eges PCENA Max", "Eges PCENA max", "EgesPCENA max"] ,presence:false},
+  {key:"eges_energy_max",label:"Eges énergie Max",family:"Carbone",type:"number",tags:["Eges énergie Max", "Eges énergie max", "Eges energie max"] ,presence:false},
+  {key:"eges_site_max",label:"Eges chantier Max",family:"Carbone",type:"number",tags:["Eges chantier Max", "Eges chantier max", "EgesChantier max"] ,presence:false},
+  {key:"eges_water_max",label:"Eges eau Max",family:"Carbone",type:"number",tags:["Eges eau Max", "Eges eau max", "EgesEau max"] ,presence:false},
+  {key:"eges_total_max",label:"Eges total Max",family:"Carbone",type:"number",tags:["Eges total Max", "Eges total max"] ,presence:false}
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -337,7 +350,8 @@ const SOURCE_CERT=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.REQU
 const SOURCE_LEVELS=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.ENV_REPORT,DOC_TYPES.REQUIREMENTS,DOC_TYPES.MANUAL];
 const SOURCE_PROGRAM=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL];
 const SOURCE_PROJECT_META=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL];
-const SOURCE_ENVELOPE=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.MANUAL];
+// v2.3.11 — les études RT existant décrivent l'enveloppe projetée des rénovations : source principale, après l'étude thermique.
+const SOURCE_ENVELOPE=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.MANUAL];
 const SOURCE_SYSTEMS=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL];
 const SOURCE_UBAT_CEP=[DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL];
 const SOURCE_ENR=[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL];
@@ -359,7 +373,7 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "wall_struct
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
-for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.CARBON]);
+for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
@@ -370,6 +384,8 @@ for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepn
 for(const key of ['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL],[DOC_TYPES.DIAGNOSTIC]);
 for(const key of ['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['ic_construction','ic_construction_max','ic_construction_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
+// v2.3.11 — Eges : études carbone (BBCA Rénovation, E+C-) et RSEnv.
+for(const key of ['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total']) for(const k of [key,key+'_max']) DEFAULT_SOURCE_RULES[k]=ordered([DOC_TYPES.CARBON,DOC_TYPES.RSENV,DOC_TYPES.RSEE_RE2020,DOC_TYPES.MANUAL]);
 // Ic énergie max : également publié par les sorties thermiques RE2020 (RSET, synthèses logiciel).
 for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.stock_c_per_m2=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);

@@ -9,6 +9,7 @@ import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
+import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan} from './renovation-thermique.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
 import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
@@ -1536,6 +1537,8 @@ function semanticHierarchyRank(doc,o){
   if(/^recap-be:/.test(m)) return 12;
   const e=normLower(`${o?.origin||''} ${o?.excerpt||''}`);
   if(o?.userValidated) return 0;
+  // v2.3.11 — rang posé par un parseur dédié (sortie logiciel < notice BE < plan / légende), prioritaire sur l'heuristique.
+  if(Number.isFinite(o?.dedicatedRank)) return o.dedicatedRank;
 
   if(doc.type===DOC_TYPES.RT2012){
     if(/rt2012:chapter2-|rset:chapter2-|rset:rt2012-cep-table|rset:bbio-table|rset:chapter2-tic-worst-group/.test(m)) return 5;
@@ -1726,6 +1729,7 @@ export function resolveDocumentFamilies(doc){
 const CARBON_CONTENT_SIGNATURE=/ic\s*(?:composants?|construction|[eé]nergie)\b|contributeur\s+(?:composant|[eé]nergie)|indicateur\s+co\s*2?\s*dynamique|(?:^|\n)\s*0?1\s*[-–]\s*vrd\b|total\s+lot\s*:/i;
 // v2.3.5 — indicateurs RE2020 Ic construction / Ic énergie et leurs seuils (max courant et max 2028).
 const IC_LIMIT_FIELDS=['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'];
+const EGES_FIELDS=['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max'];
 export const FAMILY_ALLOWED_FIELDS=Object.freeze({
   rset:new Set([...ADMIN_FIELDS,'housing_count','shab','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type',...ENVELOPE_FIELDS,
     'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain',...CEP_DETAIL,'enr','enr_type','department']),
@@ -1733,7 +1737,7 @@ export const FAMILY_ALLOWED_FIELDS=Object.freeze({
     'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain',...CEP_DETAIL,'enr','enr_type','department']),
   thcex:new Set([...ADMIN_FIELDS,'housing_count','shab','construction_year',...ENVELOPE_FIELDS,
     'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','ubat_before','ubat_after','cep_before','cep_after_final','enr','enr_type']),
-  carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS]),
+  carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS,...EGES_FIELDS]),
   cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
@@ -1944,13 +1948,28 @@ function parseBbcaCalculetteDocument(doc){
 }
 function parseBbcaRenovationDocument(doc){
   const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
-  return annotateSemanticHierarchy(fdoc,parseBbcaRenovationCalculette(fdoc,occ).filter(Boolean)).map(o=>({...o,specializedFamily:'calculette-bbca-reno'}));
+  return annotateSemanticHierarchy(fdoc,parseBbcaRenovationCalculette(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'calculette-bbca-reno'}));
+}
+
+// v2.3.11 — Rénovation (RT existant) : notice thermique BE, rapport Pléiades Th-C-E ex, plan de repérage des isolants.
+// Le moteur générique ne complète que les données administratives (ses lectures « Cep avant » de ces documents
+// confondaient seuils, gains et numéros de page).
+function parseRenovationThermalDocument(doc,kind){
+  const fdoc={...doc,type:doc.type||(kind==='plan'?DOC_TYPES.THERMAL:DOC_TYPES.RT_EXISTING)};
+  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
+  const dedicated=annotateSemanticHierarchy(fdoc,ded.filter(Boolean)).map(o=>({...o,specializedFamily:`renovation-${kind}`}));
+  const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','owner_company','department']);
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
+  return [...dedicated,...generic];
 }
 
 export function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
+  if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
+  if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
+  if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);

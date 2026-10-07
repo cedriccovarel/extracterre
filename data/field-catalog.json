@@ -1,7 +1,7 @@
 {
-  "version": "2.3.10",
-  "generatedAt": "2026-10-05T17:02:00+02:00",
-  "count": 173,
+  "version": "2.3.11",
+  "generatedAt": "2026-10-07T13:21:28.066Z",
+  "count": 185,
   "fields": [
     {
       "position": 1,
@@ -1267,7 +1267,9 @@
           "CR environnemental",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude carbone / ACV"
+        ],
         "forbidden": []
       }
     },
@@ -2059,7 +2061,10 @@
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RT Existant",
+          "Étude carbone / ACV"
+        ],
         "forbidden": []
       }
     },
@@ -2097,7 +2102,8 @@
         "secondary": [
           "RT Existant",
           "Notice architecturale / pièce écrite architecte",
-          "Permis / pièce administrative"
+          "Permis / pièce administrative",
+          "Étude carbone / ACV"
         ],
         "forbidden": []
       }
@@ -2176,11 +2182,13 @@
         "main": [
           "RSEE RE2020",
           "RSET RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "Étude carbone / ACV"
+        ],
         "forbidden": []
       }
     },
@@ -2201,11 +2209,13 @@
         "main": [
           "RSEE RE2020",
           "RSET RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "Étude carbone / ACV"
+        ],
         "forbidden": []
       }
     },
@@ -2387,8 +2397,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2414,8 +2426,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2441,8 +2455,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2467,6 +2483,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2494,6 +2511,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2522,8 +2540,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2550,8 +2570,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2576,6 +2598,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2604,6 +2627,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2630,8 +2654,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2657,8 +2683,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2683,6 +2711,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2710,6 +2739,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2737,8 +2767,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2772,6 +2804,7 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
           "Entrée manuelle"
@@ -2801,8 +2834,10 @@
           "RT2012",
           "RSEE RE2020",
           "Étude thermique",
+          "RT Existant",
           "CCTP",
           "DPGF",
+          "RSENV / RSNV",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -2827,7 +2862,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -2857,7 +2891,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -2889,7 +2922,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -2918,7 +2950,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -2947,7 +2978,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -2979,7 +3009,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -3008,7 +3037,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -3039,7 +3067,6 @@
           "RSET RE2020",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "CCTP",
@@ -3068,11 +3095,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3093,11 +3124,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3118,11 +3153,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3143,11 +3182,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3169,11 +3212,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3194,11 +3241,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3220,11 +3271,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3246,11 +3301,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3271,11 +3330,15 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "RSENV / RSNV",
+          "RT Existant",
+          "Étude carbone / ACV",
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3298,12 +3361,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3325,12 +3389,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3353,12 +3418,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3381,12 +3447,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3407,12 +3474,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3434,12 +3502,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3459,12 +3528,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3484,12 +3554,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3511,12 +3582,13 @@
           "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Diagnostic"
+        ],
         "forbidden": []
       }
     },
@@ -3537,16 +3609,11 @@
       ],
       "sources": {
         "main": [
-          "RSET RE2020",
+          "RT Existant",
+          "Étude thermique",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
-          "Étude thermique",
-          "RT Existant",
-          "CCTP",
-          "DPGF",
-          "Diagnostic",
-          "Rapport d'imperméabilité",
+          "RSET RE2020",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -3569,16 +3636,11 @@
       ],
       "sources": {
         "main": [
-          "RSET RE2020",
+          "RT Existant",
+          "Étude thermique",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
-          "Étude thermique",
-          "RT Existant",
-          "CCTP",
-          "DPGF",
-          "Diagnostic",
-          "Rapport d'imperméabilité",
+          "RSET RE2020",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -3603,16 +3665,11 @@
       ],
       "sources": {
         "main": [
-          "RSET RE2020",
+          "RT Existant",
+          "Étude thermique",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
-          "Étude thermique",
-          "RT Existant",
-          "CCTP",
-          "DPGF",
-          "Diagnostic",
-          "Rapport d'imperméabilité",
+          "RSET RE2020",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -3637,16 +3694,11 @@
       ],
       "sources": {
         "main": [
-          "RSET RE2020",
+          "RT Existant",
+          "Étude thermique",
           "RT2012",
           "RSEE RE2020",
-          "RSENV / RSNV",
-          "Étude thermique",
-          "RT Existant",
-          "CCTP",
-          "DPGF",
-          "Diagnostic",
-          "Rapport d'imperméabilité",
+          "RSET RE2020",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -3672,10 +3724,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3695,10 +3748,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3718,6 +3772,8 @@
       ],
       "sources": {
         "main": [
+          "RSEE RE2020",
+          "RSENV / RSNV",
           "Étude carbone / ACV",
           "Entrée manuelle"
         ],
@@ -3734,9 +3790,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 1",
-        "lot 1",
-        "lot 1 IC",
-        "lot 1 composants"
+        "IC lot 1",
+        "lot 1 IC composants"
       ],
       "sources": {
         "main": [
@@ -3744,10 +3799,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3760,9 +3816,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 2",
-        "lot 2",
-        "lot 2 IC",
-        "lot 2 composants"
+        "IC lot 2",
+        "lot 2 IC composants"
       ],
       "sources": {
         "main": [
@@ -3770,10 +3825,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3786,9 +3842,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 3",
-        "lot 3",
-        "lot 3 IC",
-        "lot 3 composants"
+        "IC lot 3",
+        "lot 3 IC composants"
       ],
       "sources": {
         "main": [
@@ -3796,10 +3851,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3812,9 +3868,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 4",
-        "lot 4",
-        "lot 4 IC",
-        "lot 4 composants"
+        "IC lot 4",
+        "lot 4 IC composants"
       ],
       "sources": {
         "main": [
@@ -3822,10 +3877,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3838,9 +3894,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 5",
-        "lot 5",
-        "lot 5 IC",
-        "lot 5 composants"
+        "IC lot 5",
+        "lot 5 IC composants"
       ],
       "sources": {
         "main": [
@@ -3848,10 +3903,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3864,9 +3920,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 6",
-        "lot 6",
-        "lot 6 IC",
-        "lot 6 composants"
+        "IC lot 6",
+        "lot 6 IC composants"
       ],
       "sources": {
         "main": [
@@ -3874,10 +3929,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3890,9 +3946,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 7",
-        "lot 7",
-        "lot 7 IC",
-        "lot 7 composants"
+        "IC lot 7",
+        "lot 7 IC composants"
       ],
       "sources": {
         "main": [
@@ -3900,10 +3955,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3916,9 +3972,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 8",
-        "lot 8",
-        "lot 8 IC",
-        "lot 8 composants"
+        "IC lot 8",
+        "lot 8 IC composants"
       ],
       "sources": {
         "main": [
@@ -3926,10 +3981,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3942,9 +3998,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 9",
-        "lot 9",
-        "lot 9 IC",
-        "lot 9 composants"
+        "IC lot 9",
+        "lot 9 IC composants"
       ],
       "sources": {
         "main": [
@@ -3952,10 +4007,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3968,9 +4024,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 10",
-        "lot 10",
-        "lot 10 IC",
-        "lot 10 composants"
+        "IC lot 10",
+        "lot 10 IC composants"
       ],
       "sources": {
         "main": [
@@ -3978,10 +4033,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -3994,9 +4050,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 11",
-        "lot 11",
-        "lot 11 IC",
-        "lot 11 composants"
+        "IC lot 11",
+        "lot 11 IC composants"
       ],
       "sources": {
         "main": [
@@ -4004,10 +4059,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4020,9 +4076,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 12",
-        "lot 12",
-        "lot 12 IC",
-        "lot 12 composants"
+        "IC lot 12",
+        "lot 12 IC composants"
       ],
       "sources": {
         "main": [
@@ -4030,10 +4085,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4046,9 +4102,8 @@
       "presence": false,
       "tags": [
         "IC composants lot 13",
-        "lot 13",
-        "lot 13 IC",
-        "lot 13 composants"
+        "IC lot 13",
+        "lot 13 IC composants"
       ],
       "sources": {
         "main": [
@@ -4056,10 +4111,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4082,10 +4138,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4106,10 +4163,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4130,10 +4188,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4154,10 +4213,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4178,10 +4238,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4202,10 +4263,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4226,10 +4288,11 @@
           "RSENV / RSNV",
           "Étude carbone / ACV",
           "RSET RE2020",
-          "Étude thermique",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Étude thermique"
+        ],
         "forbidden": []
       }
     },
@@ -4345,14 +4408,11 @@
       ],
       "sources": {
         "main": [
+          "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
-          "CCTP",
-          "DPGF",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -4369,21 +4429,16 @@
       "tags": [
         "ENR type",
         "type ENR",
-        "photovoltaïque",
-        "solaire thermique",
-        "géothermie",
-        "biomasse"
+        "type d’énergie renouvelable",
+        "type énergie renouvelable"
       ],
       "sources": {
         "main": [
+          "RSEE RE2020",
           "RSET RE2020",
           "RT2012",
-          "RSEE RE2020",
-          "RSENV / RSNV",
           "Étude thermique",
           "RT Existant",
-          "CCTP",
-          "DPGF",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -4481,6 +4536,8 @@
           "RSEE RE2020",
           "RSENV / RSNV",
           "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
           "Entrée manuelle"
         ],
         "secondary": [],
@@ -4505,6 +4562,281 @@
           "RSEE RE2020",
           "RSENV / RSNV",
           "Étude carbone / ACV",
+          "RSET RE2020",
+          "Étude thermique",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 174,
+      "key": "eges_pce",
+      "label": "Eges PCE",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges PCE",
+        "EgesPCE",
+        "Eges produits de construction et équipements"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 175,
+      "key": "eges_pcena",
+      "label": "Eges PCENA",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges PCENA",
+        "EgesPCENA",
+        "Eges PCE non amortis"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 176,
+      "key": "eges_energy",
+      "label": "Eges énergie",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges énergie",
+        "Eges energie",
+        "Eges consommations d’énergie"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 177,
+      "key": "eges_site",
+      "label": "Eges chantier",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges chantier",
+        "EgesChantier"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 178,
+      "key": "eges_water",
+      "label": "Eges eau",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges eau",
+        "EgesEau",
+        "Eges consommations et rejets d’eau"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 179,
+      "key": "eges_total",
+      "label": "Eges total",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges total",
+        "Eges global"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 180,
+      "key": "eges_pce_max",
+      "label": "Eges PCE Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges PCE Max",
+        "Eges PCE max",
+        "EgesPCE max"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 181,
+      "key": "eges_pcena_max",
+      "label": "Eges PCENA Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges PCENA Max",
+        "Eges PCENA max",
+        "EgesPCENA max"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 182,
+      "key": "eges_energy_max",
+      "label": "Eges énergie Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges énergie Max",
+        "Eges énergie max",
+        "Eges energie max"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 183,
+      "key": "eges_site_max",
+      "label": "Eges chantier Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges chantier Max",
+        "Eges chantier max",
+        "EgesChantier max"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 184,
+      "key": "eges_water_max",
+      "label": "Eges eau Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges eau Max",
+        "Eges eau max",
+        "EgesEau max"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 185,
+      "key": "eges_total_max",
+      "label": "Eges total Max",
+      "family": "Carbone",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Eges total Max",
+        "Eges total max"
+      ],
+      "sources": {
+        "main": [
+          "Étude carbone / ACV",
+          "RSENV / RSNV",
+          "RSEE RE2020",
           "Entrée manuelle"
         ],
         "secondary": [],

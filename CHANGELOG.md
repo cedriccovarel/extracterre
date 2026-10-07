@@ -1,3 +1,24 @@
+# v2.3.11 — Passe d'amélioration : Eges, rénovation (RT existant), BBCA Rénovation en PDF
+- **12 colonnes Eges** ajoutées en fin d'export (onglet Carbone, groupe « Eges ») : Eges PCE, PCENA, énergie, chantier, eau, total et leurs seuils Max (kg CO2 eq/m² SDP). Elles sont remplies par :
+  - les calculettes BBCA Rénovation ;
+  - les notices ACV BBCA Rénovation ;
+  - les notices ACV E+C- (Eges PCE et Eges total).
+- **BBCA Rénovation** : la « fiche de synthèse » reproduite en annexe d'une notice ACV est lue par bâtiment (« Bâtiment sur rue : », « Bâtiment sur cour : »).
+  - Lots coupés sur deux lignes, « Lot3. » et « Lot 9.Installations » reconnus ; Σ des lots contrôlée contre Eges PCE.
+  - Le tableau « Résultats de l'ACV du bâtiment … » est lu (projet / seuil).
+  - Les Eges ne sont plus recopiés dans les colonnes IC, car la méthode de calcul est différente.
+  - Le bâtiment d'une calculette est tiré de « Nom du projet … bat. Cour » ou du nom de fichier.
+- **Rénovation — études RT existant** (`js/renovation-thermique.js`) :
+  - notice thermique de bureau d'études : Ubat / Cep avant et après travaux par bâtiment, isolants projetés par paroi (type, épaisseur, R), menuiseries, ventilation, chauffage et ECS ;
+  - rapport Pléiades Th-C-E ex : Cep projet / initial, Ubat, année, logements, surface, compositions, baies, générateurs, ventilation. « Bâtiment 1 » est renommé d'après le fichier (« … bâtiment cour ») ;
+  - plan de repérage des isolants : légende lue (isolant principal par paroi), classé « Étude thermique ».
+- **Règles de sources** : l'étude RT existant devient une source principale de l'enveloppe (isolants, menuiseries) et une source secondaire du nombre de logements.
+- **Bâtiments** : « Bâtiment sur cour », « Immeuble cour » et « bat. Cour » sont regroupés en « Bâtiment COUR ».
+- **Consolidation** : un parseur dédié peut fixer son rang. La sortie logiciel l'emporte ainsi sur la description d'une notice, qui l'emporte sur un plan (ex. vitrage « 4.16.4 Ar » de Pléiades plutôt que « Double vitrage »).
+- **DH max** des récapitulatifs CSTB : 1250 °C.h est retenu pour les bâtiments d'habitation (catégorie 1). Il reste à vérifier pour les autres usages.
+- « Fibre de cellulose » est reconnue comme ouate de cellulose.
+- Contrôle de non-régression : les 24 documents réels analysés depuis la v2.3.4 ont été relancés. Aucune valeur juste n'est perdue ; les nouveaux formats passent de 1–6 à 10–58 valeurs retenues par document.
+
 # v2.3.10 — Calculette BBCA Rénovation, données projet des calculettes BBCA
 - **Calculette BBCA Rénovation** (feuille « Résultats BBCA réno »), classeur Excel ou PDF :
   - lots 1 à 12 lus dans la colonne « Impact carbone du lot rénové » (les ratios par défaut voisins sont ignorés), lots non comptabilisés signalés, Σ des lots contrôlée contre Eges PCE ;

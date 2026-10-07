@@ -747,8 +747,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v2.3.5 : 173 colonnes exactes (168 historiques + 5 IC ajoutées en fin), chacune avec des tags reconnus.
-  assert('Schéma métier = 173 colonnes',FIELD_DEFS.length===173,String(FIELD_DEFS.length));
+  // Contrat de schéma v2.3.11 : 185 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 ajoutées en fin), chacune avec des tags reconnus.
+  assert('Schéma métier = 185 colonnes',FIELD_DEFS.length===185,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));

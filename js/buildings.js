@@ -3,7 +3,8 @@ import {normalizeText,normLower,unique} from './utils.js';
 import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-sortie.js';
 import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
 import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.js';
-import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette} from './calculette-bbca.js';
+import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette,bbcaRenovationBuildingNames} from './calculette-bbca.js';
+import {isRtexThermalNotice,rtexNoticeBuildingNames,isPleiadesRtexReport,pleiadesRtexBuildingNames,isInsulationMarkupPlan} from './renovation-thermique.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
@@ -11,6 +12,8 @@ export function canonicalBuilding(raw){
   let s=normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim();
   s=s.replace(/^(?:identifiant\s+)?(?:batiment|bâtiment)\s*[:\-]?\s*/i,'').trim();
   s=s.replace(/^bat\.?\s+/i,'').trim();
+  // v2.3.11 — « Bâtiment sur cour », « Immeuble rue », « bat. Cour » désignent le même bâtiment « COUR » / « RUE ».
+  s=s.replace(/^immeuble\s+/i,'').replace(/^sur\s+(?=\S)/i,'').trim();
   s=s.replace(/\s*\(\s*\d+\s+zones?\s*\)\s*$/i,'').trim();
   s=s.replace(/\s*-\s*zone\s*:?.*$/i,'').trim();
   if(!s) return 'Bâtiment unique';
@@ -28,6 +31,7 @@ export function buildingMergeKey(raw){
   s=s.replace(/["'“”]/g,' ')
     .replace(/\([^)]*zones?[^)]*\)/g,' ')
     .replace(/^\s*(?:identifiant\s+)?(?:batiment|bâtiment|bat|bât)\.?\s*[:\-]?\s*/i,'')
+    .replace(/^\s*immeuble\s+/i,'').replace(/^\s*sur\s+(?=\S)/i,'')
     .replace(/\s*-\s*zone\s*:?.*$/i,' ')
     .replace(/(?:batiment|bâtiment)/g,' ')
     .replace(/[^a-z0-9]+/g,' ')
@@ -103,7 +107,17 @@ export function detectBuildings(doc){
     const n=bbcaBuildingName(doc);
     return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'calculette-bbca',hits:[]};
   }
-  if(isBbcaRenovationCalculette(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
+  // v2.3.11 — rénovation : « Bâtiment sur cour : » (notice RT-Ex), « 1.1 Batiment 1 » / nom de fichier (Pléiades),
+  // plan de repérage des isolants (légende commune).
+  if(isRtexThermalNotice(doc)||isPleiadesRtexReport(doc)){
+    const names=(isRtexThermalNotice(doc)?rtexNoticeBuildingNames(doc):pleiadesRtexBuildingNames(doc)).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};
+  }
+  if(isInsulationMarkupPlan(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'isolants-plan'};
+  if(isBbcaRenovationCalculette(doc)){
+    const names=bbcaRenovationBuildingNames(doc,canonicalBuilding).filter(n=>n!=='Bâtiment unique');
+    return names.length?{names,expectedCount:names.length,source:'calculette-bbca-reno',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
+  }
   // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
   if(isCarbonNoticeRe2020(doc)){
     const names=carbonNoticeBuildingNames(doc).map(canonicalBuilding);

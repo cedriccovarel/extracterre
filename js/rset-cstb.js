@@ -86,7 +86,10 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh}; }
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
-      if(v) emit(lim,'dh_max',v,'dh-max-texte',0.86,'°C.h',{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
+      // v2.3.11 — 1250 °C.h est le seuil de la catégorie 1, celle des logements : retenu pour un bâtiment d'habitation,
+      // à confirmer pour les autres usages (catégories 2 / 3 : 1850 °C.h).
+      const housing=ls.some(x=>/logements?\s+collectifs?|maisons?\s+individuelles?|usage\s+d.?habitation|\blogement\b/i.test(x.t));
+      if(v) emit(lim,'dh_max',v,'dh-max-texte',housing&&v===1250?0.93:0.86,'°C.h',housing&&v===1250?{provenanceNote:'DH max de la catégorie 1 (bâtiment d’habitation), rappelé par le récapitulatif.'}:{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
   }
 
   // --- Tableau « Données techniques du bâtiment » (structure, isolants, menuiseries, protections) --------------------

@@ -13,7 +13,7 @@ export function exportProjectsExcel(projects,rules){
   const wb=XLSX.utils.book_new();
   const fields=FIELD_DEFS;
 
-  // La feuille principale respecte strictement le schéma métier : 173 colonnes dans l'ordre de référence
+  // La feuille principale respecte strictement le schéma métier : 185 colonnes dans l'ordre de référence
   // (les nouvelles colonnes sont toujours ajoutées à la fin), puis la colonne « Tags » du projet.
   const data=[[...fields.map(f=>f.label),'Tags']];
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });

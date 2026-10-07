@@ -112,15 +112,16 @@ export function parseBbcaCalculette(doc,occ,canonical=(s)=>s){
   return out;
 }
 
-// v2.3.10 — Calculette BBCA Rénovation (feuille « Résultats BBCA réno ») : un projet, un tableau
-//   « Périmètre de la rénovation | lots rénovés | Impact carbone du lot rénové | Impact du lot comptabilisé ? »
-//   (« Lot 1. VRD | Oui | 1 | Oui » … « Lot 12 »), indicateurs « Eges PCE / PCENA / énergie / chantier / eau »
-//   en kg CO2 eq/m² SDP, données projet (Nom du projet, Typologie de rénovation / du bâtiment, SDP).
-// Eges PCE ↔ IC composants, Eges chantier ↔ IC chantier, Eges énergie ↔ IC énergie (méthode BBCA réno, par m² SDP).
-// Les seuils BBCA réno (« Eges PCE max »…) et les ratios par défaut ne sont pas repris.
+// v2.3.10 / v2.3.11 — Calculette BBCA Rénovation (feuille « Résultats BBCA réno »), classeur Excel, export PDF ou
+// « Fiche de synthèse – résultat BBCA » reproduite en annexe d'une notice ACV (un bloc « Bâtiment sur rue : » par bâtiment).
+//  • tableau « Périmètre de la rénovation | lots rénovés | Impact carbone du lot rénové | Impact du lot comptabilisé ? »
+//    (« Lot 1. VRD | Oui | 1 | Oui » … « Lot 12 » ; en PDF la ligne peut être coupée : « Lot 5. Cloisonnement-… » / « Oui 31 Oui ») ;
+//  • indicateurs « Eges PCE / PCENA / énergie / chantier / eau / Eges » et leurs seuils « … max » (kg CO2 eq/m² SDP)
+//    → colonnes Eges (et Eges Max) ; tableau de résultats d'une notice (« PCE 480 320 -33 % » : seuil, projet) ;
+//  • données projet : Nom du projet, Typologie de rénovation / du bâtiment, Surface de plancher (SDP), label visé.
 export function isBbcaRenovationCalculette(doc){
-  const t=normalizeText(String(doc?.read?.text||'').slice(0,300000));
-  return /BBCA\s+R[ée]no/i.test(t)&&/Impact\s+carbone\s+du\s+lot\s+r[ée]nov/i.test(t)&&/Eges\s+PCE/i.test(t);
+  const t=normalizeText(String(doc?.read?.text||'').slice(0,600000));
+  return /Label\s+BBCA\s+R[ée]novation/i.test(t)&&/Eges\s*PCE/i.test(t)&&/P[ée]rim[eè]tre\s+de\s+la\s+r[ée]novation|Impact\s+carbone\s+du\s+lot\s+r[ée]nov/i.test(t);
 }
 const br_cells=l=>Array.isArray(l?.cells)?l.cells.map(c=>String(c??'').trim()):null;
 export function workTypeFromLabel(v=''){
@@ -131,48 +132,93 @@ export function workTypeFromLabel(v=''){
   if(/enseignement|scolaire|ecole/.test(s)) return 'Enseignement';
   return String(v).trim()||null;
 }
+// « Paris · Réaumur · bat. Cour » → { operation: « Paris · Réaumur », building: « Batiment Cour » }
+function br_splitProject(name=''){
+  const m=String(name).match(/^(.*?)[\s·_\-–,]+(?:bat(?:iment)?|bât(?:iment)?|immeuble)\.?\s*(?:sur\s+)?([A-Za-zÀ-ÿ0-9]+)\s*$/i);
+  const clean=v=>String(v).replace(/\s+/g,' ').replace(/[\s·_\-–,]+$/,'').trim();
+  return m?{operation:clean(m[1]),building:`Batiment ${m[2]}`}:{operation:clean(name),building:null};
+}
+const BR_EGES=[['pce','eges_pce'],['pcena','eges_pcena'],['energie','eges_energy'],['chantier','eges_site'],['eau','eges_water']];
 
-export function parseBbcaRenovationCalculette(doc,occ){
-  const out=[]; const ss=doc.read?.kind==='spreadsheet'; const B='Bâtiment unique';
-  const lines=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>lines.push({page,line,t:bb_lineText(line),cells:br_cells(line)}));
+export function parseBbcaRenovationCalculette(doc,occ,canonical=(s)=>s){
+  const out=[]; const ss=doc.read?.kind==='spreadsheet';
+  const all=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>{ const t=bb_lineText(line).replace(/^[^A-Za-z0-9]+/,'').replace(/\bEges\s*(?=[A-Za-z(])/gi,'Eges ').replace(/\s*\(/g,' ('); all.push({page,line,t,cells:br_cells(line)}); });
   const origin=`Calculette BBCA Rénovation (${ss?'classeur Excel':'PDF'})`;
-  const emit=(x,field,value,method,conf,unit='kgCO2e/m²',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`calculette-bbca-reno:${method}`,conf,unit,{building:B,structuredPdf:true,origin,...extra}); if(o) out.push(o); };
-  // Valeur d'un libellé : première cellule non vide après le libellé (classeur) ou reste de la ligne (PDF).
-  const after=(x,re)=>{ if(x.cells){ const i=x.cells.findIndex(c=>re.test(normalizeText(c))); const v=x.cells.slice(i+1).find(c=>c!==''); return v??null; } return x.t.replace(re,'').trim()||null; };
-  const field=(re)=>{ const x=lines.find(l=>re.test(l.t)); if(!x) return null; const raw=after(x,re); return raw===null?null:{x,raw:String(raw).trim()}; };
-  const num=(re)=>{ const f=field(re); if(!f) return null; const v=bb_num(f.raw.replace(/\s*\(.*$/,''),ss); return v===null?null:{x:f.x,v}; };
-  const admin={secondarySourceOk:true};
-  // Données projet.
-  const nom=field(/^Nom\s+du\s+projet\b/i); if(nom&&nom.raw) emit(nom.x,'operation_name',nom.raw,'nom-projet',0.95,'',{...admin,provenanceNote:'« Nom du projet » de la calculette BBCA Rénovation.'});
-  const typo=field(/^Typologie\s+de\s+renovation\b/i); if(typo&&typo.raw) emit(typo.x,'renovation',typo.raw,'typologie-renovation',0.95,'',{...admin,provenanceNote:'« Typologie de rénovation » de la calculette BBCA Rénovation.'});
-  const bat=field(/^Typologie\s+du\s+batiment\b/i); if(bat&&bat.raw) emit(bat.x,'work_type',workTypeFromLabel(bat.raw),'typologie-batiment',0.95,'',{...admin,provenanceNote:`« Typologie du bâtiment » : ${bat.raw}.`});
-  const sdp=num(/^Surface\s+de\s+plancher(?:\s*\([^)]*\))?/i);
-  if(sdp&&sdp.v>0&&sdp.v<200000) emit(sdp.x,'shab',sdp.v,'sdp',0.95,'m²',{...admin,provenanceNote:'Surface de plancher (SDP) : surface de référence des indicateurs de la calculette BBCA Rénovation.'});
-  // Tableau des lots : colonne « Impact carbone du lot rénové ».
-  const head=lines.find(l=>/Impact\s+carbone\s+du\s+lot\s+renov/i.test(l.t));
-  const col=head?.cells?head.cells.findIndex(c=>/Impact\s+carbone\s+du\s+lot\s+renov/i.test(normalizeText(c))):-1;
-  const countedCol=head?.cells?head.cells.findIndex(c=>/comptabilis/i.test(normalizeText(c))):-1;
-  const lots={}, lotLines={}, counted={};
-  for(const x of head?lines.slice(lines.indexOf(head)+1):[]){
-    const m=x.t.match(/^Lot\s+0?(\d{1,2})\s*[.\-:]/i); if(!m){ if(Object.keys(lots).length) break; continue; }
-    const lot=Number(m[1]); if(lot<1||lot>13) continue;
-    let v=null, cnt=null;
-    if(x.cells&&col>=0){ v=bb_num(x.cells[col],true); if(countedCol>=0) cnt=/^non$/i.test(x.cells[countedCol]||''); }
-    else { const p=x.t.match(/\s(Oui|Non)\s+(-?\d+(?:[.,]\d+)?)(?:\s+(Oui|Non))?/i); if(p){ v=parseFrNumber(p[2]); cnt=p[3]?/^non$/i.test(p[3]):null; } }
-    if(v===null) continue;
-    lots[lot]=v; lotLines[lot]=x; counted[lot]=cnt;
+  // Blocs par bâtiment : « Bâtiment sur rue : » (annexe de notice) ; sinon un seul bloc.
+  const heads=[]; all.forEach((x,i)=>{ const m=x.t.match(/^Batiment\s+((?:sur\s+)?[A-Za-z0-9]+)\s*:\s*$/i); if(m&&all.slice(i+1,i+4).some(y=>/^Label\s+BBCA\s+Renovation/i.test(y.t))) heads.push({i,name:`Batiment ${m[1]}`}); });
+  const blocks=heads.length?heads.map((h,k)=>({name:h.name,lines:all.slice(h.i,k+1<heads.length?heads[k+1].i:all.length)})):[{name:null,lines:all}];
+  const fileB=(()=>{ const m=normalizeText(String(doc?.name||'')).match(/(?:^|[\s_\-])bat(?:iment)?[\s_.\-]+(?:sur[\s_]+)?([A-Za-z0-9]+?)(?:[\s_.\-]+v?\d|[\s_.\-]+PRO|\.|$)/i); return m?`Batiment ${m[1]}`:null; })();
+  for(const blk of blocks){
+    const lines=blk.lines;
+    const after=(x,re)=>{ if(x.cells){ const i=x.cells.findIndex(c=>re.test(normalizeText(c).replace(/\s*\(/g,' ('))); const v=x.cells.slice(Math.max(0,i)+1).find(c=>c!==''); return v??null; } return x.t.replace(re,'').trim()||null; };
+    const field=(re)=>{ const x=lines.find(l=>re.test(l.t)); if(!x) return null; const raw=after(x,re); return raw===null?{x,raw:''}:{x,raw:String(raw).trim()}; };
+    const num=(re)=>{ const f=field(re); if(!f) return null; const v=f.x.cells?bb_num(f.raw.replace(/\s*\(.*$/,''),true):bb_value(f.x,false); return v===null?null:{x:f.x,v}; };
+    const nom=field(/^Nom\s+du\s+projet\b/i);
+    const split=br_splitProject(nom?.raw||'');
+    const B=canonical(blk.name||split.building||fileB||'Bâtiment unique');
+    const emit=(x,f,value,method,conf,unit='kgCO2e/m²',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,f,value,`calculette-bbca-reno:${method}`,conf,unit,{building:B,structuredPdf:true,origin,dedicatedRank:8,...extra}); if(o) out.push(o); };
+    const admin={secondarySourceOk:true};
+    // Données projet.
+    if(nom&&split.operation) emit(nom.x,'operation_name',split.operation,'nom-projet',0.95,'',{...admin,building:'Bâtiment unique',provenanceNote:`« Nom du projet » de la calculette BBCA Rénovation : ${nom.raw}.`});
+    const typo=field(/^Typologie\s+de\s+renovation\b/i); if(typo&&typo.raw) emit(typo.x,'renovation',typo.raw.replace(/^renovation\b/i,'Rénovation').replace(/\blegere\b/i,'légère'),'typologie-renovation',0.95,'',{...admin,provenanceNote:'« Typologie de rénovation » de la calculette BBCA Rénovation.'});
+    const bat=field(/^Typologie\s+du\s+batiment\b/i); if(bat&&bat.raw) emit(bat.x,'work_type',workTypeFromLabel(bat.raw),'typologie-batiment',0.95,'',{...admin,provenanceNote:`« Typologie du bâtiment » : ${bat.raw}.`});
+    const sdp=num(/^Surface\s+de\s+plancher(?:\s*\([^)]*\))?/i);
+    if(sdp&&sdp.v>0&&sdp.v<200000) emit(sdp.x,'shab',sdp.v,'sdp',0.95,'m²',{...admin,provenanceNote:'Surface de plancher (SDP) : surface de référence des indicateurs de la calculette BBCA Rénovation.'});
+    // Tableau des lots : colonne « Impact carbone du lot rénové ».
+    const headIdx=lines.findIndex(l=>/Perimetre\s+de\s+la\s+renovation|Impact\s+carbone\s+du\s+lot\s+renov/i.test(l.t));
+    const head=headIdx>=0?lines[headIdx]:null;
+    const col=head?.cells?head.cells.findIndex(c=>/Impact\s+carbone\s+du\s+lot\s+renov/i.test(normalizeText(c))):-1;
+    const countedCol=head?.cells?head.cells.findIndex(c=>/comptabilis/i.test(normalizeText(c))):-1;
+    const lots={}, lotLines={}, counted={};
+    if(headIdx>=0) for(let i=headIdx+1;i<lines.length;i++){
+      const x=lines[i]; const m=x.t.match(/^Lot\s*0?(\d{1,2})\s*[.\-:]/i);
+      if(!m){ if(Object.keys(lots).length>=12||/^(?:Eges|Indicateurs|Calcul)\b/i.test(x.t)) break; continue; }
+      const lot=Number(m[1]); if(lot<1||lot>13) continue;
+      let v=null, cnt=null;
+      if(x.cells&&col>=0){ v=bb_num(x.cells[col],true); if(countedCol>=0) cnt=/^non$/i.test(x.cells[countedCol]||''); }
+      else {
+        const re=/(?:^|\s)(Oui|Non)\s+(-?\d+(?:[.,]\d+)?)(?:\s+(Oui|Non))?\s*$/i;
+        let p=x.t.match(re); if(!p&&lines[i+1]&&!/^Lot\s*\d/i.test(lines[i+1].t)) p=lines[i+1].t.match(/^(Oui|Non)\s+(-?\d+(?:[.,]\d+)?)(?:\s+(Oui|Non))?\s*$/i);
+        if(p){ v=parseFrNumber(p[2]); cnt=p[3]?/^non$/i.test(p[3]):null; }
+      }
+      if(v===null) continue;
+      lots[lot]=v; lotLines[lot]=x; counted[lot]=cnt;
+    }
+    // Indicateurs Eges (valeur projet) et seuils (« … max »).
+    const eg={};
+    for(const [k,f] of [...BR_EGES,['','eges_total']]){
+      const lab=k?`Eges\\s+${k}`:'Eges';
+      const val=num(new RegExp(`^${lab}\\s*\\(`,'i')), max=num(new RegExp(`^${lab}\\s+max\\s*\\(`,'i'));
+      if(val){ eg[f]=val.v; emit(val.x,f,val.v,`eges-${k||'total'}`,0.97,'kgCO2e/m²',{provenanceNote:`Calculette BBCA Rénovation (kg CO2 eq/m² SDP).`}); }
+      if(max) emit(max.x,`${f}_max`,max.v,`eges-${k||'total'}-max`,0.95,'kgCO2e/m²',{provenanceNote:'Seuil BBCA Rénovation de la calculette (kg CO2 eq/m² SDP).'});
+    }
+    const lotSum=Object.entries(lots).filter(([k])=>counted[k]!==true).reduce((a,[,v])=>a+v,0);
+    const pce=eg.eges_pce;
+    const lotsOk=pce!==undefined&&Object.keys(lots).length>=10&&Math.abs(lotSum-pce)<=Math.max(2,pce*0.03);
+    for(const [lot,v] of Object.entries(lots)) emit(lotLines[lot],`ic_lot_${lot}`,v,'lot-renove',0.95,'kgCO2e/m²',{provenanceNote:`Colonne « Impact carbone du lot rénové » (kg CO2 eq/m² SDP)${counted[lot]?' — lot non comptabilisé dans Eges PCE':''}.${pce!==undefined?` Σ lots ${Math.round(lotSum*100)/100} ${lotsOk?'≈':'≠'} Eges PCE ${pce}.`:''}`});
+    // Tableau de résultats d'une notice : « PCE 480 320 -33 % » (seuil BBCA réno, projet).
+    // Label visé.
+    const lab=field(/^Label\s+BBCA\s+Renovation\s*:?/i);
+    if(lab){ const pts=num(/^TOTAL\b/i); emit(lab.x,'mention_bbca','Oui','label-vise',0.95,'',{provenanceNote:`Calculette BBCA Rénovation — niveau : ${lab.raw||'non précisé'}${pts?` (${pts.v} points)`:''}.`}); }
   }
-  const pce=num(/^Eges\s+PCE\s*\(/i);
-  const lotSum=Object.entries(lots).filter(([k])=>counted[k]!==true).reduce((a,[,v])=>a+v,0);
-  const lotsOk=pce&&Object.keys(lots).length>=10&&Math.abs(lotSum-pce.v)<=Math.max(2,pce.v*0.03);
-  for(const [lot,v] of Object.entries(lots)) emit(lotLines[lot],`ic_lot_${lot}`,v,'lot-renove',0.95,'kgCO2e/m²',{provenanceNote:`Colonne « Impact carbone du lot rénové » (kg CO2 eq/m² SDP)${counted[lot]?' — lot non comptabilisé dans Eges PCE':''}.${pce?` Σ lots ${Math.round(lotSum*100)/100} ${lotsOk?'≈':'≠'} Eges PCE ${pce.v}.`:''}`});
-  // Indicateurs BBCA réno.
-  const note=t=>({provenanceNote:`${t} de la calculette BBCA Rénovation (kg CO2 eq/m² SDP).`});
-  if(pce) emit(pce.x,'ic_components',pce.v,'eges-pce',0.95,'kgCO2e/m²',note('Eges PCE'));
-  const ch=num(/^Eges\s+chantier\s*\(/i); if(ch) emit(ch.x,'ic_site',ch.v,'eges-chantier',0.95,'kgCO2e/m²',note('Eges chantier'));
-  const en=num(/^Eges\s+energie\s*\(/i); if(en) emit(en.x,'ic_energy',en.v,'eges-energie',0.95,'kgCO2e/m²',note('Eges énergie'));
-  // Label visé.
-  const lab=field(/^Label\s+BBCA\s+Renovation\s*:?/i);
-  if(lab){ const pts=num(/^TOTAL\b/i); emit(lab.x,'mention_bbca','Oui','label-vise',0.95,'',{provenanceNote:`Calculette BBCA Rénovation — niveau : ${lab.raw||'non précisé'}${pts?` (${pts.v} points)`:''}.`}); }
+  // Notice ACV : tableaux « Résultats de l'ACV du bâtiment sur rue » (Seuil BBCA Réno | Projet | % gain).
+  all.forEach((x,i)=>{
+    const m=x.t.match(/^Resultats\s+de\s+l.?ACV\s+du\s+batiment\s+(.+?)\s*$/i); if(!m) return;
+    const B=canonical(`Batiment ${m[1]}`);
+    for(const y of all.slice(i+1,i+14)){
+      const r=y.t.match(/^(PCE|PCENA|Energie|Eau|Chantier|Total)\s+([\d  ]+(?:[.,]\d+)?)\s+([\d  ]+(?:[.,]\d+)?)\s+(?:[-+]?\d+\s*%|OK)/i); if(!r) continue;
+      const f=({pce:'eges_pce',pcena:'eges_pcena',energie:'eges_energy',eau:'eges_water',chantier:'eges_site',total:'eges_total'})[r[1].toLowerCase()];
+      const seuil=parseFrNumber(r[2].replace(/[  ]/g,'')), projet=parseFrNumber(r[3].replace(/[  ]/g,''));
+      if(out.some(o=>o.field===f&&o.building===B)) continue;
+      const o1=occ(doc,y.page,y.line,f,projet,'notice-acv-reno:resultats',0.95,'kgCO2e/m²',{building:B,structuredPdf:true,origin:'Notice ACV BBCA Rénovation — résultats',provenanceNote:'Tableau de résultats ACV (projet, kg CO2 eq/m² SDP).'}); if(o1) out.push(o1);
+      const o2=occ(doc,y.page,y.line,`${f}_max`,seuil,'notice-acv-reno:seuils',0.93,'kgCO2e/m²',{building:B,structuredPdf:true,origin:'Notice ACV BBCA Rénovation — résultats',provenanceNote:'Seuil BBCA Rénovation du tableau de résultats.'}); if(o2) out.push(o2);
+    }
+  });
   return out;
+}
+
+// Bâtiments d'une calculette BBCA Rénovation (blocs « Bâtiment sur rue : », « Nom du projet …bat. Cour », nom de fichier).
+export function bbcaRenovationBuildingNames(doc,canonical=(s)=>s){
+  const names=new Set(parseBbcaRenovationCalculette(doc,(d,p,l,field,v,m,c,u,extra)=>({field,building:extra?.building}),canonical).filter(o=>o&&o.field!=='operation_name').map(o=>o.building));
+  return [...names];
 }

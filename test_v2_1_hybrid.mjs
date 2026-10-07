@@ -19,16 +19,16 @@ const { APP_VERSION, FIELD_DEFS, DOC_TYPES } = await import('./js/config.js');
 const { shouldUseCloudForFile } = await import('./js/cloud.js');
 const { importImprovementPatchObject, parsePatchOccurrences } = await import('./js/patches.js');
 
-assert.equal(APP_VERSION, '2.3.10', 'La version doit être 2.3.10');
-assert.equal(FIELD_DEFS.length, 173, 'Le catalogue moteur doit garder 173 champs');
+assert.equal(APP_VERSION, '2.3.11', 'La version doit être 2.3.11');
+assert.equal(FIELD_DEFS.length, 185, 'Le catalogue moteur doit garder 185 champs');
 
 const catalog = JSON.parse(fs.readFileSync('./data/field-catalog.json', 'utf8'));
-assert.equal(catalog.count, 173, 'Le catalogue JSON doit garder 173 champs');
+assert.equal(catalog.count, 185, 'Le catalogue JSON doit garder 185 champs');
 assert.deepEqual(catalog.fields.map(x => x.label), FIELD_DEFS.map(x => x.label), 'Le catalogue JSON doit conserver le même ordre');
 
 const masterColumns = fs.readFileSync('./COLONNES_EXTRACTERRE.txt', 'utf8')
   .split(/\t|\r?\n/).map(x => x.trim()).filter(Boolean);
-assert.equal(masterColumns.length, 173, 'COLONNES_EXTRACTERRE doit garder exactement 173 lignes');
+assert.equal(masterColumns.length, 185, 'COLONNES_EXTRACTERRE doit garder exactement 185 lignes');
 assert.deepEqual(masterColumns, FIELD_DEFS.map(x => x.label), 'L’ordre d’export maître ne doit pas changer');
 
 assert.equal(shouldUseCloudForFile({name:'leger.pdf', size:2*1024*1024}, 'auto', 'auto'), false);
@@ -65,7 +65,7 @@ assert.equal(dh?.value, 1000, 'Le DH défavorable doit être le maximum');
 assert.equal(dhMax?.value, 1200, 'DHmax doit provenir de la même ligne que le DH maximal');
 
 console.log('V2.1 hybrid regression: OK');
-console.log('173 champs: OK');
+console.log('185 champs: OK');
 console.log('DH/DHmax même ligne: OK');
 console.log('minAppVersion: OK');
 console.log('routage hybride: OK');

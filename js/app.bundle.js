@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.10 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.11 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.10';
+const APP_VERSION = '2.3.11';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -216,7 +216,20 @@ const FIELD_DEFS = [
   {key:"ic_construction_max",label:"IC construction Max",family:"Carbone",type:"number",tags:["IC construction Max", "Ic construction max", "Icconstruction_max", "Ic_construction_max"] ,presence:false},
   {key:"ic_construction_max_2028",label:"IC construction Max 2028",family:"Carbone",type:"number",tags:["IC construction Max 2028", "Ic construction max 2028", "Icconstruction_max 2028", "seuil 2028 Ic construction"] ,presence:false},
   {key:"ic_energy_max",label:"IC énergie Max",family:"Carbone",type:"number",tags:["IC énergie Max", "Ic énergie max", "Icenergie_max", "Ic_energie_max"] ,presence:false},
-  {key:"ic_energy_max_2028",label:"IC énergie Max 2028",family:"Carbone",type:"number",tags:["IC énergie Max 2028", "Ic énergie max 2028", "Icenergie_max 2028", "seuil 2028 Ic énergie"] ,presence:false}
+  {key:"ic_energy_max_2028",label:"IC énergie Max 2028",family:"Carbone",type:"number",tags:["IC énergie Max 2028", "Ic énergie max 2028", "Icenergie_max 2028", "seuil 2028 Ic énergie"] ,presence:false},
+  // v2.3.11 — indicateurs Eges (méthode E+C- / BBCA Rénovation, kg CO2 eq/m² SDP) et leurs seuils.
+  {key:"eges_pce",label:"Eges PCE",family:"Carbone",type:"number",tags:["Eges PCE", "EgesPCE", "Eges produits de construction et équipements"] ,presence:false},
+  {key:"eges_pcena",label:"Eges PCENA",family:"Carbone",type:"number",tags:["Eges PCENA", "EgesPCENA", "Eges PCE non amortis"] ,presence:false},
+  {key:"eges_energy",label:"Eges énergie",family:"Carbone",type:"number",tags:["Eges énergie", "Eges energie", "Eges consommations d’énergie"] ,presence:false},
+  {key:"eges_site",label:"Eges chantier",family:"Carbone",type:"number",tags:["Eges chantier", "EgesChantier"] ,presence:false},
+  {key:"eges_water",label:"Eges eau",family:"Carbone",type:"number",tags:["Eges eau", "EgesEau", "Eges consommations et rejets d’eau"] ,presence:false},
+  {key:"eges_total",label:"Eges total",family:"Carbone",type:"number",tags:["Eges total", "Eges global"] ,presence:false},
+  {key:"eges_pce_max",label:"Eges PCE Max",family:"Carbone",type:"number",tags:["Eges PCE Max", "Eges PCE max", "EgesPCE max"] ,presence:false},
+  {key:"eges_pcena_max",label:"Eges PCENA Max",family:"Carbone",type:"number",tags:["Eges PCENA Max", "Eges PCENA max", "EgesPCENA max"] ,presence:false},
+  {key:"eges_energy_max",label:"Eges énergie Max",family:"Carbone",type:"number",tags:["Eges énergie Max", "Eges énergie max", "Eges energie max"] ,presence:false},
+  {key:"eges_site_max",label:"Eges chantier Max",family:"Carbone",type:"number",tags:["Eges chantier Max", "Eges chantier max", "EgesChantier max"] ,presence:false},
+  {key:"eges_water_max",label:"Eges eau Max",family:"Carbone",type:"number",tags:["Eges eau Max", "Eges eau max", "EgesEau max"] ,presence:false},
+  {key:"eges_total_max",label:"Eges total Max",family:"Carbone",type:"number",tags:["Eges total Max", "Eges total max"] ,presence:false}
 ];
 const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -342,7 +355,8 @@ const SOURCE_CERT=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.REQU
 const SOURCE_LEVELS=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.ENV_REPORT,DOC_TYPES.REQUIREMENTS,DOC_TYPES.MANUAL];
 const SOURCE_PROGRAM=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL];
 const SOURCE_PROJECT_META=[DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL];
-const SOURCE_ENVELOPE=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.MANUAL];
+// v2.3.11 — les études RT existant décrivent l'enveloppe projetée des rénovations : source principale, après l'étude thermique.
+const SOURCE_ENVELOPE=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.MANUAL];
 const SOURCE_SYSTEMS=[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL];
 const SOURCE_UBAT_CEP=[DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL];
 const SOURCE_ENR=[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL];
@@ -364,7 +378,7 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "wall_struct
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
-for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.CARBON]);
+for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
@@ -375,6 +389,8 @@ for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepn
 for(const key of ['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.MANUAL],[DOC_TYPES.DIAGNOSTIC]);
 for(const key of ['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['ic_construction','ic_construction_max','ic_construction_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
+// v2.3.11 — Eges : études carbone (BBCA Rénovation, E+C-) et RSEnv.
+for(const key of ['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total']) for(const k of [key,key+'_max']) DEFAULT_SOURCE_RULES[k]=ordered([DOC_TYPES.CARBON,DOC_TYPES.RSENV,DOC_TYPES.RSEE_RE2020,DOC_TYPES.MANUAL]);
 // Ic énergie max : également publié par les sorties thermiques RE2020 (RSET, synthèses logiciel).
 for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.stock_c_per_m2=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
@@ -762,6 +778,8 @@ function canonicalBuilding(raw){
   let s=normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim();
   s=s.replace(/^(?:identifiant\s+)?(?:batiment|bâtiment)\s*[:\-]?\s*/i,'').trim();
   s=s.replace(/^bat\.?\s+/i,'').trim();
+  // v2.3.11 — « Bâtiment sur cour », « Immeuble rue », « bat. Cour » désignent le même bâtiment « COUR » / « RUE ».
+  s=s.replace(/^immeuble\s+/i,'').replace(/^sur\s+(?=\S)/i,'').trim();
   s=s.replace(/\s*\(\s*\d+\s+zones?\s*\)\s*$/i,'').trim();
   s=s.replace(/\s*-\s*zone\s*:?.*$/i,'').trim();
   if(!s) return 'Bâtiment unique';
@@ -779,6 +797,7 @@ function buildingMergeKey(raw){
   s=s.replace(/["'“”]/g,' ')
     .replace(/\([^)]*zones?[^)]*\)/g,' ')
     .replace(/^\s*(?:identifiant\s+)?(?:batiment|bâtiment|bat|bât)\.?\s*[:\-]?\s*/i,'')
+    .replace(/^\s*immeuble\s+/i,'').replace(/^\s*sur\s+(?=\S)/i,'')
     .replace(/\s*-\s*zone\s*:?.*$/i,' ')
     .replace(/(?:batiment|bâtiment)/g,' ')
     .replace(/[^a-z0-9]+/g,' ')
@@ -854,7 +873,17 @@ function detectBuildings(doc){
     const n=bbcaBuildingName(doc);
     return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'calculette-bbca',hits:[]};
   }
-  if(isBbcaRenovationCalculette(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
+  // v2.3.11 — rénovation : « Bâtiment sur cour : » (notice RT-Ex), « 1.1 Batiment 1 » / nom de fichier (Pléiades),
+  // plan de repérage des isolants (légende commune).
+  if(isRtexThermalNotice(doc)||isPleiadesRtexReport(doc)){
+    const names=(isRtexThermalNotice(doc)?rtexNoticeBuildingNames(doc):pleiadesRtexBuildingNames(doc)).map(canonicalBuilding);
+    if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};
+  }
+  if(isInsulationMarkupPlan(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'isolants-plan'};
+  if(isBbcaRenovationCalculette(doc)){
+    const names=bbcaRenovationBuildingNames(doc,canonicalBuilding).filter(n=>n!=='Bâtiment unique');
+    return names.length?{names,expectedCount:names.length,source:'calculette-bbca-reno',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
+  }
   // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
   if(isCarbonNoticeRe2020(doc)){
     const names=carbonNoticeBuildingNames(doc).map(canonicalBuilding);
@@ -1361,7 +1390,12 @@ function parseEcAcvNotice(doc,occ){
     const totalTxt=(egesTotal||egesSummary)?` Eges total (tous contributeurs) = ${Math.round((egesTotal||egesSummary).value*100)/100} kg éq.CO2/m².`:'';
     emit(pce.at,'ic_components',v,egesPce?'eges-pce':'eges-pce-summary',egesPce?0.95:0.92,'kgCO2e/m²',{
       provenanceNote:`Indicateur E+C- « Eges PCE » (Produits de construction et équipements, ACV statique sur 50 ans, kg éq.CO2/m² SDP) — équivalent E+C- de l'IC composants ; non comparable à l'Ic,composant RE2020 (ACV dynamique).${totalTxt}`});
+    // v2.3.11 — colonnes Eges dédiées.
+    emit(pce.at,'eges_pce',v,egesPce?'eges-pce-col':'eges-pce-summary-col',egesPce?0.96:0.93,'kgCO2e/m²',{provenanceNote:'Indicateur E+C- « Eges PCE » (kg éq.CO2/m² SDP, ACV statique 50 ans).'});
   }
+  { const tot=egesTotal||egesSummary; if(tot) emit(tot.at,'eges_total',Math.round(tot.value*100)/100,egesTotal?'eges-total':'eges-total-summary',egesTotal?0.96:0.93,'kgCO2e/m²',{provenanceNote:'Indicateur E+C- « Eges » tous contributeurs (kg éq.CO2/m² SDP).'}); }
+  { const max=numAfter(new RegExp(`^Eges\\s*,?\\s*PCE\\s*,?\\s*max\\s+${ec_NUM}\\s*$`,'i')); if(max) emit(max.at,'eges_pce_max',Math.round(max.value*100)/100,'eges-pce-max',0.93,'kgCO2e/m²'); }
+  { const max=numAfter(new RegExp(`^Eges\\s*,?\\s*max\\s+${ec_NUM}\\s*$`,'i')); if(max) emit(max.at,'eges_total_max',Math.round(max.value*100)/100,'eges-max',0.93,'kgCO2e/m²'); }
 
   // --- Niveaux Énergie / Carbone ------------------------------------------------------------------
   const bepos=find(/^Niveau\s+BEPOS\s+Niveau\s*\d/i);
@@ -1475,7 +1509,7 @@ function insulationName(v=''){
   if(/polyurethane|\(pu\)|\bpur\b|\bpir\b/.test(s)) return 'PUR';
   if(/extrude|\bxps\b/.test(s)) return 'XPS';
   if(/polystyrene|\bpse\b/.test(s)) return 'PSE';
-  if(/ouate/.test(s)) return 'Ouate de cellulose';
+  if(/ouate|fibre\s+de\s+cellulose|\bcellulose\b/.test(s)) return 'Ouate de cellulose';
   if(/chanvre|\blin\b|coton/.test(s)) return 'Biosourcé chanvre/lin/coton';
   if(/paille/.test(s)) return 'Paille';
   if(/liege/.test(s)) return 'Liège';
@@ -1722,7 +1756,10 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh}; }
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
-      if(v) emit(lim,'dh_max',v,'dh-max-texte',0.86,'°C.h',{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
+      // v2.3.11 — 1250 °C.h est le seuil de la catégorie 1, celle des logements : retenu pour un bâtiment d'habitation,
+      // à confirmer pour les autres usages (catégories 2 / 3 : 1850 °C.h).
+      const housing=ls.some(x=>/logements?\s+collectifs?|maisons?\s+individuelles?|usage\s+d.?habitation|\blogement\b/i.test(x.t));
+      if(v) emit(lim,'dh_max',v,'dh-max-texte',housing&&v===1250?0.93:0.86,'°C.h',housing&&v===1250?{provenanceNote:'DH max de la catégorie 1 (bâtiment d’habitation), rappelé par le récapitulatif.'}:{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
   }
 
   // --- Tableau « Données techniques du bâtiment » (structure, isolants, menuiseries, protections) --------------------
@@ -1998,15 +2035,16 @@ function parseBbcaCalculette(doc,occ,canonical=(s)=>s){
   return out;
 }
 
-// v2.3.10 — Calculette BBCA Rénovation (feuille « Résultats BBCA réno ») : un projet, un tableau
-//   « Périmètre de la rénovation | lots rénovés | Impact carbone du lot rénové | Impact du lot comptabilisé ? »
-//   (« Lot 1. VRD | Oui | 1 | Oui » … « Lot 12 »), indicateurs « Eges PCE / PCENA / énergie / chantier / eau »
-//   en kg CO2 eq/m² SDP, données projet (Nom du projet, Typologie de rénovation / du bâtiment, SDP).
-// Eges PCE ↔ IC composants, Eges chantier ↔ IC chantier, Eges énergie ↔ IC énergie (méthode BBCA réno, par m² SDP).
-// Les seuils BBCA réno (« Eges PCE max »…) et les ratios par défaut ne sont pas repris.
+// v2.3.10 / v2.3.11 — Calculette BBCA Rénovation (feuille « Résultats BBCA réno »), classeur Excel, export PDF ou
+// « Fiche de synthèse – résultat BBCA » reproduite en annexe d'une notice ACV (un bloc « Bâtiment sur rue : » par bâtiment).
+//  • tableau « Périmètre de la rénovation | lots rénovés | Impact carbone du lot rénové | Impact du lot comptabilisé ? »
+//    (« Lot 1. VRD | Oui | 1 | Oui » … « Lot 12 » ; en PDF la ligne peut être coupée : « Lot 5. Cloisonnement-… » / « Oui 31 Oui ») ;
+//  • indicateurs « Eges PCE / PCENA / énergie / chantier / eau / Eges » et leurs seuils « … max » (kg CO2 eq/m² SDP)
+//    → colonnes Eges (et Eges Max) ; tableau de résultats d'une notice (« PCE 480 320 -33 % » : seuil, projet) ;
+//  • données projet : Nom du projet, Typologie de rénovation / du bâtiment, Surface de plancher (SDP), label visé.
 function isBbcaRenovationCalculette(doc){
-  const t=normalizeText(String(doc?.read?.text||'').slice(0,300000));
-  return /BBCA\s+R[ée]no/i.test(t)&&/Impact\s+carbone\s+du\s+lot\s+r[ée]nov/i.test(t)&&/Eges\s+PCE/i.test(t);
+  const t=normalizeText(String(doc?.read?.text||'').slice(0,600000));
+  return /Label\s+BBCA\s+R[ée]novation/i.test(t)&&/Eges\s*PCE/i.test(t)&&/P[ée]rim[eè]tre\s+de\s+la\s+r[ée]novation|Impact\s+carbone\s+du\s+lot\s+r[ée]nov/i.test(t);
 }
 const br_cells=l=>Array.isArray(l?.cells)?l.cells.map(c=>String(c??'').trim()):null;
 function workTypeFromLabel(v=''){
@@ -2017,49 +2055,279 @@ function workTypeFromLabel(v=''){
   if(/enseignement|scolaire|ecole/.test(s)) return 'Enseignement';
   return String(v).trim()||null;
 }
+// « Paris · Réaumur · bat. Cour » → { operation: « Paris · Réaumur », building: « Batiment Cour » }
+function br_splitProject(name=''){
+  const m=String(name).match(/^(.*?)[\s·_\-–,]+(?:bat(?:iment)?|bât(?:iment)?|immeuble)\.?\s*(?:sur\s+)?([A-Za-zÀ-ÿ0-9]+)\s*$/i);
+  const clean=v=>String(v).replace(/\s+/g,' ').replace(/[\s·_\-–,]+$/,'').trim();
+  return m?{operation:clean(m[1]),building:`Batiment ${m[2]}`}:{operation:clean(name),building:null};
+}
+const BR_EGES=[['pce','eges_pce'],['pcena','eges_pcena'],['energie','eges_energy'],['chantier','eges_site'],['eau','eges_water']];
 
-function parseBbcaRenovationCalculette(doc,occ){
-  const out=[]; const ss=doc.read?.kind==='spreadsheet'; const B='Bâtiment unique';
-  const lines=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>lines.push({page,line,t:bb_lineText(line),cells:br_cells(line)}));
+function parseBbcaRenovationCalculette(doc,occ,canonical=(s)=>s){
+  const out=[]; const ss=doc.read?.kind==='spreadsheet';
+  const all=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>{ const t=bb_lineText(line).replace(/^[^A-Za-z0-9]+/,'').replace(/\bEges\s*(?=[A-Za-z(])/gi,'Eges ').replace(/\s*\(/g,' ('); all.push({page,line,t,cells:br_cells(line)}); });
   const origin=`Calculette BBCA Rénovation (${ss?'classeur Excel':'PDF'})`;
-  const emit=(x,field,value,method,conf,unit='kgCO2e/m²',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`calculette-bbca-reno:${method}`,conf,unit,{building:B,structuredPdf:true,origin,...extra}); if(o) out.push(o); };
-  // Valeur d'un libellé : première cellule non vide après le libellé (classeur) ou reste de la ligne (PDF).
-  const after=(x,re)=>{ if(x.cells){ const i=x.cells.findIndex(c=>re.test(normalizeText(c))); const v=x.cells.slice(i+1).find(c=>c!==''); return v??null; } return x.t.replace(re,'').trim()||null; };
-  const field=(re)=>{ const x=lines.find(l=>re.test(l.t)); if(!x) return null; const raw=after(x,re); return raw===null?null:{x,raw:String(raw).trim()}; };
-  const num=(re)=>{ const f=field(re); if(!f) return null; const v=bb_num(f.raw.replace(/\s*\(.*$/,''),ss); return v===null?null:{x:f.x,v}; };
-  const admin={secondarySourceOk:true};
-  // Données projet.
-  const nom=field(/^Nom\s+du\s+projet\b/i); if(nom&&nom.raw) emit(nom.x,'operation_name',nom.raw,'nom-projet',0.95,'',{...admin,provenanceNote:'« Nom du projet » de la calculette BBCA Rénovation.'});
-  const typo=field(/^Typologie\s+de\s+renovation\b/i); if(typo&&typo.raw) emit(typo.x,'renovation',typo.raw,'typologie-renovation',0.95,'',{...admin,provenanceNote:'« Typologie de rénovation » de la calculette BBCA Rénovation.'});
-  const bat=field(/^Typologie\s+du\s+batiment\b/i); if(bat&&bat.raw) emit(bat.x,'work_type',workTypeFromLabel(bat.raw),'typologie-batiment',0.95,'',{...admin,provenanceNote:`« Typologie du bâtiment » : ${bat.raw}.`});
-  const sdp=num(/^Surface\s+de\s+plancher(?:\s*\([^)]*\))?/i);
-  if(sdp&&sdp.v>0&&sdp.v<200000) emit(sdp.x,'shab',sdp.v,'sdp',0.95,'m²',{...admin,provenanceNote:'Surface de plancher (SDP) : surface de référence des indicateurs de la calculette BBCA Rénovation.'});
-  // Tableau des lots : colonne « Impact carbone du lot rénové ».
-  const head=lines.find(l=>/Impact\s+carbone\s+du\s+lot\s+renov/i.test(l.t));
-  const col=head?.cells?head.cells.findIndex(c=>/Impact\s+carbone\s+du\s+lot\s+renov/i.test(normalizeText(c))):-1;
-  const countedCol=head?.cells?head.cells.findIndex(c=>/comptabilis/i.test(normalizeText(c))):-1;
-  const lots={}, lotLines={}, counted={};
-  for(const x of head?lines.slice(lines.indexOf(head)+1):[]){
-    const m=x.t.match(/^Lot\s+0?(\d{1,2})\s*[.\-:]/i); if(!m){ if(Object.keys(lots).length) break; continue; }
-    const lot=Number(m[1]); if(lot<1||lot>13) continue;
-    let v=null, cnt=null;
-    if(x.cells&&col>=0){ v=bb_num(x.cells[col],true); if(countedCol>=0) cnt=/^non$/i.test(x.cells[countedCol]||''); }
-    else { const p=x.t.match(/\s(Oui|Non)\s+(-?\d+(?:[.,]\d+)?)(?:\s+(Oui|Non))?/i); if(p){ v=parseFrNumber(p[2]); cnt=p[3]?/^non$/i.test(p[3]):null; } }
-    if(v===null) continue;
-    lots[lot]=v; lotLines[lot]=x; counted[lot]=cnt;
+  // Blocs par bâtiment : « Bâtiment sur rue : » (annexe de notice) ; sinon un seul bloc.
+  const heads=[]; all.forEach((x,i)=>{ const m=x.t.match(/^Batiment\s+((?:sur\s+)?[A-Za-z0-9]+)\s*:\s*$/i); if(m&&all.slice(i+1,i+4).some(y=>/^Label\s+BBCA\s+Renovation/i.test(y.t))) heads.push({i,name:`Batiment ${m[1]}`}); });
+  const blocks=heads.length?heads.map((h,k)=>({name:h.name,lines:all.slice(h.i,k+1<heads.length?heads[k+1].i:all.length)})):[{name:null,lines:all}];
+  const fileB=(()=>{ const m=normalizeText(String(doc?.name||'')).match(/(?:^|[\s_\-])bat(?:iment)?[\s_.\-]+(?:sur[\s_]+)?([A-Za-z0-9]+?)(?:[\s_.\-]+v?\d|[\s_.\-]+PRO|\.|$)/i); return m?`Batiment ${m[1]}`:null; })();
+  for(const blk of blocks){
+    const lines=blk.lines;
+    const after=(x,re)=>{ if(x.cells){ const i=x.cells.findIndex(c=>re.test(normalizeText(c).replace(/\s*\(/g,' ('))); const v=x.cells.slice(Math.max(0,i)+1).find(c=>c!==''); return v??null; } return x.t.replace(re,'').trim()||null; };
+    const field=(re)=>{ const x=lines.find(l=>re.test(l.t)); if(!x) return null; const raw=after(x,re); return raw===null?{x,raw:''}:{x,raw:String(raw).trim()}; };
+    const num=(re)=>{ const f=field(re); if(!f) return null; const v=f.x.cells?bb_num(f.raw.replace(/\s*\(.*$/,''),true):bb_value(f.x,false); return v===null?null:{x:f.x,v}; };
+    const nom=field(/^Nom\s+du\s+projet\b/i);
+    const split=br_splitProject(nom?.raw||'');
+    const B=canonical(blk.name||split.building||fileB||'Bâtiment unique');
+    const emit=(x,f,value,method,conf,unit='kgCO2e/m²',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,f,value,`calculette-bbca-reno:${method}`,conf,unit,{building:B,structuredPdf:true,origin,dedicatedRank:8,...extra}); if(o) out.push(o); };
+    const admin={secondarySourceOk:true};
+    // Données projet.
+    if(nom&&split.operation) emit(nom.x,'operation_name',split.operation,'nom-projet',0.95,'',{...admin,building:'Bâtiment unique',provenanceNote:`« Nom du projet » de la calculette BBCA Rénovation : ${nom.raw}.`});
+    const typo=field(/^Typologie\s+de\s+renovation\b/i); if(typo&&typo.raw) emit(typo.x,'renovation',typo.raw.replace(/^renovation\b/i,'Rénovation').replace(/\blegere\b/i,'légère'),'typologie-renovation',0.95,'',{...admin,provenanceNote:'« Typologie de rénovation » de la calculette BBCA Rénovation.'});
+    const bat=field(/^Typologie\s+du\s+batiment\b/i); if(bat&&bat.raw) emit(bat.x,'work_type',workTypeFromLabel(bat.raw),'typologie-batiment',0.95,'',{...admin,provenanceNote:`« Typologie du bâtiment » : ${bat.raw}.`});
+    const sdp=num(/^Surface\s+de\s+plancher(?:\s*\([^)]*\))?/i);
+    if(sdp&&sdp.v>0&&sdp.v<200000) emit(sdp.x,'shab',sdp.v,'sdp',0.95,'m²',{...admin,provenanceNote:'Surface de plancher (SDP) : surface de référence des indicateurs de la calculette BBCA Rénovation.'});
+    // Tableau des lots : colonne « Impact carbone du lot rénové ».
+    const headIdx=lines.findIndex(l=>/Perimetre\s+de\s+la\s+renovation|Impact\s+carbone\s+du\s+lot\s+renov/i.test(l.t));
+    const head=headIdx>=0?lines[headIdx]:null;
+    const col=head?.cells?head.cells.findIndex(c=>/Impact\s+carbone\s+du\s+lot\s+renov/i.test(normalizeText(c))):-1;
+    const countedCol=head?.cells?head.cells.findIndex(c=>/comptabilis/i.test(normalizeText(c))):-1;
+    const lots={}, lotLines={}, counted={};
+    if(headIdx>=0) for(let i=headIdx+1;i<lines.length;i++){
+      const x=lines[i]; const m=x.t.match(/^Lot\s*0?(\d{1,2})\s*[.\-:]/i);
+      if(!m){ if(Object.keys(lots).length>=12||/^(?:Eges|Indicateurs|Calcul)\b/i.test(x.t)) break; continue; }
+      const lot=Number(m[1]); if(lot<1||lot>13) continue;
+      let v=null, cnt=null;
+      if(x.cells&&col>=0){ v=bb_num(x.cells[col],true); if(countedCol>=0) cnt=/^non$/i.test(x.cells[countedCol]||''); }
+      else {
+        const re=/(?:^|\s)(Oui|Non)\s+(-?\d+(?:[.,]\d+)?)(?:\s+(Oui|Non))?\s*$/i;
+        let p=x.t.match(re); if(!p&&lines[i+1]&&!/^Lot\s*\d/i.test(lines[i+1].t)) p=lines[i+1].t.match(/^(Oui|Non)\s+(-?\d+(?:[.,]\d+)?)(?:\s+(Oui|Non))?\s*$/i);
+        if(p){ v=parseFrNumber(p[2]); cnt=p[3]?/^non$/i.test(p[3]):null; }
+      }
+      if(v===null) continue;
+      lots[lot]=v; lotLines[lot]=x; counted[lot]=cnt;
+    }
+    // Indicateurs Eges (valeur projet) et seuils (« … max »).
+    const eg={};
+    for(const [k,f] of [...BR_EGES,['','eges_total']]){
+      const lab=k?`Eges\\s+${k}`:'Eges';
+      const val=num(new RegExp(`^${lab}\\s*\\(`,'i')), max=num(new RegExp(`^${lab}\\s+max\\s*\\(`,'i'));
+      if(val){ eg[f]=val.v; emit(val.x,f,val.v,`eges-${k||'total'}`,0.97,'kgCO2e/m²',{provenanceNote:`Calculette BBCA Rénovation (kg CO2 eq/m² SDP).`}); }
+      if(max) emit(max.x,`${f}_max`,max.v,`eges-${k||'total'}-max`,0.95,'kgCO2e/m²',{provenanceNote:'Seuil BBCA Rénovation de la calculette (kg CO2 eq/m² SDP).'});
+    }
+    const lotSum=Object.entries(lots).filter(([k])=>counted[k]!==true).reduce((a,[,v])=>a+v,0);
+    const pce=eg.eges_pce;
+    const lotsOk=pce!==undefined&&Object.keys(lots).length>=10&&Math.abs(lotSum-pce)<=Math.max(2,pce*0.03);
+    for(const [lot,v] of Object.entries(lots)) emit(lotLines[lot],`ic_lot_${lot}`,v,'lot-renove',0.95,'kgCO2e/m²',{provenanceNote:`Colonne « Impact carbone du lot rénové » (kg CO2 eq/m² SDP)${counted[lot]?' — lot non comptabilisé dans Eges PCE':''}.${pce!==undefined?` Σ lots ${Math.round(lotSum*100)/100} ${lotsOk?'≈':'≠'} Eges PCE ${pce}.`:''}`});
+    // Tableau de résultats d'une notice : « PCE 480 320 -33 % » (seuil BBCA réno, projet).
+    // Label visé.
+    const lab=field(/^Label\s+BBCA\s+Renovation\s*:?/i);
+    if(lab){ const pts=num(/^TOTAL\b/i); emit(lab.x,'mention_bbca','Oui','label-vise',0.95,'',{provenanceNote:`Calculette BBCA Rénovation — niveau : ${lab.raw||'non précisé'}${pts?` (${pts.v} points)`:''}.`}); }
   }
-  const pce=num(/^Eges\s+PCE\s*\(/i);
-  const lotSum=Object.entries(lots).filter(([k])=>counted[k]!==true).reduce((a,[,v])=>a+v,0);
-  const lotsOk=pce&&Object.keys(lots).length>=10&&Math.abs(lotSum-pce.v)<=Math.max(2,pce.v*0.03);
-  for(const [lot,v] of Object.entries(lots)) emit(lotLines[lot],`ic_lot_${lot}`,v,'lot-renove',0.95,'kgCO2e/m²',{provenanceNote:`Colonne « Impact carbone du lot rénové » (kg CO2 eq/m² SDP)${counted[lot]?' — lot non comptabilisé dans Eges PCE':''}.${pce?` Σ lots ${Math.round(lotSum*100)/100} ${lotsOk?'≈':'≠'} Eges PCE ${pce.v}.`:''}`});
-  // Indicateurs BBCA réno.
-  const note=t=>({provenanceNote:`${t} de la calculette BBCA Rénovation (kg CO2 eq/m² SDP).`});
-  if(pce) emit(pce.x,'ic_components',pce.v,'eges-pce',0.95,'kgCO2e/m²',note('Eges PCE'));
-  const ch=num(/^Eges\s+chantier\s*\(/i); if(ch) emit(ch.x,'ic_site',ch.v,'eges-chantier',0.95,'kgCO2e/m²',note('Eges chantier'));
-  const en=num(/^Eges\s+energie\s*\(/i); if(en) emit(en.x,'ic_energy',en.v,'eges-energie',0.95,'kgCO2e/m²',note('Eges énergie'));
-  // Label visé.
-  const lab=field(/^Label\s+BBCA\s+Renovation\s*:?/i);
-  if(lab){ const pts=num(/^TOTAL\b/i); emit(lab.x,'mention_bbca','Oui','label-vise',0.95,'',{provenanceNote:`Calculette BBCA Rénovation — niveau : ${lab.raw||'non précisé'}${pts?` (${pts.v} points)`:''}.`}); }
+  // Notice ACV : tableaux « Résultats de l'ACV du bâtiment sur rue » (Seuil BBCA Réno | Projet | % gain).
+  all.forEach((x,i)=>{
+    const m=x.t.match(/^Resultats\s+de\s+l.?ACV\s+du\s+batiment\s+(.+?)\s*$/i); if(!m) return;
+    const B=canonical(`Batiment ${m[1]}`);
+    for(const y of all.slice(i+1,i+14)){
+      const r=y.t.match(/^(PCE|PCENA|Energie|Eau|Chantier|Total)\s+([\d  ]+(?:[.,]\d+)?)\s+([\d  ]+(?:[.,]\d+)?)\s+(?:[-+]?\d+\s*%|OK)/i); if(!r) continue;
+      const f=({pce:'eges_pce',pcena:'eges_pcena',energie:'eges_energy',eau:'eges_water',chantier:'eges_site',total:'eges_total'})[r[1].toLowerCase()];
+      const seuil=parseFrNumber(r[2].replace(/[  ]/g,'')), projet=parseFrNumber(r[3].replace(/[  ]/g,''));
+      if(out.some(o=>o.field===f&&o.building===B)) continue;
+      const o1=occ(doc,y.page,y.line,f,projet,'notice-acv-reno:resultats',0.95,'kgCO2e/m²',{building:B,structuredPdf:true,origin:'Notice ACV BBCA Rénovation — résultats',provenanceNote:'Tableau de résultats ACV (projet, kg CO2 eq/m² SDP).'}); if(o1) out.push(o1);
+      const o2=occ(doc,y.page,y.line,`${f}_max`,seuil,'notice-acv-reno:seuils',0.93,'kgCO2e/m²',{building:B,structuredPdf:true,origin:'Notice ACV BBCA Rénovation — résultats',provenanceNote:'Seuil BBCA Rénovation du tableau de résultats.'}); if(o2) out.push(o2);
+    }
+  });
+  return out;
+}
+
+// Bâtiments d'une calculette BBCA Rénovation (blocs « Bâtiment sur rue : », « Nom du projet …bat. Cour », nom de fichier).
+function bbcaRenovationBuildingNames(doc,canonical=(s)=>s){
+  const names=new Set(parseBbcaRenovationCalculette(doc,(d,p,l,field,v,m,c,u,extra)=>({field,building:extra?.building}),canonical).filter(o=>o&&o.field!=='operation_name').map(o=>o.building));
+  return [...names];
+}
+
+/* ---- renovation-thermique.js ---- */
+// v2.3.11 — Études thermiques de rénovation (RT existant globale, méthode Th-C-E ex) :
+//  • notice thermique de bureau d'études « RT-Ex » : tableau de résultats par bâtiment
+//    (« Batiment sur cour : » … « Ubat initial Cep initial … Ubat projet Cep projet … » puis la ligne de valeurs),
+//    tableaux de compositions avant / après par « Immeuble rue / cour » (parois verticales, toitures, planchers bas :
+//    « … Fibre de bois Interieur 0,036 14 3,9 Oui Oui » = isolant, λ, épaisseur cm, R), systèmes décrits en clair ;
+//  • rapport Pléiades « Résultats RT Existant suivant la méthode THCE - Ex » : Cep (initial / projet / référence),
+//    Ubat, caractéristiques du projet, compositions de parois, baies, générateurs, ventilation ;
+//  • plan de repérage des isolants : légende « Isolation par l'intérieur en fibre de bois: e=14 cm ; λ=0,036 et R=3,89 ».
+// Les épaisseurs sont exprimées en mm (convention ExtracTerre), les R en m².K/W.
+
+
+const rt_lineText=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
+function rt_allLines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:rt_lineText(line)})); return out; }
+const rt_nums=s=>(String(s||'').match(/[-+]?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
+const INSUL_RE=/(fibre\s+de\s+bois|laine\s+de\s+bois|laine\s+de\s+roche|laine\s+de\s+verre|laine\s+minerale|ouate\s+de\s+cellulose|fibre\s+de\s+cellulose|coton\s+recycle|polyurethane|polystyrene(?:\s+extrude)?|\bPSE\b|\bXPS\b|\bPIR\b|\bPUR\b|chanvre|liege|paille)/i;
+const rt_insul=s=>insulationName(s)||(/coton/i.test(s)?'Biosourcé chanvre/lin/coton':null);
+const RT_F={wall:['wall_insulation','wall_insulation_thickness','wall_insulation_r'],roof:['roof_insulation','roof_insulation_thickness','roof_insulation_r'],floor:['floor_insulation','floor_insulation_thickness','floor_insulation_r']};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Notice thermique RT-Ex (bureau d'études)
+function isRtexThermalNotice(doc){
+  const t=String(doc?.read?.text||'').slice(0,400000);
+  return /notice\s+thermique/i.test(t)&&/RT[- ]?Ex\b|RT\s+existant/i.test(t)&&/Ubat\s+initial\s+Cep\s+initial/i.test(t);
+}
+function rtexNoticeBuildingNames(doc){
+  const names=[]; for(const x of rt_allLines(doc)){ const m=x.t.match(/^Batiment\s+((?:sur\s+)?[A-Za-z0-9]+)\s*:\s*$/i); if(m) names.push(`Batiment ${m[1]}`); }
+  return [...new Set(names)];
+}
+function parseRtexThermalNotice(doc,occ,canonical=(s)=>s){
+  const out=[]; const lines=rt_allLines(doc); const origin='Notice thermique RT existant (bureau d’études)';
+  const emit=(x,b,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`notice-rtex:${method}`,conf,unit,{building:canonical(b),structuredPdf:true,origin,dedicatedRank:10,...extra}); if(o) out.push(o); };
+  const names=rtexNoticeBuildingNames(doc);
+  // 1. Résultats par bâtiment : ligne de valeurs sous l'en-tête « Ubat initial Cep initial … Ubat projet Cep projet … ».
+  let cur=null;
+  lines.forEach((x,i)=>{
+    const m=x.t.match(/^Batiment\s+((?:sur\s+)?[A-Za-z0-9]+)\s*:\s*$/i); if(m){ cur=`Batiment ${m[1]}`; return; }
+    if(!cur||!/Ubat\s+initial\s+Cep\s+initial/i.test(x.t)) return;
+    const projHead=/Ubat\s+projet\s+Cep\s+projet/i.test(x.t);
+    for(const y of lines.slice(i+1,i+6)){
+      if(/[a-z]{3}/i.test(y.t.replace(/W\/\(m²\.K\)|kWhEP\/m²|kgeqCO2\/m²\.an/gi,''))) continue;
+      const v=rt_nums(y.t); if(v.length<4) continue;
+      const note={provenanceNote:`Tableau « Etat initial / Résultats projet » de la notice (${v.length} colonnes).`};
+      emit(y,cur,'ubat_before',v[0],'ubat-initial',0.95,'W/m².K',note); emit(y,cur,'cep_before',v[1],'cep-initial',0.95,'kWhEP/m².an',note);
+      if(projHead&&v.length>=6){ const k=v.length; emit(y,cur,'ubat_after',v[k-3],'ubat-projet',0.95,'W/m².K',note); emit(y,cur,'cep_after_final',v[k-2],'cep-projet',0.95,'kWhEP/m².an',note); }
+      break;
+    }
+  });
+  // 2. Compositions par « Immeuble rue / cour » (sections « > Parois verticales », « > Toitures », « > Planchers bas »).
+  let section='', bld=null; const best={};
+  for(const x of lines){
+    if(/^>\s*Parois\s+verticales/i.test(x.t)) section='wall'; else if(/^>\s*Toitures/i.test(x.t)) section='roof'; else if(/^>\s*Planchers\s+bas/i.test(x.t)) section='floor'; else if(/^>\s*Planchers\s+intermediaires/i.test(x.t)) section='mid';
+    else if(/^Dormant\b|^Ouvertures\b/i.test(x.t)) section='';
+    const ib=x.t.match(/^Immeuble\s+(rue|cour|[A-Z0-9]{1,3})\b/i); if(ib) bld=`Batiment ${ib[1]}`;
+    if(!section||section==='mid'||!bld) continue;
+    const r=x.t.match(new RegExp(INSUL_RE.source+'\\s+(?:Interieur|Exterieur|ITI|ITE|ITR)?\\s*(0[.,]\\d{2,3})\\s+(\\d{1,3}(?:[.,]\\d)?)\\s+(\\d{1,2}[.,]\\d{1,2})','i'));
+    if(!r) continue;
+    const type=rt_insul(r[1]); if(!type) continue;
+    // Parois verticales : seules les parois donnant sur l'extérieur décrivent l'isolation des façades.
+    if(section==='wall'&&!/\bExterieur\b/i.test(x.t)) continue;
+    (best[`${bld}|${section}`]=best[`${bld}|${section}`]||[]).push({x,type,e:parseFrNumber(r[3]),R:parseFrNumber(r[4])});
+  }
+  // Parois : épaisseur la plus fréquente ; toiture : la plus forte ; plancher bas : la première isolée.
+  const pickers={wall:a=>{ const c={}; a.forEach(z=>c[z.e]=(c[z.e]||0)+1); const e=Object.entries(c).sort((p,q)=>q[1]-p[1]||q[0]-p[0])[0][0]; return a.find(z=>String(z.e)===e); },roof:a=>[...a].sort((p,q)=>q.e-p.e)[0],floor:a=>a[0]};
+  for(const [key,arr] of Object.entries(best)){
+    const [b,sec]=key.split('|'); const z=pickers[sec](arr);
+    const note={provenanceNote:`Composition projetée (${arr.length} paroi(s) isolée(s) de ce type dans le tableau) : ${z.type}, ${z.e} cm, R = ${z.R}.`};
+    emit(z.x,b,RT_F[sec][0],z.type,`${sec}-isolant`,0.93,'',note); emit(z.x,b,RT_F[sec][1],Math.round(z.e*10),`${sec}-epaisseur`,0.92,'mm',note); emit(z.x,b,RT_F[sec][2],z.R,`${sec}-r`,0.92,'m².K/W',note);
+  }
+  // 3. Menuiseries et systèmes (texte, communs aux bâtiments de la notice).
+  const text=lines.map(x=>x.t).join('\n'); const targets=names.length?names:['Bâtiment unique'];
+  const common=(field,value,re,method,conf=0.9)=>{ const x=lines.find(y=>re.test(y.t)); if(!x) return; for(const b of targets) emit(x,b,field,value,method,conf,'',{provenanceNote:'Disposition décrite par la notice pour les bâtiments du projet.'}); };
+  if(/cadre\s+bois/i.test(text)) common('window_material','Bois',/cadre\s+bois/i,'menuiseries',0.9);
+  if(/double\s+vitrage/i.test(text)) common('window_glazing','Double vitrage',/double\s+vitrage/i,'vitrage',0.88);
+  const vmc=text.match(/VMC\s+simple\s+flux[^.\n]{0,30}?hygro\s*([AB])\b|VMC\s+(double\s+flux)|VMC\s+(simple\s+flux)/i);
+  if(vmc) common('ventilation',vmc[1]?`VMC Hygro ${vmc[1].toUpperCase()}`:vmc[2]?'VMC double flux':'VMC simple flux',/VMC\s+(?:simple|double)\s+flux/i,'ventilation',0.93);
+  if(/(?:chauffage\s+par|assures?\s+par)\s+(?:des\s+)?radiateurs?\s+electriques|radiateurs?\s+electriques?\s+connectes/i.test(text)){ common('heating_mode_after','Chauffage électrique direct',/radiateurs?\s+electriques/i,'chauffage',0.92); common('heating_vector_after','Électricité',/radiateurs?\s+electriques/i,'chauffage-vecteur',0.92); }
+  if(/ballons?\s+(?:electriques?\s+)?a\s+accumulation/i.test(text)&&/tout\s+electrique|ballons?\s+electriques?|Chauffeo/i.test(text)){ common('ecs','Ballon électrique',/ballons?\s+(?:electriques?\s+)?a\s+accumulation/i,'ecs',0.9); common('ecs_vector_after','Électricité',/ballons?\s+(?:electriques?\s+)?a\s+accumulation/i,'ecs-vecteur',0.9); }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Rapport Pléiades RT existant (Th-C-E ex)
+function isPleiadesRtexReport(doc){
+  const t=String(doc?.read?.text||'').slice(0,400000);
+  return /Resultats\s+RT\s+Existant\s+suivant\s+la\s+methode\s+TH-?C-?E\s*-?\s*Ex/i.test(t);
+}
+function rt_fileBuilding(doc){
+  const n=normalizeText(String(doc?.name||'')).replace(/[_\-.]+/g,' ');
+  const m=n.match(/\b(?:batiment|bat)\s+(?:sur\s+)?([A-Za-z0-9]+)\b/i); return m&&!/^(?:pdf|rapport)$/i.test(m[1])?`Batiment ${m[1]}`:null;
+}
+function pleiadesRtexBuildingNames(doc){
+  const raw=[]; for(const x of rt_allLines(doc)){ const m=x.t.match(/^1\.\d+\s+(Batiment\s+.+)$/i); if(m) raw.push(m[1].trim()); }
+  const uniq=[...new Set(raw)]; const fb=rt_fileBuilding(doc);
+  // Un seul bâtiment numéroté par défaut (« Batiment 1 ») : le nom de fichier (« … batiment cour ») est plus parlant.
+  if(uniq.length<=1&&fb&&(!uniq.length||/^Batiment\s+1$/i.test(uniq[0]))) return [fb];
+  return uniq.length?uniq:(fb?[fb]:[]);
+}
+function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
+  const out=[]; const lines=rt_allLines(doc); const origin='Pléiades — résultats RT existant (Th-C-E ex)';
+  const names=pleiadesRtexBuildingNames(doc); const B=canonical(names[0]||'Bâtiment unique');
+  const emit=(x,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`pleiades-rtex:${method}`,conf,unit,{building:B,structuredPdf:true,origin,dedicatedRank:6,...extra}); if(o) out.push(o); };
+  const find=re=>lines.find(x=>re.test(x.t));
+  // Cep : « Coefficient Cep 171.5 » (projet) ; ligne « kWh ep/m² [initial] projet référence max ».
+  const coef=find(/^Coefficient\s+Cep\s+[\d.,]+/i); const cepP=coef?rt_nums(coef.t)[0]:null;
+  if(coef&&cepP!==null) emit(coef,'cep_after_final',cepP,'cep-projet',0.97,'kWhEP/m².an',{provenanceNote:'« Coefficient Cep » du projet après travaux.'});
+  const row=find(/^kWh\s*ep\/m²?\s+[\d.,]+\s+[\d.,]+/i);
+  if(row&&cepP!==null){ const v=rt_nums(row.t.replace(/m²|m2/g,'')); const k=v.indexOf(cepP); if(k>0) emit(row,'cep_before',v[k-1],'cep-initial',0.95,'kWhEP/m².an',{provenanceNote:'Colonne « Cep initial » du tableau des résultats.'}); }
+  // Ubat : « Ubat (hiver) W/m2.K [initial] projet référence ».
+  const ub=find(/^Ubat\s*\(hiver\)/i);
+  if(ub){ const v=rt_nums(ub.t.replace(/W\/m2\.K/i,'')).filter(x=>x<10); if(v.length>=2){ emit(ub,'ubat_after',v[v.length-2],'ubat-projet',0.96,'W/m².K',{provenanceNote:'Ubat projet (colonne « Projet », la dernière valeur étant la référence).'}); if(v.length>=3) emit(ub,'ubat_before',v[v.length-3],'ubat-initial',0.93,'W/m².K'); } }
+  // Caractéristiques du projet.
+  const dep=find(/^Departement\s*:?\s*(\d{2,3}|2A|2B)\s*-/i); if(dep) emit(dep,'department',dep.t.match(/(\d{2,3}|2A|2B)\s*-/i)[1].padStart(2,'0'),'departement',0.97,'',{building:'Bâtiment unique'});
+  const yr=find(/^Annee\s+de\s+construction\s+\d{4}/i); if(yr){ const y=rt_nums(yr.t)[0]; if(y>=1500&&y<=2100) emit(yr,'construction_year',y,'annee',0.95); }
+  const lg=find(/^Nombre\s+de\s+logements\s+\d+/i); if(lg) emit(lg,'housing_count',rt_nums(lg.t)[0],'logements',0.95);
+  const sh=find(/^Surface\s+habitable\s+en\s+residentiel/i); if(sh){ const v=rt_nums(sh.t)[0]; if(v>0) emit(sh,'shab',v,'shab',0.95,'m²',{provenanceNote:'Surface habitable (groupe) de l’étude RT existant.'}); }
+  // Compositions : paroi (« Type de paroi Paroi verticale / Plancher haut / Plancher bas ») puis couche isolante
+  // « Fibre de bois 036 14.0 0.036 140 0.583 0.26 3.89 » (épaisseur cm, λ, ρ, Cs, U, R).
+  let type=null, nature=''; const comp={};
+  for(const x of lines){
+    let m;
+    if((m=x.t.match(/^Type\s+de\s+paroi\s+(Paroi\s+verticale|Plancher\s+haut|Plancher\s+bas|Toiture)/i))){ type=/verticale/i.test(m[1])?'wall':/bas/i.test(m[1])?'floor':'roof'; nature=''; continue; }
+    if(/^Type\s+de\s+paroi\b/i.test(x.t)){ type=null; continue; }
+    if((m=x.t.match(/^Nature\s+de\s+paroi\s+(.*)$/i))){ nature=m[1]; continue; }
+    if(!type) continue;
+    const r=x.t.match(/^(.+?)\s+(\d{1,3}(?:\.\d)?)\s+(0\.0\d{1,3})\s+\d+\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s*$/);
+    if(!r||!INSUL_RE.test(r[1])) continue;
+    if(type==='wall'&&nature&&!/mur\s+exterieur/i.test(nature)) continue;
+    const name=rt_insul(r[1]); if(!name) continue;
+    (comp[type]=comp[type]||[]).push({x,name,e:Number(r[2]),R:Number(r[4])});
+  }
+  for(const [k,arr] of Object.entries(comp)){
+    const cnt={}; arr.forEach(z=>cnt[`${z.name}|${z.e}`]=(cnt[`${z.name}|${z.e}`]||0)+1);
+    const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]||Number(b[0].split('|')[1])-Number(a[0].split('|')[1]))[0][0]; const z=arr.find(y=>`${y.name}|${y.e}`===top);
+    const note={provenanceNote:`Bibliothèque de parois du projet : ${z.name} ${z.e} cm (R = ${z.R}) — composition la plus fréquente (${cnt[top]}/${arr.length}).`};
+    emit(z.x,RT_F[k][0],z.name,`${k}-isolant`,0.94,'',note); emit(z.x,RT_F[k][1],Math.round(z.e*10),`${k}-epaisseur`,0.93,'mm',note); emit(z.x,RT_F[k][2],z.R,`${k}-r`,0.93,'m².K/W',note);
+  }
+  // Baies.
+  const cadre=find(/^Type\s+de\s+cadre\s+\S/i); if(cadre){ const s=cadre.t.replace(/^Type\s+de\s+cadre\s+/i,''); const v=/pvc/i.test(s)?'PVC':/bois.*alu|alu.*bois|mixte/i.test(s)?'Bois-aluminium':/alu/i.test(s)?'Aluminium':/bois/i.test(s)?'Bois':null; if(v) emit(cadre,'window_material',v,'cadre',0.94); }
+  // Premier vitrage réellement décrit (les portes portent « Nom codifié sans objet »).
+  for(const code of lines.filter(x=>/^Nom\s+codifie\s+\S/i.test(x.t))){ const g=normalizeGlazingType(code.t.replace(/^Nom\s+codifie\s+/i,'')); if(g){ emit(code,'window_glazing',g,'vitrage',0.94); break; } }
+  const prot=find(/^Protection\s+(?!solaire)\S/i); if(prot&&!/pas\s+de\s+protection/i.test(prot.t)){ const s=prot.t; const v=/volet\s+roulant/i.test(s)?'Volet roulant':/brise|bso|venitien/i.test(s)?'BSO':/store/i.test(s)?'Store':/battant|persienne/i.test(s)?'Volet battant':null; if(v) emit(prot,'window_shading',v,'protection',0.92); }
+  // Systèmes.
+  const gen=lines.findIndex(x=>/^Generation\s+\d+\s+\(Volume\s+chauffe/i.test(x.t));
+  if(gen>=0){ const blk=lines.slice(gen,gen+25).map(x=>x.t).join(' ');
+    if(/effet\s+joule|panneau\s+rayonnant/i.test(blk)){ emit(lines[gen],'heating_mode_after','Chauffage électrique direct','generation',0.94); emit(lines[gen],'heating_vector_after','Électricité','generation-vecteur',0.94); }
+    else if(/pompe\s+a\s+chaleur|\bPAC\b/i.test(blk)) emit(lines[gen],'heating_mode_after','PAC','generation',0.88);
+    else if(/chaudiere\s+gaz|condensation/i.test(blk)) emit(lines[gen],'heating_mode_after','Chaudière condensation','generation',0.88);
+    if(/Ballon|Stockage-Generation|Chauffe-?eau/i.test(blk)&&/effet\s+joule/i.test(blk)){ emit(lines[gen],'ecs','Ballon électrique','ecs',0.92); emit(lines[gen],'ecs_vector_after','Électricité','ecs-vecteur',0.92); }
+  }
+  const ven=find(/^Nouveau\s+systeme\s+de\s+ventilation\b/i)||find(/^Systeme\s+de\s+ventilation\s+(?!initiale)\S/i);
+  if(ven){ const s=ven.t; const v=/double\s+flux/i.test(s)?'VMC double flux':/hygro\w*\s*B/i.test(s)?'VMC Hygro B':/hygro\w*\s*A/i.test(s)?'VMC Hygro A':/simple\s+flux/i.test(s)?'VMC simple flux':null; if(v) emit(ven,'ventilation',v,'ventilation',0.93); }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Plan de repérage des isolants (légende)
+function isInsulationMarkupPlan(doc){
+  const t=String(doc?.read?.text||'').slice(0,100000);
+  return /rep[eé]rage\s+des\s+isolants/i.test(t)&&/Isolation\s+[^:\n]{0,80}:\s*e\s*=\s*\d/i.test(t);
+}
+function parseInsulationMarkupPlan(doc,occ){
+  const out=[]; const lines=rt_allLines(doc); const origin='Plan de repérage des isolants (légende)';
+  let group=''; const items=[];
+  for(const x of lines){
+    if(/^Isolants?\s+verticaux/i.test(x.t)){ group='wall'; continue; }
+    if(/^Isolants?\s+horizontaux/i.test(x.t)){ group='h'; continue; }
+    const m=x.t.match(/^Isolation\s+(.+?)\s+en\s+(.+?)\s*:\s*e\s*=\s*(\d+(?:[.,]\d+)?)\s*cm.*?R\s*=\s*(\d+(?:[.,]\d+)?)/i); if(!m) continue;
+    const where=normalizeText(m[1]).toLowerCase();
+    const kind=/toiture|comble|rampant/.test(where)?'roof':/plancher/.test(where)?'floor':(group==='wall'||/mur|vertical/.test(where))?'wall':null;
+    const name=rt_insul(m[2]); if(!kind||!name) continue;
+    items.push({x,kind,name,e:parseFrNumber(m[3]),R:parseFrNumber(m[4])});
+  }
+  for(const kind of ['wall','roof','floor']){
+    const arr=items.filter(z=>z.kind===kind); if(!arr.length) continue;
+    // Parois verticales et toitures : l'isolation principale est la plus épaisse ; plancher bas : la première citée.
+    const z=kind==='floor'?arr[0]:[...arr].sort((a,b)=>b.e-a.e)[0];
+    const others=arr.length>1?` Autres isolants repérés : ${arr.filter(y=>y!==z).map(y=>`${y.name} ${y.e} cm`).join(', ')}.`:'';
+    const note={provenanceNote:`Légende du plan : ${z.name}, e = ${z.e} cm, R = ${z.R}.${others}`};
+    const emit=(f,v,unit,conf)=>{ const o=occ(doc,z.x.page,z.x.line,f,v,`isolants-plan:${kind}`,conf,unit,{building:'Bâtiment unique',structuredPdf:true,origin,dedicatedRank:20,...note}); if(o) out.push(o); };
+    emit(RT_F[kind][0],z.name,'',0.9); emit(RT_F[kind][1],Math.round(z.e*10),'mm',arr.length>1?0.86:0.9); emit(RT_F[kind][2],z.R,'m².K/W',arr.length>1?0.86:0.9);
+  }
   return out;
 }
 
@@ -2838,9 +3106,18 @@ function classifyDocument(fileName, text='', meta={}) {
     for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
-  if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s+reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov/i.test(t))){
+  if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s*-?\s*reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov|perimetre\s+de\s+la\s+renovation|eges\s*pce/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
     for(const k of [DOC_TYPES.MANUAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.CONTRACT]) score[k]=(score[k]||0)*0.2;
+  }
+  // v2.3.11 — plan de repérage des isolants (bureau d'études thermiques) : pièce de l'étude thermique.
+  if(/reperage\s+des\s+isolants/i.test(t)&&/isolation\s+[^:\n]{0,80}:\s*e\s*=\s*\d/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+40;
+    for(const k of [DOC_TYPES.PLAN,DOC_TYPES.UNKNOWN]) score[k]=(score[k]||0)*0.2;
+  }
+  // v2.3.11 — études RT existant (notice BE RT-Ex, rapport Pléiades Th-C-E ex).
+  if(/resultats\s+rt\s+existant\s+suivant\s+la\s+methode|notice\s+thermique[\s\S]{0,4000}rt[- ]?ex\b/i.test(t)){
+    score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+30;
   }
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
@@ -4776,6 +5053,8 @@ function semanticHierarchyRank(doc,o){
   if(/^recap-be:/.test(m)) return 12;
   const e=normLower(`${o?.origin||''} ${o?.excerpt||''}`);
   if(o?.userValidated) return 0;
+  // v2.3.11 — rang posé par un parseur dédié (sortie logiciel < notice BE < plan / légende), prioritaire sur l'heuristique.
+  if(Number.isFinite(o?.dedicatedRank)) return o.dedicatedRank;
 
   if(doc.type===DOC_TYPES.RT2012){
     if(/rt2012:chapter2-|rset:chapter2-|rset:rt2012-cep-table|rset:bbio-table|rset:chapter2-tic-worst-group/.test(m)) return 5;
@@ -4966,6 +5245,7 @@ function resolveDocumentFamilies(doc){
 const CARBON_CONTENT_SIGNATURE=/ic\s*(?:composants?|construction|[eé]nergie)\b|contributeur\s+(?:composant|[eé]nergie)|indicateur\s+co\s*2?\s*dynamique|(?:^|\n)\s*0?1\s*[-–]\s*vrd\b|total\s+lot\s*:/i;
 // v2.3.5 — indicateurs RE2020 Ic construction / Ic énergie et leurs seuils (max courant et max 2028).
 const IC_LIMIT_FIELDS=['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'];
+const EGES_FIELDS=['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max'];
 const FAMILY_ALLOWED_FIELDS=Object.freeze({
   rset:new Set([...ADMIN_FIELDS,'housing_count','shab','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type',...ENVELOPE_FIELDS,
     'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain',...CEP_DETAIL,'enr','enr_type','department']),
@@ -4973,7 +5253,7 @@ const FAMILY_ALLOWED_FIELDS=Object.freeze({
     'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain',...CEP_DETAIL,'enr','enr_type','department']),
   thcex:new Set([...ADMIN_FIELDS,'housing_count','shab','construction_year',...ENVELOPE_FIELDS,
     'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','ubat_before','ubat_after','cep_before','cep_after_final','enr','enr_type']),
-  carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS]),
+  carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS,...EGES_FIELDS]),
   cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
@@ -5184,13 +5464,28 @@ function parseBbcaCalculetteDocument(doc){
 }
 function parseBbcaRenovationDocument(doc){
   const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
-  return annotateSemanticHierarchy(fdoc,parseBbcaRenovationCalculette(fdoc,occ).filter(Boolean)).map(o=>({...o,specializedFamily:'calculette-bbca-reno'}));
+  return annotateSemanticHierarchy(fdoc,parseBbcaRenovationCalculette(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'calculette-bbca-reno'}));
+}
+
+// v2.3.11 — Rénovation (RT existant) : notice thermique BE, rapport Pléiades Th-C-E ex, plan de repérage des isolants.
+// Le moteur générique ne complète que les données administratives (ses lectures « Cep avant » de ces documents
+// confondaient seuils, gains et numéros de page).
+function parseRenovationThermalDocument(doc,kind){
+  const fdoc={...doc,type:doc.type||(kind==='plan'?DOC_TYPES.THERMAL:DOC_TYPES.RT_EXISTING)};
+  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
+  const dedicated=annotateSemanticHierarchy(fdoc,ded.filter(Boolean)).map(o=>({...o,specializedFamily:`renovation-${kind}`}));
+  const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','owner_company','department']);
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
+  return [...dedicated,...generic];
 }
 
 function parseDocument(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
+  if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
+  if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
+  if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
@@ -6238,8 +6533,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v2.3.5 : 173 colonnes exactes (168 historiques + 5 IC ajoutées en fin), chacune avec des tags reconnus.
-  assert('Schéma métier = 173 colonnes',FIELD_DEFS.length===173,String(FIELD_DEFS.length));
+  // Contrat de schéma v2.3.11 : 185 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 ajoutées en fin), chacune avec des tags reconnus.
+  assert('Schéma métier = 185 colonnes',FIELD_DEFS.length===185,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));
@@ -6463,7 +6758,7 @@ function exportProjectsExcel(projects,rules){
   const wb=XLSX.utils.book_new();
   const fields=FIELD_DEFS;
 
-  // La feuille principale respecte strictement le schéma métier : 173 colonnes dans l'ordre de référence
+  // La feuille principale respecte strictement le schéma métier : 185 colonnes dans l'ordre de référence
   // (les nouvelles colonnes sont toujours ajoutées à la fin), puis la colonne « Tags » du projet.
   const data=[[...fields.map(f=>f.label),'Tags']];
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });
@@ -7593,6 +7888,7 @@ const RESULT_VIEWS = Object.freeze({
   carbon:{label:'Carbone',groups:[
     {title:'IC composants & chantier',keys:['ic_components','ic_site','stock_c_per_m2','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
     {title:'IC construction & seuils',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028']},
+    {title:'Eges (E+C- / BBCA Rénovation)',keys:['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']},
     {title:'IC énergie',keys:['ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   envelope:{label:'Structure & enveloppe',groups:[

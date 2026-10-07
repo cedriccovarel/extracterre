@@ -12,14 +12,14 @@ import {isGarbledTextLayer,pdfTextQuality,shouldOcrPdfPage} from './js/readers.j
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.10','version');
+eq(APP_VERSION,'2.3.11','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 
 // --- 1. Schéma : 5 colonnes IC ajoutées à la fin, dans l'ordre demandé ------------------------------
-eq(FIELD_DEFS.length,173,'173 champs');
-eq(FIELD_DEFS.slice(-5).map(f=>f.key),['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'],'nouvelles colonnes en fin de schéma');
+eq(FIELD_DEFS.length,185,'185 champs');
+eq(FIELD_DEFS.slice(168,173).map(f=>f.key),['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'],'nouvelles colonnes en fin de schéma');
 ok(DEFAULT_SOURCE_RULES.ic_energy_max.main.includes('RSET RE2020'),'Ic énergie max publié aussi par les RSET');
 
 // --- 2. Sortie Pléiades (partie thermique), deux bâtiments --------------------------------------------
@@ -62,7 +62,7 @@ eq(val(ro,'bbio','Bâtiment A'),55.2,'« Coef\\0cient » (ligature) reconnu'); e
 eq(val(ro,'cep','Bâtiment A'),80.1); eq(val(ro,'cepnr','Bâtiment A'),20.2,'Cep,nr lu dans sa colonne'); eq(val(ro,'cepnr_max','Bâtiment A'),70);
 eq(val(ro,'shab','Bâtiment A'),1250.5,'SRef avec séparateur de milliers'); eq(val(ro,'housing_count','Bâtiment B'),4);
 eq(val(ro,'dh','Bâtiment A'),631,'« 631 242 178 » = trois nombres'); eq(val(ro,'dh','Bâtiment B'),520);
-ok(ro.find(o=>o.field==='dh_max').confidence<0.9,'DH max du texte générique → à vérifier');
+ok(ro.find(o=>o.field==='dh_max').confidence>=0.9,'v2.3.11 : DH max catégorie 1 (1250) retenu pour un bâtiment d’habitation');
 ok(!ro.some(o=>o.field==='heating_mode_after'&&/plancher/i.test(o.value)),'texte des exigences de moyens ignoré');
 
 // --- 4. Fiche RSEE CSTB (partie environnementale) issue d'un OCR -----------------------------------------
@@ -97,13 +97,13 @@ const st=parseDocument(std);
 eq(val(st,'cooling'),'Aucun','pas de climatisation issue d’une variante'); eq(val(st,'window_shading'),'BSO'); eq(val(st,'window_glazing'),'Triple vitrage');
 ok(st.every(o=>o.field!=='cooling'||o.value==='Aucun'),'aucune « Climatisation active »');
 
-// --- 7. Export : colonne « Tags » après les 173 colonnes ----------------------------------------------------
+// --- 7. Export : colonne « Tags » après les 185 colonnes ----------------------------------------------------
 const sheets={}; globalThis.XLSX={utils:{book_new:()=>({}),aoa_to_sheet:aoa=>({aoa,'!ref':'A1:A1'}),book_append_sheet:(wb,ws,name)=>{ sheets[name]=ws.aoa; },decode_range:()=>({s:{c:0,r:0},e:{c:0,r:0}}),encode_cell:()=>'A1'},writeFile:()=>{}};
 const {exportProjectsExcel}=await import('./js/exporter.js');
 const res=analyzeDocuments([sortie],DEFAULT_SOURCE_RULES,'Projet test');
 exportProjectsExcel([{result:res,projectTags:[{label:'Géothermie'},{label:'BEPOS'}],operationName:'Projet test'}],DEFAULT_SOURCE_RULES);
 const main=sheets['Données par bâtiment'];
-eq(main[0].length,174,'173 colonnes + Tags'); eq(main[0].slice(-6),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028','Tags']);
+eq(main[0].length,186,'185 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-2),['Eges total Max','Tags']);
 eq(main[1].at(-1),'Géothermie ; BEPOS','tags du projet sur chaque ligne');
 eq(main[1][main[0].indexOf('IC énergie Max')],500.2,'Ic énergie max exporté');
 console.log(`v2.3.5 — ${n} vérifications OK (documents fictifs)`);

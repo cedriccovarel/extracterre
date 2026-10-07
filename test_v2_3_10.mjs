@@ -11,7 +11,7 @@ import {normalizeText} from './js/utils.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.10','version');
+eq(APP_VERSION,'2.3.11','version');
 const prep=(d,kind)=>{ const c=classifyDocument(d.name,d.read.text,{kind}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f)=>out.find(o=>o.field===f)?.value;
 
@@ -35,13 +35,13 @@ const o=parseDocument(xl);
 eq(val(o,'ic_lot_1'),2); eq(val(o,'ic_lot_3'),40,'colonne « Impact carbone du lot rénové », pas les ratios'); eq(val(o,'ic_lot_12'),3); ok(!o.some(x=>x.field==='ic_lot_13'),'pas de lot 13');
 ok(/non comptabilis/.test(o.find(x=>x.field==='ic_lot_12').provenanceNote),'lot non comptabilisé signalé');
 ok(/Σ lots 407 ≈ Eges PCE 407/.test(o.find(x=>x.field==='ic_lot_1').provenanceNote),'Σ lots comptabilisés = Eges PCE');
-eq(val(o,'ic_components'),407); eq(val(o,'ic_site'),8); eq(val(o,'ic_energy'),900);
-ok(!o.some(x=>/_max/.test(x.field)),'seuils BBCA réno non repris');
+eq(val(o,'eges_pce'),407); eq(val(o,'eges_site'),8); eq(val(o,'eges_energy'),900,'v2.3.11 : Eges rangés dans les colonnes Eges');
+ok(!o.some(x=>/^ic_.*_max/.test(x.field)),'seuils BBCA réno ≠ seuils RE2020 (colonnes IC Max vides)'); eq(val(o,'eges_pce_max'),480,'v2.3.11 : seuil rangé dans Eges PCE Max (pas le tableau « Eges PCE max » des ratios)');
 eq(val(o,'operation_name'),'Résidence Fictive'); eq(val(o,'renovation'),'Rénovation lourde'); eq(val(o,'work_type'),'Logement collectif'); eq(val(o,'shab'),2100,'SDP « 2,100 »');
 ok(/BBCA Performant \(41 points\)/.test(o.find(x=>x.field==='mention_bbca').provenanceNote),'niveau du label');
 const r=analyzeDocuments([xl],DEFAULT_SOURCE_RULES,'Test');
 const kept=f=>(r.detailed||[]).find(x=>x.field===f&&x.status==='retenu')?.value;
-for(const [f,v] of [['operation_name','Résidence Fictive'],['work_type','Logement collectif'],['renovation','Rénovation lourde'],['shab',2100],['ic_lot_6',90],['ic_components',407]]) eq(kept(f),v,`${f} retenu`);
+for(const [f,v] of [['operation_name','Résidence Fictive'],['work_type','Logement collectif'],['renovation','Rénovation lourde'],['shab',2100],['ic_lot_6',90],['eges_pce',407]]) eq(kept(f),v,`${f} retenu`);
 
 // --- 2. secondarySourceOk : ciblé, jamais au-delà d'une interdiction -----------------------------------------------------------
 const base={field:'operation_name',value:'X',building:'Bâtiment unique',docId:'d',docType:'Étude carbone / ACV',page:1,excerpt:'x',confidence:0.95};
