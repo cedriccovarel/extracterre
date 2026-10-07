@@ -1,3 +1,12 @@
+# v2.3.10 — Calculette BBCA Rénovation, données projet des calculettes BBCA
+- **Calculette BBCA Rénovation** (feuille « Résultats BBCA réno »), classeur Excel ou PDF :
+  - lots 1 à 12 lus dans la colonne « Impact carbone du lot rénové » (les ratios par défaut voisins sont ignorés), lots non comptabilisés signalés, Σ des lots contrôlée contre Eges PCE ;
+  - Eges PCE → IC composants, Eges chantier → IC chantier, Eges énergie → IC énergie (kg CO2 eq/m² SDP) ;
+  - données projet : nom du projet → Nom opération, typologie de rénovation → Rénovation, typologie du bâtiment → Ouvrage, SDP → Surface bâtiment ;
+  - label visé (« BBCA Performant », points) noté dans la mention BBCA.
+- **Calculette BBCA (neuf)** : « Projet », « Client » et « Type de bâtiment » remplissent Nom opération, Maître d'ouvrage et Ouvrage.
+- Moteur : un parseur dédié peut marquer une valeur précise comme source secondaire (`secondarySourceOk`). Les autres études carbone ne remplissent toujours pas ces champs administratifs, et une source interdite le reste.
+
 # v2.3.9 — Calculette BBCA (PDF et classeur Excel)
 - **Calculette BBCA V4.x** (`js/calculette-bbca.js`), exportée en PDF ou déposée telle quelle en `.xlsx` : un bâtiment par fichier (« Projet …_Bat A », sinon le nom du fichier).
   - **IC composants lots 1 à 13**, avec les sous-lots 2.1 / 2.2 / 2.3 additionnés et Σ lots contrôlée contre Ic composants.

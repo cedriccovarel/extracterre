@@ -113,7 +113,7 @@ export function classifyDocument(fileName, text='', meta={}) {
     for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
-  if(/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t)){
+  if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s+reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
     for(const k of [DOC_TYPES.MANUAL,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.THERMAL,DOC_TYPES.CONTRACT]) score[k]=(score[k]||0)*0.2;
   }

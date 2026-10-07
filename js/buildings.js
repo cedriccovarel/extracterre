@@ -3,7 +3,7 @@ import {normalizeText,normLower,unique} from './utils.js';
 import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-sortie.js';
 import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
 import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.js';
-import {isBbcaCalculette,bbcaBuildingName} from './calculette-bbca.js';
+import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette} from './calculette-bbca.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
@@ -103,6 +103,7 @@ export function detectBuildings(doc){
     const n=bbcaBuildingName(doc);
     return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'calculette-bbca',hits:[]};
   }
+  if(isBbcaRenovationCalculette(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
   // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
   if(isCarbonNoticeRe2020(doc)){
     const names=carbonNoticeBuildingNames(doc).map(canonicalBuilding);

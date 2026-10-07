@@ -19,12 +19,14 @@ export function isBuildingScopedField(field){
   return BUILDING_SCOPED_FAMILIES.has(fam);
 }
 function valueKey(v){ return typeof v==='number'?v.toFixed(6):normLower(v); }
+// v2.3.10 — secondarySourceOk : un parseur dédié déclare qu'une valeur précise (ex. « Nom du projet » d'une calculette
+// BBCA) vaut source secondaire, même si ce type de document n'est pas listé pour le champ (jamais s'il y est interdit).
 export function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
   const learnedRaw=applyLearningBoosts(raw);
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
-  let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':sourceTier(o.field,o.docType,rules),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
+  let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building].join('|'); if(!agreement.has(k)) agreement.set(k,new Set()); agreement.get(k).add(o.docId); }
   routed=routed.map(o=>{ const n=agreement.get([o.field,valueKey(o.value),o.building].join('|'))?.size||1; const boost=n>=3?0.05:n>=2?0.03:0; return {...o,confidence:Math.max(0,Math.min(1,o.confidence+boost)),agreementSources:n}; });

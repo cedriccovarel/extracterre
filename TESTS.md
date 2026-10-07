@@ -370,3 +370,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.9
 - `node test_v2_3_9.mjs` : calculette BBCA en PDF et en classeur Excel (lots 1 à 13, Ic, postes énergie, Sref, mention BBCA, consolidation de deux bâtiments) — documents fictifs.
+
+## v2.3.10
+- `node test_v2_3_10.mjs` : calculette BBCA Rénovation (colonne « Impact carbone du lot rénové », Eges, données projet), routage `secondarySourceOk` (documents fictifs).
