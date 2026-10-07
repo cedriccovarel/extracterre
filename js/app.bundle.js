@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.11 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.12 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.11';
+const APP_VERSION = '2.3.12';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -2252,6 +2252,12 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
   // Cep : « Coefficient Cep 171.5 » (projet) ; ligne « kWh ep/m² [initial] projet référence max ».
   const coef=find(/^Coefficient\s+Cep\s+[\d.,]+/i); const cepP=coef?rt_nums(coef.t)[0]:null;
   if(coef&&cepP!==null) emit(coef,'cep_after_final',cepP,'cep-projet',0.97,'kWhEP/m².an',{provenanceNote:'« Coefficient Cep » du projet après travaux.'});
+  // v2.3.12 — d'après les surlignages du journal : Cep projet aussi en « Cep », « Cep max 149.5 kWh ep/m² » (exigence
+  // du label visé), étiquettes équivalentes « Energie : Classe equivalente D » / « CO2 : Classe equivalente A ».
+  if(coef&&cepP!==null) emit(coef,'cep',cepP,'cep',0.94,'kWhEP/m².an');
+  { const cm=find(/^Cep\s+max\s+[\d.,]+\s*kWh/i); if(cm) emit(cm,'cep_max',rt_nums(cm.t)[0],'cep-max',0.92,'kWhEP/m².an',{provenanceNote:'« Cep max » de la page de conformité (exigence du label / de la RT existant).'}); }
+  { const de=find(/^Energie\s*:\s*Classe\s+equivalente\s+([A-G])\b/i); if(de) emit(de,'dpe_energy_after',de.t.match(/Classe\s+equivalente\s+([A-G])/i)[1].toUpperCase(),'etiquette-energie',0.9,'',{provenanceNote:'Étiquette énergie équivalente après travaux (Pléiades).'}); }
+  { const dg=find(/^CO2\s*:\s*Classe\s+equivalente\s+([A-G])\b/i); if(dg) emit(dg,'dpe_ges_after',dg.t.match(/Classe\s+equivalente\s+([A-G])/i)[1].toUpperCase(),'etiquette-co2',0.9,'',{provenanceNote:'Étiquette CO2 équivalente après travaux (Pléiades).'}); }
   const row=find(/^kWh\s*ep\/m²?\s+[\d.,]+\s+[\d.,]+/i);
   if(row&&cepP!==null){ const v=rt_nums(row.t.replace(/m²|m2/g,'')); const k=v.indexOf(cepP); if(k>0) emit(row,'cep_before',v[k-1],'cep-initial',0.95,'kWhEP/m².an',{provenanceNote:'Colonne « Cep initial » du tableau des résultats.'}); }
   // Ubat : « Ubat (hiver) W/m2.K [initial] projet référence ».
@@ -2327,6 +2333,110 @@ function parseInsulationMarkupPlan(doc,occ){
     const note={provenanceNote:`Légende du plan : ${z.name}, e = ${z.e} cm, R = ${z.R}.${others}`};
     const emit=(f,v,unit,conf)=>{ const o=occ(doc,z.x.page,z.x.line,f,v,`isolants-plan:${kind}`,conf,unit,{building:'Bâtiment unique',structuredPdf:true,origin,dedicatedRank:20,...note}); if(o) out.push(o); };
     emit(RT_F[kind][0],z.name,'',0.9); emit(RT_F[kind][1],Math.round(z.e*10),'mm',arr.length>1?0.86:0.9); emit(RT_F[kind][2],z.R,'m².K/W',arr.length>1?0.86:0.9);
+  }
+  return out;
+}
+
+/* ---- logiciels-thermiques.js ---- */
+// v2.3.12 — Sorties logiciel thermiques reconnues ligne à ligne, d'après les emplacements surlignés et les corrections
+// du pack d'amélioration (journal propriétaire) :
+//  • Perrenoud U-Win / « RT existant » (« COEFFICIENT UBAT = 1,150 », « Ubat du bâtiment 1,150 »,
+//    « Coefficient Cep (kWh énergie primaire / m²) 186,21 », « TIC=23,9 - TICRéf = 32,3 », « Type de ventilation : … »,
+//    « Type de Chauffage : Gaz », « Lié à la génération : Chaufferie collective gaz », « Surface utile : … m² Surface Shon »,
+//    « Année de construction Entre 1948 et 1975 », sections « Bâtiment : Bâtiment n°7 ») ;
+//  • CYPE (rapport complet RT existant) : « 0.54 <= 1.25 56.80 % » sous « Coefficient moyen de déperdition »,
+//    « 98.20 <= 214.61 » sous « Consommations conventionnelles », « 25.31 <= 27.89 » pour la Tic, « Cep max = 147.66 »,
+//    « SHON (m²) 928.87 », compositions « 2 - Fibre de bois … R=3,85 16 cm » ;
+//  • Pléiades RSET RT2012 : « Ubat(hiver) - 0.63 - 0.68 », « Coefficient Cep kWh-ep/m2SHON 89.81 104 -14.19 »,
+//    « Groupe 1 °C 25.49 33.16 -7.67 » (Tic, Tic réf), « Surface utile ou habitable (m2) 948 », « Type d'energie - Gaz » ;
+//  • tableaux verticaux « Bbio » / « Bbio max » / 52,4 / 60.
+// Les valeurs de référence (Ubat réf, Cep réf) ne sont jamais rangées en « avant travaux » sans le signaler :
+// elles le sont à vérifier quand l'état initial n'est pas fourni (convention observée dans les corrections).
+
+
+const lt_n=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
+const lt_nums=s=>(String(s||'').match(/-?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
+
+function hasThermalSoftwareMarkers(doc){
+  const t=String(doc?.read?.text||'').slice(0,800000);
+  return /COEFFICIENT\s+UBAT\s*=|Ubat\s+du\s+b[aâ]timent\s+\d|TIC\s*=\s*\d+[.,]?\d*\s*-\s*TIC\s*R[ée]f|Coefficient\s+Cep\s+\(kWh|<=\s*\d+[.,]\d+\s+-?\d+[.,]\d+\s*%|Ubat\s*\(hiver\)\s*-\s*\d|Coefficient\s+Cep\s+kWh-?ep\/m2|Type\s+de\s+ventilation\s*:|Type\s+de\s+Chauffage\s*:?\s+\S|Surface\s+utile\s*:\s*[\d\s,]+m.?\s+Surface\s+Shon/i.test(t);
+}
+const lt_vent=v=>{ const s=normalizeText(v).toLowerCase();
+  if(/double\s+flux/.test(s)) return 'VMC double flux'; if(/hygro\w*\s*(?:type\s*)?b\b/.test(s)) return 'VMC Hygro B'; if(/hygro\w*\s*(?:type\s*)?a\b/.test(s)) return 'VMC Hygro A';
+  if(/auto-?r[ée]glable/.test(s)) return 'VMC simple flux autoréglable'; if(/simple\s+flux|extracteur/.test(s)) return 'VMC simple flux';
+  if(/ouv\w*\.?\s*(?:de\s*|des\s*)?fen[eê]tres?|naturelle|tirage/.test(s)) return 'Ventilation naturelle'; return null; };
+const lt_vector=v=>{ const s=normalizeText(v).toLowerCase();
+  // Liste d'options d'un formulaire (« Autre (Thermodynamique, Gaz, Fioul, Bois, Réseau,...) ») : aucune valeur.
+  if(/\bautre\s*\(|,\s*\.\.\.|(?:gaz|fioul|bois|electri\w*|reseau)[^,]{0,15},[^,]{0,15}(?:gaz|fioul|bois|electri\w*|reseau)/.test(s)) return null;
+  if(/reseau\s+de\s+chaleur|chauffage\s+urbain|\brcu\b/.test(s)) return 'Réseau de chaleur urbain'; if(/\bgaz\b/.test(s)) return 'Gaz'; if(/fioul|fuel/.test(s)) return 'Fioul';
+  if(/bois|granul|biomasse/.test(s)) return 'Bois / biomasse'; if(/electri|effet\s+joule|convecteur|panneau\s+rayonnant/.test(s)) return 'Électricité'; return null; };
+const lt_phase=t=>{ const s=normalizeText(t).toLowerCase();
+  if(/etat\s+(?:initial|existant)|avant\s+travaux|situation\s+initiale|batiment\s+existant/.test(s)) return 'before';
+  if(/etat\s+projet|apres\s+travaux|etat\s+projete|\bvariante\b|\bscenario\b/.test(s)) return 'after'; return null; };
+
+function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
+  const out=[]; const origin='Sortie logiciel thermique (motifs reconnus)';
+  const emit=(x,b,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`logiciel-thermique:${method}`,conf,unit,{building:canonical(b||'Bâtiment unique'),structuredPdf:true,origin,dedicatedRank:12,...extra}); if(o) out.push(o); };
+  let building=null; const seen=new Set();
+  const once=(b,f,v)=>{ const k=`${b}|${f}|${v}`; if(seen.has(k)) return false; seen.add(k); return true; };
+  for(const page of doc.read?.pages||[]){
+    const lines=(page.lines||[]).map(line=>({page,line,t:normalizeText(line.text||'').replace(/\s+/g,' ').trim()}));
+    const pagePhase=lt_phase(lines.slice(0,12).map(x=>x.t).join(' '))||lt_phase(lines.map(x=>x.t).join(' '));
+    let element=null;
+    for(let i=0;i<lines.length;i++){
+      const x=lines[i], t=x.t; let m;
+      if(/^(?:Batiment\s*:\s*)?B[aâ]timent\s+n\s*[°º]?\s*\d+/i.test(t)&&t.length<70){ const all=[...t.matchAll(/B[aâ]timent\s+n\s*[°º]?\s*(\d+)/gi)]; building=`Batiment ${all[all.length-1][1]}`; continue; } // « Bâtiment n° 2 : Bâtiment n°5 » → bâtiment 5
+      const B=building;
+      const near=lines.slice(Math.max(0,i-3),i).map(y=>y.t).join(' ');
+      // --- Perrenoud U-Win ---------------------------------------------------------------------------------------------
+      if((m=t.match(/COEFFICIENT\s+UBAT\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); const ph=lt_phase(near)||pagePhase;
+        if(ph==='after'){ if(once(B,'ubat_after',v)) emit(x,B,'ubat_after',v,'ubat-projet',0.94,'W/m².K'); }
+        else if(once(B,'ubat_before',v)) emit(x,B,'ubat_before',v,'ubat-calcul',ph==='before'?0.94:0.86,'W/m².K',ph?{}:{reviewCap:0.86,provenanceNote:'« COEFFICIENT UBAT = » d’une page sans mention avant / après travaux : état initial présumé, à vérifier.'}); continue; }
+      if((m=t.match(/^Ubat\s+du\s+b[aâ]timent\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2;
+        const f=more?'ubat_after':'ubat_before'; if(once(B,f,v)) emit(x,B,f,v,more?'ubat-synthese-projet':'ubat-synthese-initial',0.9,'W/m².K',{provenanceNote:more?'Ligne de synthèse projet (valeur suivie des colonnes de référence).':'Ligne de synthèse de l’état initial (valeur seule).'}); continue; }
+      if((m=t.match(/^Coefficient\s+Cep\s*\(kWh[^)]*\)\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2;
+        const f=more?'cep_after_final':'cep_before'; if(once(B,f,v)) emit(x,B,f,v,more?'cep-synthese-projet':'cep-synthese-initial',0.9,'kWhEP/m².an'); continue; }
+      if((m=t.match(/TIC\s*=\s*(\d+[.,]?\d*)\s*-\s*TIC\s*R[ée]f\s*=\s*(\d+[.,]?\d*)/i))){ const a=lt_n(m[1]), r=lt_n(m[2]); if(a>=15&&a<=45&&once(B,'tic',a)){ emit(x,B,'tic',a,'tic',0.95,'°C'); emit(x,B,'tic_ref',r,'tic-ref',0.95,'°C'); } continue; }
+      if((m=t.match(/^Type\s+de\s+ventilation\s*:?\s*(.+)$/i))){ const v=lt_vent(m[1]); if(v&&once(B,'ventilation',v)) emit(x,B,'ventilation',v,'ventilation',0.92); continue; }
+      if((m=t.match(/^(?:Systeme\s+de\s+)?Ventil\.?\s*Ouv\.?\s*de\s*fen[eê]tres?/i))&&!/CTA\s+(?:double|simple)/i.test(t)){ if(once(B,`ventilation-${pagePhase}`,'n')) emit(x,B,'ventilation','Ventilation naturelle','ventilation-fenetres',pagePhase==='after'?0.9:0.84,'',pagePhase==='after'?{}:{reviewCap:0.84,provenanceNote:'Ventilation par ouverture des fenêtres (état décrit par la page ; à vérifier s’il s’agit de l’état initial).'}); continue; }
+      if((m=t.match(/^Type\s+de\s+Chauffage\s*:?\s+(.+)$/i))){ const v=lt_vector(m[1].replace(/Part\s+de\s+besoins.*$/i,'')); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'heating_vector_before':'heating_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'type-chauffage',0.9); } continue; }
+      if((m=t.match(/^Li[ée]e?\s+a\s+la\s+generation\s*:\s*(.+)$/i))){ const v=lt_vector(m[1]); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'heating_vector_before':'heating_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'generation',0.88); } continue; }
+      if((m=t.match(/^Type\s+d.?ECS\s*:?\s+(.+)$/i))){ const v=lt_vector(m[1]); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'ecs_vector_before':'ecs_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'type-ecs',0.88); } continue; }
+      if((m=t.match(/^Surface\s+utile\s*:\s*([\d\s]+[.,]?\d*)\s*m.?\s+Surface\s+Shon/i))){ const v=lt_n(m[1]); if(v>8&&once(B,'shab',v)) emit(x,B,'shab',v,'surface-utile',0.9,'m²',{provenanceNote:'Surface utile de la fiche bâtiment (la SHON est indiquée à côté).'}); continue; }
+      if((m=t.match(/^Annee\s+de\s+construction\s+(.+)$/i))){ const s=normalizeText(m[1]).toLowerCase(); const y=s.match(/^(\d{4})$/);
+        if(y){ if(once(B,'construction_year',y[1])) emit(x,B,'construction_year',Number(y[1]),'annee',0.9); }
+        else if(/avant\s+1948/.test(s)){ if(once(B,'built_before_1948','Oui')) emit(x,B,'built_before_1948','Oui','periode',0.9,'',{secondarySourceOk:true,provenanceNote:`Année de construction : ${m[1]}.`}); }
+        else if(/entre\s+(19[4-9]\d|20\d\d)|apres\s+1948|depuis\s+19[4-9]\d/.test(s)){ if(once(B,'built_after_1948','Oui')) emit(x,B,'built_after_1948','Oui','periode',0.9,'',{secondarySourceOk:true,provenanceNote:`Année de construction : ${m[1]}.`}); }
+        continue; }
+      if(/^Avant\s+1948$/i.test(t)&&/construction|periode|annee/i.test(near+' '+(lines[i+1]?.t||''))){ if(once(B,'built_before_1948','Oui')) emit(x,B,'built_before_1948','Oui','periode',0.86,'',{secondarySourceOk:true}); continue; }
+      // --- CYPE (comparaisons « projet <= référence gain % ») -----------------------------------------------------------
+      if((m=t.match(/^(\d+[.,]\d+)\s*<=\s*(\d+[.,]\d+)\s+(-?\d+[.,]\d+)\s*%/))){
+        const a=lt_n(m[1]), r=lt_n(m[2]);
+        // Le libellé qui suit (« Ubat: … », « Cep: … », « Tic: … ») prime ; à défaut, l'intitulé juste au-dessus.
+        const nextL=normalizeText(lines[i+1]?.t||'').toLowerCase(), prevL=normalizeText(lines[i-1]?.t||'').toLowerCase();
+        const ctx=/^(?:ubat|cep|tic)\b/.test(nextL)?nextL:`${prevL} ${nextL}`;
+        if(/ubat|deperdition\s+par\s+transmission/.test(ctx)&&a<6){ if(once(B,'ubat_after',a)){ emit(x,B,'ubat_after',a,'cype-ubat',0.94,'W/m².K',{provenanceNote:'Ubat projet (comparaison « projet <= référence »).'}); emit(x,B,'ubat_before',r,'cype-ubat-ref',0.8,'W/m².K',{reviewCap:0.8,provenanceNote:'Ubat de référence (Ubat réf) : retenu en « avant travaux » seulement après validation — l’état initial n’est pas donné ici.'}); } }
+        else if(/consommation|cep\b/.test(ctx)&&a>=10){ if(once(B,'cep_after_final',a)){ emit(x,B,'cep_after_final',a,'cype-cep',0.94,'kWhEP/m².an'); emit(x,B,'cep',a,'cype-cep',0.9,'kWhEP/m².an'); emit(x,B,'cep_max',r,'cype-cep-ref',0.88,'kWhEP/m².an',{provenanceNote:'Cep de référence (exigence Cep ≤ Cepréf).'}); emit(x,B,'cep_before',r,'cype-cep-ref',0.8,'kWhEP/m².an',{reviewCap:0.8,provenanceNote:'Cep de référence : à valider avant de le retenir en « avant travaux ».'}); } }
+        else if(/\btic\b|temperature\s+interieure/.test(ctx)&&a>=15&&a<=45){ if(once(B,'tic',a)){ emit(x,B,'tic',a,'cype-tic',0.94,'°C'); emit(x,B,'tic_ref',r,'cype-tic-ref',0.94,'°C'); } }
+        continue; }
+      if((m=t.match(/^Cep\s+max\s*=\s*(\d+[.,]\d+)\s*kWh/i))){ const v=lt_n(m[1]); if(once(B,'cep_max',v)) emit(x,B,'cep_max',v,'cep-max',0.9,'kWhEP/m².an'); continue; }
+      if((m=t.match(/^SHON\s*\(m.?\)\s*(\d+[.,]?\d*)$/i))){ const v=lt_n(m[1]); if(v>8&&once(B,'shab',v)) emit(x,B,'shab',v,'shon',0.86,'m²',{provenanceNote:'SHON du projet (pas de SHAB / Sref dans ce document).'}); continue; }
+      // Compositions « N - matériau [R=x,xx] e cm » rattachées au dernier intitulé de paroi.
+      if(/^(?:Mur|Paroi|Fa[cç]ade|Plancher|Toiture|Combles?|Rampant|Terrasse|Dalle)/i.test(t)&&!/^\d/.test(t)&&!/\d\s*cm$/i.test(t)){ element=/^(?:Mur|Paroi|Fa[cç]ade)/i.test(t)?'wall':/(?:combles?|toiture|rampant|terrasse|plancher\s+haut|plafond)/i.test(t)?'roof':/plancher|dalle/i.test(t)?'floor':element; continue; }
+      if(element&&(m=t.match(/^\d+\s*-\s*(.+?)\s+(?:-?\s*R\s*=\s*(\d+[.,]\d+)\s+)?(\d+(?:[.,]\d+)?)\s*cm$/i))){
+        const name=insulationName(m[1]); const e=lt_n(m[3]); const R=m[2]?lt_n(m[2]):null;
+        if(name&&e){ const F={wall:'wall',roof:'roof',floor:'floor'}[element]; if(once(B,`${F}_insulation`,'x')){ emit(x,B,`${F}_insulation`,name,'composition',0.9,'',{provenanceNote:`Couche « ${m[1]} » (${e} cm${R?`, R = ${R}`:''}).`}); emit(x,B,`${F}_insulation_thickness`,Math.round(e*10),'composition',0.88,'mm'); if(R) emit(x,B,`${F}_insulation_r`,R,'composition',0.9,'m².K/W'); } }
+        continue; }
+      // --- Pléiades RSET RT2012 ---------------------------------------------------------------------------------------
+      if((m=t.match(/^Ubat\s*\(hiver\)\s*-\s*(\d+[.,]\d+)\s*-\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); if(once(B,'ubat_after',v)) emit(x,B,'ubat_after',v,'rset-ubat',0.9,'W/m².K'); continue; }
+      if((m=t.match(/^Coefficient\s+Cep\s+kWh-?ep\/m2\s*\w*\s+(\d+[.,]\d+)\s+(\d+[.,]?\d*)\s+(-?\d+[.,]\d+)/i))){ const v=lt_n(m[1]), mx=lt_n(m[2]); if(once(B,'cep',v)){ emit(x,B,'cep',v,'rset-cep',0.95,'kWhEP/m².an'); emit(x,B,'cep_max',mx,'rset-cep-max',0.95,'kWhEP/m².an'); } continue; }
+      if((m=t.match(/^Groupe\s+\d+\s*°C\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)\s+-?\d+[.,]\d+$/i))&&/Tic/i.test(near)){ const a=lt_n(m[1]), r=lt_n(m[2]); if(a>=15&&a<=45&&once(B,'tic',a)){ emit(x,B,'tic',a,'rset-tic',0.95,'°C'); emit(x,B,'tic_ref',r,'rset-tic-ref',0.95,'°C'); } continue; }
+      if((m=t.match(/^Surface\s+utile\s+ou\s+habitable\s*\(m2?\)\s*(\d+[.,]?\d*)$/i))){ const v=lt_n(m[1]); if(v>8&&once(B,'shab',v)) emit(x,B,'shab',v,'rset-shab',0.93,'m²'); continue; }
+      if((m=t.match(/^Type\s+d.?energie\s*-\s*(Gaz|Electricite|Fioul|Bois|Reseau)/i))){ const v=lt_vector(m[1]); if(v&&once(B,'heating_vector_after',v)) emit(x,B,'heating_vector_after',v,'rset-energie',0.88); continue; }
+      // --- Tableau vertical : libellés « Bbio » / « Bbio max » puis valeurs ---------------------------------------------
+      if(/^(?:Coefficient\s+)?Bbio$/i.test(t)&&/^Bbio\s*max$/i.test(lines[i+1]?.t||'')){ const a=lt_nums(lines[i+2]?.t||''), b=lt_nums(lines[i+3]?.t||'');
+        if(a.length===1&&b.length===1&&a[0]>5&&b[0]>5){ if(once(B,'bbio',a[0])){ emit(lines[i+2],B,'bbio',a[0],'bbio-vertical',0.88,'points'); emit(lines[i+3],B,'bbio_max',b[0],'bbio-max-vertical',0.88,'points'); } } }
+    }
   }
   return out;
 }
@@ -3298,9 +3408,19 @@ function criticalTableNeedsOcr(text=''){
   return false;
 }
 
-function shouldOcrPdfPage(text='',items=[],mode='auto'){
+// v2.3.12 — une couche texte « propre et dense » (logiciel, traitement de texte) n'a rien à gagner de l'OCR :
+// le journal montre des sorties logiciel de 70 à 150 pages entièrement OCRisées en mode « toujours » (20 à 30 min),
+// et des doublons OCR approximatifs (« 3722 » pour « 372,2 ») mêlés au vrai texte.
+function isCleanDenseTextLayer(text='',items=[]){
+  const q=pdfTextQuality(text,items);
+  return !q.garbled&&q.chars>=350&&(items?.length||0)>=25&&q.alnumRatio>=0.6&&q.weirdRatio<=0.01&&q.fragmentRatio<=0.12;
+}
+function shouldOcrPdfPage(text='',items=[],mode='auto',ctx={}){
   if(mode==='off') return false;
-  if(mode==='always'||mode==='max') return true;
+  if(mode==='max') return true;
+  // Mode « toujours » : OCR de chaque page, sauf une page dont la couche texte est propre, dense et sans image
+  // (aucun tableau scanné ni schéma à lire) — l'OCR n'y apporterait que des doublons approximatifs.
+  if(mode==='always') return !(ctx.hasImages===false&&isCleanDenseTextLayer(text,items));
   const q=pdfTextQuality(text,items);
   // Priorité aux pages métier réellement incomplètes. Une page courte mais propre (titre,
   // graphique, séparation de chapitre) ne doit plus déclencher Tesseract à elle seule.
@@ -3321,13 +3441,48 @@ function mergePdfAndOcrLines(pdfLines=[],ocrLines=[],pdfQuality=null,ocrQuality=
   if(oq>pq+0.17 || pq<0.42) return {lines:ocrLines,source:'ocr'};
   // Sinon on garde la géométrie PDF.js et on ajoute seulement les lignes OCR nouvelles.
   const seen=new Set(pdfLines.map(l=>normalizeText(l.text).toLowerCase()));
-  const extra=ocrLines.filter(l=>{ const k=normalizeText(l.text).toLowerCase(); if(!k||seen.has(k)) return false; seen.add(k); return true; });
+  // v2.3.12 — doublons approximatifs : une ligne OCR dont les mots sont déjà présents dans une ligne PDF (même texte
+  // lu avec des erreurs : virgule perdue, lettres confondues) n'est pas ajoutée ; si la couche PDF est bonne et
+  // géolocalisée, seules les lignes OCR situées hors des lignes PDF (image, tableau scanné) sont conservées.
+  const toks=s=>normalizeText(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(t=>t.length>=2);
+  const pdfTokSets=pdfLines.map(l=>new Set(toks(l.text)));
+  const pdfAll=new Set(pdfTokSets.flatMap(s=>[...s]));
+  const nearDuplicate=l=>{ const t=toks(l.text); if(!t.length) return true; const hitAll=t.filter(x=>pdfAll.has(x)).length/t.length; if(hitAll>=0.8) return true; return pdfTokSets.some(s=>s.size&&t.filter(x=>s.has(x)).length/t.length>=0.6); };
+  const pdfGeo=pq>=0.6&&pdfLines.length>=3&&pdfLines.every(l=>Number.isFinite(l.y));
+  const heights=pdfLines.map(l=>Number(l.height)||0).filter(h=>h>0).sort((a,b)=>a-b); const tol=Math.max(6,(heights[Math.floor(heights.length/2)]||11)*0.85);
+  const coveredByPdf=l=>pdfGeo&&Number.isFinite(l.y)&&pdfLines.some(p=>Math.abs(p.y-l.y)<=tol);
+  const extra=ocrLines.filter(l=>{ const k=normalizeText(l.text).toLowerCase(); if(!k||seen.has(k)) return false; if(pq>=0.6&&(nearDuplicate(l)||coveredByPdf(l))) return false; seen.add(k); return true; });
   if(!extra.length) return {lines:pdfLines,source:'pdf'};
   // v2.3 — insertion à leur position verticale réelle quand les deux couches sont géolocalisées,
   // au lieu d'un ajout en fin de page qui cassait les contextes avant/après.
   const geo=pdfLines.every(l=>Number.isFinite(l.y))&&extra.every(l=>Number.isFinite(l.y));
   const merged=geo?[...pdfLines,...extra].sort((a,b)=>b.y-a.y):[...pdfLines,...extra];
   return {lines:merged.map((l,i)=>({...l,index:i})),source:'hybrid'};
+}
+
+// Image « significative » sur la page (tableau scanné, capture logiciel, schéma) — liste d'opérateurs PDF.js.
+// Les logos et pictogrammes d'en-tête (presque toutes les pages) ne comptent pas : on mesure la surface couverte
+// par chaque image (matrice de transformation courante) rapportée à la surface de la page.
+function significantImageInOps(fnArray=[],argsArray=[],OPS={},pageArea=1,minShare=0.12){
+  const paint=new Set(['paintImageXObject','paintInlineImageXObject','paintImageMaskXObject','paintJpegXObject','paintImageXObjectRepeat'].map(k=>OPS[k]).filter(Number.isFinite));
+  if(!paint.size) return undefined;
+  const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1],m[1]*n[0]+m[3]*n[1],m[0]*n[2]+m[2]*n[3],m[1]*n[2]+m[3]*n[3],m[0]*n[4]+m[2]*n[5]+m[4],m[1]*n[4]+m[3]*n[5]+m[5]];
+  let ctm=[1,0,0,1,0,0]; const stack=[];
+  for(let i=0;i<fnArray.length;i++){
+    const f=fnArray[i];
+    if(f===OPS.save) stack.push(ctm); else if(f===OPS.restore) ctm=stack.pop()||[1,0,0,1,0,0];
+    else if(f===OPS.transform){ const a=argsArray[i]; if(Array.isArray(a)&&a.length>=6) ctm=mul(ctm,a.map(Number)); }
+    else if(f===OPS.paintFormXObjectBegin){ const a=argsArray[i]; stack.push(ctm); if(Array.isArray(a?.[0])&&a[0].length>=6) ctm=mul(ctm,a[0].map(Number)); }
+    else if(f===OPS.paintFormXObjectEnd) ctm=stack.pop()||[1,0,0,1,0,0];
+    else if(paint.has(f)){ const area=Math.abs(ctm[0]*ctm[3]-ctm[1]*ctm[2]); if(area/Math.max(1,pageArea)>=minShare) return true; }
+  }
+  return false;
+}
+async function pdfPageHasImages(page){
+  try{
+    const OPS=globalThis.pdfjsLib?.OPS||{}; const vp=page.getViewport({scale:1});
+    const list=await page.getOperatorList(); return significantImageInOps(list.fnArray,list.argsArray,OPS,vp.width*vp.height);
+  }catch{ return undefined; }
 }
 
 async function renderPdfPageForOcr(page,opts={}){
@@ -3396,7 +3551,10 @@ async function readPdf(file, onProgress=()=>{}, options={}) {
         const pdfText=pdfLines.map(l=>l.text).join('\n');
         const pdfQuality=pdfTextQuality(pdfText,content.items);
         let finalLines=pdfLines, textSource='pdf', ocrConfidence=null;
-        const needOcr=shouldOcrPdfPage(pdfText,content.items,opts.mode);
+        // v2.3.12 — en mode « toujours », une page propre et dense n'est OCRisée que si elle contient une image.
+        let hasImages;
+        if(opts.mode==='always'&&isCleanDenseTextLayer(pdfText,content.items)) hasImages=await pdfPageHasImages(page);
+        const needOcr=shouldOcrPdfPage(pdfText,content.items,opts.mode,{hasImages});
         onProgress(((p-1)+.18)/pdf.numPages,{stage:'pdf',page:p,totalPages:pdf.numPages,message:`Lecture PDF page ${p}/${pdf.numPages}`});
         if(needOcr){
           activeOcrPage=p;
@@ -3528,6 +3686,102 @@ function resetSourceRules(){ localStorage.removeItem(KEY); return structuredClon
 function mergeRules(custom){ const out=structuredClone(DEFAULT_SOURCE_RULES); for(const [k,v] of Object.entries(custom||{})){ if(FIELD_MAP[k]&&v) out[k]={main:Array.isArray(v.main)?v.main:out[k].main,secondary:Array.isArray(v.secondary)?v.secondary:out[k].secondary,forbidden:Array.isArray(v.forbidden)?v.forbidden:out[k].forbidden}; } return out; }
 function sourceTier(field,docType,rules){ const r=rules[field]||DEFAULT_SOURCE_RULES[field]; if(!r) return 'unrouted'; if(r.forbidden.includes(docType)) return 'forbidden'; if(r.main.includes(docType)) return 'main'; if(r.secondary.includes(docType)) return 'secondary'; return 'unrouted'; }
 function sourceRank(field,docType,rules){ const r=rules[field]||DEFAULT_SOURCE_RULES[field]; if(!r) return 999; const mi=r.main.indexOf(docType); if(mi>=0) return mi; const si=r.secondary.indexOf(docType); if(si>=0) return 100+si; if(r.forbidden.includes(docType)) return 10000; return 1000; }
+
+/* ---- sanity.js ---- */
+// v2.3.12 — Garde-fous à l'extraction, tirés du pack d'amélioration (signalements bêta « valeur fausse ») :
+//  • nombre collé à un libellé : « RT2012 » → 2012, « Bat.1 » / « Article 7-1 » → 1, « kgCO2e/m² » → 2,
+//    « Groupe T3 » → 3, « Cep-20% » → -20, « 1.6.- Justification » → 6 ;
+//  • valeur hors plage physique pour le champ : Cep = 0,904 (ratio Cep/Cepréf), Tic = 9 (numéro de groupe),
+//    épaisseur 88 160 mm (« 88.16 m² »), Cep électricité 39 971 (kWh annuels), Ic énergie = 2 (exposant).
+// Une occurrence rejetée ici ne masque plus la bonne valeur lors de la consolidation (la cohérence, elle, n'agit
+// qu'après coup). Les valeurs XML, manuelles et validées ne sont jamais filtrées.
+
+const EXTRACTION_RANGES=Object.freeze({
+  bbio:[5,400], bbio_max:[5,400], cep:[10,1500], cep_max:[30,1500], cepnr:[5,1500], cepnr_max:[20,1500],
+  cep_before:[10,2500], cep_after_final:[10,1500], ubat_before:[0.05,5], ubat_after:[0.05,5],
+  tic:[15,45], tic_ref:[15,45], dh:[0,3000], dh_max:[300,3000],
+  cep_cooling:[0,400], cep_lighting:[0,200], cep_aux_vent:[0,200], cep_aux_dist:[0,200], cep_mobility:[0,200],
+  cep_electricity:[0,1000], cep_gas:[0,1500], cep_district:[0,1500], cep_biomass:[0,1500],
+  shab:[8,500000], housing_count:[1,5000], construction_year:[1000,2100],
+  wall_insulation_thickness:[5,800], roof_insulation_thickness:[5,1000], floor_insulation_thickness:[5,800],
+  wall_insulation_r:[0.2,20], roof_insulation_r:[0.2,25], floor_insulation_r:[0.2,20],
+  ic_components:[20,4000], ic_site:[0,400], ic_energy:[5,3000], ic_construction:[20,5000], stock_c_per_m2:[0,400],
+  ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
+  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100]
+});
+const sn_NUM_FIELDS=new Set([...Object.keys(EXTRACTION_RANGES),...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`)]);
+const sn_YEAR_LIKE=/^(?:19|20)\d\d$/;
+
+function sn_forms(v){
+  const n=Number(v); if(!Number.isFinite(n)) return [];
+  const s=String(Math.abs(n)); const neg=n<0?'-':''; const out=new Set([neg+s,neg+s.replace('.',',')]);
+  if(/^0\./.test(s)){ out.add(neg+s.slice(1)); out.add(neg+s.slice(1).replace('.',',')); }
+  // valeurs lues avec zéros de fin (« 1,150 », « 130,00 »)
+  for(const d of [1,2,3]){ const f=Math.abs(n).toFixed(d); out.add(neg+f); out.add(neg+f.replace('.',',')); }
+  return [...out].filter(Boolean).sort((a,b)=>b.length-a.length);
+}
+// La valeur apparaît-elle dans l'extrait uniquement « collée » à un libellé ?
+function numberOnlyGlued(value,excerpt=''){
+  const ex=normalizeText(String(excerpt||'')); if(!ex) return false;
+  const forms=sn_forms(value); if(!forms.length) return false;
+  let any=false, standalone=false;
+  for(const f of forms){
+    let i=-1;
+    while((i=ex.indexOf(f,i+1))>=0){
+      const before=ex.slice(Math.max(0,i-2),i), after=ex.slice(i+f.length,i+f.length+2);
+      const b1=before.slice(-1), a1=after.slice(0,1);
+      // Fragment d'un autre nombre (« 722,94 » pour 22,94) : ni occurrence propre ni occurrence collée.
+      if(/\d/.test(b1)||(/\d/.test(a1))||(/^[.,]\d/.test(after)&&!/[A-Za-z]/.test(b1))) continue;
+      any=true;
+      const gluedBefore=/[A-Za-z²³]/.test(b1)||/\d[.,]$/.test(before)||(b1==='-'&&/[A-Za-z0-9.]/.test(before.slice(0,1)))||(b1==='.'&&/[A-Za-z]/.test(before.slice(0,1)));
+      const gluedAfter=/[A-Za-z0-9²³]/.test(a1)&&!/^(?:m|c|k|W|h|°|p)/i.test(a1)?true:(/^[.,]\d/.test(after))||/^\d/.test(a1);
+      const pct=/^\s?%/.test(ex.slice(i+f.length,i+f.length+2));
+      if(!gluedBefore&&!gluedAfter&&!pct) { standalone=true; break; }
+    }
+    if(standalone) break;
+  }
+  return any&&!standalone;
+}
+// Exposant isolé (« m² ») lu comme valeur, « Liens vers la CTA », département suivi d'autre texte…
+function sanitizeOccurrence(o){
+  if(!o) return null;
+  const m=String(o.method||'');
+  if(o.userValidated||/^(?:xml:|manual:)/.test(m)||o.structuredXml) return o;
+  const f=o.field; let v=o.value;
+  if(f==='department'&&typeof v==='string'){ const d=normalizeText(v).match(/^\s*(\d{2,3}|2A|2B)\b/i); if(!d) return null; if(d[1]!==v) return {...o,value:d[1].toUpperCase().padStart(2,'0')}; }
+  if(f==='ventilation'&&/^CTA$/i.test(String(v))&&/liens?\s+vers\s+la\s+cta/i.test(o.excerpt||'')&&!/(?:^|[^a-z])cta\s+(?:double|simple|avec|a\s|à\s)/i.test(o.excerpt||'')) return null;
+  // Hiérarchie des sources apprise des décisions ✓/✕ du journal (taux d'acceptation des candidats « à vérifier ») :
+  const dt=String(o.docType||''), present=/^tags:presence/.test(m), label=/^tags:label-value/.test(m);
+  // « ENR » détecté par simple présence du mot : 0 accepté sur 34 (contrats, CCTP, descriptifs) → jamais proposé.
+  if(present&&f==='enr'&&!/RSET|RSEE|thermique|RT Existant|RT2012/.test(dt)) return null;
+  // Mentions / rénovation par présence dans un CCTP ou un document non classé : 2 acceptés sur 24.
+  if(present&&/^(?:mention_|renovation$)/.test(f)&&/^(?:CCTP|Document inconnu|DPGF)$/.test(dt)) return null;
+  // Mentions via libellé dans un descriptif (0/5) ; planchers hauts via libellé d'un document non classé (0/4).
+  if(label&&/^mention_/.test(f)&&dt==='Descriptif du projet') return null;
+  if(label&&f==='roof_structure'&&dt==='Document inconnu') return null;
+  // Occultations devinées par le contexte d'un document non classé (0/4).
+  if(/^windows:shading-context/.test(m)&&dt==='Document inconnu') return null;
+  // Structure des parois devinée par le contexte d'une étude RT existant (2/12) : reste à vérifier, en bas de file.
+  if(/^envelope:structure-context/.test(m)&&/^(?:wall_structure|floor_structure|roof_structure)$/.test(f)&&dt==='RT Existant') return {...o,confidence:Math.min(o.confidence||0,0.72),reviewCap:0.72};
+  // Gain Cep recalculé depuis une ligne de synthèse RSET (0/4) : à vérifier.
+  if(/^rset:cep-summary-row/.test(m)&&f==='cep_gain') return {...o,confidence:Math.min(o.confidence||0,0.8),reviewCap:0.8};
+  if(!sn_NUM_FIELDS.has(f)) return o;
+  const n=typeof v==='number'?v:Number(String(v).replace(',','.'));
+  if(!Number.isFinite(n)) return o;
+  const r=EXTRACTION_RANGES[f]||(/^ic_lot_/.test(f)?[-100,1500]:null);
+  if(r&&(n<r[0]||n>r[1])) return null;
+  // Année prise pour une valeur (« RT2012 », « RE2020 ») hors du champ année.
+  if(f!=='construction_year'&&sn_YEAR_LIKE.test(String(n))&&/\b(?:RT|RE|E\+C-?)\s?\d{4}\b|\bRT\s?2012\b|\bRE\s?2020\b/i.test(o.excerpt||'')) return null;
+  // Ubat entier ≥ 3 : numéro de chapitre ou de page (« 1.6.1.- … Ubat 6 »), jamais un coefficient W/m².K.
+  if(/^ubat_/.test(f)&&Number.isInteger(n)&&n>=3) return null;
+  // Numéro de page d'un sommaire (« Justification du calcul …………… 6 ») pris pour une valeur.
+  { const ex=normalizeText(o.excerpt||''); const pages=[...ex.matchAll(/\.{5,}\s*(\d{1,3})\b/g)].map(x=>Number(x[1])); if(pages.includes(n)&&/\.{5,}/.test(ex)) return null; }
+  // Valeurs issues des parseurs dédiés à une sortie structurée : leur lecture est positionnelle, pas de contrôle d'extrait.
+  if(o.structuredPdf||Number.isFinite(o.dedicatedRank)) return o;
+  if(o.excerpt&&numberOnlyGlued(n,o.excerpt)) return null;
+  return o;
+}
+function sanitizeOccurrences(list=[]){ return (list||[]).map(sanitizeOccurrence).filter(Boolean); }
 
 /* ---- parsers.js ---- */
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
@@ -4296,6 +4550,13 @@ function explicitMetricCarrier(line='',re){
   return /[:=|]|\d[,.]\d|\b\d{2,}(?:[,.]\d+)?\b/.test(raw) || /^(?:coefficient\s+)?(?:bbio|cep|dh|tic|ubat)\b/i.test(low);
 }
 
+// Entre le libellé et la première valeur, un autre libellé (mot de 3 lettres ou plus, ou « % ») sépare-t-il les deux ?
+function labelSeparatedFromValue(ctx,re){
+  const t=normalizeText(ctx); const m=t.match(re); if(!m) return false;
+  const rest=t.slice(m.index+m[0].length); const n=rest.search(/-?\d+(?:[,.]\d+)?/); if(n<0) return false;
+  const between=rest.slice(0,n).replace(/\b(?:kwh\s*ep|kwhep|kwh|ep|m2|m²|points?|pts|an|°c|w\/m2\.?k|w\/m²\.?k|projet|valeur|=|:)\b/gi,' ');
+  return /[A-Za-z]{3,}|%/.test(between);
+}
 function parseGenericRegulatory(doc){
   const out=[];
   const specs=[
@@ -4320,9 +4581,15 @@ function parseGenericRegulatory(doc){
       if(v!==null && ((field==='tic'||field==='tic_ref') && (v<5||v>60))) continue;
       // Les autres indicateurs ne doivent pas capturer un millésime isolé après un libellé.
       if(v!==null && v>=1900 && v<=2100) continue;
+      // v2.3.12 — libellé sur une ligne voisine (tableau vertical) : la valeur doit suivre le libellé sans autre libellé
+      // intercalé (« CepMax | Ecart | 122,17 », « Respect CepMax | Tic Ref. | 31,58 » ne donnent pas un Cep max).
+      if(v!==null&&carrier===ctx&&labelSeparatedFromValue(ctx,re)) continue;
       if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
     for(const [field,re] of breakdown){ if(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:cep-breakdown',0.90,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); } }
-    const phase=phaseFromContext(ctx,doc);
+    // v2.3.12 — la phase (avant / après travaux) doit venir du texte voisin ; déduite du seul nom de fichier
+    // (« Rapport final ») elle reste à vérifier (journal : Ubat initial 1,938 lu comme Ubat après travaux).
+    const textPhase=phaseFromContext(ctx,{...doc,name:''}); const phase=textPhase!=='unknown'?textPhase:phaseFromContext(ctx,doc);
+    const phaseExtra=textPhase==='unknown'||(doc.type&&textPhase===phaseFromContext('',{...doc,name:''}))?{reviewCap:0.84,provenanceNote:'Phase avant / après travaux déduite du document, pas du texte voisin : à vérifier.'}:{};
     if(/\bubat\b/i.test(ctx)){
       // Le mot Ubat dans un index, un intitulé de chapitre ou une formule n'est pas une valeur.
       // On ne conserve le fallback générique que si le voisinage porte explicitement une valeur plausible.
@@ -4331,8 +4598,8 @@ function parseGenericRegulatory(doc){
       const m=ctx.match(/\bubat\b[^\n|]{0,45}?(?:[:=]|\bprojet\b|\binitial\b|\bavant\b|\bapres\b|\baprès\b)?\s*(-?\d+(?:[,.]\d+)?)/i);
       const v=m?parseFrNumber(m[1]):null;
       if(!structuralHeading && v!==null && v>0.02 && v<8){
-        if(phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
-        if(phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
+        if(phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',phaseExtra.reviewCap||0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420),...phaseExtra}));
+        if(phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',phaseExtra.reviewCap||0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420),...phaseExtra}));
       }
     }
     if(/\bcep\b/i.test(ctx) && !/cep\s*[,._-]?\s*nr/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bcep\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'cep_before',v,'renovation:cep-before',0.91,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after' && /final|reception|apres\s+travaux/i.test(normLower(`${doc.name} ${ctx}`))) push(out,occ(doc,page,line,'cep_after_final',v,'renovation:cep-after-final',0.92,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); }
@@ -5479,7 +5746,20 @@ function parseRenovationThermalDocument(doc,kind){
   return [...dedicated,...generic];
 }
 
+// v2.3.12 — point d'entrée : garde-fous d'extraction (js/sanity.js) appliqués à toutes les occurrences.
 function parseDocument(doc){
+  let out=parseDocumentCore(doc); if(!Array.isArray(out)) return out;
+  // v2.3.12 — motifs de sorties logiciel thermiques (Perrenoud, CYPE, Pléiades RT2012) : complètent tout document
+  // thermique qui les porte, quel que soit le parseur principal (les doublons exacts sont écartés).
+  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&hasThermalSoftwareMarkers(doc)){
+    const extra=annotateSemanticHierarchy(doc,parseThermalSoftwarePatterns(doc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'logiciel-thermique'}));
+    const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
+    out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
+  }
+  return sanitizeOccurrences(out);
+}
+const THERMAL_PATTERN_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
+function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);

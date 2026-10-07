@@ -171,9 +171,19 @@ function criticalTableNeedsOcr(text=''){
   return false;
 }
 
-export function shouldOcrPdfPage(text='',items=[],mode='auto'){
+// v2.3.12 — une couche texte « propre et dense » (logiciel, traitement de texte) n'a rien à gagner de l'OCR :
+// le journal montre des sorties logiciel de 70 à 150 pages entièrement OCRisées en mode « toujours » (20 à 30 min),
+// et des doublons OCR approximatifs (« 3722 » pour « 372,2 ») mêlés au vrai texte.
+export function isCleanDenseTextLayer(text='',items=[]){
+  const q=pdfTextQuality(text,items);
+  return !q.garbled&&q.chars>=350&&(items?.length||0)>=25&&q.alnumRatio>=0.6&&q.weirdRatio<=0.01&&q.fragmentRatio<=0.12;
+}
+export function shouldOcrPdfPage(text='',items=[],mode='auto',ctx={}){
   if(mode==='off') return false;
-  if(mode==='always'||mode==='max') return true;
+  if(mode==='max') return true;
+  // Mode « toujours » : OCR de chaque page, sauf une page dont la couche texte est propre, dense et sans image
+  // (aucun tableau scanné ni schéma à lire) — l'OCR n'y apporterait que des doublons approximatifs.
+  if(mode==='always') return !(ctx.hasImages===false&&isCleanDenseTextLayer(text,items));
   const q=pdfTextQuality(text,items);
   // Priorité aux pages métier réellement incomplètes. Une page courte mais propre (titre,
   // graphique, séparation de chapitre) ne doit plus déclencher Tesseract à elle seule.
@@ -194,13 +204,48 @@ export function mergePdfAndOcrLines(pdfLines=[],ocrLines=[],pdfQuality=null,ocrQ
   if(oq>pq+0.17 || pq<0.42) return {lines:ocrLines,source:'ocr'};
   // Sinon on garde la géométrie PDF.js et on ajoute seulement les lignes OCR nouvelles.
   const seen=new Set(pdfLines.map(l=>normalizeText(l.text).toLowerCase()));
-  const extra=ocrLines.filter(l=>{ const k=normalizeText(l.text).toLowerCase(); if(!k||seen.has(k)) return false; seen.add(k); return true; });
+  // v2.3.12 — doublons approximatifs : une ligne OCR dont les mots sont déjà présents dans une ligne PDF (même texte
+  // lu avec des erreurs : virgule perdue, lettres confondues) n'est pas ajoutée ; si la couche PDF est bonne et
+  // géolocalisée, seules les lignes OCR situées hors des lignes PDF (image, tableau scanné) sont conservées.
+  const toks=s=>normalizeText(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(t=>t.length>=2);
+  const pdfTokSets=pdfLines.map(l=>new Set(toks(l.text)));
+  const pdfAll=new Set(pdfTokSets.flatMap(s=>[...s]));
+  const nearDuplicate=l=>{ const t=toks(l.text); if(!t.length) return true; const hitAll=t.filter(x=>pdfAll.has(x)).length/t.length; if(hitAll>=0.8) return true; return pdfTokSets.some(s=>s.size&&t.filter(x=>s.has(x)).length/t.length>=0.6); };
+  const pdfGeo=pq>=0.6&&pdfLines.length>=3&&pdfLines.every(l=>Number.isFinite(l.y));
+  const heights=pdfLines.map(l=>Number(l.height)||0).filter(h=>h>0).sort((a,b)=>a-b); const tol=Math.max(6,(heights[Math.floor(heights.length/2)]||11)*0.85);
+  const coveredByPdf=l=>pdfGeo&&Number.isFinite(l.y)&&pdfLines.some(p=>Math.abs(p.y-l.y)<=tol);
+  const extra=ocrLines.filter(l=>{ const k=normalizeText(l.text).toLowerCase(); if(!k||seen.has(k)) return false; if(pq>=0.6&&(nearDuplicate(l)||coveredByPdf(l))) return false; seen.add(k); return true; });
   if(!extra.length) return {lines:pdfLines,source:'pdf'};
   // v2.3 — insertion à leur position verticale réelle quand les deux couches sont géolocalisées,
   // au lieu d'un ajout en fin de page qui cassait les contextes avant/après.
   const geo=pdfLines.every(l=>Number.isFinite(l.y))&&extra.every(l=>Number.isFinite(l.y));
   const merged=geo?[...pdfLines,...extra].sort((a,b)=>b.y-a.y):[...pdfLines,...extra];
   return {lines:merged.map((l,i)=>({...l,index:i})),source:'hybrid'};
+}
+
+// Image « significative » sur la page (tableau scanné, capture logiciel, schéma) — liste d'opérateurs PDF.js.
+// Les logos et pictogrammes d'en-tête (presque toutes les pages) ne comptent pas : on mesure la surface couverte
+// par chaque image (matrice de transformation courante) rapportée à la surface de la page.
+export function significantImageInOps(fnArray=[],argsArray=[],OPS={},pageArea=1,minShare=0.12){
+  const paint=new Set(['paintImageXObject','paintInlineImageXObject','paintImageMaskXObject','paintJpegXObject','paintImageXObjectRepeat'].map(k=>OPS[k]).filter(Number.isFinite));
+  if(!paint.size) return undefined;
+  const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1],m[1]*n[0]+m[3]*n[1],m[0]*n[2]+m[2]*n[3],m[1]*n[2]+m[3]*n[3],m[0]*n[4]+m[2]*n[5]+m[4],m[1]*n[4]+m[3]*n[5]+m[5]];
+  let ctm=[1,0,0,1,0,0]; const stack=[];
+  for(let i=0;i<fnArray.length;i++){
+    const f=fnArray[i];
+    if(f===OPS.save) stack.push(ctm); else if(f===OPS.restore) ctm=stack.pop()||[1,0,0,1,0,0];
+    else if(f===OPS.transform){ const a=argsArray[i]; if(Array.isArray(a)&&a.length>=6) ctm=mul(ctm,a.map(Number)); }
+    else if(f===OPS.paintFormXObjectBegin){ const a=argsArray[i]; stack.push(ctm); if(Array.isArray(a?.[0])&&a[0].length>=6) ctm=mul(ctm,a[0].map(Number)); }
+    else if(f===OPS.paintFormXObjectEnd) ctm=stack.pop()||[1,0,0,1,0,0];
+    else if(paint.has(f)){ const area=Math.abs(ctm[0]*ctm[3]-ctm[1]*ctm[2]); if(area/Math.max(1,pageArea)>=minShare) return true; }
+  }
+  return false;
+}
+async function pdfPageHasImages(page){
+  try{
+    const OPS=globalThis.pdfjsLib?.OPS||{}; const vp=page.getViewport({scale:1});
+    const list=await page.getOperatorList(); return significantImageInOps(list.fnArray,list.argsArray,OPS,vp.width*vp.height);
+  }catch{ return undefined; }
 }
 
 async function renderPdfPageForOcr(page,opts={}){
@@ -269,7 +314,10 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
         const pdfText=pdfLines.map(l=>l.text).join('\n');
         const pdfQuality=pdfTextQuality(pdfText,content.items);
         let finalLines=pdfLines, textSource='pdf', ocrConfidence=null;
-        const needOcr=shouldOcrPdfPage(pdfText,content.items,opts.mode);
+        // v2.3.12 — en mode « toujours », une page propre et dense n'est OCRisée que si elle contient une image.
+        let hasImages;
+        if(opts.mode==='always'&&isCleanDenseTextLayer(pdfText,content.items)) hasImages=await pdfPageHasImages(page);
+        const needOcr=shouldOcrPdfPage(pdfText,content.items,opts.mode,{hasImages});
         onProgress(((p-1)+.18)/pdf.numPages,{stage:'pdf',page:p,totalPages:pdf.numPages,message:`Lecture PDF page ${p}/${pdf.numPages}`});
         if(needOcr){
           activeOcrPage=p;

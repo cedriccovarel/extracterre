@@ -8,6 +8,8 @@ import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeAct
 import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
+import {sanitizeOccurrences} from './sanity.js';
+import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns} from './logiciels-thermiques.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
 import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan} from './renovation-thermique.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
@@ -780,6 +782,13 @@ function explicitMetricCarrier(line='',re){
   return /[:=|]|\d[,.]\d|\b\d{2,}(?:[,.]\d+)?\b/.test(raw) || /^(?:coefficient\s+)?(?:bbio|cep|dh|tic|ubat)\b/i.test(low);
 }
 
+// Entre le libellé et la première valeur, un autre libellé (mot de 3 lettres ou plus, ou « % ») sépare-t-il les deux ?
+function labelSeparatedFromValue(ctx,re){
+  const t=normalizeText(ctx); const m=t.match(re); if(!m) return false;
+  const rest=t.slice(m.index+m[0].length); const n=rest.search(/-?\d+(?:[,.]\d+)?/); if(n<0) return false;
+  const between=rest.slice(0,n).replace(/\b(?:kwh\s*ep|kwhep|kwh|ep|m2|m²|points?|pts|an|°c|w\/m2\.?k|w\/m²\.?k|projet|valeur|=|:)\b/gi,' ');
+  return /[A-Za-z]{3,}|%/.test(between);
+}
 function parseGenericRegulatory(doc){
   const out=[];
   const specs=[
@@ -804,9 +813,15 @@ function parseGenericRegulatory(doc){
       if(v!==null && ((field==='tic'||field==='tic_ref') && (v<5||v>60))) continue;
       // Les autres indicateurs ne doivent pas capturer un millésime isolé après un libellé.
       if(v!==null && v>=1900 && v<=2100) continue;
+      // v2.3.12 — libellé sur une ligne voisine (tableau vertical) : la valeur doit suivre le libellé sans autre libellé
+      // intercalé (« CepMax | Ecart | 122,17 », « Respect CepMax | Tic Ref. | 31,58 » ne donnent pas un Cep max).
+      if(v!==null&&carrier===ctx&&labelSeparatedFromValue(ctx,re)) continue;
       if(v!==null) push(out,occ(doc,page,line,field,v,'generic:regulatory-label',0.91,unit,{excerpt:normalizeText(ctx).slice(0,420)})); } }
     for(const [field,re] of breakdown){ if(!isRegulatoryNarrativeNoise(ctx)&&re.test(ctx)){ const v=firstValueAfterLabel(ctx,re); if(v!==null) push(out,occ(doc,page,line,field,v,'generic:cep-breakdown',0.90,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); } }
-    const phase=phaseFromContext(ctx,doc);
+    // v2.3.12 — la phase (avant / après travaux) doit venir du texte voisin ; déduite du seul nom de fichier
+    // (« Rapport final ») elle reste à vérifier (journal : Ubat initial 1,938 lu comme Ubat après travaux).
+    const textPhase=phaseFromContext(ctx,{...doc,name:''}); const phase=textPhase!=='unknown'?textPhase:phaseFromContext(ctx,doc);
+    const phaseExtra=textPhase==='unknown'||(doc.type&&textPhase===phaseFromContext('',{...doc,name:''}))?{reviewCap:0.84,provenanceNote:'Phase avant / après travaux déduite du document, pas du texte voisin : à vérifier.'}:{};
     if(/\bubat\b/i.test(ctx)){
       // Le mot Ubat dans un index, un intitulé de chapitre ou une formule n'est pas une valeur.
       // On ne conserve le fallback générique que si le voisinage porte explicitement une valeur plausible.
@@ -815,8 +830,8 @@ function parseGenericRegulatory(doc){
       const m=ctx.match(/\bubat\b[^\n|]{0,45}?(?:[:=]|\bprojet\b|\binitial\b|\bavant\b|\bapres\b|\baprès\b)?\s*(-?\d+(?:[,.]\d+)?)/i);
       const v=m?parseFrNumber(m[1]):null;
       if(!structuralHeading && v!==null && v>0.02 && v<8){
-        if(phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
-        if(phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420)}));
+        if(phase==='before') push(out,occ(doc,page,line,'ubat_before',v,'renovation:ubat-before',phaseExtra.reviewCap||0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420),...phaseExtra}));
+        if(phase==='after') push(out,occ(doc,page,line,'ubat_after',v,'renovation:ubat-after',phaseExtra.reviewCap||0.92,'W/m².K',{excerpt:normalizeText(ctx).slice(0,420),...phaseExtra}));
       }
     }
     if(/\bcep\b/i.test(ctx) && !/cep\s*[,._-]?\s*nr/i.test(ctx)){ const v=firstValueAfterLabel(ctx,/\bcep\b/i); if(v!==null && phase==='before') push(out,occ(doc,page,line,'cep_before',v,'renovation:cep-before',0.91,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); if(v!==null && phase==='after' && /final|reception|apres\s+travaux/i.test(normLower(`${doc.name} ${ctx}`))) push(out,occ(doc,page,line,'cep_after_final',v,'renovation:cep-after-final',0.92,'kWhEP/m².an',{excerpt:normalizeText(ctx).slice(0,420)})); }
@@ -1963,7 +1978,20 @@ function parseRenovationThermalDocument(doc,kind){
   return [...dedicated,...generic];
 }
 
+// v2.3.12 — point d'entrée : garde-fous d'extraction (js/sanity.js) appliqués à toutes les occurrences.
 export function parseDocument(doc){
+  let out=parseDocumentCore(doc); if(!Array.isArray(out)) return out;
+  // v2.3.12 — motifs de sorties logiciel thermiques (Perrenoud, CYPE, Pléiades RT2012) : complètent tout document
+  // thermique qui les porte, quel que soit le parseur principal (les doublons exacts sont écartés).
+  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&hasThermalSoftwareMarkers(doc)){
+    const extra=annotateSemanticHierarchy(doc,parseThermalSoftwarePatterns(doc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'logiciel-thermique'}));
+    const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
+    out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
+  }
+  return sanitizeOccurrences(out);
+}
+const THERMAL_PATTERN_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
+function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);

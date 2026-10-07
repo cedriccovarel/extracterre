@@ -1,3 +1,32 @@
+# v2.3.12 — Entraînement sur le pack d'amélioration (journal du 07/10/2026)
+Analyse du pack : 3 630 événements, 164 signalements bêta, 318 emplacements surlignés, 435 corrections, 1 040 décisions ✓/✕, 292 erreurs.
+- **OCR « toujours »** (cause principale des analyses lentes et moins complètes) :
+  - le journal montre des sorties logiciel de 70 à 150 pages entièrement OCRisées (20 à 30 min, 233 dépassements de délai) ;
+  - les lignes OCR approximatives (« 3722 » pour « 372,2 ») étaient mêlées au vrai texte et faussaient le classement des documents ;
+  - désormais une page à couche texte propre et dense, sans image significative, n'est plus OCRisée (les logos d'en-tête ne comptent pas) : 75 à 95 % de pages OCR en moins sur les sorties logiciel, aucun changement pour les PDF scannés ;
+  - à la fusion PDF + OCR, seules les lignes OCR hors du texte PDF (tableau scanné, capture) sont ajoutées.
+- **Garde-fous d'extraction** (`js/sanity.js`), appliqués avant la consolidation pour qu'une valeur fausse ne masque plus la bonne :
+  - nombre collé à un libellé : « RT2012 », « Bat.1 », « m² », « T3 », « Cep-20% » ;
+  - numéros de page de sommaire et de chapitre ;
+  - plages physiques par champ : Cep = 0,904 (ratio), Tic = 9, épaisseur 88 160 mm, Cep électricité en kWh annuels ;
+  - département nettoyé ; « Liens vers la CTA » n'est plus une CTA ;
+  - 44 des 48 valeurs fausses signalées ne sortent plus.
+- **Moteur générique** :
+  - un libellé séparé de la valeur par un autre libellé (« CepMax | Ecart | 122,17 ») n'est plus lu ;
+  - la phase avant / après travaux déduite du seul nom de fichier (« Rapport final ») reste à vérifier.
+- **Sorties logiciel** (`js/logiciels-thermiques.js`) :
+  - Perrenoud U-Win RT existant : Ubat initial / projet, Cep, Tic / Tic réf, ventilation, vecteurs, surface utile, période de construction, multi-bâtiments « Bâtiment n°X » ;
+  - CYPE : comparaisons « projet <= référence » pour Ubat, Cep et Tic, Cep max, SHON, compositions de parois (isolant, épaisseur, R) ;
+  - Pléiades RSET RT2012 : Cep / Cep max, Tic / Tic réf, Ubat, surface, énergie, tableaux verticaux Bbio / Bbio max ;
+  - rapport Pléiades RT existant : Cep, Cep max, étiquettes énergie / CO2 équivalentes ;
+  - emplacements surlignés retrouvés : 7 → 29.
+- **Hiérarchie des sources apprise des décisions ✓/✕** :
+  - « ENR » par simple présence (0/34) et mentions par présence dans les CCTP / documents non classés (2/24) ne sont plus proposés ;
+  - la structure des parois devinée dans une étude RT existant (2/12) passe en bas de la file « à vérifier ».
+- **Valeurs de référence** (Ubat réf, Cep réf) : proposées en « avant travaux » uniquement à vérifier, l'état initial n'étant pas donné par ces documents.
+- `tools/pack_bench.mjs` : banc d'essai à relancer sur chaque nouveau pack (aucune donnée du pack n'est stockée dans le dépôt).
+- Non-régression : 24 documents réels relancés, 930 → 932 valeurs retenues. Seule perte : un R de toiture de 0,12, physiquement impossible.
+
 # v2.3.11 — Passe d'amélioration : Eges, rénovation (RT existant), BBCA Rénovation en PDF
 - **12 colonnes Eges** ajoutées en fin d'export (onglet Carbone, groupe « Eges ») : Eges PCE, PCENA, énergie, chantier, eau, total et leurs seuils Max (kg CO2 eq/m² SDP). Elles sont remplies par :
   - les calculettes BBCA Rénovation ;
