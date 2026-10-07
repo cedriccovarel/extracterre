@@ -8,6 +8,7 @@ import {isClimaWinSynthesis,parseClimaWinSynthesis,climaWinEnvelopeLines,isBeAct
 import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
+import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
 import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
 
@@ -1185,7 +1186,7 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 
@@ -1914,6 +1915,14 @@ function parseBiosourcedNoticeDocument(doc){
   return annotateSemanticHierarchy(fdoc,parseBiosourcedLabelNotice(fdoc,occ)).map(o=>({...o,specializedFamily:'notice-biosource'}));
 }
 
+// v2.3.7 — Éditions Pléiades : rapport ACV (indicateurs par bâtiment), synthèse des prestations (résultats + systèmes),
+// synthèse des déperditions (aucune donnée du référentiel). Parseurs dédiés uniquement.
+function parsePleiadesReportDocument(doc,kind){
+  const fdoc={...doc,type:doc.type||(kind==='acv'?DOC_TYPES.RSENV:DOC_TYPES.THERMAL)};
+  const out=kind==='acv'?parsePleiadesAcvReport(fdoc,occ,canonicalBuilding):kind==='prestations'?parsePleiadesServicesSummary(fdoc,occ,canonicalBuilding):parseHeatLossReport(fdoc,occ);
+  return annotateSemanticHierarchy(fdoc,out.filter(Boolean)).map(o=>({...o,specializedFamily:`pleiades-${kind}`}));
+}
+
 // v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
 // le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
 function parseEcAcvDocument(doc){
@@ -1935,6 +1944,9 @@ export function parseDocument(doc){
   if(!doc.__skipDedicated&&isPleiadesThermalOutput(doc)) return parsePleiadesThermalDocument(doc);
   if(!doc.__skipDedicated&&isCstbRseeFiche(doc)) return parseCstbRseeDocument(doc);
   if(!doc.__skipDedicated&&isCarbonNoticeRe2020(doc)) return parseCarbonNoticeDocument(doc);
+  if(!doc.__skipDedicated&&isPleiadesAcvReport(doc)) return parsePleiadesReportDocument(doc,'acv');
+  if(!doc.__skipDedicated&&isPleiadesServicesSummary(doc)) return parsePleiadesReportDocument(doc,'prestations');
+  if(!doc.__skipDedicated&&isHeatLossReport(doc)) return parsePleiadesReportDocument(doc,'deperditions');
   if(!doc.__skipDedicated&&isThermalNoticeColumns(doc)) return parseThermalNoticeDocument(doc);
   if(!doc.__skipDedicated&&isBiosourcedLabelNotice(doc)) return parseBiosourcedNoticeDocument(doc);
   if(!doc.__skipDedicated&&isStdReport(doc)) return parseStdDocument(doc);

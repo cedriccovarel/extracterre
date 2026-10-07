@@ -108,6 +108,10 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.RSET_RE2020]) score[k]=(score[k]||0)*0.1;
   }
+  if(/tableau\s+de\s+synthese\s+des\s+prestations\s+thermiques|deperditions\s+suivant\s+la\s+norme/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
+    for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
+  }
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
   }

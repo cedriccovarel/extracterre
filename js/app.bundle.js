@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.6 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.7 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.6';
+const APP_VERSION = '2.3.7';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -371,7 +371,7 @@ for(const key of ['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','ce
 for(const key of ['ic_components','ic_site','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13','ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['ic_construction','ic_construction_max','ic_construction_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
 // Ic énergie max : également publié par les sorties thermiques RE2020 (RSET, synthèses logiciel).
-for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
+for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.stock_c_per_m2=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
 for(const key of ['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
@@ -838,6 +838,11 @@ function detectBuildings(doc){
   if(isPleiadesThermalOutput(doc)){
     const names=pleiadesThermalBuildingNames(doc).map(canonicalBuilding);
     if(names.length) return {names:[...new Set(names)],expectedCount:names.length,source:'pleiades-sortie-sections',hits:[]};
+  }
+  // v2.3.7 — éditions Pléiades (rapport ACV, synthèse des prestations, déperditions) : titres explicites.
+  if(isPleiadesAcvReport(doc)||isPleiadesServicesSummary(doc)||isHeatLossReport(doc)){
+    const names=pleiadesReportBuildingNames(doc).map(canonicalBuilding);
+    return names.length?{names:[...new Set(names)],expectedCount:new Set(names).size,source:'pleiades-rapport',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'pleiades-rapport'};
   }
   // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
   if(isCarbonNoticeRe2020(doc)){
@@ -1536,7 +1541,8 @@ function cstbBuildingContext(doc){
   const set=(raw)=>{ const n=String(raw||'').replace(/^["“”']+|["“”']+$/g,'').trim(); if(!n||n.length>60||/^bat\.\d/i.test(n)) return; current=n; if(!names.includes(n)) names.push(n); };
   for(const x of lines){
     let m;
-    if((m=x.t.match(/^Batiment\s*:\s*(.+)$/i))) set(m[1]);
+    if((m=x.t.match(/pour\s+le\s+batiment\s*:\s*(.+?)\s+Conformite\b/i))) set(m[1]);
+    else if((m=x.t.match(/^Batiment\s*:\s*(.+)$/i))) set(m[1]);
     else if(afterTech&&(m=x.t.match(/^["“](.+)["”]$/))) set(m[1]);
     else if((m=x.t.match(/Resultats\s+sorties\s+detaillees\s*-\s*\((.+)\)/i))) set(m[1]);
     else if((m=x.t.match(/^Nom\s+du\s+batiment\s+(.+)$/i))) set(m[1]);
@@ -1568,6 +1574,20 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     if((m=x.t.match(/^SRef\s*\/\s*usage\s+principal\s+(.+?)\s*m2?\s*\//i))){ const n=cs_numbers(m[1]); if(n.length===1) emit(x,'shab',n[0],'sref-batiment',0.97,'m²',{provenanceNote:'SRef du bâtiment (données générales).'}); }
     if((m=x.t.match(/^Nombre\s+de\s+logements\s+(\d+)\s*$/i))) emit(x,'housing_count',Number(m[1]),'nombre-logements',0.97);
   }
+  // Partie environnementale : « Nom du bâtiment X » → « Surface de Référence [m2] » (bâtiment) et
+  // « Nombre de logement » (somme des zones du bâtiment).
+  { const env=new Map();
+    for(const x of lines){ if(!x.building) continue; const k=x.building; if(!env.has(k)) env.set(k,{sref:null,lgt:[],seen:false});
+      const e=env.get(k); let m;
+      if(/^Nom\s+du\s+batiment\b/i.test(x.t)) e.seen=true;
+      if(!e.seen) continue;
+      if(!e.sref&&(m=x.t.match(/^Surface\s+de\s+Reference\s*\[m[2²?]?\]\s+(.+)$/i))){ const n=cs_numbers(m[1]); if(n.length===1) e.sref={x,v:n[0]}; }
+      if((m=x.t.match(/^Nombre\s+de\s+logement\s+(\d+)\s*$/i))) e.lgt.push({x,v:Number(m[1])});
+      if(/^Chapitre\s+3\b/i.test(x.t)) e.seen=false; }
+    for(const e of env.values()){
+      if(e.sref&&!out.some(o=>o.field==='shab'&&o.building===canonical(e.sref.x.building))) { const plaus=e.sref.v>0&&e.sref.v<=50000; emit(e.sref.x,'shab',e.sref.v,'sref-rsenv',plaus?0.96:0.7,'m²',{ocrOk:plaus,provenanceNote:plaus?'Surface de référence du bâtiment (RSEnv).':'Surface de référence peu plausible (séparateur décimal perdu ?) : à vérifier.'}); }
+      if(e.lgt.length&&!out.some(o=>o.field==='housing_count'&&o.building===canonical(e.lgt[0].x.building))) emit(e.lgt[0].x,'housing_count',e.lgt.reduce((a,l)=>a+l.v,0),'logements-rsenv',0.95,'',{ocrOk:true,provenanceNote:`Somme des logements de ${e.lgt.length} zone(s).`});
+    } }
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
     if(!b) continue; let worst=null;
@@ -1577,20 +1597,36 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
       if(v) emit(lim,'dh_max',v,'dh-max-texte',0.86,'°C.h',{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
   }
 
+  // --- Seuils par période (RSEnv 2024+) : « Icconstruction Icconstruction_max Icconstruction_max_2022 … _2031 »
+  //     puis, sur la ligne suivante, les valeurs dans le même ordre (idem pour Icenergie).
+  lines.forEach((x,i)=>{
+    const head=x.t.match(/^(Ic\s*construction|Ic\s*energie)\s+(Ic\s*(?:construction|energie)_max(?:\s+Ic\s*(?:construction|energie)_max_\d{4})*)\s*$/i); if(!head) return;
+    const kind=/construction/i.test(head[1])?'construction':'energy';
+    const cols=[kind,...head[2].split(/\s+(?=Ic)/i).map(c=>{ const y=c.match(/_(\d{4})$/); return y?`max_${y[1]}`:'max'; })];
+    const vx=lines[i+1]; if(!vx) return; const v=cs_numbers(vx.t); if(v.length!==cols.length) return;
+    const base=kind==='construction'?'ic_construction':'ic_energy';
+    cols.forEach((c,k)=>{
+      const field=c===kind?base:c==='max'?`${base}_max`:c==='max_2028'?`${base}_max_2028`:null; if(!field) return;
+      emit(vx,field,v[k],`seuils-${kind}`,0.99,'kgCO2e/m²',{ocrOk:true,provenanceNote:`Tableau « Respect des ${kind==='construction'?'Icconstruction':'Icenergie'}_max » (valeur, max, max 2022/2025/2028${kind==='construction'?'/2031':''}).`});
+    });
+  });
+
   // --- Environnement -------------------------------------------------------------------------------
   const unitTail=(t)=>{ const i=t.search(/\]|m[²2°?]\s*\]?|\/m\b/); return i>=0?t.slice(i):t; };
   for(const [b,ls] of byBuilding){
     ls.forEach((x,i)=>{
       const t=x.t; if(x.scope!=='building') return; if(/par\s+occupant|annualis|parcelle|_?DED\b/i.test(t)) return;
       const next=ls[i+1]?.t||'';
-      const isCons=/contribution\s+construction|\bI\s*c\s*_?\s*construction\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale/i.test(t);
-      const isEne=/contribution\s+[eé]nergie|\bI\s*c\s*_?\s*[eé]nergie\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale|annualis/i.test(t);
+      const isCons=/contribution\s*construction|\bI\s*c\s*_?\s*construction\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale/i.test(t);
+      const isEne=/contribution\s*[eé]nergie|\bI\s*c\s*_?\s*[eé]nergie\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale|annualis/i.test(t);
       if(!isCons&&!isEne) return;
       // Les valeurs suivent l'unité entre crochets ([kgéq. CO2/m²]) ; sinon elles sont sur la ligne suivante.
       const afterUnit=(s)=>{ const k=s.indexOf(']'); return k>=0?cs_numbers(s.slice(k+1)):[]; };
       let src=x, n=afterUnit(t.replace(/CO\s*[2z₂]/gi,'CO'));
       if(!n.length&&/\[/.test(next)){ src=ls[i+1]; n=afterUnit(next.replace(/CO\s*[2z₂]/gi,'CO')); }
       if(!n.length) return;
+      // « … [kgeq.CO2/m²] 532,36 max » : le max est le premier nombre de la ligne suivante.
+      if(n.length===1&&/\bmax\s*$/i.test(src.t)){ const nx=ls[ls.indexOf(src)+1]; const m2=nx?cs_numbers(nx.t):[]; if(m2.length===1) n=[n[0],m2[0]]; }
       const v=n[0], mx=n.length>=2?n[1]:null, ok=(mx===null||v<=mx)&&v>=5;
       const f=isCons?'ic_construction':'ic_energy'; const fm=isCons?'ic_construction_max':'ic_energy_max';
       if(out.some(o=>o.field===f&&o.building===canonical(b))) return;
@@ -1809,6 +1845,101 @@ function parseBiosourcedLabelNotice(doc,occ){
   const out=[occ(doc,x.page,x.line,'mention_biosourced_building','Oui','biosource:label-vise',0.92,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Notice label bâtiment biosourcé',provenanceNote:'Estimation des quantités de matières biosourcées pour le label Bâtiment Biosourcé.'})];
   if(lvl) out.push(occ(doc,x.page,x.line,'biosourced_2013',`Niveau ${lvl[1]}`,'biosource:niveau-2012',0.88,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Notice label bâtiment biosourcé',provenanceNote:`Objectif « niveau ${lvl[1]} du label 2012 » cité par la notice.`}));
   return out.filter(Boolean);
+}
+
+/* ---- pleiades-rapports.js ---- */
+// v2.3.7 — Autres éditions Pléiades (IZUBA) :
+//  • « Rapport ACV » / « Récapitulatif du calcul réglementaire — Partie Environnement » : par bâtiment
+//    (« Données générales Bâtiment 2 »), lignes « Ic construction max 2028 kg eq CO2/m² 624.37 ».
+//    Les blocs « Zone Zone 2 » répètent les mêmes indicateurs à l'échelle de la zone : ignorés.
+//  • « Tableau de synthèse des prestations thermiques » : tableau Résultats
+//    « 62,2 / 71,5 points 83,9 / 89,4 kWh EP/m² 16,1 / 73,6 kWh EP/m² 82.75 / 588.8 kg eq. CO2 » puis « Bâtiment 1 ».
+//  • « Synthèse des déperditions (NF EN 12831) » : calcul de puissance, aucune donnée du référentiel ExtracTerre
+//    (seul le département est relevé) — évite les faux bâtiments et valeurs parasites.
+
+const pr_lineText=l=>normalizeText(l?.text||'');
+const pr_nums=s=>(String(s||'').match(/[-+]?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
+function pr_allLines(doc){
+  const out=[];
+  for(const page of doc.read?.pages||[]) (page.lines||[]).forEach((line,pos)=>out.push({page,line,pos,t:pr_lineText(line)}));
+  return out;
+}
+
+function isPleiadesAcvReport(doc){
+  const t=String(doc?.read?.text||'').slice(0,300000);
+  return /Ic\s+construction\s+max\s+20\d\d\s+kg\s+eq\s+CO2\/m/i.test(t)&&/Donnees\s+generales\s+Batiment|Indicateurs\s+de\s+performance/i.test(t);
+}
+function isPleiadesServicesSummary(doc){
+  const t=String(doc?.read?.text||'').slice(0,200000);
+  return /Tableau\s+de\s+synthese\s+des\s+prestations\s+thermiques/i.test(t);
+}
+function isHeatLossReport(doc){
+  const t=String(doc?.read?.text||'').slice(0,60000);
+  return /deperditions\s+suivant\s+la\s+norme\s+(?:EN\s+)?12831/i.test(t);
+}
+function pleiadesReportBuildingNames(doc){
+  const names=[];
+  for(const x of pr_allLines(doc)){
+    let m;
+    if(isPleiadesAcvReport(doc)&&(m=x.t.match(/^Donnees\s+generales\s+(Batiment\s+.+)$/i))) names.push(m[1].trim());
+    if(isPleiadesServicesSummary(doc)&&(m=x.t.match(/^(Batiment\s+\S+)\s+(?:Conforme|Non\s+conforme)\b/i))) names.push(m[1].trim());
+    if(isHeatLossReport(doc)&&(m=x.t.match(/^Batiment\s+(Batiment\s+\S+)\s*$/i))) names.push(m[1].trim());
+  }
+  return [...new Set(names)];
+}
+
+const ACV_LINES=[
+  [/^Ic\s+construction\s+max\s+2028\s/i,'ic_construction_max_2028'],[/^Ic\s+construction\s+max\s+kg/i,'ic_construction_max'],[/^Ic\s+construction\s+kg/i,'ic_construction'],
+  [/^Ic\s+energie\s+max\s+2028\s/i,'ic_energy_max_2028'],[/^Ic\s+energie\s+max\s+kg/i,'ic_energy_max'],[/^Ic\s+energie\s+kg/i,'ic_energy'],
+  [/^Ic\s+composants?\s+kg/i,'ic_components'],[/^Ic\s+chantier\s+kg/i,'ic_site'],[/^Stock\s+c\s+batiment\s+kg/i,'stock_c_per_m2']
+];
+
+function parsePleiadesAcvReport(doc,occ,canonical=(s)=>s){
+  const out=[]; let building=null, scope='building';
+  const origin='Pléiades — rapport ACV (partie environnement)';
+  for(const x of pr_allLines(doc)){
+    let m;
+    if((m=x.t.match(/^Donnees\s+generales\s+(Batiment\s+.+)$/i))){ building=m[1].trim(); scope='building'; continue; }
+    if(/^Zone\s+Zone\b|^Quantitatifs\s+saisis\s+Zone\b|^Resultats\s+detailles.*\bZone\b/i.test(x.t)){ scope='zone'; continue; }
+    if(!building||scope!=='building') continue;
+    for(const [re,field] of ACV_LINES){
+      if(!re.test(x.t)) continue;
+      const v=pr_nums(x.t.replace(/CO2/gi,'').replace(/m²|m2/gi,'')); const val=v.length?v[v.length-1]:null; if(val===null) break;
+      if(out.some(o=>o.field===field&&o.building===canonical(building))) break;
+      const o=occ(doc,x.page,x.line,field,val,'pleiades-acv:indicateur',0.99,field==='stock_c_per_m2'?'kgC/m²':'kgCO2e/m²',{building:canonical(building),structuredPdf:true,origin,...(field==='stock_c_per_m2'?{provenanceNote:'« Stock c bâtiment » (stockage carbone, kgC/m² malgré l’unité affichée).'}:{})});
+      if(o) out.push(o); break;
+    }
+  }
+  return out;
+}
+
+function parsePleiadesServicesSummary(doc,occ,canonical=(s)=>s){
+  const out=[]; const lines=pr_allLines(doc);
+  const origin='Pléiades — tableau de synthèse des prestations thermiques';
+  const P='([\\d.,]+)\\s*\\/\\s*([\\d.,]+)';
+  const re=new RegExp(`^${P}\\s*points\\s+${P}\\s*kWh\\s*EP\\/m²?2?\\s+${P}\\s*kWh\\s*EP\\/m²?2?\\s+${P}\\s*kg`,'i');
+  lines.forEach((x,i)=>{
+    const m=x.t.match(re); if(!m) return;
+    const b=(lines[i+1]?.t.match(/^(Batiment\s+\S+)/i)||[])[1]; if(!b) return;
+    const v=m.slice(1).map(s=>parseFrNumber(s)); const B=canonical(b);
+    const emit=(field,val,unit)=>{ const o=occ(doc,x.page,x.line,field,val,'pleiades-prestations:resultats',0.99,unit,{building:B,structuredPdf:true,origin}); if(o) out.push(o); };
+    emit('bbio',v[0],'points'); emit('bbio_max',v[1],'points'); emit('cep',v[2],'kWhEP/m².an'); emit('cep_max',v[3],'kWhEP/m².an');
+    emit('cepnr',v[4],'kWhEP/m².an'); emit('cepnr_max',v[5],'kWhEP/m².an'); emit('ic_energy',v[6],'kgCO2e/m²'); emit('ic_energy_max',v[7],'kgCO2e/m²');
+  });
+  // Systèmes communs (section « Systèmes ») : production et émetteurs, valables pour tous les bâtiments.
+  const sys=lines.findIndex(x=>/^Systemes$/i.test(x.t));
+  if(sys>=0){
+    const block=lines.slice(sys,sys+20); const common=(field,val,l,conf=0.95)=>{ const o=occ(doc,l.page,l.line,field,val,'pleiades-prestations:systemes',conf,'',{building:'Bâtiment unique',structuredPdf:true,origin}); if(o) out.push(o); };
+    const gen=block.find(l=>/chaudiere\s+(?:biomasse|bois|granul)/i.test(l.t)); if(gen){ common('heating_mode_after','Chaudière biomasse',gen); common('heating_vector_after','Bois / biomasse',gen); if(/ECS/i.test(gen.t)){ common('ecs','Chaudière',gen,0.93); common('ecs_vector_after','Bois / biomasse',gen,0.93); } }
+    const pac=block.find(l=>/pompe\s+a\s+chaleur|\bPAC\b/i.test(l.t)); if(pac&&!gen) common('heating_mode_after','PAC',pac,0.9);
+  }
+  return out;
+}
+
+function parseHeatLossReport(doc,occ){
+  const x=pr_allLines(doc).find(y=>/^Departement\s*:\s*(\d{2,3}|2A|2B)\s*-/i.test(y.t)); if(!x) return [];
+  const o=occ(doc,x.page,x.line,'department',x.t.match(/^Departement\s*:\s*(\d{2,3}|2A|2B)/i)[1].padStart(2,'0'),'deperditions:department',0.97,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Synthèse des déperditions (NF EN 12831)'});
+  return o?[o]:[];
 }
 
 /* ---- xml-re2020.js ---- */
@@ -2379,6 +2510,10 @@ function classifyDocument(fileName, text='', meta={}) {
   if(/note\s*thermique|notice\s+thermique/i.test(t.slice(0,6000))&&/poste\s+batiment\s+\S+\s+batiment/i.test(t)){
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.RSET_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
+  if(/tableau\s+de\s+synthese\s+des\s+prestations\s+thermiques|deperditions\s+suivant\s+la\s+norme/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
+    for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
@@ -3961,7 +4096,7 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx)||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 
@@ -4690,6 +4825,14 @@ function parseBiosourcedNoticeDocument(doc){
   return annotateSemanticHierarchy(fdoc,parseBiosourcedLabelNotice(fdoc,occ)).map(o=>({...o,specializedFamily:'notice-biosource'}));
 }
 
+// v2.3.7 — Éditions Pléiades : rapport ACV (indicateurs par bâtiment), synthèse des prestations (résultats + systèmes),
+// synthèse des déperditions (aucune donnée du référentiel). Parseurs dédiés uniquement.
+function parsePleiadesReportDocument(doc,kind){
+  const fdoc={...doc,type:doc.type||(kind==='acv'?DOC_TYPES.RSENV:DOC_TYPES.THERMAL)};
+  const out=kind==='acv'?parsePleiadesAcvReport(fdoc,occ,canonicalBuilding):kind==='prestations'?parsePleiadesServicesSummary(fdoc,occ,canonicalBuilding):parseHeatLossReport(fdoc,occ);
+  return annotateSemanticHierarchy(fdoc,out.filter(Boolean)).map(o=>({...o,specializedFamily:`pleiades-${kind}`}));
+}
+
 // v2.3.4 — Notice ACV E+C- (annexe RSEnv Pléiades) : parseur dédié. En analyse manuelle (moteur libre),
 // le moteur générique complète uniquement les champs que le parseur dédié n'a pas trouvés.
 function parseEcAcvDocument(doc){
@@ -4711,6 +4854,9 @@ function parseDocument(doc){
   if(!doc.__skipDedicated&&isPleiadesThermalOutput(doc)) return parsePleiadesThermalDocument(doc);
   if(!doc.__skipDedicated&&isCstbRseeFiche(doc)) return parseCstbRseeDocument(doc);
   if(!doc.__skipDedicated&&isCarbonNoticeRe2020(doc)) return parseCarbonNoticeDocument(doc);
+  if(!doc.__skipDedicated&&isPleiadesAcvReport(doc)) return parsePleiadesReportDocument(doc,'acv');
+  if(!doc.__skipDedicated&&isPleiadesServicesSummary(doc)) return parsePleiadesReportDocument(doc,'prestations');
+  if(!doc.__skipDedicated&&isHeatLossReport(doc)) return parsePleiadesReportDocument(doc,'deperditions');
   if(!doc.__skipDedicated&&isThermalNoticeColumns(doc)) return parseThermalNoticeDocument(doc);
   if(!doc.__skipDedicated&&isBiosourcedLabelNotice(doc)) return parseBiosourcedNoticeDocument(doc);
   if(!doc.__skipDedicated&&isStdReport(doc)) return parseStdDocument(doc);
@@ -6143,6 +6289,7 @@ function serializeProject(project={}){
     manualPasteRaw:project.manualPasteRaw||'',
     manualPasteRows:safeJsonClone(project.manualPasteRows,[]),
     manualPasteColumns:safeJsonClone(project.manualPasteColumns,[]),
+    retainedOccurrences:safeJsonClone(project.retainedOccurrences,[]),
     uncertainRejectedKeys:safeJsonClone(project.uncertainRejectedKeys,[]),
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
@@ -6946,7 +7093,7 @@ async function runLlmAssist(doc,{missingFields=null,config=null,fetchImpl=null,i
 }
 
 /* ---- app.js ---- */
-function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
+function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
 
 // v2.3 — une seule dropzone : la famille documentaire est détectée à la lecture, modifiable par fichier.
@@ -7039,7 +7186,7 @@ function stopAnalysis(){
 
 state.projects.push(createProject(1)); state.activeProjectId=state.projects[0].id;
 function activeProject(){ return state.projects.find(p=>p.id===state.activeProjectId)||state.projects[0]; }
-for(const key of ['docs','result','buildingOverrides','deletedBuildings','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
+for(const key of ['docs','result','buildingOverrides','deletedBuildings','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','retainedOccurrences','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
 function projectTitle(p){ return (p.customTitle||p.operationName||p.result?.operation||p.label||'Projet').trim(); }
 function applyDeletedBuildings(project=activeProject()){
   const r=project?.result, deleted=new Set(project?.deletedBuildings||[]); if(!r||!deleted.size) return;
@@ -7344,7 +7491,13 @@ function renderFiles(){
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
     return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
-  $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
+  $$('.remove-file').forEach(b=>b.onclick=async()=>{
+    // v2.3.7 — retirer un document ne supprime plus les données qu'il a déjà fournies : elles restent dans la consolidation.
+    const id=b.dataset.id; const doc=state.docs.find(d=>d.id===id); const kept=retainRemovedDocument(activeProject(),doc);
+    state.docs=state.docs.filter(d=>d.id!==id); try{await deleteDocumentCheckpoint(id);}catch{}
+    if(state.result&&(state.docs.some(d=>d.status==='ready')||hasRetainedData()||state.manualPasteRows.length)) recomputeProject(kept?`${doc?.name||'Document'} retiré de la liste : ${kept} valeur(s) extraite(s) conservée(s).`:'Document retiré de la liste.');
+    else { renderAll(); if(kept) toast(`${doc?.name||'Document'} retiré : ${kept} valeur(s) extraite(s) conservée(s) pour la prochaine consolidation.`,'success'); }
+    scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
   $$('.targeted-file').forEach(b=>b.onclick=()=>targetedReanalysis(b.dataset.id));
   $$('.family-select').forEach(sel=>{ sel.onchange=()=>changeDocumentFamily(sel.dataset.id,sel.value); sel.onclick=e=>e.stopPropagation(); });
@@ -7362,6 +7515,8 @@ function addFiles(fileList,specializedFamily=null,opts={}){
       if(!existing.file){ existing.file=file; existing.relativePath=rel; if(['missing','error'].includes(existing.status)) existing.status='pending'; rehydrated++; continue; }
       toast(`Déjà ajouté : ${rel}`,'warn'); continue;
     }
+    // Fichier redéposé : ses valeurs conservées sont remplacées par la nouvelle lecture.
+    if(hasRetainedData()) activeProject().retainedOccurrences=retainedOccurrences().filter(o=>o.fileName!==file.name);
     const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null;
     const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
     // v2.3.2 — Analyse manuelle : moteur libre (famille « annex » imposée), sans liste blanche de champs.
@@ -7445,8 +7600,18 @@ function parseManualClipboard(raw=''){
   }
   return {rows,columns,unrecognized:columns.filter(c=>!c.def&&c.header).map(c=>c.header),recognized:columns.filter(c=>c.def).length};
 }
+// v2.3.7 — valeurs extraites des documents retirés de la liste : conservées dans le projet et réinjectées
+// dans chaque consolidation (traçabilité intacte, mention « document retiré »).
+function retainedOccurrences(project=activeProject()){ return Array.isArray(project.retainedOccurrences)?project.retainedOccurrences:[]; }
+function hasRetainedData(project=activeProject()){ return retainedOccurrences(project).length>0; }
+function retainRemovedDocument(project,doc){
+  if(!doc||!Array.isArray(doc.cachedOccurrences)||!doc.cachedOccurrences.length) return 0;
+  const kept=doc.cachedOccurrences.filter(Boolean).map(o=>({...o,docId:o.docId||doc.id,fileName:o.fileName||doc.name,removedDocument:true,provenanceNote:[o.provenanceNote,'Document retiré de la liste : valeur extraite conservée.'].filter(Boolean).join(' ')}));
+  project.retainedOccurrences=[...retainedOccurrences(project).filter(o=>o.docId!==doc.id),...kept];
+  return kept.length;
+}
 function manualPasteOccurrences(project=activeProject()){
-  const out=[]; let n=0;
+  const out=[...retainedOccurrences(project)]; let n=0;
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
@@ -7647,7 +7812,7 @@ async function refreshProgressiveResults(reason='progression'){
 }
 
 async function analyze(onlyIds=null,manualUnlimited=false){
-  if(!state.docs.length&&!state.manualPasteRows.length){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
+  if(!state.docs.length&&!state.manualPasteRows.length&&!hasRetainedData()){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
   $('#analyzeBtn').disabled=true;
   analysisControl.running=true; analysisControl.paused=false; analysisControl.stopRequested=false; analysisControl.controllers.clear(); resolveAnalysisPause(); syncAnalysisControlUi();
   const previouslyAnalyzed=state.docs.filter(d=>Array.isArray(d.cachedOccurrences)).length;
@@ -8309,7 +8474,7 @@ async function submitBetaError(){
 }
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
-  const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length)||!state.result) return;
+  const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length&&!hasRetainedData())||!state.result) return;
   state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('regroupement bâtiments',80); toast(message,'success');
 }
 
@@ -8355,7 +8520,7 @@ function applyManualValuesToProject(project){
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
-  if(!valid.length&&!(project.manualPasteRows||[]).length){ project.result=null; return; }
+  if(!valid.length&&!(project.manualPasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
   applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés

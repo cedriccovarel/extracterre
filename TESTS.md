@@ -359,3 +359,7 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.6
 - `node test_v2_3_6.mjs` : sortie Pléiades « .N » + cible 2028, notice carbone par bâtiment, notice thermique en colonnes, notice biosourcé (documents fictifs).
+
+
+## v2.3.7
+- `node test_v2_3_7.mjs` : RSEnv (seuils par période), rapport ACV Pléiades, synthèses prestations / déperditions, vitrage ≠ version, conservation des valeurs d’un document retiré (documents fictifs).

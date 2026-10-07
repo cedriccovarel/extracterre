@@ -31,7 +31,8 @@ export function cstbBuildingContext(doc){
   const set=(raw)=>{ const n=String(raw||'').replace(/^["“”']+|["“”']+$/g,'').trim(); if(!n||n.length>60||/^bat\.\d/i.test(n)) return; current=n; if(!names.includes(n)) names.push(n); };
   for(const x of lines){
     let m;
-    if((m=x.t.match(/^Batiment\s*:\s*(.+)$/i))) set(m[1]);
+    if((m=x.t.match(/pour\s+le\s+batiment\s*:\s*(.+?)\s+Conformite\b/i))) set(m[1]);
+    else if((m=x.t.match(/^Batiment\s*:\s*(.+)$/i))) set(m[1]);
     else if(afterTech&&(m=x.t.match(/^["“](.+)["”]$/))) set(m[1]);
     else if((m=x.t.match(/Resultats\s+sorties\s+detaillees\s*-\s*\((.+)\)/i))) set(m[1]);
     else if((m=x.t.match(/^Nom\s+du\s+batiment\s+(.+)$/i))) set(m[1]);
@@ -63,6 +64,20 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     if((m=x.t.match(/^SRef\s*\/\s*usage\s+principal\s+(.+?)\s*m2?\s*\//i))){ const n=cs_numbers(m[1]); if(n.length===1) emit(x,'shab',n[0],'sref-batiment',0.97,'m²',{provenanceNote:'SRef du bâtiment (données générales).'}); }
     if((m=x.t.match(/^Nombre\s+de\s+logements\s+(\d+)\s*$/i))) emit(x,'housing_count',Number(m[1]),'nombre-logements',0.97);
   }
+  // Partie environnementale : « Nom du bâtiment X » → « Surface de Référence [m2] » (bâtiment) et
+  // « Nombre de logement » (somme des zones du bâtiment).
+  { const env=new Map();
+    for(const x of lines){ if(!x.building) continue; const k=x.building; if(!env.has(k)) env.set(k,{sref:null,lgt:[],seen:false});
+      const e=env.get(k); let m;
+      if(/^Nom\s+du\s+batiment\b/i.test(x.t)) e.seen=true;
+      if(!e.seen) continue;
+      if(!e.sref&&(m=x.t.match(/^Surface\s+de\s+Reference\s*\[m[2²?]?\]\s+(.+)$/i))){ const n=cs_numbers(m[1]); if(n.length===1) e.sref={x,v:n[0]}; }
+      if((m=x.t.match(/^Nombre\s+de\s+logement\s+(\d+)\s*$/i))) e.lgt.push({x,v:Number(m[1])});
+      if(/^Chapitre\s+3\b/i.test(x.t)) e.seen=false; }
+    for(const e of env.values()){
+      if(e.sref&&!out.some(o=>o.field==='shab'&&o.building===canonical(e.sref.x.building))) { const plaus=e.sref.v>0&&e.sref.v<=50000; emit(e.sref.x,'shab',e.sref.v,'sref-rsenv',plaus?0.96:0.7,'m²',{ocrOk:plaus,provenanceNote:plaus?'Surface de référence du bâtiment (RSEnv).':'Surface de référence peu plausible (séparateur décimal perdu ?) : à vérifier.'}); }
+      if(e.lgt.length&&!out.some(o=>o.field==='housing_count'&&o.building===canonical(e.lgt[0].x.building))) emit(e.lgt[0].x,'housing_count',e.lgt.reduce((a,l)=>a+l.v,0),'logements-rsenv',0.95,'',{ocrOk:true,provenanceNote:`Somme des logements de ${e.lgt.length} zone(s).`});
+    } }
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
     if(!b) continue; let worst=null;
@@ -72,20 +87,36 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
       if(v) emit(lim,'dh_max',v,'dh-max-texte',0.86,'°C.h',{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
   }
 
+  // --- Seuils par période (RSEnv 2024+) : « Icconstruction Icconstruction_max Icconstruction_max_2022 … _2031 »
+  //     puis, sur la ligne suivante, les valeurs dans le même ordre (idem pour Icenergie).
+  lines.forEach((x,i)=>{
+    const head=x.t.match(/^(Ic\s*construction|Ic\s*energie)\s+(Ic\s*(?:construction|energie)_max(?:\s+Ic\s*(?:construction|energie)_max_\d{4})*)\s*$/i); if(!head) return;
+    const kind=/construction/i.test(head[1])?'construction':'energy';
+    const cols=[kind,...head[2].split(/\s+(?=Ic)/i).map(c=>{ const y=c.match(/_(\d{4})$/); return y?`max_${y[1]}`:'max'; })];
+    const vx=lines[i+1]; if(!vx) return; const v=cs_numbers(vx.t); if(v.length!==cols.length) return;
+    const base=kind==='construction'?'ic_construction':'ic_energy';
+    cols.forEach((c,k)=>{
+      const field=c===kind?base:c==='max'?`${base}_max`:c==='max_2028'?`${base}_max_2028`:null; if(!field) return;
+      emit(vx,field,v[k],`seuils-${kind}`,0.99,'kgCO2e/m²',{ocrOk:true,provenanceNote:`Tableau « Respect des ${kind==='construction'?'Icconstruction':'Icenergie'}_max » (valeur, max, max 2022/2025/2028${kind==='construction'?'/2031':''}).`});
+    });
+  });
+
   // --- Environnement -------------------------------------------------------------------------------
   const unitTail=(t)=>{ const i=t.search(/\]|m[²2°?]\s*\]?|\/m\b/); return i>=0?t.slice(i):t; };
   for(const [b,ls] of byBuilding){
     ls.forEach((x,i)=>{
       const t=x.t; if(x.scope!=='building') return; if(/par\s+occupant|annualis|parcelle|_?DED\b/i.test(t)) return;
       const next=ls[i+1]?.t||'';
-      const isCons=/contribution\s+construction|\bI\s*c\s*_?\s*construction\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale/i.test(t);
-      const isEne=/contribution\s+[eé]nergie|\bI\s*c\s*_?\s*[eé]nergie\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale|annualis/i.test(t);
+      const isCons=/contribution\s*construction|\bI\s*c\s*_?\s*construction\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale/i.test(t);
+      const isEne=/contribution\s*[eé]nergie|\bI\s*c\s*_?\s*[eé]nergie\b/i.test(t)&&!/valeur\s+maximale|inferieure|egale|annualis/i.test(t);
       if(!isCons&&!isEne) return;
       // Les valeurs suivent l'unité entre crochets ([kgéq. CO2/m²]) ; sinon elles sont sur la ligne suivante.
       const afterUnit=(s)=>{ const k=s.indexOf(']'); return k>=0?cs_numbers(s.slice(k+1)):[]; };
       let src=x, n=afterUnit(t.replace(/CO\s*[2z₂]/gi,'CO'));
       if(!n.length&&/\[/.test(next)){ src=ls[i+1]; n=afterUnit(next.replace(/CO\s*[2z₂]/gi,'CO')); }
       if(!n.length) return;
+      // « … [kgeq.CO2/m²] 532,36 max » : le max est le premier nombre de la ligne suivante.
+      if(n.length===1&&/\bmax\s*$/i.test(src.t)){ const nx=ls[ls.indexOf(src)+1]; const m2=nx?cs_numbers(nx.t):[]; if(m2.length===1) n=[n[0],m2[0]]; }
       const v=n[0], mx=n.length>=2?n[1]:null, ok=(mx===null||v<=mx)&&v>=5;
       const f=isCons?'ic_construction':'ic_energy'; const fm=isCons?'ic_construction_max':'ic_energy_max';
       if(out.some(o=>o.field===f&&o.building===canonical(b))) return;

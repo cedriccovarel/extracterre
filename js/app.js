@@ -17,7 +17,7 @@ import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getR
 import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
 import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud,invokeLlmCloudFunction} from './cloud.js';
 
-function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
+function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
 
 // v2.3 — une seule dropzone : la famille documentaire est détectée à la lecture, modifiable par fichier.
@@ -110,7 +110,7 @@ function stopAnalysis(){
 
 state.projects.push(createProject(1)); state.activeProjectId=state.projects[0].id;
 function activeProject(){ return state.projects.find(p=>p.id===state.activeProjectId)||state.projects[0]; }
-for(const key of ['docs','result','buildingOverrides','deletedBuildings','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
+for(const key of ['docs','result','buildingOverrides','deletedBuildings','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','retainedOccurrences','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
 function projectTitle(p){ return (p.customTitle||p.operationName||p.result?.operation||p.label||'Projet').trim(); }
 function applyDeletedBuildings(project=activeProject()){
   const r=project?.result, deleted=new Set(project?.deletedBuildings||[]); if(!r||!deleted.size) return;
@@ -415,7 +415,13 @@ function renderFiles(){
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
     return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
-  $$('.remove-file').forEach(b=>b.onclick=async()=>{ const id=b.dataset.id; state.docs=state.docs.filter(d=>d.id!==id); state.result=null; try{await deleteDocumentCheckpoint(id);}catch{} renderAll(); scheduleWorkspaceCheckpoint('suppression document',50); });
+  $$('.remove-file').forEach(b=>b.onclick=async()=>{
+    // v2.3.7 — retirer un document ne supprime plus les données qu'il a déjà fournies : elles restent dans la consolidation.
+    const id=b.dataset.id; const doc=state.docs.find(d=>d.id===id); const kept=retainRemovedDocument(activeProject(),doc);
+    state.docs=state.docs.filter(d=>d.id!==id); try{await deleteDocumentCheckpoint(id);}catch{}
+    if(state.result&&(state.docs.some(d=>d.status==='ready')||hasRetainedData()||state.manualPasteRows.length)) recomputeProject(kept?`${doc?.name||'Document'} retiré de la liste : ${kept} valeur(s) extraite(s) conservée(s).`:'Document retiré de la liste.');
+    else { renderAll(); if(kept) toast(`${doc?.name||'Document'} retiré : ${kept} valeur(s) extraite(s) conservée(s) pour la prochaine consolidation.`,'success'); }
+    scheduleWorkspaceCheckpoint('suppression document',50); });
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
   $$('.targeted-file').forEach(b=>b.onclick=()=>targetedReanalysis(b.dataset.id));
   $$('.family-select').forEach(sel=>{ sel.onchange=()=>changeDocumentFamily(sel.dataset.id,sel.value); sel.onclick=e=>e.stopPropagation(); });
@@ -433,6 +439,8 @@ function addFiles(fileList,specializedFamily=null,opts={}){
       if(!existing.file){ existing.file=file; existing.relativePath=rel; if(['missing','error'].includes(existing.status)) existing.status='pending'; rehydrated++; continue; }
       toast(`Déjà ajouté : ${rel}`,'warn'); continue;
     }
+    // Fichier redéposé : ses valeurs conservées sont remplacées par la nouvelle lecture.
+    if(hasRetainedData()) activeProject().retainedOccurrences=retainedOccurrences().filter(o=>o.fileName!==file.name);
     const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null;
     const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
     // v2.3.2 — Analyse manuelle : moteur libre (famille « annex » imposée), sans liste blanche de champs.
@@ -516,8 +524,18 @@ function parseManualClipboard(raw=''){
   }
   return {rows,columns,unrecognized:columns.filter(c=>!c.def&&c.header).map(c=>c.header),recognized:columns.filter(c=>c.def).length};
 }
+// v2.3.7 — valeurs extraites des documents retirés de la liste : conservées dans le projet et réinjectées
+// dans chaque consolidation (traçabilité intacte, mention « document retiré »).
+function retainedOccurrences(project=activeProject()){ return Array.isArray(project.retainedOccurrences)?project.retainedOccurrences:[]; }
+function hasRetainedData(project=activeProject()){ return retainedOccurrences(project).length>0; }
+function retainRemovedDocument(project,doc){
+  if(!doc||!Array.isArray(doc.cachedOccurrences)||!doc.cachedOccurrences.length) return 0;
+  const kept=doc.cachedOccurrences.filter(Boolean).map(o=>({...o,docId:o.docId||doc.id,fileName:o.fileName||doc.name,removedDocument:true,provenanceNote:[o.provenanceNote,'Document retiré de la liste : valeur extraite conservée.'].filter(Boolean).join(' ')}));
+  project.retainedOccurrences=[...retainedOccurrences(project).filter(o=>o.docId!==doc.id),...kept];
+  return kept.length;
+}
 function manualPasteOccurrences(project=activeProject()){
-  const out=[]; let n=0;
+  const out=[...retainedOccurrences(project)]; let n=0;
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
@@ -718,7 +736,7 @@ async function refreshProgressiveResults(reason='progression'){
 }
 
 async function analyze(onlyIds=null,manualUnlimited=false){
-  if(!state.docs.length&&!state.manualPasteRows.length){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
+  if(!state.docs.length&&!state.manualPasteRows.length&&!hasRetainedData()){ toast('Ajoutez au moins un document ou collez des données manuelles.','warn'); return; }
   $('#analyzeBtn').disabled=true;
   analysisControl.running=true; analysisControl.paused=false; analysisControl.stopRequested=false; analysisControl.controllers.clear(); resolveAnalysisPause(); syncAnalysisControlUi();
   const previouslyAnalyzed=state.docs.filter(d=>Array.isArray(d.cachedOccurrences)).length;
@@ -1380,7 +1398,7 @@ async function submitBetaError(){
 }
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
-  const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length)||!state.result) return;
+  const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length&&!hasRetainedData())||!state.result) return;
   state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('regroupement bâtiments',80); toast(message,'success');
 }
 
@@ -1426,7 +1444,7 @@ function applyManualValuesToProject(project){
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
-  if(!valid.length&&!(project.manualPasteRows||[]).length){ project.result=null; return; }
+  if(!valid.length&&!(project.manualPasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
   applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés

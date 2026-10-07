@@ -1,4 +1,4 @@
-// ExtracTerre v2.3.6 — notice ACV E+C- (annexe RSEnv Pléiades) : document FICTIF reproduisant la structure.
+// ExtracTerre v2.3.7 — notice ACV E+C- (annexe RSEnv Pléiades) : document FICTIF reproduisant la structure.
 import assert from 'node:assert/strict';
 import {APP_VERSION,DOC_TYPES} from './js/config.js';
 import {classifyDocument} from './js/classifier.js';
@@ -7,7 +7,7 @@ import {parseDocument} from './js/parsers.js';
 import {isEcAcvNotice} from './js/acv-ec.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
-assert.equal(APP_VERSION,'2.3.6');
+assert.equal(APP_VERSION,'2.3.7');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const pages=[
   mkPage(1,rows(['SOMMAIRE','3. Donnees generales Ecole ........ 12','4. Niveaux ENERGIE-CARBONE ........ 12'])),
@@ -50,4 +50,4 @@ const manual={...doc,id:'ec-m',familyMode:'manual',families:['annex']};
 const mOut=parseDocument(manual);
 assert.equal(mOut.find(o=>o.field==='ic_components')?.value,701.99);
 assert.equal(mOut.filter(o=>o.field==='structure').every(o=>o.method.startsWith('acv-ec:')),true);
-console.log('v2.3.6 notice ACV E+C- : OK (document fictif)');
+console.log('v2.3.7 notice ACV E+C- : OK (document fictif)');

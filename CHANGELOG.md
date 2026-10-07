@@ -1,3 +1,14 @@
+# v2.3.7 — Seuils Ic par période (RSEnv / rapport ACV Pléiades), synthèses Pléiades, documents retirés conservés
+- **RSEnv 2024+** : tableaux « Respect des Icconstruction_max / Icenergie_max » (valeur, max, max 2022 / 2025 / **2028** / 2031) lus par bâtiment → IC construction, IC construction Max, **IC construction Max 2028**, IC énergie, IC énergie Max, **IC énergie Max 2028**. Bâtiment repéré par « Respect des exigences de l'arrêté pour le bâtiment : X ». Surface de référence et logements (Σ zones) lus dans « Données techniques, niveau bâtiment ». Valeur « … 532,36 max » / « Ic_construction 801,88 » sur deux lignes gérée.
+- **Rapport ACV Pléiades** (`js/pleiades-rapports.js`) : « Ic construction max 2028 kg eq CO2/m² 624.37 » etc., par bâtiment ; blocs « Zone » ignorés.
+- **Synthèse des prestations thermiques Pléiades** : tableau Résultats (Bbio, Cep, Cep,nr, Ic énergie + max) par bâtiment et générateur commun ; classée « Étude thermique ».
+- **Synthèse des déperditions (NF EN 12831)** : plus de faux bâtiment (adresse du BET) ni de vitrage « 6.24.4 ».
+- Le numéro de version d'un logiciel (« Pléiades, version 6.24.4.2 ») n'est plus lu comme un vitrage.
+- Ic énergie Max : le RSEnv / l'étude carbone priment sur les sorties thermiques.
+- **Suppression d'un document** : les valeurs qu'il a fournies sont conservées (avec la mention « document retiré ») et la consolidation est recalculée au lieu d'être effacée ; elles sont sauvegardées localement et remplacées si le même fichier est redéposé.
+- Contrôle de plausibilité des surfaces lues par OCR (séparateur décimal perdu).
+- Rappel : les **IC par lot (1 à 13)** ne figurent ni dans les PDF RSEnv « version courte » ni dans les rapports ACV Pléiades ; ils sont lus dans le **XML RSEE** et dans les notices carbone qui les détaillent.
+
 # v2.3.6 — Notices de bureau d'études (carbone, thermique, biosourcé) et sorties Pléiades récentes
 Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites des PDF sont identiques à celles du XML.
 - **Notice carbone RE2020 / BBCA** (`js/notice-carbone.js`) : sections « EVALUATION DU BILAN CARBONE – BATIMENT X (CAGE n) » → Ic construction, Ic énergie, Ic composants, Ic chantier, lots 1–13 (sous-lots additionnés, Σ lots = Ic composants contrôlée), postes Ic énergie. Les seuils vont dans **IC construction Max 2028 / IC énergie Max 2028** quand la notice déclare viser le seuil 2028, sinon dans « Max » (à valider). Classée « Étude carbone / ACV » (et non plus RSET).

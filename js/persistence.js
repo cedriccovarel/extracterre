@@ -133,6 +133,7 @@ function serializeProject(project={}){
     manualPasteRaw:project.manualPasteRaw||'',
     manualPasteRows:safeJsonClone(project.manualPasteRows,[]),
     manualPasteColumns:safeJsonClone(project.manualPasteColumns,[]),
+    retainedOccurrences:safeJsonClone(project.retainedOccurrences,[]),
     uncertainRejectedKeys:safeJsonClone(project.uncertainRejectedKeys,[]),
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),

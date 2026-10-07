@@ -3,6 +3,7 @@ import {normalizeText,normLower,unique} from './utils.js';
 import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-sortie.js';
 import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
 import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.js';
+import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
 export function canonicalBuilding(raw){
@@ -90,6 +91,11 @@ export function detectBuildings(doc){
   if(isPleiadesThermalOutput(doc)){
     const names=pleiadesThermalBuildingNames(doc).map(canonicalBuilding);
     if(names.length) return {names:[...new Set(names)],expectedCount:names.length,source:'pleiades-sortie-sections',hits:[]};
+  }
+  // v2.3.7 — éditions Pléiades (rapport ACV, synthèse des prestations, déperditions) : titres explicites.
+  if(isPleiadesAcvReport(doc)||isPleiadesServicesSummary(doc)||isHeatLossReport(doc)){
+    const names=pleiadesReportBuildingNames(doc).map(canonicalBuilding);
+    return names.length?{names:[...new Set(names)],expectedCount:new Set(names).size,source:'pleiades-rapport',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'pleiades-rapport'};
   }
   // v2.3.6 — notice carbone RE2020 : bâtiments = sections « EVALUATION DU BILAN CARBONE – BATIMENT X ».
   if(isCarbonNoticeRe2020(doc)){
