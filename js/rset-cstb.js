@@ -7,12 +7,14 @@
 // Le texte peut provenir d'un OCR (polices sans table Unicode) : chaque couple valeur / max est
 // contrôlé (valeur ≤ max) et, à défaut, la valeur part en « À vérifier ».
 import {normalizeText,parseFrNumber} from './utils.js';
+import {readTechnicalData,technicalDataFields} from './donnees-techniques.js';
 
 // Milliers séparés par une espace seulement s'ils portent une décimale (« 2 190,5 ») : dans les tableaux,
 // « 631 242 178 » est une suite de trois nombres, pas un seul.
 const cs_NUM_RE=/[-+]?\d{1,3}(?:[ \u00a0]\d{3})+[.,]\d+|[-+]?\d+(?:[.,]\d+)?/g;
 const cs_numbers=s=>(String(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
-const cs_lineText=l=>normalizeText(l?.text||'');
+// Les séparateurs de cellules « | » produits par l'OCR sont neutralisés.
+const cs_lineText=l=>normalizeText(String(l?.text||'').replace(/\s*\|\s*/g,' '));
 
 export function isCstbRseeFiche(doc){
   const t=normalizeText(String(doc?.read?.text||'').slice(0,60000));
@@ -61,8 +63,8 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     let m;
     if(/^Coef\s*f?\s*i?\s*cient\s+Bbio\b/i.test(x.t)){ const n=cs_numbers(x.t.replace(/^.*?Bbio/i,'')); if(n.length>=2){ const ok=n[0]<=n[1]; emit(x,'bbio',n[0],'bbio',ok?0.995:0.8,'points',{ocrOk:ok}); emit(x,'bbio_max',n[1],'bbio-max',ok?0.995:0.8,'points',{ocrOk:ok}); if(n.length>=3) emit(x,'bbio_gain',n[2],'bbio-gain',0.99,'%',{ocrOk:ok}); } }
     if(/Cep\s*\/\s*Cepmax.{0,6}Cep\s*,?\s*nr\s*\/\s*Cep\s*,?\s*nrmax/i.test(x.t)){ const n=cs_numbers(x.t.replace(/^.*?nrmax/i,'')); if(n.length>=4){ const ok=n[0]<=n[1]&&n[2]<=n[3]&&n[2]<=n[0]; const c=ok?0.995:0.8; emit(x,'cep',n[0],'cep',c,'kWhEP/m².an',{ocrOk:ok}); emit(x,'cep_max',n[1],'cep-max',c,'kWhEP/m².an',{ocrOk:ok}); emit(x,'cepnr',n[2],'cepnr',c,'kWhEP/m².an',{ocrOk:ok}); emit(x,'cepnr_max',n[3],'cepnr-max',c,'kWhEP/m².an',{ocrOk:ok}); if(n.length>=6){ emit(x,'cep_gain',n[4],'cep-gain',0.99,'%',{ocrOk:ok}); emit(x,'cepnr_gain',n[5],'cepnr-gain',0.99,'%',{ocrOk:ok}); } } }
-    if((m=x.t.match(/^SRef\s*\/\s*usage\s+principal\s+(.+?)\s*m2?\s*\//i))){ const n=cs_numbers(m[1]); if(n.length===1) emit(x,'shab',n[0],'sref-batiment',0.97,'m²',{provenanceNote:'SRef du bâtiment (données générales).'}); }
-    if((m=x.t.match(/^Nombre\s+de\s+logements\s+(\d+)\s*$/i))) emit(x,'housing_count',Number(m[1]),'nombre-logements',0.97);
+    if((m=x.t.match(/^S[a-z]{0,3}\s*\/\s*usage\s+principal\s+(.+?)\s*m[2²°?]?\s*\//i))){ const n=cs_numbers(m[1]); if(n.length===1) emit(x,'shab',n[0],'sref-batiment',0.97,'m²',{ocrOk:n[0]>0&&n[0]<=50000,provenanceNote:'SRef du bâtiment (données générales).'}); }
+    if((m=x.t.match(/^Nombre\s+de\s+logements\s+(\d+)\s*$/i))) emit(x,'housing_count',Number(m[1]),'nombre-logements',0.97,'',{ocrOk:Number(m[1])>0&&Number(m[1])<=2000});
   }
   // Partie environnementale : « Nom du bâtiment X » → « Surface de Référence [m2] » (bâtiment) et
   // « Nombre de logement » (somme des zones du bâtiment).
@@ -81,11 +83,20 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
     if(!b) continue; let worst=null;
-    for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!worst||dh>worst.dh) worst={x,dh}; }
-    if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{provenanceNote:'Groupe le plus défavorable du tableau DH.'});
+    for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh}; }
+    if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
       if(v) emit(lim,'dh_max',v,'dh-max-texte',0.86,'°C.h',{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
   }
+
+  // --- Tableau « Données techniques du bâtiment » (structure, isolants, menuiseries, protections) --------------------
+  { let buf=null; const flush=()=>{ if(!buf||!buf.length) { buf=null; return; } const b=buf.find(x=>x.building)?.building; for(const f of technicalDataFields(readTechnicalData(buf))){ const x={...f.at,building:b||f.at.building}; if(out.some(o=>o.field===f.field&&o.building===canonical(x.building||'Bâtiment unique'))) continue; emit(x,f.field,f.value,'donnees-techniques',0.95,'',{ocrOk:true,provenanceNote:f.note||'Données techniques du bâtiment (récapitulatif standardisé).'}); } buf=null; };
+    for(const x of lines){
+      if(/^Donnees\s+techniques\s+du\s+batiment/i.test(x.t)){ flush(); buf=[]; continue; }
+      if(buf&&/Exigences\s+de\s+performance|^Chapitre\s+\d|Besoin\s+bioclimatique/i.test(x.t)){ flush(); continue; }
+      if(buf) buf.push(x);
+    }
+    flush(); }
 
   // --- Seuils par période (RSEnv 2024+) : « Icconstruction Icconstruction_max Icconstruction_max_2022 … _2031 »
   //     puis, sur la ligne suivante, les valeurs dans le même ordre (idem pour Icenergie).

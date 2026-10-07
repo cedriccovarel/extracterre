@@ -242,7 +242,9 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
         if(m?.status==='recognizing text'&&Number.isFinite(m.progress)) onProgress(((activeOcrPage-1)+.25+.68*m.progress)/Math.max(1,totalPages),{stage:'ocr',page:activeOcrPage,totalPages,ocrProgress:m.progress,message:`OCR · page ${activeOcrPage}/${totalPages} · ${Math.round(m.progress*100)} %`});
         else if(m?.status) onProgress(.01,{stage:'ocr-init',page:activeOcrPage,totalPages,message:`Initialisation OCR · ${m.status}`});
       });
-      if(worker&&opts.mode==='max'&&typeof worker.setParameters==='function') try{ await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'}); }catch{}
+      // v2.3.8 — segmentation « colonne de blocs de tailles variables » (PSM 4) : conserve les lignes de tableaux
+      // (Bbio, Cep, DH…) que la segmentation automatique ou par bloc uniforme laisse de côté.
+      if(worker&&typeof worker.setParameters==='function') try{ await worker.setParameters({tessedit_pageseg_mode:'4',preserve_interword_spaces:'1'}); }catch{}
     }catch(err){ workerInitError=err; if(releaseOcrSlot){ releaseOcrSlot(); releaseOcrSlot=null; } }
     return worker;
   };
@@ -278,7 +280,9 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
             ocrWarnings.push(`Page ${p} : worker OCR indisponible${workerInitError?` (${workerInitError?.message||workerInitError})`:''}.`);
           } else {
             try{
-              canvas=await renderPdfPageForOcr(page,opts);
+              // Page sans couche texte ou à texte brouillé : rendu plus fin (≈ 216 dpi) pour lire les chiffres des tableaux.
+              const fullPage=pdfQuality.chars===0||pdfQuality.garbled;
+              canvas=await renderPdfPageForOcr(page,fullPage?{...opts,scale:Math.max(Number(opts.scale)||0,3.0),maxPixels:Math.max(Number(opts.maxPixels)||0,8000000)}:opts);
               let ret;
               try{ ret=await worker.recognize(canvas,{},{text:true,blocks:true}); }
               catch(optErr){ ret=await worker.recognize(canvas); }

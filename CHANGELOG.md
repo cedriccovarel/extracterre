@@ -1,3 +1,10 @@
+# v2.3.8 — RSEE imprimés en image, données techniques, systèmes Pléiades par bâtiment
+- **OCR des pages sans couche texte** (RSEE / RSET imprimés depuis le navigateur) : rendu ≈ 216 dpi et segmentation Tesseract « colonne de blocs » (PSM 4). Les lignes de tableaux (Bbio, Cep / Cep,nr + max + gains, DH par groupe) sont désormais conservées : sur un RSEE de 55 pages entièrement en image, les valeurs lues sont identiques à la sortie logiciel du même projet.
+- Fiche CSTB lue par OCR : séparateurs « | » ignorés, DH hors 0–2000 °C.h écarté (virgule perdue), libellé SRef déformé (« Srer », « She ») reconnu, logements et DH contrôlés.
+- **Tableau « Données techniques »** (`js/donnees-techniques.js`) lu dans les fiches RSET / RSEE et les éditions environnementales Pléiades : structure, isolants des murs / planchers / toitures, type de plancher et de toiture, menuiseries, protections mobiles (libellés coupés et deux couples par ligne gérés).
+- **Sortie thermique Pléiades** : générateur et ECS par bâtiment (« Chaudière granulés BAT B (Volume chauffé Bâtiment B) »), ventilation par bâtiment (simple / double flux, hygroréglable A / B).
+- Règles de sources : le RSEnv est accepté (en dernier, avant la saisie manuelle) pour la nature de la structure et des isolants — pas pour les épaisseurs ni les R.
+
 # v2.3.7 — Seuils Ic par période (RSEnv / rapport ACV Pléiades), synthèses Pléiades, documents retirés conservés
 - **RSEnv 2024+** : tableaux « Respect des Icconstruction_max / Icenergie_max » (valeur, max, max 2022 / 2025 / **2028** / 2031) lus par bâtiment → IC construction, IC construction Max, **IC construction Max 2028**, IC énergie, IC énergie Max, **IC énergie Max 2028**. Bâtiment repéré par « Respect des exigences de l'arrêté pour le bâtiment : X ». Surface de référence et logements (Σ zones) lus dans « Données techniques, niveau bâtiment ». Valeur « … 532,36 max » / « Ic_construction 801,88 » sur deux lignes gérée.
 - **Rapport ACV Pléiades** (`js/pleiades-rapports.js`) : « Ic construction max 2028 kg eq CO2/m² 624.37 » etc., par bâtiment ; blocs « Zone » ignorés.

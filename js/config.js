@@ -1,4 +1,4 @@
-export const APP_VERSION = '2.3.7';
+export const APP_VERSION = '2.3.8';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -351,6 +351,9 @@ for(const key of ["department", "progress_status", "project", "operation", "buil
 // Une étude thermique/Bao peut porter un département explicite fiable ; elle reste en secours derrière les sources projet validées.
 DEFAULT_SOURCE_RULES.department=ordered(SOURCE_PROJECT_META,[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
 for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
+// v2.3.8 — le tableau « Données techniques » du RSEnv décrit la nature de la structure et des isolants (pas les
+// épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
+for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);

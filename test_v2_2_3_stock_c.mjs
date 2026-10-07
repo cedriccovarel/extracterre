@@ -9,7 +9,7 @@ function mk(text){
   const doc={id:'acv-stock-c',name:'LOT 1 - Résultats ACV.pdf',type:DOC_TYPES.CARBON,specializedFamily:'acv',read:{kind:'pdf',text:chunks.join('\n'),pages},buildings:{names:[],hits:[]}};
   doc.buildings=detectBuildings(doc); return doc;
 }
-assert.equal(APP_VERSION,'2.3.7');
+assert.equal(APP_VERSION,'2.3.8');
 assert.equal(FIELD_DEFS.length,173);
 const text=[
 '1. Bâtiment A\nStockage carbone Stock,C 39068.7 kgC\nTotal hors parcelle Ic,bâtiment 715.9 Stockage carbone Stock,C (par m²) 50.4 kgC/m²',

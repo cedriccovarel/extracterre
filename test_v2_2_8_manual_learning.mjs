@@ -2,7 +2,7 @@ import fs from 'fs';
 const app=fs.readFileSync(new URL('./js/app.js',import.meta.url),'utf8');
 const version=fs.readFileSync(new URL('./VERSION',import.meta.url),'utf8').trim();
 const checks=[
-  ['version courante', version==='2.3.7'],
+  ['version courante', version==='2.3.8'],
   ['manual analysis records parser location learning', /recordLearningEvent\('parser_location_learning',learnPayload,activeProject\(\)\)/.test(app)],
   ['manual analysis reinforces local learning memory', /reinforceLearningLocation\(learnPayload,\{eventId:evt\.id,createdAt:evt\.createdAt,field,docType:loc\.docType,building\}\)/.test(app)],
   ['manual learning carries selection geometry', /normalizedRects:loc\.normalizedRects\|\|\[\],bboxNormalized:loc\.bboxNormalized\|\|null/.test(app)],

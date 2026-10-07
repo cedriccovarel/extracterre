@@ -11,7 +11,7 @@ import {climaWinSynthesisDoc,beRecapDoc,mkDoc,mkPage} from './test_fixtures_v2_3
 let n=0; const ok=(c,m)=>{ assert.ok(c,m); n++; }; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
 const rules=()=>structuredClone(DEFAULT_SOURCE_RULES);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
-eq(APP_VERSION,'2.3.7','version');
+eq(APP_VERSION,'2.3.8','version');
 
 // ---------- 1. Classification ----------
 const cw=prep(climaWinSynthesisDoc('cw1','Lot_X_-_Resultats_RE2020.pdf'));

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.7 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.8 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.7';
+const APP_VERSION = '2.3.8';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -356,6 +356,9 @@ for(const key of ["department", "progress_status", "project", "operation", "buil
 // Une étude thermique/Bao peut porter un département explicite fiable ; elle reste en secours derrière les sources projet validées.
 DEFAULT_SOURCE_RULES.department=ordered(SOURCE_PROJECT_META,[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
 for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
+// v2.3.8 — le tableau « Données techniques » du RSEnv décrit la nature de la structure et des isolants (pas les
+// épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
+for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
@@ -1401,6 +1404,98 @@ function parseEcAcvNotice(doc,occ){
   return out;
 }
 
+/* ---- donnees-techniques.js ---- */
+// v2.3.8 — Tableau « Données techniques (du bâtiment) » des RSET / RSEE (fiche CSTB) et des éditions Pléiades :
+// libellés normalisés RE2020 (« Type de structure porteuse », « Nature de l'isolation des toitures »…), soit sur
+// une ligne (« Libellé valeur », éventuellement deux couples par ligne en OCR), soit coupés autour de la valeur
+// (« Nature de l'isolation des » / « Laine de bois » / « parois verticales exterieures »).
+// Les valeurs sont traduites dans le vocabulaire ExtracTerre ; une valeur non reconnue n'est pas reprise.
+
+const DT_LABELS=[
+  ['structureType',["type de structure principale","type de structure porteuse"]],
+  ['material',["materiau principal de la structure","materiau principal"]],
+  ['wallIns',["nature de l'isolation des parois verticales exterieures"]],
+  ['floorIns',["nature de l'isolation des planchers bas","nature de l'isolation des plancher bas","nature de l'isolation des planchers"]],
+  ['roofIns',["nature de l'isolation des toitures"]],
+  ['floorType',["type principal de plancher","type de plancher"]],
+  ['roofType',["type principal de toiture","type de toiture"]],
+  ['windows',["type de menuiseries"]],
+  ['shading',["type de protections mobiles des menuiseries"]]
+];
+// Libellés voisins (non exploités) : servent à couper une ligne qui porte deux couples « libellé valeur ».
+const DT_OTHER=["elements prefabriques","materiau principal de remplissage de la facade","materiaux de remplissage de facade","mode d'isolation des parois verticales exterieures","revetement exterieur des parois verticales exterieures","types de fondations","type de fondation","mode d'isolation des planchers bas","mode d'isolation des plancher bas","nature de l'espace sous plancher","mode d'isolation des toitures","la toiture est-t-elle vegetalisee ?","type de couverture de la toiture","systeme d'eclairage artificiel"];
+const dt_norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim().toLowerCase();
+const DT_ALL=[...DT_LABELS.flatMap(([k,ls])=>ls.map(l=>({k,l}))),...DT_OTHER.map(l=>({k:null,l}))].sort((a,b)=>b.l.length-a.l.length);
+
+function dt_cutValue(rest){
+  // La valeur s'arrête au prochain libellé connu de la même ligne.
+  const low=dt_norm(rest); let end=low.length;
+  for(const {l} of DT_ALL){ const i=low.indexOf(l); if(i>0&&i<end) end=i; }
+  return rest.slice(0,end).replace(/[|]/g,' ').replace(/\s*:\s*$/,'').trim();
+}
+
+function readTechnicalData(lines){
+  // lines : [{t, ...}] dans l'ordre du document (une section bâtiment).
+  const found={}; const low=lines.map(x=>dt_norm(x.t));
+  for(let i=0;i<lines.length;i++){
+    const l=low[i];
+    for(const {k,l:lab} of DT_ALL){
+      const at=l.indexOf(lab); if(at<0) continue;
+      if(!k) continue; if(found[k]) continue;
+      const after=lines[i].t.slice(lines[i].t.length-(l.length-at-lab.length)).trim();
+      const v=dt_cutValue(after);
+      if(v&&!/^[:\-–]?$/.test(v)){ found[k]={value:v,at:lines[i]}; continue; }
+    }
+    // Libellé coupé : préfixe sur la ligne i, valeur sur i+1, fin du libellé sur i+2.
+    for(const [k,labs] of DT_LABELS){
+      if(found[k]) continue;
+      for(const lab of labs){
+        if(!(lab.startsWith(l+' ')&&i+2<lines.length)) continue;
+        const rest=lab.slice(l.length+1);
+        if(low[i+2]===rest||low[i+2].startsWith(rest)){ const v=lines[i+1].t.trim(); if(v) found[k]={value:v,at:lines[i+1]}; break; }
+      }
+    }
+  }
+  return found;
+}
+
+function insulationName(v=''){
+  const s=dt_norm(v);
+  if(/laine\s+de\s+bois|fibre\s+de\s+bois/.test(s)) return 'Fibre de bois';
+  if(/laine\s+de\s+verre|\(lv\)/.test(s)) return 'Laine de verre';
+  if(/laine\s+de\s+roche|\(lr\)/.test(s)) return 'Laine de roche';
+  if(/polyurethane|\(pu\)|\bpur\b|\bpir\b/.test(s)) return 'PUR';
+  if(/extrude|\bxps\b/.test(s)) return 'XPS';
+  if(/polystyrene|\bpse\b/.test(s)) return 'PSE';
+  if(/ouate/.test(s)) return 'Ouate de cellulose';
+  if(/chanvre|\blin\b|coton/.test(s)) return 'Biosourcé chanvre/lin/coton';
+  if(/paille/.test(s)) return 'Paille';
+  if(/liege/.test(s)) return 'Liège';
+  if(/laine\s+minerale/.test(s)) return 'Laine minérale';
+  return null;
+}
+const dt_cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+
+// Traduction en occurrences ExtracTerre : [{field,value,at,note}]
+function technicalDataFields(found){
+  const out=[]; const add=(field,value,src,note='')=>{ if(value&&src) out.push({field,value,at:src.at,note}); };
+  const mat=found.material?.value||'', typ=found.structureType?.value||'';
+  if(mat||typ){
+    const m=dt_norm(mat), t=dt_norm(typ);
+    const structure=/bois/.test(m)&&/ossature/.test(t)?'Ossature bois':/bois/.test(m)&&/poteaux/.test(t)?'Poteaux-poutres bois':/beton/.test(m)&&/mixte|bois/.test(m)?'Mixte bois-béton':/beton/.test(m)?'Béton armé':/acier|metal/.test(m)?'Métal':/bois/.test(m)?'Bois massif':null;
+    if(structure) add('structure',structure,found.material||found.structureType,`Données techniques : ${[typ,mat].filter(Boolean).join(' / ')}.`);
+    if(structure==='Ossature bois') add('wall_structure','Ossature bois',found.structureType||found.material);
+  }
+  if(found.wallIns) add('wall_insulation',insulationName(found.wallIns.value),found.wallIns,`Données techniques : ${found.wallIns.value}.`);
+  if(found.floorIns) add('floor_insulation',insulationName(found.floorIns.value),found.floorIns,`Données techniques : ${found.floorIns.value}.`);
+  if(found.roofIns) add('roof_insulation',insulationName(found.roofIns.value),found.roofIns,`Données techniques : ${found.roofIns.value}.`);
+  if(found.floorType){ const s=dt_norm(found.floorType.value); add('floor_structure',/bois/.test(s)?'Plancher bois':/beton|dalle/.test(s)?'Dalle béton':/acier|metal/.test(s)?'Bac acier':null,found.floorType,`Type principal de plancher : ${found.floorType.value}.`); }
+  if(found.roofType){ const s=dt_norm(found.roofType.value); add('roof_structure',/terrasse/.test(s)?(/non\s+accessible/.test(s)?'Toiture terrasse non accessible':'Toiture terrasse'):/pan|pente|comble/.test(s)?dt_cap(found.roofType.value):null,found.roofType); }
+  if(found.windows){ const s=dt_norm(found.windows.value); add('window_material',/pvc/.test(s)?'PVC':/bois.*alu|alu.*bois|mixte/.test(s)?'Bois-aluminium':/alu/.test(s)?'Aluminium':/bois/.test(s)?'Bois':null,found.windows); }
+  if(found.shading){ const s=dt_norm(found.shading.value); add('window_shading',/sans\s+protection|aucune/.test(s)?'Sans occultation':/volet\s+roulant/.test(s)?'Volet roulant':/brise|bso|venitien/.test(s)?'BSO':/store/.test(s)?'Store':/persienne|battant/.test(s)?'Volet battant':null,found.shading); }
+  return out;
+}
+
 /* ---- pleiades-sortie.js ---- */
 // v2.3.5 — « Sortie logiciel – Partie thermique » de Pléiades (IZUBA) : rapport RE2020 multi-bâtiments.
 // Structure : « 1 Résultats RE2020 Energie » puis une section « 1.N <bâtiment> » par bâtiment
@@ -1503,6 +1598,29 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     if(clim.length){ const on=clim.filter(l=>/^Climatisation\s+Oui/i.test(l.t)); emit(on[0]||clim[0],b,'cooling',on.length?'Climatisation active':'Aucun','groupes-climatisation',on.length?0.9:0.95,'',{provenanceNote:`${clim.length} groupe(s) : ${on.length} climatisé(s).`}); }
   });
 
+  // v2.3.8 — Systèmes par bâtiment (chapitre « Systèmes de chauffage, ECS… » et « Systèmes de ventilation »).
+  const known=new Map(res.map(r=>[canonical(r.name),r.name]));
+  const bOf=(raw)=>{ const m=String(raw||'').match(/\b(?:BAT|Batiment|Bat\.?)\s+([A-Za-z0-9]{1,4})\b/i); if(!m) return null; const c=canonical(`Batiment ${m[1]}`); return known.has(c)?known.get(c):null; };
+  const sysOrigin='Pléiades — systèmes du bâtiment';
+  const sysEmit=(x,b,field,value,conf,note)=>{ if(!b||out.some(o=>o.field===field&&o.building===canonical(b))) return; emit(x,b,field,value,'systemes',conf,'',{origin:sysOrigin,provenanceNote:note}); };
+  const genKind=(t)=>/chaudiere\s+(?:granul|bois|biomasse|plaquette)/i.test(t)?['Chaudière biomasse','Bois / biomasse']:/chaudiere.*gaz|gaz.*condensation/i.test(t)?['Chaudière gaz','Gaz']:/pompe\s+a\s+chaleur|\bPAC\b/i.test(t)?['PAC','Électricité']:/reseau\s+de\s+chaleur|sous[- ]station/i.test(t)?['Réseau de chaleur','Réseau de chaleur urbain']:null;
+  for(const x of lines){
+    let m;
+    if((m=x.t.match(/^(.+?)\s*\(Volume\s+chauffe\s+(.+?)\)\s*$/i))){ const b=bOf(m[2])||bOf(m[1]); const g=genKind(m[1]); if(b&&g){ sysEmit(x,b,'heating_mode_after',g[0],0.95,`Génération : ${m[1]}.`); sysEmit(x,b,'heating_vector_after',g[1],0.95,`Génération : ${m[1]}.`); } }
+    if((m=x.t.match(/^Detail\s+Production\s+Stockage\s+ECS\s*-\s*(.+)$/i))){ const b=bOf(m[1]); const g=genKind(m[1]); if(b&&g){ sysEmit(x,b,'ecs',g[0]==='PAC'?'PAC':g[0]==='Réseau de chaleur'?'Réseau de chaleur':'Chaudière',0.93,`Production ECS : ${m[1]}.`); sysEmit(x,b,'ecs_vector_after',g[1],0.93,`Production ECS : ${m[1]}.`); } }
+  }
+  const vi=lines.findIndex(x=>/^\.?\d*\.?\d+\s+Systemes\s+de\s+ventilation/i.test(x.t)||/^Ventilations\s+mecaniques$/i.test(x.t));
+  if(vi>=0){ let cur=null;
+    for(const x of lines.slice(vi,vi+400)){
+      let m;
+      if((m=x.t.match(/^(.+?)\s*\/\s*-\s*Ventilation\b/i))){ cur={b:bOf(m[1]),name:''}; continue; }
+      if(cur&&(m=x.t.match(/^Nom\s+(.+)$/i))) cur.name=m[1];
+      if(cur&&(m=x.t.match(/^Type\s+Groupe\s+de\s+ventilation\s+(simple\s+flux|double\s+flux)/i))){
+        const df=/double/i.test(m[1]); const hygro=/hygro/i.test(cur.name); const hB=/hygro\w*\s*(?:b\b|bc\b)|\bbc\b|type\s*b/i.test(cur.name);
+        sysEmit(x,cur.b,'ventilation',df?'VMC double flux':hygro?(hB?'VMC Hygro B':'VMC Hygro A'):'VMC simple flux',hygro&&!hB&&!df?0.88:0.94,`Groupe de ventilation : ${cur.name||m[1]}.`); cur=null; }
+      if(/^Bouches\s+de\s+ventilation/i.test(x.t)) break;
+    } }
+
   const dep=lines.find(x=>/^Departement\s*:\s*(\d{2,3}|2A|2B)\s*-/i.test(x.t));
   if(dep){ const d=dep.t.match(/^Departement\s*:\s*(\d{2,3}|2A|2B)/i)[1].padStart(2,'0'); const o=occ(doc,dep.page,dep.line,'department',d,'pleiades-sortie:department',0.97,'',{building:'Bâtiment unique',structuredPdf:true,origin}); if(o) out.push(o); }
   return out;
@@ -1518,11 +1636,13 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
 // Le texte peut provenir d'un OCR (polices sans table Unicode) : chaque couple valeur / max est
 // contrôlé (valeur ≤ max) et, à défaut, la valeur part en « À vérifier ».
 
+
 // Milliers séparés par une espace seulement s'ils portent une décimale (« 2 190,5 ») : dans les tableaux,
 // « 631 242 178 » est une suite de trois nombres, pas un seul.
 const cs_NUM_RE=/[-+]?\d{1,3}(?:[ \u00a0]\d{3})+[.,]\d+|[-+]?\d+(?:[.,]\d+)?/g;
 const cs_numbers=s=>(String(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
-const cs_lineText=l=>normalizeText(l?.text||'');
+// Les séparateurs de cellules « | » produits par l'OCR sont neutralisés.
+const cs_lineText=l=>normalizeText(String(l?.text||'').replace(/\s*\|\s*/g,' '));
 
 function isCstbRseeFiche(doc){
   const t=normalizeText(String(doc?.read?.text||'').slice(0,60000));
@@ -1571,8 +1691,8 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     let m;
     if(/^Coef\s*f?\s*i?\s*cient\s+Bbio\b/i.test(x.t)){ const n=cs_numbers(x.t.replace(/^.*?Bbio/i,'')); if(n.length>=2){ const ok=n[0]<=n[1]; emit(x,'bbio',n[0],'bbio',ok?0.995:0.8,'points',{ocrOk:ok}); emit(x,'bbio_max',n[1],'bbio-max',ok?0.995:0.8,'points',{ocrOk:ok}); if(n.length>=3) emit(x,'bbio_gain',n[2],'bbio-gain',0.99,'%',{ocrOk:ok}); } }
     if(/Cep\s*\/\s*Cepmax.{0,6}Cep\s*,?\s*nr\s*\/\s*Cep\s*,?\s*nrmax/i.test(x.t)){ const n=cs_numbers(x.t.replace(/^.*?nrmax/i,'')); if(n.length>=4){ const ok=n[0]<=n[1]&&n[2]<=n[3]&&n[2]<=n[0]; const c=ok?0.995:0.8; emit(x,'cep',n[0],'cep',c,'kWhEP/m².an',{ocrOk:ok}); emit(x,'cep_max',n[1],'cep-max',c,'kWhEP/m².an',{ocrOk:ok}); emit(x,'cepnr',n[2],'cepnr',c,'kWhEP/m².an',{ocrOk:ok}); emit(x,'cepnr_max',n[3],'cepnr-max',c,'kWhEP/m².an',{ocrOk:ok}); if(n.length>=6){ emit(x,'cep_gain',n[4],'cep-gain',0.99,'%',{ocrOk:ok}); emit(x,'cepnr_gain',n[5],'cepnr-gain',0.99,'%',{ocrOk:ok}); } } }
-    if((m=x.t.match(/^SRef\s*\/\s*usage\s+principal\s+(.+?)\s*m2?\s*\//i))){ const n=cs_numbers(m[1]); if(n.length===1) emit(x,'shab',n[0],'sref-batiment',0.97,'m²',{provenanceNote:'SRef du bâtiment (données générales).'}); }
-    if((m=x.t.match(/^Nombre\s+de\s+logements\s+(\d+)\s*$/i))) emit(x,'housing_count',Number(m[1]),'nombre-logements',0.97);
+    if((m=x.t.match(/^S[a-z]{0,3}\s*\/\s*usage\s+principal\s+(.+?)\s*m[2²°?]?\s*\//i))){ const n=cs_numbers(m[1]); if(n.length===1) emit(x,'shab',n[0],'sref-batiment',0.97,'m²',{ocrOk:n[0]>0&&n[0]<=50000,provenanceNote:'SRef du bâtiment (données générales).'}); }
+    if((m=x.t.match(/^Nombre\s+de\s+logements\s+(\d+)\s*$/i))) emit(x,'housing_count',Number(m[1]),'nombre-logements',0.97,'',{ocrOk:Number(m[1])>0&&Number(m[1])<=2000});
   }
   // Partie environnementale : « Nom du bâtiment X » → « Surface de Référence [m2] » (bâtiment) et
   // « Nombre de logement » (somme des zones du bâtiment).
@@ -1591,11 +1711,20 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
     if(!b) continue; let worst=null;
-    for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!worst||dh>worst.dh) worst={x,dh}; }
-    if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{provenanceNote:'Groupe le plus défavorable du tableau DH.'});
+    for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh}; }
+    if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
       if(v) emit(lim,'dh_max',v,'dh-max-texte',0.86,'°C.h',{reviewCap:0.86,provenanceNote:'DH max rappelé dans le texte (catégorie de contrainte extérieure 1) : à confirmer pour le groupe le plus défavorable.'}); }
   }
+
+  // --- Tableau « Données techniques du bâtiment » (structure, isolants, menuiseries, protections) --------------------
+  { let buf=null; const flush=()=>{ if(!buf||!buf.length) { buf=null; return; } const b=buf.find(x=>x.building)?.building; for(const f of technicalDataFields(readTechnicalData(buf))){ const x={...f.at,building:b||f.at.building}; if(out.some(o=>o.field===f.field&&o.building===canonical(x.building||'Bâtiment unique'))) continue; emit(x,f.field,f.value,'donnees-techniques',0.95,'',{ocrOk:true,provenanceNote:f.note||'Données techniques du bâtiment (récapitulatif standardisé).'}); } buf=null; };
+    for(const x of lines){
+      if(/^Donnees\s+techniques\s+du\s+batiment/i.test(x.t)){ flush(); buf=[]; continue; }
+      if(buf&&/Exigences\s+de\s+performance|^Chapitre\s+\d|Besoin\s+bioclimatique/i.test(x.t)){ flush(); continue; }
+      if(buf) buf.push(x);
+    }
+    flush(); }
 
   // --- Seuils par période (RSEnv 2024+) : « Icconstruction Icconstruction_max Icconstruction_max_2022 … _2031 »
   //     puis, sur la ligne suivante, les valeurs dans le même ordre (idem pour Icenergie).
@@ -1857,6 +1986,7 @@ function parseBiosourcedLabelNotice(doc,occ){
 //  • « Synthèse des déperditions (NF EN 12831) » : calcul de puissance, aucune donnée du référentiel ExtracTerre
 //    (seul le département est relevé) — évite les faux bâtiments et valeurs parasites.
 
+
 const pr_lineText=l=>normalizeText(l?.text||'');
 const pr_nums=s=>(String(s||'').match(/[-+]?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
 function pr_allLines(doc){
@@ -1910,6 +2040,11 @@ function parsePleiadesAcvReport(doc,occ,canonical=(s)=>s){
       if(o) out.push(o); break;
     }
   }
+  // Tableau « Données techniques » de chaque bâtiment (structure, isolants, toiture, plancher, menuiseries).
+  const all=pr_allLines(doc); let cur=null, buf=[];
+  const flush=()=>{ if(!cur||!buf.length) return; for(const f of technicalDataFields(readTechnicalData(buf))){ if(out.some(o=>o.field===f.field&&o.building===canonical(cur))) continue; const o=occ(doc,f.at.page,f.at.line,f.field,f.value,'pleiades-acv:donnees-techniques',0.95,'',{building:canonical(cur),structuredPdf:true,origin,provenanceNote:f.note||'Données techniques du bâtiment (RSEnv).'}); if(o) out.push(o); } };
+  for(const x of all){ const m=x.t.match(/^Donnees\s+generales\s+(Batiment\s+.+)$/i); if(m){ flush(); cur=m[1].trim(); buf=[]; continue; } if(/^Indicateurs\s+de\s+performance|^Zone\s+Zone\b|^Quantitatifs\s+saisis/i.test(x.t)){ flush(); cur=null; buf=[]; continue; } if(cur) buf.push(x); }
+  flush();
   return out;
 }
 
@@ -2765,7 +2900,9 @@ async function readPdf(file, onProgress=()=>{}, options={}) {
         if(m?.status==='recognizing text'&&Number.isFinite(m.progress)) onProgress(((activeOcrPage-1)+.25+.68*m.progress)/Math.max(1,totalPages),{stage:'ocr',page:activeOcrPage,totalPages,ocrProgress:m.progress,message:`OCR · page ${activeOcrPage}/${totalPages} · ${Math.round(m.progress*100)} %`});
         else if(m?.status) onProgress(.01,{stage:'ocr-init',page:activeOcrPage,totalPages,message:`Initialisation OCR · ${m.status}`});
       });
-      if(worker&&opts.mode==='max'&&typeof worker.setParameters==='function') try{ await worker.setParameters({tessedit_pageseg_mode:'6',preserve_interword_spaces:'1'}); }catch{}
+      // v2.3.8 — segmentation « colonne de blocs de tailles variables » (PSM 4) : conserve les lignes de tableaux
+      // (Bbio, Cep, DH…) que la segmentation automatique ou par bloc uniforme laisse de côté.
+      if(worker&&typeof worker.setParameters==='function') try{ await worker.setParameters({tessedit_pageseg_mode:'4',preserve_interword_spaces:'1'}); }catch{}
     }catch(err){ workerInitError=err; if(releaseOcrSlot){ releaseOcrSlot(); releaseOcrSlot=null; } }
     return worker;
   };
@@ -2801,7 +2938,9 @@ async function readPdf(file, onProgress=()=>{}, options={}) {
             ocrWarnings.push(`Page ${p} : worker OCR indisponible${workerInitError?` (${workerInitError?.message||workerInitError})`:''}.`);
           } else {
             try{
-              canvas=await renderPdfPageForOcr(page,opts);
+              // Page sans couche texte ou à texte brouillé : rendu plus fin (≈ 216 dpi) pour lire les chiffres des tableaux.
+              const fullPage=pdfQuality.chars===0||pdfQuality.garbled;
+              canvas=await renderPdfPageForOcr(page,fullPage?{...opts,scale:Math.max(Number(opts.scale)||0,3.0),maxPixels:Math.max(Number(opts.maxPixels)||0,8000000)}:opts);
               let ret;
               try{ ret=await worker.recognize(canvas,{},{text:true,blocks:true}); }
               catch(optErr){ ret=await worker.recognize(canvas); }

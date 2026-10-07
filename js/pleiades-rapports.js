@@ -7,6 +7,7 @@
 //  • « Synthèse des déperditions (NF EN 12831) » : calcul de puissance, aucune donnée du référentiel ExtracTerre
 //    (seul le département est relevé) — évite les faux bâtiments et valeurs parasites.
 import {normalizeText,parseFrNumber} from './utils.js';
+import {readTechnicalData,technicalDataFields} from './donnees-techniques.js';
 
 const pr_lineText=l=>normalizeText(l?.text||'');
 const pr_nums=s=>(String(s||'').match(/[-+]?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
@@ -61,6 +62,11 @@ export function parsePleiadesAcvReport(doc,occ,canonical=(s)=>s){
       if(o) out.push(o); break;
     }
   }
+  // Tableau « Données techniques » de chaque bâtiment (structure, isolants, toiture, plancher, menuiseries).
+  const all=pr_allLines(doc); let cur=null, buf=[];
+  const flush=()=>{ if(!cur||!buf.length) return; for(const f of technicalDataFields(readTechnicalData(buf))){ if(out.some(o=>o.field===f.field&&o.building===canonical(cur))) continue; const o=occ(doc,f.at.page,f.at.line,f.field,f.value,'pleiades-acv:donnees-techniques',0.95,'',{building:canonical(cur),structuredPdf:true,origin,provenanceNote:f.note||'Données techniques du bâtiment (RSEnv).'}); if(o) out.push(o); } };
+  for(const x of all){ const m=x.t.match(/^Donnees\s+generales\s+(Batiment\s+.+)$/i); if(m){ flush(); cur=m[1].trim(); buf=[]; continue; } if(/^Indicateurs\s+de\s+performance|^Zone\s+Zone\b|^Quantitatifs\s+saisis/i.test(x.t)){ flush(); cur=null; buf=[]; continue; } if(cur) buf.push(x); }
+  flush();
   return out;
 }
 

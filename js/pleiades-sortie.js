@@ -100,6 +100,29 @@ export function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     if(clim.length){ const on=clim.filter(l=>/^Climatisation\s+Oui/i.test(l.t)); emit(on[0]||clim[0],b,'cooling',on.length?'Climatisation active':'Aucun','groupes-climatisation',on.length?0.9:0.95,'',{provenanceNote:`${clim.length} groupe(s) : ${on.length} climatisé(s).`}); }
   });
 
+  // v2.3.8 — Systèmes par bâtiment (chapitre « Systèmes de chauffage, ECS… » et « Systèmes de ventilation »).
+  const known=new Map(res.map(r=>[canonical(r.name),r.name]));
+  const bOf=(raw)=>{ const m=String(raw||'').match(/\b(?:BAT|Batiment|Bat\.?)\s+([A-Za-z0-9]{1,4})\b/i); if(!m) return null; const c=canonical(`Batiment ${m[1]}`); return known.has(c)?known.get(c):null; };
+  const sysOrigin='Pléiades — systèmes du bâtiment';
+  const sysEmit=(x,b,field,value,conf,note)=>{ if(!b||out.some(o=>o.field===field&&o.building===canonical(b))) return; emit(x,b,field,value,'systemes',conf,'',{origin:sysOrigin,provenanceNote:note}); };
+  const genKind=(t)=>/chaudiere\s+(?:granul|bois|biomasse|plaquette)/i.test(t)?['Chaudière biomasse','Bois / biomasse']:/chaudiere.*gaz|gaz.*condensation/i.test(t)?['Chaudière gaz','Gaz']:/pompe\s+a\s+chaleur|\bPAC\b/i.test(t)?['PAC','Électricité']:/reseau\s+de\s+chaleur|sous[- ]station/i.test(t)?['Réseau de chaleur','Réseau de chaleur urbain']:null;
+  for(const x of lines){
+    let m;
+    if((m=x.t.match(/^(.+?)\s*\(Volume\s+chauffe\s+(.+?)\)\s*$/i))){ const b=bOf(m[2])||bOf(m[1]); const g=genKind(m[1]); if(b&&g){ sysEmit(x,b,'heating_mode_after',g[0],0.95,`Génération : ${m[1]}.`); sysEmit(x,b,'heating_vector_after',g[1],0.95,`Génération : ${m[1]}.`); } }
+    if((m=x.t.match(/^Detail\s+Production\s+Stockage\s+ECS\s*-\s*(.+)$/i))){ const b=bOf(m[1]); const g=genKind(m[1]); if(b&&g){ sysEmit(x,b,'ecs',g[0]==='PAC'?'PAC':g[0]==='Réseau de chaleur'?'Réseau de chaleur':'Chaudière',0.93,`Production ECS : ${m[1]}.`); sysEmit(x,b,'ecs_vector_after',g[1],0.93,`Production ECS : ${m[1]}.`); } }
+  }
+  const vi=lines.findIndex(x=>/^\.?\d*\.?\d+\s+Systemes\s+de\s+ventilation/i.test(x.t)||/^Ventilations\s+mecaniques$/i.test(x.t));
+  if(vi>=0){ let cur=null;
+    for(const x of lines.slice(vi,vi+400)){
+      let m;
+      if((m=x.t.match(/^(.+?)\s*\/\s*-\s*Ventilation\b/i))){ cur={b:bOf(m[1]),name:''}; continue; }
+      if(cur&&(m=x.t.match(/^Nom\s+(.+)$/i))) cur.name=m[1];
+      if(cur&&(m=x.t.match(/^Type\s+Groupe\s+de\s+ventilation\s+(simple\s+flux|double\s+flux)/i))){
+        const df=/double/i.test(m[1]); const hygro=/hygro/i.test(cur.name); const hB=/hygro\w*\s*(?:b\b|bc\b)|\bbc\b|type\s*b/i.test(cur.name);
+        sysEmit(x,cur.b,'ventilation',df?'VMC double flux':hygro?(hB?'VMC Hygro B':'VMC Hygro A'):'VMC simple flux',hygro&&!hB&&!df?0.88:0.94,`Groupe de ventilation : ${cur.name||m[1]}.`); cur=null; }
+      if(/^Bouches\s+de\s+ventilation/i.test(x.t)) break;
+    } }
+
   const dep=lines.find(x=>/^Departement\s*:\s*(\d{2,3}|2A|2B)\s*-/i.test(x.t));
   if(dep){ const d=dep.t.match(/^Departement\s*:\s*(\d{2,3}|2A|2B)/i)[1].padStart(2,'0'); const o=occ(doc,dep.page,dep.line,'department',d,'pleiades-sortie:department',0.97,'',{building:'Bâtiment unique',structuredPdf:true,origin}); if(o) out.push(o); }
   return out;
