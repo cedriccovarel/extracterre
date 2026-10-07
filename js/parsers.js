@@ -10,6 +10,7 @@ import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sor
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
 import {sanitizeOccurrences} from './sanity.js';
 import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns} from './logiciels-thermiques.js';
+import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
 import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan} from './renovation-thermique.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
@@ -1978,12 +1979,22 @@ function parseRenovationThermalDocument(doc,kind){
   return [...dedicated,...generic];
 }
 
+// v2.3.13 — RSET RT existant (fichier standardisé, toutes éditions logicielles) : parseur dédié ; le moteur générique
+// ne complète que les données administratives (il lisait « solaire non » comme un vecteur, « coffres de volets roulants »
+// des articles comme une occultation, « Bâtiment ou zones du bâtiment desservies » comme un bâtiment).
+function parseRtexStandardDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.RT_EXISTING};
+  const dedicated=annotateSemanticHierarchy(fdoc,parseRtexStandardFiche(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'rset-rtex'}));
+  const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','department']);
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
+  return [...dedicated,...generic];
+}
 // v2.3.12 — point d'entrée : garde-fous d'extraction (js/sanity.js) appliqués à toutes les occurrences.
 export function parseDocument(doc){
   let out=parseDocumentCore(doc); if(!Array.isArray(out)) return out;
   // v2.3.12 — motifs de sorties logiciel thermiques (Perrenoud, CYPE, Pléiades RT2012) : complètent tout document
   // thermique qui les porte, quel que soit le parseur principal (les doublons exacts sont écartés).
-  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&hasThermalSoftwareMarkers(doc)){
+  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&!isRtexStandardFiche(doc)&&hasThermalSoftwareMarkers(doc)){
     const extra=annotateSemanticHierarchy(doc,parseThermalSoftwarePatterns(doc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'logiciel-thermique'}));
     const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
     out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
@@ -1995,6 +2006,7 @@ function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
+  if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
   if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');

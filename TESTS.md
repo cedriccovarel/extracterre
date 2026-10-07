@@ -380,3 +380,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 ## v2.3.12
 - `node test_v2_3_12.mjs` : OCR ciblé et fusion sans doublons, garde-fous numériques, sorties Perrenoud / CYPE / Pléiades RT2012, hiérarchie des sources apprise (documents fictifs).
 - `node tools/pack_bench.mjs . <dossier_du_pack> [-v]` : banc d’essai sur un pack d’amélioration (signalements bêta et emplacements surlignés).
+
+## v2.3.13
+- `node test_v2_3_13.mjs` : RSET RT existant standardisé (feuillets bâtiment, équipement, génération) — document fictif.

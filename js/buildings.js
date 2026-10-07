@@ -4,6 +4,7 @@ import {isPleiadesThermalOutput,pleiadesThermalBuildingNames} from './pleiades-s
 import {isCstbRseeFiche,cstbBuildingNames} from './rset-cstb.js';
 import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.js';
 import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette,bbcaRenovationBuildingNames} from './calculette-bbca.js';
+import {isRtexStandardFiche,rtexStandardBuildingNames} from './rset-rtex.js';
 import {isRtexThermalNotice,rtexNoticeBuildingNames,isPleiadesRtexReport,pleiadesRtexBuildingNames,isInsulationMarkupPlan} from './renovation-thermique.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
@@ -109,6 +110,7 @@ export function detectBuildings(doc){
   }
   // v2.3.11 — rénovation : « Bâtiment sur cour : » (notice RT-Ex), « 1.1 Batiment 1 » / nom de fichier (Pléiades),
   // plan de repérage des isolants (légende commune).
+  if(isRtexStandardFiche(doc)){ const names=rtexStandardBuildingNames(doc).map(canonicalBuilding); if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'rset-rtex',hits:[]}; }
   if(isRtexThermalNotice(doc)||isPleiadesRtexReport(doc)){
     const names=(isRtexThermalNotice(doc)?rtexNoticeBuildingNames(doc):pleiadesRtexBuildingNames(doc)).map(canonicalBuilding);
     if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};

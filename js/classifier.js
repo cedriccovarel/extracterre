@@ -122,6 +122,8 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+40;
     for(const k of [DOC_TYPES.PLAN,DOC_TYPES.UNKNOWN]) score[k]=(score[k]||0)*0.2;
   }
+  // v2.3.13 — RSET RT existant (fichier standardisé).
+  if(/fichier\s+standardise\s+des\s+caracteristiques\s+thermiques\s+d.une\s+construction\s+existante/i.test(t)){ score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+45; }
   // v2.3.11 — études RT existant (notice BE RT-Ex, rapport Pléiades Th-C-E ex).
   if(/resultats\s+rt\s+existant\s+suivant\s+la\s+methode|notice\s+thermique[\s\S]{0,4000}rt[- ]?ex\b/i.test(t)){
     score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+30;

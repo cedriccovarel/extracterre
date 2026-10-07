@@ -9,7 +9,7 @@ import {numberOnlyGlued,sanitizeOccurrence} from './js/sanity.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.12','version');
+eq(APP_VERSION,'2.3.13','version');
 const doc=(name,type,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12})); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   return {id:'d',name,type,familyMode:'auto',read:{kind:'pdf',pages:ps,pageCount:ps.length,text:ps.map(p=>p.text).join('\n\f\n')},buildings:{names:['Bâtiment unique']}}; };
 const vals=(out,f,b)=>out.filter(o=>o.field===f&&(!b||o.building===b)).map(o=>o.value);

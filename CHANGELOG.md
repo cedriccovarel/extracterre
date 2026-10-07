@@ -1,3 +1,16 @@
+# v2.3.13 — RSET RT existant (fichier standardisé)
+- Nouveau parseur `js/rset-rtex.js` pour le « Fichier standardisé des caractéristiques thermiques d'une construction Existante ». Son gabarit XSL est commun aux logiciels : BatiAudit / U48Win de Perrenoud, ClimaWin, Pléiades…
+  - un bâtiment par feuillet (« Identifiant Bâtiment FULTON - (2) ») ;
+  - par bâtiment : surface, année, logements, Cep initial / projet, Ubat initial / projet, Tic / Tic réf, structure du mur principal, matériau des menuiseries ;
+  - feuillets équipement rattachés par la surface de zone : ventilation, et tableaux « Type d'énergie » oui / non (Initial / Projet) pour le chauffage et l'ECS ;
+  - feuillet génération : générateurs de l'état initial et du projet ;
+  - un « - » est traité comme « non renseigné ».
+- Le moteur générique ne complète plus que les données administratives pour ce format. Il lisait :
+  - « solaire non » comme un vecteur solaire ;
+  - l'article 43 « coffres de volets roulants » comme une occultation ;
+  - « Bâtiment ou zones du bâtiment desservies » comme un bâtiment.
+- Document réel testé : 75 valeurs souvent fausses → 31 valeurs justes pour deux bâtiments. Les 24 autres documents réels sont inchangés.
+
 # v2.3.12 — Entraînement sur le pack d'amélioration (journal du 07/10/2026)
 Analyse du pack : 3 630 événements, 164 signalements bêta, 318 emplacements surlignés, 435 corrections, 1 040 décisions ✓/✕, 292 erreurs.
 - **OCR « toujours »** (cause principale des analyses lentes et moins complètes) :
