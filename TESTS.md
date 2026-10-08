@@ -383,3 +383,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.13
 - `node test_v2_3_13.mjs` : RSET RT existant standardisé (feuillets bâtiment, équipement, génération) — document fictif.
+
+## v2.3.14
+- `node test_v2_3_14.mjs` : récapitulatif carbone RE2020 (Ic, seuils, lots accolés, contrôle Σ lots) et rubrique « IC construction & seuils » — document fictif.

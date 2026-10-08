@@ -170,9 +170,9 @@ const RESULT_VIEWS = Object.freeze({
   ]},
   carbon:{label:'Carbone',groups:[
     {title:'IC composants & chantier',keys:['ic_components','ic_site','stock_c_per_m2','ic_lot_1','ic_lot_2','ic_lot_3','ic_lot_4','ic_lot_5','ic_lot_6','ic_lot_7','ic_lot_8','ic_lot_9','ic_lot_10','ic_lot_11','ic_lot_12','ic_lot_13']},
-    {title:'IC construction & seuils',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028']},
+    {title:'IC construction & seuils',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy','ic_energy_max','ic_energy_max_2028']},
     {title:'Eges (E+C- / BBCA Rénovation)',keys:['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']},
-    {title:'IC énergie',keys:['ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
+    {title:'IC énergie — postes',keys:['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},

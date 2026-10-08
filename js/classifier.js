@@ -122,6 +122,8 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+40;
     for(const k of [DOC_TYPES.PLAN,DOC_TYPES.UNKNOWN]) score[k]=(score[k]||0)*0.2;
   }
+  // v2.3.14 — récapitulatif carbone RE2020 de bureau d'études (« Ic.energie … Ic.energiemax= … »).
+  if(/ic\.?\s*energie\s+[\d\s,.]+\s*kgeqco2\/m.?\s*sref\s+ic\.?\s*energie\s*max\s*=/i.test(t)){ score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45; for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL]) score[k]=(score[k]||0)*0.2; }
   // v2.3.13 — RSET RT existant (fichier standardisé).
   if(/fichier\s+standardise\s+des\s+caracteristiques\s+thermiques\s+d.une\s+construction\s+existante/i.test(t)){ score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+45; }
   // v2.3.11 — études RT existant (notice BE RT-Ex, rapport Pléiades Th-C-E ex).

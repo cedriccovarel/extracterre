@@ -11,6 +11,7 @@ import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js'
 import {sanitizeOccurrences} from './sanity.js';
 import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns} from './logiciels-thermiques.js';
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
+import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
 import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan} from './renovation-thermique.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
@@ -1979,6 +1980,15 @@ function parseRenovationThermalDocument(doc,kind){
   return [...dedicated,...generic];
 }
 
+// v2.3.14 — Récapitulatif carbone RE2020 de BE : parseur dédié ; les pages de préconisations FDES (descriptions de
+// produits) ne décrivent pas le projet — seules les données administratives du moteur générique sont reprises.
+function parseRecapCarboneDocument(doc){
+  const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
+  const dedicated=annotateSemanticHierarchy(fdoc,parseRecapCarboneRe2020(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'recap-carbone'}));
+  const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','department']);
+  const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
+  return [...dedicated,...generic];
+}
 // v2.3.13 — RSET RT existant (fichier standardisé, toutes éditions logicielles) : parseur dédié ; le moteur générique
 // ne complète que les données administratives (il lisait « solaire non » comme un vecteur, « coffres de volets roulants »
 // des articles comme une occultation, « Bâtiment ou zones du bâtiment desservies » comme un bâtiment).
@@ -2006,6 +2016,7 @@ function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
+  if(!doc.__skipDedicated&&isRecapCarboneRe2020(doc)) return parseRecapCarboneDocument(doc);
   if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');

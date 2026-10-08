@@ -1,3 +1,13 @@
+# v2.3.14 — Récapitulatif carbone RE2020 de BE, IC énergie dans « IC construction & seuils »
+- Onglet Carbone : **IC énergie** est désormais affiché dans la rubrique « IC construction & seuils », avec IC énergie Max et Max 2028. La rubrique « IC énergie — postes » ne garde que les postes.
+- Nouveau parseur `js/recap-carbone.js` pour les récapitulatifs « Étude d'impact réglementaire sur le changement climatique — Bilan carbone RE2020 » (ex. BE ACT « Récap Carbone ») :
+  - Ic énergie + max, Ic construction + max + seuil 2028 (page « Conformité RE 2020 ») ;
+  - lots 1 à 13 lus dans le graphique par lot, dont les valeurs accolées par l'export PDF (« 5,5840,27 ») sont séparées ;
+  - Ic composants = Σ lots, contrôlé par Σ lots + Ic chantier = Ic construction ;
+  - Ic chantier, stock de carbone biogénique, surface de référence (à vérifier) ;
+  - le document est classé « Étude carbone / ACV » et non plus « RSET RE2020 ».
+- Les pages de préconisations FDES ne sont plus lues : leurs descriptions de produits donnaient une ossature bois, un triple vitrage et un volet roulant qui n'étaient pas ceux du projet.
+
 # v2.3.13 — RSET RT existant (fichier standardisé)
 - Nouveau parseur `js/rset-rtex.js` pour le « Fichier standardisé des caractéristiques thermiques d'une construction Existante ». Son gabarit XSL est commun aux logiciels : BatiAudit / U48Win de Perrenoud, ClimaWin, Pléiades…
   - un bâtiment par feuillet (« Identifiant Bâtiment FULTON - (2) ») ;

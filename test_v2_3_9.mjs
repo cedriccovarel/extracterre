@@ -12,7 +12,7 @@ import {normalizeText} from './js/utils.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.13','version');
+eq(APP_VERSION,'2.3.14','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=(d,kind='pdf')=>{ const c=classifyDocument(d.name,d.read.text,{kind}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
