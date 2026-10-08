@@ -15,7 +15,7 @@ const near=(a,b,m,t=0.01)=>{ assert.ok(a!=null&&Math.abs(a-b)<=t,`${m} : ${a} ‚â
 const rules=structuredClone(DEFAULT_SOURCE_RULES);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind,re2020:d.read.re2020||null}); d.classification={...c,automaticType:c.type}; d.type=d.type||c.type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
 
-eq(APP_VERSION,'2.3.14','version');
+eq(APP_VERSION,'2.3.15','version');
 eq(runSelfTests().passed,runSelfTests().total,'auto-tests moteur historiques');
 
 // ---------- 1. XML RE2020 fictif, 2 b√¢timents ----------

@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.14','version');
+eq(APP_VERSION,'2.3.15','version');
 // Rubrique de l'onglet Carbone : IC énergie avec IC construction et les seuils.
 const app=fs.readFileSync('./js/app.js','utf8');
 ok(/title:'IC construction & seuils',keys:\['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy','ic_energy_max','ic_energy_max_2028'\]/.test(app),'IC énergie présent dans « IC construction & seuils »');

@@ -386,3 +386,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.14
 - `node test_v2_3_14.mjs` : récapitulatif carbone RE2020 (Ic, seuils, lots accolés, contrôle Σ lots) et rubrique « IC construction & seuils » — document fictif.
+
+## v2.3.15
+- `node test_v2_3_15.mjs` : XML RE2020 fictif — paroi dominante (surface cumulée), épaisseur / R, plancher 400 non pris pour un mur, structure, vitrage, menuiserie, VMC hygro B, valeurs retenues à l’export.

@@ -1,3 +1,13 @@
+# v2.3.15 — XML RE2020 (RSEE) : enveloppe, structure, menuiseries et ventilation
+Un XML RSEE contient à lui seul une grande partie des données du tableur. En plus de la thermique et du carbone (Bbio, Cep, DH, Ic, lots, Stock C), sa partie Datas_Comp remplit désormais :
+- le **nom du projet** (balise operation) ;
+- l'**isolation des parois** (murs, toiture, plancher bas) : épaisseur d'isolant (cm → mm) et R, pris sur la paroi dominante, c'est-à-dire la plus grande surface cumulée toutes orientations. L'attribut `type_paroi` est lu : un plancher bas sur local non chauffé (400) n'est plus pris pour un mur. Les portes et coffres sont ignorés ;
+- la **structure** : murs (ossature bois MOB / FOB, béton, brique…), toiture (terrasse, végétalisée, accessible, combles, pente), plancher bas (dalle béton, plancher bois) ;
+- le **vitrage majoritaire** (DV 4_16_4 Argon → 4.16.4 Ar) et la menuiserie quand son libellé la précise (bois, PVC, alu) ;
+- la **ventilation** : VMC simple flux hygro A / B, lue dans les groupes de ventilation des zones.
+
+Sur un RSEE réel de 6 logements, 63 valeurs sont retenues (54 avant). Les 24 documents de non-régression et le banc du pack sont inchangés.
+
 # v2.3.14 — Récapitulatif carbone RE2020 de BE, IC énergie dans « IC construction & seuils »
 - Onglet Carbone : **IC énergie** est désormais affiché dans la rubrique « IC construction & seuils », avec IC énergie Max et Max 2028. La rubrique « IC énergie — postes » ne garde que les postes.
 - Nouveau parseur `js/recap-carbone.js` pour les récapitulatifs « Étude d'impact réglementaire sur le changement climatique — Bilan carbone RE2020 » (ex. BE ACT « Récap Carbone ») :

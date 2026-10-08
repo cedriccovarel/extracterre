@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.14','version');
+eq(APP_VERSION,'2.3.15','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const pages=[
  ['Reglementation Thermique Existante',"Fichier standardise des caracteristiques thermiques d'une construction Existante (en vue",'FEUILLET(S) BATIMENT(S) :',"Batiment : '1'","Batiment ou zones du batiment desservies -",'Correspond a des donnees obligatoires 95'],

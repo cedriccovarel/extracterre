@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.14 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.15 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION = '2.3.14';
+const APP_VERSION='2.3.15';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -2814,6 +2814,7 @@ function parseHeatLossReport(doc,occ){
 // Les valeurs sont lues directement dans les balises normalisées du schéma RE2020 :
 // aucune expression régulière sur du texte linéarisé, aucun décalage de colonne possible.
 
+
 // ---------------------------------------------------------------------------
 // Parseur XML minimal (secours hors navigateur / tests Node). Dans le navigateur,
 // DOMParser est utilisé ; les deux exposent la même mini-API : tagName, children,
@@ -2891,32 +2892,43 @@ const RE20_EP_FACTOR=Object.freeze({gaz:1,elec:2.3,bois:1,reseau:1,fioul:1});
 
 function re20DynamicSum(el){ const d=re20Child(el,'indicateur_co2_dynamique'); if(!d) return null; return re20Sum(re20All(d,'valeur_phase_acv').map(re20Num)); }
 
-// Parois opaques Datas_Comp : 1xx murs, 2xx planchers bas, 3xx toitures, 4xx parois sur local non chauffé.
-function re20EnvelopeTarget(code){
-  const n=Number(code); if(!Number.isFinite(n)) return null;
-  if([105,106,405].includes(n)) return null; // coffres, portes
-  if(n>=100&&n<200) return 'wall'; if(n>=200&&n<300) return 'floor'; if(n>=300&&n<400) return 'roof'; if(n>=400&&n<405) return 'wall_lnc';
+// Parois opaques Datas_Comp : attribut type_paroi 100 murs, 200 / 400 planchers bas (sur sol / sur local non chauffé
+// ou extérieur), 300 toitures ; nature 105 coffres, 106 portes (ignorés). v2.3.15 : un plancher bas « 401 » n'est plus
+// pris pour un mur ; épaisseur d'isolant (cm) et R lus directement.
+function re20EnvelopeTarget(typeParoi,nature){
+  const n=Number(nature); if([105,106,205,305,405].includes(n)) return null;
+  const t=Number(typeParoi);
+  if(t===100) return 'wall'; if(t===300) return 'roof'; if(t===200||t===400) return 'floor';
+  if(n>=100&&n<200) return 'wall'; if(n>=300&&n<400) return 'roof'; if(n>=200&&n<300||n>=400&&n<500) return 'floor';
   return null;
 }
+function re20Desc(el,name,out=[]){ for(const c of re20Kids(el)){ if(c.tagName===name) out.push(c); re20Desc(c,name,out); } return out; }
 function re20Envelope(bat){
   const env=re20Child(bat,'enveloppe'); if(!env) return null;
-  const best={};
+  // Paroi dominante par type : surfaces cumulées par libellé (plusieurs orientations d'une même composition).
+  const groups={};
   for(const p of re20All(env,'parois_opaques')){
-    const target=re20EnvelopeTarget(re20PathText(p,'nature')); if(!target) continue;
-    const surface=re20PathNum(p,'surface_totale')||0;
-    const item={target,name:re20PathText(p,'name'),surface,u:re20PathNum(p,'U_paroi'),rTotal:re20PathNum(p,'resistance_thermique_isolant'),nature:re20PathText(p,'nature')};
-    if(!best[target]||surface>best[target].surface) best[target]=item;
+    const target=re20EnvelopeTarget(p.getAttribute?.('type_paroi'),re20PathText(p,'nature')); if(!target) continue;
+    const name=re20PathText(p,'name'); const key=`${target}|${name}`; const surface=re20PathNum(p,'surface_totale')||0;
+    const g=groups[key]||(groups[key]={target,name,surface:0,u:re20PathNum(p,'U_paroi'),rTotal:re20PathNum(p,'resistance_thermique_isolant'),thicknessCm:re20PathNum(p,'epaisseur_isolant'),nature:re20PathText(p,'nature'),system:re20PathText(p,'systeme_constructif')});
+    g.surface+=surface;
   }
-  if(!best.wall&&best.wall_lnc) best.wall=best.wall_lnc;
-  delete best.wall_lnc;
-  const glazing=new Map(); let windowName='', windowSurface=0;
+  const best={}; for(const g of Object.values(groups)) if(!best[g.target]||g.surface>best[g.target].surface) best[g.target]=g;
+  const glazing=new Map(), frames=new Map(); let windowName='', windowSurface=0;
   for(const p of re20All(env,'parois_vitrees')){
-    const s=re20PathNum(p,'surface_totale')||0, t=re20PathText(p,'type_vitrage');
+    const s=re20PathNum(p,'surface_totale')||0, t=re20PathText(p,'type_vitrage'), n=re20PathText(p,'name');
     if(t) glazing.set(t,(glazing.get(t)||0)+s);
-    if(s>windowSurface){ windowSurface=s; windowName=re20PathText(p,'name'); }
+    if(n) frames.set(n,(frames.get(n)||0)+s);
   }
+  for(const [n,s] of frames) if(s>windowSurface){ windowSurface=s; windowName=n; }
   const glazingType=[...glazing.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
-  return {...best,glazingType,windowName};
+  // Ventilation : groupes simple flux hygroréglables A / B déclarés dans les zones.
+  let ventilation=null;
+  for(const v of re20Desc(bat,'ventilation_mecanique')){
+    if(re20PathNum(v,'grp_SF_hygro_B')===1){ ventilation='VMC Hygro B'; break; }
+    if(re20PathNum(v,'grp_SF_hygro_A')===1) ventilation='VMC Hygro A';
+  }
+  return {...best,glazingType,windowName,ventilation};
 }
 
 function re20BuildingName(rawNames,index,count){
@@ -3046,7 +3058,8 @@ function re2020Occurrences(doc,makeOcc){
       origin:extra.origin||`XML RE2020 — ${tag.split('-')[0].toUpperCase()}`,
       excerpt:extra.excerpt||`${line.text||''}`.slice(0,420),
       provenanceNote:extra.note||`Valeur lue directement dans la balise normalisée du XML RE2020 (${soft}).`,
-      ...(extra.derived?{derivedFromDocument:true}:{})
+      ...(extra.derived?{derivedFromDocument:true}:{}),
+      ...(extra.secondarySourceOk?{secondarySourceOk:true}:{})
     }));
   };
   const multi=data.buildings.length>1;
@@ -3055,6 +3068,8 @@ function re2020Occurrences(doc,makeOcc){
   add(null,'project',g.operation,'general-operation','',/Opération/);
   add(null,'department',g.department,'general-department','',/Département/);
   add(null,'owner_company',g.owner,'general-owner','',/Maître/);
+  // v2.3.15 — nom d'opération : source secondaire ciblée (le XML ne remplace pas le contrat, mais le complète).
+  add(null,'operation_name',g.operation,'general-operation','',/Opération/,{confidence:0.95,secondarySourceOk:true});
   for(const b of data.buildings){
     add(b,'building',b.name,'rset-building','',/^Bâtiment/);
     add(b,'housing_count',b.housing,'rset-housing','',/logements/);
@@ -3105,6 +3120,20 @@ function re2020Occurrences(doc,makeOcc){
     add(b,'ic_energy_max',b.icEnergyMax,'rsenv-ic-max','kgCO2e/m²',/Ic énergie/);
     add(b,'ic_construction',b.icConstruction,'rsenv-ic','kgCO2e/m²',/Ic construction/);
     add(b,'ic_construction_max',b.icConstructionMax,'rsenv-ic-max','kgCO2e/m²',/Ic construction/);
+    // v2.3.15 — enveloppe et ventilation lues directement dans Datas_Comp (paroi dominante par surface cumulée).
+    const e=b.envelope||{};
+    for(const t of ['wall','roof','floor']){ const p=e[t]; if(!p) continue;
+      const note=`Paroi dominante (${re20Round(p.surface,1)} m²) : « ${p.name} » — Datas_Comp/enveloppe.`;
+      if(p.thicknessCm>0&&p.thicknessCm<100) add(b,`${t}_insulation_thickness`,re20Round(p.thicknessCm*10,0),'dc-paroi-epaisseur','mm',/./,{confidence:0.97,note});
+      if(p.rTotal>0&&p.rTotal<25) add(b,`${t}_insulation_r`,re20Round(p.rTotal,2),'dc-paroi-r','m².K/W',/./,{confidence:0.97,note});
+      const nm=String(p.name||'').toLowerCase();
+      if(t==='roof'){ const rs=/terrasse/.test(nm)?(/v[ée]g[ée]tal/.test(nm)?'Toiture terrasse végétalisée':/accessible/.test(nm)&&!/non\s+accessible/.test(nm)?'Toiture terrasse accessible':'Toiture terrasse'):/combles?/.test(nm)?'Combles':/rampant|pente|pans?/.test(nm)?'Toiture en pente':null; if(rs) add(b,'roof_structure',rs,'dc-toiture','',/./,{confidence:0.93,note}); }
+      if(t==='floor'){ const fs=/b[ée]ton|dalle/.test(nm)?'Dalle béton':/bois|solive/.test(nm)?'Plancher bois':null; if(fs) add(b,'floor_structure',fs,'dc-plancher','',/./,{confidence:0.93,note}); }
+      if(t==='wall'){ const ws=/\b(?:mob|fob|cob)\b|ossature\s+bois/.test(nm)?'Ossature bois':/\bclt\b|bois\s+massif/.test(nm)?'Bois massif':/b[ée]ton/.test(nm)?'Béton':/brique/.test(nm)?'Brique':/parpaing|agglo|bloc/.test(nm)?'Parpaing':/pierre/.test(nm)?'Pierre':null; if(ws){ add(b,'wall_structure',ws,'dc-mur','',/./,{confidence:0.93,note}); add(b,'structure',ws==='Ossature bois'?'Ossature bois':ws==='Béton'?'Béton armé':ws,'dc-mur','',/./,{confidence:0.9,note:`Structure déduite de la paroi verticale dominante. ${note}`}); } }
+    }
+    if(e.glazingType){ const gl=normalizeGlazingType(String(e.glazingType).replace(/_/g,'/')); if(gl) add(b,'window_glazing',gl,'dc-vitrage','',/./,{confidence:0.97,note:`Type de vitrage majoritaire (surface) : ${e.glazingType}.`}); }
+    if(e.windowName){ const w=e.windowName.toLowerCase(); const wm=/pvc/.test(w)?'PVC':/bois.*alu|alu.*bois|mixte/.test(w)?'Bois-aluminium':/alu/.test(w)?'Aluminium':/bois/.test(w)?'Bois':null; if(wm) add(b,'window_material',wm,'dc-menuiserie','',/./,{confidence:0.95,note:`Menuiserie majoritaire : ${e.windowName}.`}); }
+    if(e.ventilation) add(b,'ventilation',e.ventilation,'dc-ventilation','',/./,{confidence:0.97,note:'Groupe de ventilation déclaré dans Datas_Comp (grp_SF_hygro_A / B).'});
     add(b,'stock_c_per_m2',b.stockC,'rsenv-stock-c','kgC/m²',/Stock C/,{note:'Balise stock_c_batiment (stockage carbone du bâtiment rapporté au m²).'});
     for(const [ref,val] of Object.entries(b.lots||{})) add(b,`ic_lot_${ref}`,re20Round(val,3),'rsenv-lot','kgCO2e/m²',new RegExp(`lot ${ref} :`),{note:`Balise contributeur/composant/lot[ref=${ref}]/ic.`});
     for(const [ref,val] of Object.entries(b.energy||{})){ const f=RE2020_ENERGY_SUBCONTRIBUTORS[ref]; if(f) add(b,f,re20Round(val,2),'rsenv-energie','kgCO2e/m²',/Ic énergie/,{confidence:0.99,derived:true,note:`Somme des phases du sous-contributeur énergie ${ref} (indicateur CO2 dynamique).`}); }
