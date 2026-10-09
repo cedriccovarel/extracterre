@@ -1,3 +1,14 @@
+# v2.3.17 — XML RSEE E+C- (RT2012 + ACV 2017-2020)
+Les RSEE de l'expérimentation E+C- (`referentiel_ec`, RSET RT2012 + RSEnv 2017-2020) n'étaient lus qu'en partie : seule la thermique RT2012 sortait, soit environ 15 valeurs. En cause, des données rangées autrement que dans un RSEE RE2020. Désormais :
+- **Données générales** : `Datas_Comp` est cherché sous `RSET`, puis complété par `RSEnv/data_comp`. Le nom d'opération (`name` / `nom`), l'adresse (`ligne`, `code_postal`, `ville`), le maître d'ouvrage et le logiciel (bloc `BET`) sont lus.
+- **Carbone E+C-** :
+  - indicateurs « Eges », « EgesPCE » et seuils C1 (Egesmax1, EgesPCE,max1), avec les seuils C2 et le niveau atteint indiqués dans la provenance ;
+  - contributeurs énergie, eau et chantier rapportés à la SDP, seulement si PCE + énergie + eau + chantier redonne l'Eges déclaré (à 1 % près) ;
+  - niveau carbone proposé en « à vérifier » (calcul, pas une mention de label).
+- **Enveloppe RT2012** : codes `type_paroi` 1 (murs), 2 (planchers bas), 3 (planchers hauts) ; 4 (parois sur local non chauffé) est ignoré. Épaisseur, R, structure, vitrage et ventilation sont lus comme pour le RE2020.
+- **Réseau de chaleur RT2012** (`O_Cef_reseau_chaleur_imp_*`) pris en compte pour les vecteurs de chauffage et d'ECS.
+- Sur un RSEE E+C- réel : 36 valeurs retenues, contre 14. Les XML RE2020, les 24 documents de non-régression et le banc du pack sont inchangés.
+
 # v2.3.16 — Thermique rénovation : notices en chapitres, fiches RT existant scannées ; bandeau compact, suppression de projet
 - **Fiche standardisée RT existant imprimée en image** (RSET-RTex scanné, aucune couche texte) : le parseur de la v2.3.13 ne reconnaissait pas le texte OCR. Résultat : 0 valeur, l'analyse semblait bloquée. Il comprend désormais :
   - les puces OCR (« > », « BP », « P> ») et « (m?) » pour (m2) ;

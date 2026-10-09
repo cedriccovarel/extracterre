@@ -392,3 +392,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.16
 - `node test_v2_3_16.mjs` : notice thermique RT existant en chapitres (Cep, DPE, parois, menuiseries, systèmes, ECS mixte), fiche standardisée RT existant au format OCR / Pléiades (puces, feuillets « (Batiment 1) », générateurs multi-colonnes), VMC précisée par la notice, suppression de projet et bandeau compact (documents fictifs).
+
+## v2.3.17
+- `node test_v2_3_17.mjs` : XML RSEE E+C- fictif — données générales sous RSET, Eges / Eges PCE / seuils, contributeurs rapportés à la SDP avec contrôle de cohérence, enveloppe RT2012, réseau de chaleur.

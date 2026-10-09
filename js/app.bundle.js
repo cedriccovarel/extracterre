@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.16 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.17 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.3.16';
+const APP_VERSION='2.3.17';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -3014,6 +3014,8 @@ function re20EnvelopeTarget(typeParoi,nature){
   const n=Number(nature); if([105,106,205,305,405].includes(n)) return null;
   const t=Number(typeParoi);
   if(t===100) return 'wall'; if(t===300) return 'roof'; if(t===200||t===400) return 'floor';
+  // v2.3.17 — Datas_Comp RT2012 (RSEE E+C-) : 1 parois verticales, 2 planchers bas, 3 planchers hauts, 4 parois sur local non chauffé.
+  if(t>=1&&t<=4) return t===1?'wall':t===2?'floor':t===3?'roof':null;
   if(n>=100&&n<200) return 'wall'; if(n>=300&&n<400) return 'roof'; if(n>=200&&n<300||n>=400&&n<500) return 'floor';
   return null;
 }
@@ -3058,20 +3060,29 @@ function re20BuildingName(rawNames,index,count){
 // Extraction complète → objet JSON compact, conservé dans read.re2020 (persisté).
 function extractRe2020(xml){
   const root=xml?.documentElement; if(!isRe2020XmlDocument(xml)) return null;
-  const dc=re20Child(root,'Datas_Comp'), rset=re20Child(root,'RSET'), rsenv=re20Child(root,'RSEnv');
+  const rset=re20Child(root,'RSET'), rsenv=re20Child(root,'RSEnv');
+  // v2.3.17 — RSEE E+C- (RT2012 + ACV 2017-2020) : Datas_Comp est rangé sous RSET, les données d'opération du volet
+  // environnemental sous RSEnv/data_comp (balises « nom », « ligne », « code_postal », « ville »).
+  const dc=re20Child(root,'Datas_Comp')||re20Child(rset,'Datas_Comp');
+  const envGen=re20Path(rsenv,'data_comp/donnees_generales');
+  const ec=!!(root.getAttribute?.('referentiel_ec')||re20Path(rsenv,'sortie_projet/batiment/indicateurs_performance_collection'));
   const gen=re20Path(dc,'donnees_generales');
-  const soft=re20Path(gen,'logiciel');
-  const op=re20Path(gen,'operation');
+  const bet=re20Path(gen,'BET');
+  const soft=re20Path(gen,'logiciel')||re20Path(envGen,'logiciel');
+  const op=re20Path(gen,'operation'), envOp=re20Path(envGen,'operation');
+  const opText=path=>re20PathText(op,path)||re20PathText(envOp,path);
   const sortie=re20Path(rset,'Sortie_Projet'), entree=re20Path(rset,'Entree_Projet');
   const general={
     schemaVersion:root.getAttribute?.('version')||'',
-    software:soft?{editor:re20PathText(soft,'editeur'),name:re20PathText(soft,'nom'),version:re20PathText(soft,'version'),studyDate:re20PathText(soft,'date_etude')}:null,
-    operation:re20PathText(op,'nom'),
-    permit:re20PathText(op,'num_permis'),
-    address:re20PathText(op,'adresse/label'), postcode:re20PathText(op,'adresse/postcode'), city:re20PathText(op,'adresse/city'),
-    climateZone:re20PathText(op,'zone_climatique'),
-    owner:re20PathText(gen,'maitre_ouvrage/nom'),
-    department:re20PathText(sortie,'Departement')||String(re20PathText(op,'adresse/postcode')).slice(0,2),
+    referential:ec?'E+C-':'RE2020',
+    software:re20PathText(bet,'nom_logiciel')?{editor:re20PathText(bet,'editeur_logiciel'),name:re20PathText(bet,'nom_logiciel'),version:re20PathText(bet,'version_logiciel'),studyDate:re20PathText(bet,'date_etude')}
+      :soft?{editor:re20PathText(soft,'editeur'),name:re20PathText(soft,'nom'),version:re20PathText(soft,'version'),studyDate:re20PathText(soft,'date_etude')}:null,
+    operation:opText('nom')||opText('name'),
+    permit:opText('num_permis'),
+    address:opText('adresse/label')||opText('adresse/ligne'), postcode:opText('adresse/postcode')||opText('adresse/code_postal'), city:opText('adresse/city')||opText('adresse/ville'),
+    climateZone:opText('zone_climatique'),
+    owner:re20PathText(gen,'maitre_ouvrage/nom')||re20PathText(envGen,'maitre_ouvrage/nom'),
+    department:re20PathText(sortie,'Departement')||String(opText('adresse/postcode')||opText('adresse/code_postal')).slice(0,2),
     hasRset:!!rset, hasRsenv:!!rsenv
   };
   const bIn=re20ByIndex(re20All(re20Path(entree,'Batiment_Collection'),'Batiment'));
@@ -3081,6 +3092,7 @@ function extractRe2020(xml){
   const envIn=re20ByIndex(re20All(re20Path(rsenv,'entree_projet'),'batiment'),'index');
   const envOut=re20ByIndex(re20All(re20Path(rsenv,'sortie_projet'),'batiment'),'index');
   const dcBat=re20ByIndex(re20All(re20Path(dc,'batiment_collection'),'batiment'));
+  const envDcBat=re20ByIndex(re20All(re20Path(rsenv,'data_comp'),'batiment'),'index');
   const indexes=[...new Set([...bIn.keys(),...bC.keys(),...envOut.keys(),...dcBat.keys()])].sort((a,b)=>a-b);
   const buildings=[];
   for(const index of indexes){
@@ -3103,9 +3115,11 @@ function extractRe2020(xml){
     b.cep=re20PathNum(sC,'O_Cep_annuel'); b.cepMax=re20PathNum(sC,'O_Cep_Max');
     b.cepnr=re20PathNum(sC,'O_Cep_nr_annuel'); b.cepnrMax=re20PathNum(sC,'O_Cep_nr_Max');
     // --- Consommations finales importées par vecteur et par usage
-    const vec={}; for(const v of ['gaz','fioul','bois','elec','reseau']) vec[v]=re20PathNum(sC,`O_Cef_${v}_imp_annuel`);
+    // v2.3.17 — RSET RT2012 (RSEE E+C-) : le réseau de chaleur est nommé « reseau_chaleur » (« reseau » en RE2020).
+    const cefTag=(v,u)=>re20PathNum(sC,`O_Cef_${v}_imp${u?`_${u}`:''}_annuel`)??(v==='reseau'?re20PathNum(sC,`O_Cef_reseau_chaleur_imp${u?`_${u}`:''}_annuel`):null);
+    const vec={}; for(const v of ['gaz','fioul','bois','elec','reseau']) vec[v]=cefTag(v,'');
     const use={};
-    for(const v of ['gaz','fioul','bois','elec','reseau']) for(const u of ['ch','fr','ecs']) use[`${v}_${u}`]=re20PathNum(sC,`O_Cef_${v}_imp_${u}_annuel`);
+    for(const v of ['gaz','fioul','bois','elec','reseau']) for(const u of ['ch','fr','ecs']) use[`${v}_${u}`]=cefTag(v,u);
     for(const u of ['ecl','auxvent','auxdist','deplacement']) use[`elec_${u}`]=re20PathNum(sC,`O_Cef_elec_imp_${u}_annuel`);
     b.cef={vectors:vec,uses:use};
     // --- DH : groupe le plus défavorable, DHmax lu sur le même groupe.
@@ -3127,17 +3141,34 @@ function extractRe2020(xml){
       b.lots={}; for(const lot of re20All(comp,'lot')){ const ref=Number(lot.getAttribute('ref')); const v=re20PathNum(lot,'ic'); if(ref>=1&&ref<=13&&v!==null) b.lots[ref]=v; }
       b.energy={}; for(const sc of re20All(re20Path(rout,'contributeur/energie'),'sous_contributeur')){ const ref=Number(sc.getAttribute('ref')); const v=re20DynamicSum(sc); if(Number.isFinite(ref)&&v!==null) b.energy[ref]=re20Round(v,3); }
     }
+    // --- E+C- (RSEnv 2017-2020) : indicateurs Eges / Eges PCE et seuils carbone C1 / C2 (kg éq. CO2/m² SDP).
+    const ipc=re20Child(rout,'indicateurs_performance_collection');
+    if(ipc){
+      const ind={}; for(const ip of re20All(ipc,'indicateurs_performance')) ind[re20PathText(ip,'nom').replace(/\s+/g,'').toLowerCase()]=re20PathNum(ip,'valeur');
+      b.ec={eges:ind['eges']??null,egesMax1:ind['egesmax1']??null,egesMax2:ind['egesmax2']??null,pce:ind['egespce']??null,pceMax1:ind['egespce,max1']??ind['egespcemax1']??null,pceMax2:ind['egespce,max2']??ind['egespcemax2']??null};
+      // Contributeurs en valeur absolue (kg éq. CO2 sur 50 ans) : 1 PCE, 2 énergie, 3 eau, 4 chantier. Ramenés à la SDP
+      // uniquement si la somme PCE + énergie + eau + chantier redonne l'Eges déclaré (contrôle à 1 %).
+      const gwp=c=>{ const list=re20All(re20Child(c,'indicateurs_collection'),'indicateur'); const i=list.find(x=>/r[ée]chauffement|GWP/i.test(re20PathText(x,'nom')))||list.find(x=>x.getAttribute('ref')==='1'); return re20PathNum(i,'valeur'); };
+      const contrib={}; for(const c of re20All(rout,'contributeur')) contrib[c.getAttribute('ref')]=gwp(c);
+      const sdp=re20PathNum(envDcBat.get(index),'sdp'); b.ec.sdp=sdp; b.ec.srt=re20PathNum(envDcBat.get(index),'srt');
+      if(sdp>0&&b.ec.eges>0&&b.ec.pce!==null&&['2','3','4'].every(k=>Number.isFinite(contrib[k]))){
+        const e=contrib['2']/sdp, w=contrib['3']/sdp, st=contrib['4']/sdp;
+        if(Math.abs(b.ec.pce+e+w+st-b.ec.eges)<=0.01*b.ec.eges){ b.ec.energy=re20Round(e,2); b.ec.water=re20Round(w,2); b.ec.site=re20Round(st,2); }
+      }
+      const le=(v,m)=>v!==null&&m!==null&&v<=m;
+      b.ec.level=b.ec.eges!==null&&b.ec.pce!==null?(le(b.ec.eges,b.ec.egesMax2)&&le(b.ec.pce,b.ec.pceMax2)?'C2':le(b.ec.eges,b.ec.egesMax1)&&le(b.ec.pce,b.ec.pceMax1)?'C1':'C0'):null;
+    }
     b.envelope=re20Envelope(d);
     buildings.push(b);
   }
-  return {format:'RE2020-XML',general,buildings};
+  return {format:ec?'EC-XML':'RE2020-XML',general,buildings};
 }
 
 // Texte de synthèse lisible (recherche libre, tags, surlignage) : une page par bâtiment.
 function re2020SummaryPages(data){
   if(!data) return [];
   const g=data.general||{}; const fmt=v=>v==null?'—':String(v);
-  const head=[`RSEE RE2020 — Récapitulatif standardisé d'étude énergétique et environnementale (XML)`,
+  const head=[`RSEE ${g.referential==='E+C-'?'E+C- (RT2012 + ACV, expérimentation 2017-2020)':'RE2020'} — Récapitulatif standardisé d'étude énergétique et environnementale (XML)`,
     `Opération : ${fmt(g.operation)}`,`Maître d'ouvrage : ${fmt(g.owner)}`,`Adresse : ${fmt(g.address)} ${fmt(g.postcode)} ${fmt(g.city)}`,
     `Département : ${fmt(g.department)}`,`Zone climatique : ${fmt(g.climateZone)}`,
     g.software?`Logiciel : ${g.software.editor} ${g.software.name} ${g.software.version}`:'',`Nombre de bâtiments : ${data.buildings.length}`].filter(Boolean);
@@ -3148,6 +3179,9 @@ function re2020SummaryPages(data){
       `DH : ${fmt(b.dh)} / DH max : ${fmt(b.dhMax)} °C.h`,
       `Ic construction : ${fmt(b.icConstruction)} / max ${fmt(b.icConstructionMax)} kgCO2e/m²`,`Ic composants : ${fmt(b.icComponents)} kgCO2e/m²`,`Ic chantier : ${fmt(b.icSite)} kgCO2e/m²`,
       `Ic énergie : ${fmt(b.icEnergy)} / max ${fmt(b.icEnergyMax)} kgCO2e/m²`,`Stock C : ${fmt(b.stockC)} kgC/m²`,
+      ...(b.ec?[`Eges : ${fmt(re20Round(b.ec.eges,2))} / Eges max C1 ${fmt(re20Round(b.ec.egesMax1,2))} / C2 ${fmt(re20Round(b.ec.egesMax2,2))} kgCO2e/m² SDP — niveau ${fmt(b.ec.level)}`,
+        `Eges PCE : ${fmt(re20Round(b.ec.pce,2))} / max C1 ${fmt(b.ec.pceMax1)} / C2 ${fmt(b.ec.pceMax2)} kgCO2e/m² SDP`,
+        `Eges énergie : ${fmt(b.ec.energy)} · Eges eau : ${fmt(b.ec.water)} · Eges chantier : ${fmt(b.ec.site)} kgCO2e/m² SDP (SDP ${fmt(b.ec.sdp)} m²)`]:[]),
       ...Object.entries(b.lots||{}).map(([k,v])=>`Ic composants lot ${k} : ${re20Round(v,3)} kgCO2e/m²`),
       b.envelope?.wall?`Mur : ${b.envelope.wall.name}`:'',b.envelope?.floor?`Plancher bas : ${b.envelope.floor.name}`:'',b.envelope?.roof?`Toiture : ${b.envelope.roof.name}`:'',
       b.envelope?.glazingType?`Vitrage : ${b.envelope.glazingType}`:'',b.envelope?.windowName?`Menuiserie : ${b.envelope.windowName}`:''].filter(Boolean);
@@ -3249,6 +3283,19 @@ function re2020Occurrences(doc,makeOcc){
     if(e.glazingType){ const gl=normalizeGlazingType(String(e.glazingType).replace(/_/g,'/')); if(gl) add(b,'window_glazing',gl,'dc-vitrage','',/./,{confidence:0.97,note:`Type de vitrage majoritaire (surface) : ${e.glazingType}.`}); }
     if(e.windowName){ const w=e.windowName.toLowerCase(); const wm=/pvc/.test(w)?'PVC':/bois.*alu|alu.*bois|mixte/.test(w)?'Bois-aluminium':/alu/.test(w)?'Aluminium':/bois/.test(w)?'Bois':null; if(wm) add(b,'window_material',wm,'dc-menuiserie','',/./,{confidence:0.95,note:`Menuiserie majoritaire : ${e.windowName}.`}); }
     if(e.ventilation) add(b,'ventilation',e.ventilation,'dc-ventilation','',/./,{confidence:0.97,note:'Groupe de ventilation déclaré dans Datas_Comp (grp_SF_hygro_A / B).'});
+    // v2.3.17 — volet carbone E+C- (indicateurs Eges du RSEnv 2017-2020, kg éq. CO2/m² SDP, ACV statique 50 ans).
+    if(b.ec){ const x=b.ec; const lvl=x.level?` Niveau carbone atteint : ${x.level} (C1 : Eges ≤ ${re20Round(x.egesMax1,2)} et PCE ≤ ${x.pceMax1} ; C2 : Eges ≤ ${re20Round(x.egesMax2,2)} et PCE ≤ ${x.pceMax2}).`:'';
+      const o={origin:'XML E+C- — RSEnv'};
+      add(b,'eges_total',re20Round(x.eges,2),'rsenv-ec-eges','kgCO2e/m²',/^Eges :/,{...o,note:`Indicateur « Eges » du RSEnv E+C-.${lvl}`});
+      add(b,'eges_total_max',re20Round(x.egesMax1,2),'rsenv-ec-eges-max','kgCO2e/m²',/^Eges :/,{...o,note:`Seuil « Egesmax1 » (niveau C1) ; Egesmax2 (niveau C2) = ${re20Round(x.egesMax2,2)}.`});
+      add(b,'eges_pce',re20Round(x.pce,2),'rsenv-ec-pce','kgCO2e/m²',/^Eges PCE/,{...o,note:`Indicateur « EgesPCE » du RSEnv E+C-.${lvl}`});
+      add(b,'eges_pce_max',re20Round(x.pceMax1,2),'rsenv-ec-pce-max','kgCO2e/m²',/^Eges PCE/,{...o,note:`Seuil « EgesPCE,max1 » (niveau C1) ; EgesPCE,max2 (niveau C2) = ${x.pceMax2}.`});
+      const dn=`Contributeur du RSEnv (kg éq. CO2 sur 50 ans) rapporté à la SDP (${x.sdp} m²) ; PCE + énergie + eau + chantier = Eges déclaré.`;
+      add(b,'eges_energy',x.energy,'rsenv-ec-energie','kgCO2e/m²',/^Eges énergie/,{...o,confidence:0.97,derived:true,note:dn});
+      add(b,'eges_water',x.water,'rsenv-ec-eau','kgCO2e/m²',/^Eges énergie/,{...o,confidence:0.97,derived:true,note:dn});
+      add(b,'eges_site',x.site,'rsenv-ec-chantier','kgCO2e/m²',/^Eges énergie/,{...o,confidence:0.97,derived:true,note:dn});
+      if(x.level) add(b,'mention_ec',`Carbone ${x.level} (calcul RSEE)`,'rsenv-ec-niveau','',/^Eges :/,{...o,confidence:0.86,derived:true,note:`Niveau carbone déduit des indicateurs et des seuils du RSEE — la mention du label reste à confirmer par le certificat.${lvl}`});
+    }
     add(b,'stock_c_per_m2',b.stockC,'rsenv-stock-c','kgC/m²',/Stock C/,{note:'Balise stock_c_batiment (stockage carbone du bâtiment rapporté au m²).'});
     for(const [ref,val] of Object.entries(b.lots||{})) add(b,`ic_lot_${ref}`,re20Round(val,3),'rsenv-lot','kgCO2e/m²',new RegExp(`lot ${ref} :`),{note:`Balise contributeur/composant/lot[ref=${ref}]/ic.`});
     for(const [ref,val] of Object.entries(b.energy||{})){ const f=RE2020_ENERGY_SUBCONTRIBUTORS[ref]; if(f) add(b,f,re20Round(val,2),'rsenv-energie','kgCO2e/m²',/Ic énergie/,{confidence:0.99,derived:true,note:`Somme des phases du sous-contributeur énergie ${ref} (indicateur CO2 dynamique).`}); }

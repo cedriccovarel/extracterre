@@ -8,7 +8,7 @@ import {parseDocument} from './js/parsers.js';
 import {analyzeDocuments} from './js/engine.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.16','version');
+eq(APP_VERSION,'2.3.17','version');
 
 const po=(type,nature,name,s,ep,r)=>`<parois_opaques type_paroi="${type}"><nature>${nature}</nature><name>${name}</name><surface_totale>${s}</surface_totale><U_paroi>0.2</U_paroi><epaisseur_isolant>${ep}</epaisseur_isolant><resistance_thermique_isolant>${r}</resistance_thermique_isolant></parois_opaques>`;
 const pv=(name,t,s)=>`<parois_vitrees orientation="S"><name>${name}</name><type_vitrage>${t}</type_vitrage><surface_totale>${s}</surface_totale></parois_vitrees>`;

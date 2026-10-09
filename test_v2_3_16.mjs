@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.16','version');
+eq(APP_VERSION,'2.3.17','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const mk=(name,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=P(ls); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   const read={kind:'pdf',pages:ps,text:ps.map(p=>p.text).join('\n\f\n'),pageCount:ps.length};
