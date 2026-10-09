@@ -8,9 +8,13 @@
 //    tableaux « Type d'energie » oui/non (colonnes Initial / Projet) du chauffage et de l'ECS ;
 //  • FEUILLET GENERATION (N) — générateurs de l'état initial et du projet.
 // Un « - » dans une colonne signifie « non renseigné » : aucune valeur n'est déduite.
+// v2.3.16 — fiche imprimée en image (OCR) et variante Pléiades : puces OCR (« > », « BP », « P> ») retirées,
+// « (m?) » / « (m°) » lus comme (m2), feuillets « (Batiment 1) » / « (Batiment 1 -ID: 1) », Tic en « °c »,
+// générateurs sur plusieurs colonnes pondérés par nombre × puissance unitaire.
 import {normalizeText,parseFrNumber} from './utils.js';
 
-const rx_lt=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
+const rx_lt=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim()
+  .replace(/^(?:[>»—=©«•|]+\s*|(?:BP|B>|P>|P)\s+(?=[A-Z]))/,'').replace(/\(m\s*[?°*²]\)/gi,'(m2)').trim();
 const rx_tok=s=>String(s||'').trim().split(/\s+/).map(t=>/^-?\d+(?:[.,]\d+)?%?$/.test(t)?(t.endsWith('%')?null:parseFrNumber(t)):(t==='-'||t==='--'?null:t));
 
 export function isRtexStandardFiche(doc){
@@ -20,13 +24,13 @@ export function isRtexStandardFiche(doc){
 function rx_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:rx_lt(line)})); return out; }
 function rx_sections(lines){
   const secs=[]; lines.forEach((x,i)=>{ let m;
-    if((m=x.t.match(/^FEUILLET\s+BATIMENT\s*\((\d+)\)/i))) secs.push({kind:'bat',id:m[1],i});
-    else if((m=x.t.match(/^FEUILLET\s+EQUIPEMENT\s*\(\s*-?\s*ID\s*:\s*(\d+)\)/i))) secs.push({kind:'equip',id:m[1],i});
-    else if((m=x.t.match(/^FEUILLET\s+GENERATION\s*\((\d+)\)/i))) secs.push({kind:'gen',id:m[1],i}); });
+    if((m=x.t.match(/^FEUILLET\s+BATIMENT\s*\(\s*(?:Batiment\s+)?([^)]+?)\s*\)/i))) secs.push({kind:'bat',id:m[1],i});
+    else if((m=x.t.match(/^FEUILLET\s+EQUIPEMENT\s*\(\s*(?:Batiment\s+([^)]*?)\s*)?-?\s*ID\s*:\s*(\d+)\s*\)/i))) secs.push({kind:'equip',id:m[2],bat:m[1]||null,i});
+    else if((m=x.t.match(/^FEUILLET\s+GENERATION\s*\(\s*(?:Batiment\s+)?([^)]+?)\s*\)/i))) secs.push({kind:'gen',id:m[1],i}); });
   return secs.map((s,k)=>({...s,lines:lines.slice(s.i,k+1<secs.length?secs[k+1].i:lines.length)}));
 }
 function rx_buildingName(sec){
-  const id=sec.lines.find(x=>/^Identifiant\s+Batiment\b/i.test(x.t)); const m=id?.t.match(/^Identifiant\s+Batiment\s+(.*?)\s*-\s*\(\d+\)\s*$/i);
+  const id=sec.lines.find(x=>/^Identifiant\s+Batiment\b/i.test(x.t)); const m=id?.t.match(/^Identifiant\s+Batiment\s+(.*?)\s*-\s*\((?:Batiment\s+)?[^)]*\)\s*$/i);
   const name=(m?.[1]||'').trim(); return `Batiment ${name&&!/^-?$/.test(name)?name:sec.id}`;
 }
 export function rtexStandardBuildingNames(doc){ return rx_sections(rx_lines(doc)).filter(s=>s.kind==='bat').map(rx_buildingName); }
@@ -34,10 +38,10 @@ export function rtexStandardBuildingNames(doc){ return rx_sections(rx_lines(doc)
 const RX_VECT=[[/^electrique\s+a\s+effet\s+joule\b/i,'Électricité'],[/^electrique\s+thermodynamique\b/i,'Électricité'],[/^gaz\b/i,'Gaz'],[/^fioul\b/i,'Fioul'],[/^solaire\b/i,'Solaire'],[/^reseaux?\s+(?:de\s+)?chaleur\b/i,'Réseau de chaleur urbain'],[/^bois\b/i,'Bois / biomasse']];
 // Tableau « Type d'energie : / Initial Projet / gaz oui non … » → vecteurs initial / projet (oui uniquement).
 function rx_energyTable(lines,start){
-  const res={before:[],after:[],at:null};
+  const res={before:[],after:[],at:null,rows:0};
   for(const x of lines.slice(start+1,start+12)){
     const v=RX_VECT.find(([re])=>re.test(x.t)); if(!v){ if(/^Initial\s+Projet$/i.test(x.t)) continue; if(res.at) break; continue; }
-    const rest=x.t.replace(v[0],'').trim().split(/\s+/).filter(Boolean); res.at=res.at||x;
+    const rest=x.t.replace(v[0],'').trim().split(/\s+/).filter(Boolean); res.at=res.at||x; res.rows++;
     if(/^oui$/i.test(rest[0]||'')) res.before.push({v:v[1],x}); if(/^oui$/i.test(rest[1]||'')) res.after.push({v:v[1],x});
   }
   return res;
@@ -63,17 +67,17 @@ export function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
       if(Number.isFinite(t[0])) emit(x,B,'ubat_before',t[0],'ubat-initial',0.97,'W/m².K',{provenanceNote:'Colonne « Initial (a) » de l’Ubat.'});
       if(Number.isFinite(t[1])) emit(x,B,'ubat_after',t[1],'ubat-projet',0.97,'W/m².K',{provenanceNote:'Colonne « Projet (b) » de l’Ubat.'}); }
     const th=L.findIndex(y=>/Tic\s*\(a\)\s*Tic\s*Ref\s*\(b\)/i.test(y.t));
-    if(th>=0) for(const y of L.slice(th+1,th+4)){ if((m=y.t.match(/°C\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)\s+-?\d+[.,]\d+$/))){ emit(y,B,'tic',parseFrNumber(m[1]),'tic',0.96,'°C'); emit(y,B,'tic_ref',parseFrNumber(m[2]),'tic-ref',0.96,'°C'); break; } }
+    if(th>=0) for(const y of L.slice(th+1,th+4)){ if((m=y.t.match(/°\s*C\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)\s+-?\d+[.,]\d+$/i))){ emit(y,B,'tic',parseFrNumber(m[1]),'tic',0.96,'°C'); emit(y,B,'tic_ref',parseFrNumber(m[2]),'tic-ref',0.96,'°C'); break; } }
     // Parois : libellé du mur principal (« Mur en beton banche », « Mur en pierre dure »), menuiseries (« Fenetre … PVC Th-U »).
     const op=L.findIndex(y=>/^Parois\s+opaques\s*:/i.test(y.t));
-    if(op>=0){ const w=L.slice(op,op+20).find(y=>/^Mur\s+en\s+/i.test(y.t)); if(w){ const s2=w.t.toLowerCase(); const v=/beton\s+banche/.test(s2)?'Béton banché':/beton/.test(s2)?'Béton':/pierre/.test(s2)?'Pierre':/brique/.test(s2)?'Brique':/parpaing|agglo/.test(s2)?'Parpaing':/bois/.test(s2)?'Ossature bois':null; if(v) emit(w,B,'wall_structure',v,'paroi-principale',0.9,'',{provenanceNote:`Libellé de la paroi verticale la plus représentative : ${w.t}.`}); } }
+    if(op>=0){ const w=L.slice(op,op+20).find(y=>/^Mur\s+en\s+/i.test(y.t)||/(?:^|[\s_])Mur\s+(?:en\s+)?(?:beton|pierre|brique|parpaing|agglo|bois)\b/i.test(y.t)); if(w){ const s2=w.t.toLowerCase(); const v=/beton\s+banche/.test(s2)?'Béton banché':/beton/.test(s2)?'Béton':/pierre/.test(s2)?'Pierre':/brique/.test(s2)?'Brique':/parpaing|agglo/.test(s2)?'Parpaing':/bois/.test(s2)?'Ossature bois':null; if(v) emit(w,B,'wall_structure',v,'paroi-principale',0.9,'',{provenanceNote:`Libellé de la paroi verticale la plus représentative : ${w.t}.`}); } }
     const fen=L.filter(y=>/^Fenetre\b/i.test(y.t)); const mats={}; for(const y of fen){ const v=/\bPVC\b/i.test(y.t)?'PVC':/\balu/i.test(y.t)?'Aluminium':/\bbois\b/i.test(y.t)?'Bois':null; if(v) mats[v]=(mats[v]||{n:0,y}), mats[v].n++; }
     const best=Object.entries(mats).sort((a,b)=>b[1].n-a[1].n)[0]; if(best) emit(best[1].y,B,'window_material',best[0],'menuiseries',0.92,'',{provenanceNote:`${best[1].n} menuiserie(s) ${best[0]} dans le tableau des parois vitrées.`});
   }
   // Feuillets équipement : rattachement par la surface de la zone.
   for(const s of secs.filter(z=>z.kind==='equip')){
     const L=s.lines; const surf=L.find(x=>/^Surface\s+totale\s+utile\s+de\s+la\s+zone\s*\(m2?\)\s*[\d.,]+$/i.test(x.t)); const sv=surf?parseFrNumber(surf.t.match(/([\d.,]+)$/)[1]):null;
-    const bat=bats.find(b=>sv!==null&&Math.abs((surfOf[b.name]||-1)-sv)<0.6)||bats.find(b=>b.id===s.id); if(!bat) continue; const B=bat.name;
+    const bat=bats.find(b=>sv!==null&&Math.abs((surfOf[b.name]||-1)-sv)<0.6)||(s.bat?bats.find(b=>b.id===s.bat||b.name===`Batiment ${s.bat}`):null)||bats.find(b=>b.id===s.id); if(!bat) continue; const B=bat.name;
     const init=L.find(x=>/^Naturelle\s+par\s+conduit\b|^Ventilation\s+naturelle\b/i.test(x.t));
     const proj=L.find(x=>/^Type\s+de\s+centrale\s+de\s+traitement\s+d.air\s*-\s*\S/i.test(x.t));
     const works=L.find(x=>/travaux\s+de\s+renovation\s+thermique\s+ont-ils\s+porte\s+sur\s+la\s+ventilation\s*\?\s*(oui|non)/i.test(x.t));
@@ -82,8 +86,8 @@ export function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
     const chIdx=L.findIndex(x=>/DONNEES\s*SUR\s*LES\s*EQUIPEMENTS\s*DE\s*CHAUFFAGE/i.test(x.t.replace(/\s+/g,' '))||/^2\s*-\s*DONNEESSURLESEQUIPEMENTSDECHAUFFAGE/i.test(x.t));
     const ecsIdx=L.findIndex(x=>/^4\s*-\s*DONNEESSURL.EAUCHAUDESANITAIRE/i.test(x.t)||/DONNEES\s*SUR\s*L.EAU\s*CHAUDE\s*SANITAIRE/i.test(x.t));
     const typeAfter=i=>L.findIndex((x,k)=>k>i&&/^Type\s+d.energie\s*:/i.test(x.t));
-    if(chIdx>=0){ const k=typeAfter(chIdx); if(k>=0&&(ecsIdx<0||k<ecsIdx)){ const r=rx_energyTable(L,k); if(r.before.length===1) emit(r.before[0].x,B,'heating_vector_before',r.before[0].v,'chauffage-energie-initial',0.94); if(r.after.length===1) emit(r.after[0].x,B,'heating_vector_after',r.after[0].v,'chauffage-energie-projet',0.94); } }
-    if(ecsIdx>=0){ const k=typeAfter(ecsIdx); if(k>=0){ const r=rx_energyTable(L,k); if(r.before.length===1) emit(r.before[0].x,B,'ecs_vector_before',r.before[0].v,'ecs-energie-initial',0.94); if(r.after.length===1) emit(r.after[0].x,B,'ecs_vector_after',r.after[0].v,'ecs-energie-projet',0.94); } }
+    if(chIdx>=0){ const k=typeAfter(chIdx); if(k>=0&&(ecsIdx<0||k<ecsIdx)){ const r=rx_energyTable(L,k); const c=r.rows>=7?0.94:0.8; if(r.before.length===1) emit(r.before[0].x,B,'heating_vector_before',r.before[0].v,'chauffage-energie-initial',c); if(r.after.length===1) emit(r.after[0].x,B,'heating_vector_after',r.after[0].v,'chauffage-energie-projet',c); } }
+    if(ecsIdx>=0){ const k=typeAfter(ecsIdx); if(k>=0){ const r=rx_energyTable(L,k); const c=r.rows>=7?0.94:0.8; if(r.before.length===1) emit(r.before[0].x,B,'ecs_vector_before',r.before[0].v,'ecs-energie-initial',c); if(r.after.length===1) emit(r.after[0].x,B,'ecs_vector_after',r.after[0].v,'ecs-energie-projet',c); } }
   }
   // Feuillets génération : état initial et projet.
   for(const s of secs.filter(z=>z.kind==='gen')){
@@ -91,15 +95,24 @@ export function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
     const pIdx=L.findIndex(x=>/PROJET\s*:?\s*NOUVEAUX\s*GENERATEURS|^3\s*-\s*PROJET/i.test(x.t.replace(/\s+/g,'')?x.t:x.t));
     const vec=(part)=>{ const te=part.find(x=>/^Type\s+d.energie\s*-\s*\S/i.test(x.t)), tg=part.find(x=>/^Type\s+de\s+generateur\s*-\s*\S/i.test(x.t)), mode=part.find(x=>/^Mode\s+de\s+production/i.test(x.t));
       const g=tg?.t.replace(/^Type\s+de\s+generateur\s*-\s*/i,'')||''; const e=te?.t.replace(/^Type\s+d.energie\s*-\s*/i,'')||'';
-      const v=/reseau\s+de\s+chaleur|chauffage\s+urbain|sous-station/i.test(g)?'Réseau de chaleur urbain':/pompe|pac\b|thermodynamique/i.test(g)?'Électricité':RX_VECT.find(([re])=>re.test(e.toLowerCase()))?.[1]||null;
-      return {v,x:tg&&/reseau|pompe|pac/i.test(g)?tg:te,mixte:/mixte|chauffage\s+et\s+(?:fourniture\s+)?ecs|ecs\s+seul/i.test((mode?.t||'').replace(/^Mode\s+de\s+production\s*\([^)]*\)\s*-?\s*/i,'')),g}; };
+      let v=/reseau\s+de\s+chaleur|chauffage\s+urbain|sous-station/i.test(g)?'Réseau de chaleur urbain':/pompe|pac\b|thermodynamique/i.test(g)?'Électricité':RX_VECT.find(([re])=>re.test(e.toLowerCase()))?.[1]||null;
+      // Plusieurs générateurs en colonnes (« Gaz Electrique Electrique ») : vecteur dominant en nombre × puissance unitaire.
+      const cols=[...e.matchAll(/\b(gaz|electrique|fioul|bois|solaire|reseaux?(?:\s+de\s+chaleur)?)\b/gi)].map(k=>/^gaz/i.test(k[1])?'Gaz':/^elec/i.test(k[1])?'Électricité':/^fioul/i.test(k[1])?'Fioul':/^bois/i.test(k[1])?'Bois / biomasse':/^solaire/i.test(k[1])?'Solaire':'Réseau de chaleur urbain');
+      let share=null;
+      if(cols.length>1){ const nums=re=>{ const l=part.find(x=>re.test(x.t)); return l?(l.t.replace(re,'').match(/\d+(?:[.,]\d+)?/g)||[]).map(parseFrNumber):[]; };
+        const n=nums(/^Nombre\s+de\s+generateurs\s+identiques\s*-?/i), pw=nums(/^Puissance\s+nominale\s+unitaire\s*k\s*w\s*/i);
+        const w={}; cols.forEach((c,k)=>{ w[c]=(w[c]||0)+(n.length===cols.length?n[k]:1)*(pw.length===cols.length?pw[k]:1); });
+        const tot=Object.values(w).reduce((a,b)=>a+b,0); const top=Object.entries(w).sort((a,b)=>b[1]-a[1])[0]; v=top?.[0]||null; share=tot>0?top[1]/tot:null; if(share!==null&&share<0.6) v=null; }
+      return {v,share,x:tg&&/reseau|pompe|pac/i.test(g)?tg:te,mixte:/mixte|chauffage\s+et\s+(?:fourniture\s+)?ecs|ecs\s+seul/i.test((mode?.t||'').replace(/^Mode\s+de\s+production\s*\([^)]*\)\s*-?\s*/i,'')),g}; };
     const init=vec(pIdx>=0?L.slice(0,pIdx):L), proj=pIdx>=0?vec(L.slice(pIdx)):{v:null};
-    if(init.v) emit(init.x,B,'heating_vector_before',init.v,'generation-initiale',0.93);
-    if(proj.v) emit(proj.x,B,'heating_vector_after',proj.v,'generation-projet',0.9,'',{provenanceNote:`Nouveau générateur du projet${proj.g?` (${proj.g})`:''}.`});
+    const shareNote=r=>r.share!==null&&r.share!==undefined?` Vecteur majoritaire en puissance installée (${Math.round(r.share*100)} %).`:'';
+    if(init.v) emit(init.x,B,'heating_vector_before',init.v,'generation-initiale',0.93,'',shareNote(init)?{provenanceNote:`Générateurs de l’état initial.${shareNote(init)}`}:{});
+    if(proj.v) emit(proj.x,B,'heating_vector_after',proj.v,'generation-projet',0.9,'',{provenanceNote:`Nouveau générateur du projet${proj.g?` (${proj.g})`:''}.${shareNote(proj)}`});
     if(init.v&&init.mixte) emit(init.x,B,'ecs_vector_before',init.v,'generation-initiale-ecs',0.88);
     if(proj.v&&proj.mixte) emit(proj.x,B,'ecs_vector_after',proj.v,'generation-projet-ecs',0.86);
   }
   // Données administratives (maître d'ouvrage, logiciel).
   const moa=lines.findIndex(x=>/^MAITRE\s+D.OUVRAGE$/i.test(x.t)); if(moa>=0){ const n=lines[moa+1]; const m=n?.t.match(/^Nom\s+ou\s+raison\s+sociale\s*:\s*(.+)$/i); if(m&&m[1].trim()) emit(n,'Bâtiment unique','owner_company',m[1].replace(/\s*\(\d{5}\)\s*-\s*\d+\s*$/,'').trim(),'maitre-ouvrage',0.9,'',{secondarySourceOk:true}); }
+  const dep=lines.find(x=>/^Departement\s*:?\s*(\d{2,3}|2[AB])$/i.test(x.t)); if(dep) emit(dep,'Bâtiment unique','department',dep.t.match(/(\d{2,3}|2[AB])$/i)[1],'departement',0.95,'',{secondarySourceOk:true});
   return out;
 }

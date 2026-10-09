@@ -1050,3 +1050,29 @@ dialog#betaErrorDialog,
 #betaErrorDialog .beta-apply-row{display:flex!important;align-items:center;gap:8px;font-size:11px;font-weight:700;color:#294b3e;text-align:left}
 #betaErrorDialog .beta-apply-row input{flex:0 0 auto;width:auto;margin:0}
 @media(max-width:700px){#betaErrorDialog .manual-section-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v2.3.16 — bandeau compact : 60 px au lieu de 150 px, décor supprimé. */
+.ux-header,.ux-header-clean{height:60px;min-height:0;padding:8px 24px;gap:16px;grid-template-columns:auto 1fr auto;box-shadow:0 4px 14px rgba(17,52,40,.05)}
+.ux-header .ux-header-center{display:none}
+.ux-brand{gap:10px}
+.ux-brand-mark{width:40px;height:40px;border-radius:10px;padding:2px;box-shadow:none}
+.ux-wordmark-text{font-size:24px;letter-spacing:-.8px}
+.ux-cc{margin-top:2px}
+.ux-header-actions-clean{min-width:0;grid-column:3}
+.ux-app-label{font-size:12px}
+.ux-body{min-height:calc(100vh - 60px)}
+.ux-sidebar{top:60px;height:calc(100vh - 60px)}
+.ux-right-rail,.ux-right-rail-clean{top:76px}
+@media(max-width:1180px){.ux-header,.ux-header-clean{height:60px;min-height:0;padding:8px 16px}.ux-sidebar{top:60px;height:calc(100vh - 60px)}}
+@media(max-width:820px){.ux-header,.ux-header-clean{height:auto;padding:8px 12px}.ux-app-label{display:none}.ux-sidebar{top:auto;height:auto}}
+/* v2.3.16 — suppression d'un projet de la liste */
+.result-project-row{display:grid;grid-template-columns:minmax(0,1fr) 22px;gap:3px;align-items:stretch}
+.result-project-delete{border:1px solid transparent;border-radius:7px;background:transparent;color:#9aa8a1;font-size:14px;line-height:1;cursor:pointer;padding:0}
+.result-project-delete:hover,.result-project-delete:focus-visible{background:#fdecea;border-color:#f1c4bf;color:#a3362b}
+.project-delete{font-size:13px;padding:6px 8px;border-radius:8px;line-height:1}
+.project-delete:hover{background:#fdecea;color:#a3362b}
+.overview-actions{white-space:nowrap}
+.overview-delete{margin-left:6px;border:1px solid #ecd0cc;border-radius:7px;background:#fff;color:#a3362b;padding:5px 8px;font-weight:800;cursor:pointer}
+.overview-delete:hover{background:#fdecea}
+/* v2.3.16 — l'en-tête du tableau de synthèse reste collé en haut de son propre cadre de défilement (il masquait la 1re ligne). */
+.result-overview-table th{top:0}

@@ -162,6 +162,8 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
         const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+      // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
+      if(f.key==='ventilation'&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;

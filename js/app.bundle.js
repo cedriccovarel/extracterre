@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.15 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.16 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.3.15';
+const APP_VERSION='2.3.16';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -882,6 +882,7 @@ function detectBuildings(doc){
     if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};
   }
   if(isInsulationMarkupPlan(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'isolants-plan'};
+  if(isPhasedThermalNotice(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'notice-rtex-phases'};
   if(isBbcaRenovationCalculette(doc)){
     const names=bbcaRenovationBuildingNames(doc,canonicalBuilding).filter(n=>n!=='Bâtiment unique');
     return names.length?{names,expectedCount:names.length,source:'calculette-bbca-reno',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
@@ -2310,6 +2311,107 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// v2.3.16 — Notice thermique RT existant rédigée en chapitres « État existant » / « État projeté » (sans tableau de
+// synthèse standardisé) : chaque chapitre décrit les parois (« Descriptif des parois » : désignation, isolant, λ,
+// épaisseur en cm, R), les menuiseries, les systèmes (« Combustible Gaz », « Mode Chauffage + ECS ») et donne le Cep
+// (« Cep (kWh/(m²SRT.an) 300,83 ») et l'étiquette DPE calculée. La phase est donnée par le chapitre, jamais devinée.
+const PH_HEAD=/^(\d+(?:\.\d+)*)\.?\s+Etat\s+(existant|initial|actuel|avant\s+travaux|projete|projet|apres\s+travaux|renove)\b/i;
+function ph_phase(t){ const m=t.match(PH_HEAD); if(!m||/\.{5,}/.test(t)) return null; return /existant|initial|actuel|avant/i.test(m[2])?'before':'after'; }
+function isPhasedThermalNotice(doc){
+  const lines=rt_allLines(doc); const t=lines.map(x=>x.t).join('\n').slice(0,400000);
+  if(!/notice\s+thermique|etude\s+thermique/i.test(t)||!/RT\s*-?\s*Ex(?:istant)?\b|RT\s+existant|Th\s*-?\s*C\s*-?\s*E\s*-?\s*ex\b/i.test(t)) return false;
+  if(/RE\s?2020|RSET\b|Fichier\s+standardise/i.test(t.slice(0,6000))) return false;
+  const ph=new Set(lines.map(x=>ph_phase(x.t)).filter(Boolean)); return ph.has('before')&&ph.has('after');
+}
+const PH_VECT=[[/\bgaz\b/i,'Gaz'],[/\bfioul\b/i,'Fioul'],[/reseau\s+de\s+chaleur|chauffage\s+urbain|\bCPCU\b/i,'Réseau de chaleur urbain'],[/\bbois\b|granul|biomasse/i,'Bois / biomasse'],[/electri|effet\s+joule|pompe\s+a\s+chaleur|\bPAC\b/i,'Électricité']];
+const ph_vector=s=>PH_VECT.find(([re])=>re.test(s))?.[1]||null;
+const PH_GES=[[6,'A'],[11,'B'],[30,'C'],[50,'D'],[70,'E'],[100,'F']];
+function parsePhasedThermalNotice(doc,occ,canonical=(s)=>s){
+  const out=[]; const lines=rt_allLines(doc); const origin='Notice thermique RT existant (chapitres état existant / projeté)'; const B='Bâtiment unique';
+  const emit=(x,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`notice-rtex-phases:${method}`,conf,unit,{building:canonical(B),structuredPdf:true,origin,dedicatedRank:10,...extra}); if(o) out.push(o); };
+  const P={before:[],after:[]}; let phase=null;
+  for(const x of lines){ const p=ph_phase(x.t); if(p){ phase=p; continue; } if(phase&&!/^\d+\s*\/\s*\d+$|Page\s+\d+\s+sur\s+\d+/i.test(x.t)) P[phase].push(x); }
+  const word={before:'état existant',after:'état projeté'};
+  // Cep du chapitre (première valeur « Cep … » du tableau des consommations).
+  const cep={};
+  for(const ph of ['before','after']){
+    const x=P[ph].find(y=>/^Cep\b(?:\s+(?:projet|initial|existant|total))?\s*(?:\(\s*kWh[^\n]*?\)\s*|[:=]\s*)\d+(?:[.,]\d+)?\s*(?:kWh\S*)?$/i.test(y.t)); if(!x) continue;
+    const v=parseFrNumber(x.t.replace(/\(\s*kWh[^\n]*?\)/i,'').match(/(\d+(?:[.,]\d+)?)/)[1]); if(!(v>0&&v<1500)) continue; cep[ph]=v;
+    const note={provenanceNote:`Tableau des consommations théoriques du chapitre « ${word[ph]} ».`};
+    if(ph==='before') emit(x,'cep_before',v,'cep-existant',0.95,'kWhEP/m².an',note);
+    else { emit(x,'cep_after_final',v,'cep-projet',0.95,'kWhEP/m².an',note); emit(x,'cep',v,'cep-projet',0.9,'kWhEP/m².an',note); }
+  }
+  if(cep.before>0&&cep.after>0){ const x=P.after.find(y=>/^Cep\b/i.test(y.t)); emit(x,'cep_gain',Math.round((cep.before-cep.after)/cep.before*1000)/10,'cep-gain',0.88,'%',{provenanceNote:`Gain calculé entre le Cep de l’état existant (${cep.before}) et celui de l’état projeté (${cep.after}).`}); }
+  // Étiquette DPE calculée : « 295 kWhEP/m²SHAB.an et une emission de 51 kgeqCO2/m²SHAB.an, correspondant respectivement a des etiquettes de niveau E ».
+  for(const ph of ['before','after']){
+    const L=P[ph]; const i=L.findIndex(y=>/\d+(?:[.,]\d+)?\s*kWh\s*EP\/m.{0,12}an\b.{0,80}?\d+(?:[.,]\d+)?\s*kg\s*eq\s*CO2/i.test(y.t)); if(i<0) continue;
+    const txt=L.slice(i,i+3).map(y=>y.t).join(' '); const m=txt.match(/(\d+(?:[.,]\d+)?)\s*kWh\s*EP\/m.{0,12}?an\b.{0,80}?(\d+(?:[.,]\d+)?)\s*kg\s*eq\s*CO2.{0,120}?etiquettes?\s+(?:de\s+(?:niveau|classe)\s+)?([A-G])\b(?:\s+et\s+([A-G])\b)?/i); if(!m) continue;
+    const kg=parseFrNumber(m[2]); const ges=m[4]?m[4]:/respectivement/i.test(txt)?m[3]:(PH_GES.find(([t])=>kg<=t)?.[1]||'G');
+    const fe=ph==='before'?'dpe_energy_before':'dpe_energy_after', fg=ph==='before'?'dpe_ges_before':'dpe_ges_after';
+    emit(L[i],fe,m[3].toUpperCase(),'dpe-energie',0.92,'',{provenanceNote:`Étiquette DPE calculée (${word[ph]}) : ${m[1]} kWhEP/m².an.`});
+    emit(L[i],fg,ges.toUpperCase(),'dpe-ges',m[4]||/respectivement/i.test(txt)?0.92:0.86,'',{provenanceNote:`${m[2]} kgeqCO2/m².an${m[4]||/respectivement/i.test(txt)?'':' (classe GES déduite des seuils DPE)'} — ${word[ph]}.`});
+  }
+  // Parois de l'état projeté : chaque isolant (λ, épaisseur cm) est rattaché à la désignation la plus proche du tableau.
+  const table=(L,re)=>{ const a=L.findIndex(y=>re.test(y.t)); if(a<0) return []; const b=L.findIndex((y,k)=>k>a&&/^Tableau\s+\d+/i.test(y.t)); return L.slice(a+1,b>a?b:a+40); };
+  const DESIG=/\b(Murs?|Couverture|Toiture|Terrasse|Rampants?|Plancher\s+(?:bas|haut)|Combles?|Pignon)\b/i;
+  const kindOf=t=>/\bmurs?\b|pignon/i.test(t)?'wall':/couverture|toiture|terrasse|rampant|plancher\s+haut|combles?/i.test(t)?'roof':/plancher\s+bas/i.test(t)?'floor':null;
+  const walls={};
+  for(const ph of ['before','after']){
+    const T=table(P[ph],/Descriptif\s+des\s+parois/i); if(!T.length) continue;
+    const D=T.map((y,k)=>({y,k})).filter(z=>DESIG.test(z.y.t)&&!/intermediaire/i.test(z.y.t));
+    for(const [k,y] of T.entries()){
+      if(ph==='before') continue;
+      const r=y.t.match(new RegExp(INSUL_RE.source+'[^\\d]{0,20}(0[.,]\\d{2,3})\\s+(\\d{1,3}(?:[.,]\\d)?)(?:\\s+(\\d{1,2}(?:[.,]\\d{1,2})?))?','i')); if(!r) continue;
+      const d=D.slice().sort((p,q)=>Math.abs(p.k-k)-Math.abs(q.k-k)||q.k-p.k)[0]; if(!d||Math.abs(d.k-k)>2) continue;
+      const kind=kindOf(d.y.t); if(!kind||walls[kind]) continue;
+      const type=rt_insul(r[1]); const e=parseFrNumber(r[3]);
+      let R=r[4]?parseFrNumber(r[4]):null; if(R===null&&d.k!==k){ const n=rt_nums(d.y.t.replace(DESIG,'')); const last=n[n.length-1]; if(last>0.4&&last<15&&last!==e) R=last; }
+      walls[kind]={x:d.y,type,e,R,d:d.y.t};
+    }
+    // Structure des murs : matériau porteur décrit dans la désignation ou sa composition.
+    const wd=D.find(z=>/\bmurs?\b/i.test(z.y.t)); if(wd&&!walls.__structure){ const blk=T.slice(Math.max(0,wd.k-1),wd.k+2).map(y=>y.t).join(' ').toLowerCase();
+      const v=/pierre/.test(blk)?'Pierre':/beton/.test(blk)?'Béton':/brique/.test(blk)?'Brique':/parpaing|agglo/.test(blk)?'Parpaing':/ossature\s+bois|\bmob\b/.test(blk)?'Ossature bois':null;
+      if(v){ walls.__structure=1; emit(wd.y,'wall_structure',v,'mur-structure',0.9,'',{provenanceNote:`Composition du mur extérieur (${word[ph]}).`}); } }
+  }
+  for(const kind of ['wall','roof','floor']){ const w=walls[kind]; if(!w) continue; const f=RT_F[kind]; const note={provenanceNote:`Paroi « ${w.d} » de l’état projeté : ${w.type||'isolant'}, ${w.e} cm${w.R?`, R = ${w.R}`:''}.`};
+    if(w.type) emit(w.x,f[0],w.type,`${kind}-isolant`,0.93,'',note); if(w.e>0&&w.e<80) emit(w.x,f[1],Math.round(w.e*10),`${kind}-epaisseur`,0.92,'mm',note); if(w.R>0) emit(w.x,f[2],w.R,`${kind}-r`,0.92,'m².K/W',note); }
+  // Menuiseries et occultations de l'état projeté.
+  const M=table(P.after,/Descriptif\s+des\s+menuiseries/i); const mt=M.map(y=>y.t).join(' ');
+  if(M.length){ const mat=/cadre\s+bois|menuiseries?\s+bois|\bbois\b/i.test(mt)&&/alu/i.test(mt)?'Bois-aluminium':/\bPVC\b/i.test(mt)?'PVC':/alu/i.test(mt)?'Aluminium':/\bbois\b/i.test(mt)?'Bois':null;
+    if(mat) emit(M.find(y=>/bois|pvc|alu/i.test(y.t)),'window_material',mat,'menuiseries',0.92,'',{provenanceNote:'Tableau des menuiseries de l’état projeté.'});
+    const g=mt.match(/\b(\d{1,2}\/\d{1,2}\/\d{1,2}(?:\/\d{1,2}\/\d{1,2})?)\b/); const gl=g?normalizeGlazingType(g[1]):/triple\s+vitrage/i.test(mt)?'Triple vitrage':/double\s+vitrage/i.test(mt)?'Double vitrage':null;
+    if(gl) emit(M.find(y=>g?y.t.includes(g[1]):/vitrage/i.test(y.t)),'window_glazing',gl,'vitrage',0.9,'',{provenanceNote:'Tableau des menuiseries de l’état projeté.'}); }
+  const oi=P.after.findIndex(y=>/Occultations?|protections?\s+solaires/i.test(y.t)&&!/^Tableau/i.test(y.t));
+  if(oi>=0){ const blk=P.after.slice(oi,oi+8).map(y=>y.t).join(' '); const sh=[[/\bBSO\b|brise[- ]soleil\s+orientable/i,'BSO'],[/persiennes?/i,'Persiennes'],[/volets?\s+roulants?/i,'Volets roulants'],[/volets?\s+battants?/i,'Volets battants'],[/stores?\s+(?:exterieurs?|toile)/i,'Stores extérieurs'],[/stores?\s+interieurs?/i,'Stores intérieurs']].filter(([re])=>re.test(blk)).map(z=>z[1]);
+    if(sh.length) emit(P.after[oi],'window_shading',sh.join(' / '),'occultations',0.9,'',{provenanceNote:'Occultations prévues à l’état projeté.'}); }
+  // Systèmes : vecteur de chauffage du générateur principal de chaque chapitre (« Combustible Gaz »).
+  const vec={};
+  for(const ph of ['before','after']){
+    const L=P[ph]; const gi=L.findIndex(y=>/Chauffage\s*[–-]\s*Generation|Generation\s+(?:de\s+)?chauffage|Production\s+de\s+chauffage/i.test(y.t)); if(gi<0) continue;
+    const blk=L.slice(gi,gi+10); const c=blk.find(y=>/^(?:Combustible|Energie|Vecteur)\s*:?\s*\S/i.test(y.t)); const typ=blk.find(y=>/^Type\s*:?\s*\S/i.test(y.t)); const mode=blk.find(y=>/^Mode\s*:?\s*\S/i.test(y.t));
+    const v=c?ph_vector(c.t.replace(/^(?:Combustible|Energie|Vecteur)\s*:?\s*/i,'')):typ?ph_vector(typ.t):null; if(!v) continue; vec[ph]=v;
+    emit(c||typ,ph==='before'?'heating_vector_before':'heating_vector_after',v,`chauffage-${ph}`,0.93,'',{provenanceNote:`Générateur principal de chauffage (${word[ph]}).`});
+    if(mode&&/ECS/i.test(mode.t)) emit(mode,ph==='before'?'ecs_vector_before':'ecs_vector_after',v,`ecs-${ph}`,0.92,'',{provenanceNote:`Générateur mixte chauffage + ECS (${word[ph]}).`});
+    if(ph==='after'&&typ){ const all=L.map(y=>y.t).join(' '); const hm=/pompe\s+a\s+chaleur|\bPAC\b/i.test(typ.t)?'PAC':/chaudiere/i.test(typ.t)?(/condensation/i.test(all)?'Chaudière condensation':v==='Gaz'?'Chaudière gaz':null):/radiateur|convecteur|effet\s+joule/i.test(typ.t)?'Chauffage électrique direct':/sous-station|reseau/i.test(typ.t)?'Réseau de chaleur urbain':null; if(hm) emit(typ,'heating_mode_after',hm,'generateur-projet',0.9,'',{provenanceNote:`${typ.t} (état projeté).`}); }
+  }
+  // ECS décrite en clair : « L'ECS est assuree pour 10 logements par les chaudieres individuelles et par des ballons electriques pour 4 logements ».
+  for(const ph of ['before','after']){
+    const L=P[ph]; const i=L.findIndex(y=>/L.ECS\s+(?:est|sera)\s+assure/i.test(y.t)); if(i<0) continue;
+    const txt=L.slice(i,i+2).map(y=>y.t).join(' ').split(/\.\s/)[0]; const segs=txt.split(/\s+et\s+(?=par\b)/i);
+    const w={}; for(const s2 of segs){ const v=/chaudi/i.test(s2)?(vec[ph]||null):ph_vector(s2); if(!v) continue; const n=Number((s2.match(/(\d+)\s+logements?/i)||[])[1]||1); w[v]=(w[v]||0)+n; }
+    const top=Object.entries(w).sort((a,b)=>b[1]-a[1])[0]; if(!top) continue; const mixed=Object.keys(w).length>1;
+    const f=ph==='before'?'ecs_vector_before':'ecs_vector_after'; if(out.some(o=>o.field===f)) continue;
+    emit(L[i],f,top[0],`ecs-texte-${ph}`,mixed?0.86:0.92,'',{provenanceNote:mixed?`ECS mixte : ${Object.entries(w).map(([k,n])=>`${k} ${n}`).join(', ')} — vecteur majoritaire retenu.`:`ECS décrite par la notice (${word[ph]}).`});
+  }
+  // Ventilation de l'état projeté.
+  const at=P.after.map(y=>y.t).join('\n'); const vx=P.after.find(y=>/ventilation\s+(?:simple|double)\s+flux|VMC|hygro/i.test(y.t));
+  if(vx){ const v=/double\s+flux/i.test(at)?'VMC double flux':(()=>{ const h=at.match(/hygro\w*\s+(?:type\s+)?([AB])\b/i); return h?`VMC Hygro ${h[1].toUpperCase()}`:/simple\s+flux/i.test(at)?'VMC simple flux':null; })(); if(v) emit(vx,'ventilation',v,'ventilation-projet',0.92,'',{provenanceNote:'Système de ventilation de l’état projeté.'}); }
+  // Programme : nombre de logements.
+  const hl=lines.find(y=>/(?:compte|comprenant|de|creation\s+de)\s+(\d{1,4})\s+logements\b/i.test(y.t)&&!/pour\s+\d+\s+logements/i.test(y.t)); if(hl) emit(hl,'housing_count',Number(hl.t.match(/(\d{1,4})\s+logements\b/i)[1]),'logements',0.92);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Plan de repérage des isolants (légende)
 function isInsulationMarkupPlan(doc){
   const t=String(doc?.read?.text||'').slice(0,100000);
@@ -2454,8 +2556,12 @@ function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
 //    tableaux « Type d'energie » oui/non (colonnes Initial / Projet) du chauffage et de l'ECS ;
 //  • FEUILLET GENERATION (N) — générateurs de l'état initial et du projet.
 // Un « - » dans une colonne signifie « non renseigné » : aucune valeur n'est déduite.
+// v2.3.16 — fiche imprimée en image (OCR) et variante Pléiades : puces OCR (« > », « BP », « P> ») retirées,
+// « (m?) » / « (m°) » lus comme (m2), feuillets « (Batiment 1) » / « (Batiment 1 -ID: 1) », Tic en « °c »,
+// générateurs sur plusieurs colonnes pondérés par nombre × puissance unitaire.
 
-const rx_lt=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
+const rx_lt=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim()
+  .replace(/^(?:[>»—=©«•|]+\s*|(?:BP|B>|P>|P)\s+(?=[A-Z]))/,'').replace(/\(m\s*[?°*²]\)/gi,'(m2)').trim();
 const rx_tok=s=>String(s||'').trim().split(/\s+/).map(t=>/^-?\d+(?:[.,]\d+)?%?$/.test(t)?(t.endsWith('%')?null:parseFrNumber(t)):(t==='-'||t==='--'?null:t));
 
 function isRtexStandardFiche(doc){
@@ -2465,13 +2571,13 @@ function isRtexStandardFiche(doc){
 function rx_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:rx_lt(line)})); return out; }
 function rx_sections(lines){
   const secs=[]; lines.forEach((x,i)=>{ let m;
-    if((m=x.t.match(/^FEUILLET\s+BATIMENT\s*\((\d+)\)/i))) secs.push({kind:'bat',id:m[1],i});
-    else if((m=x.t.match(/^FEUILLET\s+EQUIPEMENT\s*\(\s*-?\s*ID\s*:\s*(\d+)\)/i))) secs.push({kind:'equip',id:m[1],i});
-    else if((m=x.t.match(/^FEUILLET\s+GENERATION\s*\((\d+)\)/i))) secs.push({kind:'gen',id:m[1],i}); });
+    if((m=x.t.match(/^FEUILLET\s+BATIMENT\s*\(\s*(?:Batiment\s+)?([^)]+?)\s*\)/i))) secs.push({kind:'bat',id:m[1],i});
+    else if((m=x.t.match(/^FEUILLET\s+EQUIPEMENT\s*\(\s*(?:Batiment\s+([^)]*?)\s*)?-?\s*ID\s*:\s*(\d+)\s*\)/i))) secs.push({kind:'equip',id:m[2],bat:m[1]||null,i});
+    else if((m=x.t.match(/^FEUILLET\s+GENERATION\s*\(\s*(?:Batiment\s+)?([^)]+?)\s*\)/i))) secs.push({kind:'gen',id:m[1],i}); });
   return secs.map((s,k)=>({...s,lines:lines.slice(s.i,k+1<secs.length?secs[k+1].i:lines.length)}));
 }
 function rx_buildingName(sec){
-  const id=sec.lines.find(x=>/^Identifiant\s+Batiment\b/i.test(x.t)); const m=id?.t.match(/^Identifiant\s+Batiment\s+(.*?)\s*-\s*\(\d+\)\s*$/i);
+  const id=sec.lines.find(x=>/^Identifiant\s+Batiment\b/i.test(x.t)); const m=id?.t.match(/^Identifiant\s+Batiment\s+(.*?)\s*-\s*\((?:Batiment\s+)?[^)]*\)\s*$/i);
   const name=(m?.[1]||'').trim(); return `Batiment ${name&&!/^-?$/.test(name)?name:sec.id}`;
 }
 function rtexStandardBuildingNames(doc){ return rx_sections(rx_lines(doc)).filter(s=>s.kind==='bat').map(rx_buildingName); }
@@ -2479,10 +2585,10 @@ function rtexStandardBuildingNames(doc){ return rx_sections(rx_lines(doc)).filte
 const RX_VECT=[[/^electrique\s+a\s+effet\s+joule\b/i,'Électricité'],[/^electrique\s+thermodynamique\b/i,'Électricité'],[/^gaz\b/i,'Gaz'],[/^fioul\b/i,'Fioul'],[/^solaire\b/i,'Solaire'],[/^reseaux?\s+(?:de\s+)?chaleur\b/i,'Réseau de chaleur urbain'],[/^bois\b/i,'Bois / biomasse']];
 // Tableau « Type d'energie : / Initial Projet / gaz oui non … » → vecteurs initial / projet (oui uniquement).
 function rx_energyTable(lines,start){
-  const res={before:[],after:[],at:null};
+  const res={before:[],after:[],at:null,rows:0};
   for(const x of lines.slice(start+1,start+12)){
     const v=RX_VECT.find(([re])=>re.test(x.t)); if(!v){ if(/^Initial\s+Projet$/i.test(x.t)) continue; if(res.at) break; continue; }
-    const rest=x.t.replace(v[0],'').trim().split(/\s+/).filter(Boolean); res.at=res.at||x;
+    const rest=x.t.replace(v[0],'').trim().split(/\s+/).filter(Boolean); res.at=res.at||x; res.rows++;
     if(/^oui$/i.test(rest[0]||'')) res.before.push({v:v[1],x}); if(/^oui$/i.test(rest[1]||'')) res.after.push({v:v[1],x});
   }
   return res;
@@ -2508,17 +2614,17 @@ function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
       if(Number.isFinite(t[0])) emit(x,B,'ubat_before',t[0],'ubat-initial',0.97,'W/m².K',{provenanceNote:'Colonne « Initial (a) » de l’Ubat.'});
       if(Number.isFinite(t[1])) emit(x,B,'ubat_after',t[1],'ubat-projet',0.97,'W/m².K',{provenanceNote:'Colonne « Projet (b) » de l’Ubat.'}); }
     const th=L.findIndex(y=>/Tic\s*\(a\)\s*Tic\s*Ref\s*\(b\)/i.test(y.t));
-    if(th>=0) for(const y of L.slice(th+1,th+4)){ if((m=y.t.match(/°C\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)\s+-?\d+[.,]\d+$/))){ emit(y,B,'tic',parseFrNumber(m[1]),'tic',0.96,'°C'); emit(y,B,'tic_ref',parseFrNumber(m[2]),'tic-ref',0.96,'°C'); break; } }
+    if(th>=0) for(const y of L.slice(th+1,th+4)){ if((m=y.t.match(/°\s*C\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)\s+-?\d+[.,]\d+$/i))){ emit(y,B,'tic',parseFrNumber(m[1]),'tic',0.96,'°C'); emit(y,B,'tic_ref',parseFrNumber(m[2]),'tic-ref',0.96,'°C'); break; } }
     // Parois : libellé du mur principal (« Mur en beton banche », « Mur en pierre dure »), menuiseries (« Fenetre … PVC Th-U »).
     const op=L.findIndex(y=>/^Parois\s+opaques\s*:/i.test(y.t));
-    if(op>=0){ const w=L.slice(op,op+20).find(y=>/^Mur\s+en\s+/i.test(y.t)); if(w){ const s2=w.t.toLowerCase(); const v=/beton\s+banche/.test(s2)?'Béton banché':/beton/.test(s2)?'Béton':/pierre/.test(s2)?'Pierre':/brique/.test(s2)?'Brique':/parpaing|agglo/.test(s2)?'Parpaing':/bois/.test(s2)?'Ossature bois':null; if(v) emit(w,B,'wall_structure',v,'paroi-principale',0.9,'',{provenanceNote:`Libellé de la paroi verticale la plus représentative : ${w.t}.`}); } }
+    if(op>=0){ const w=L.slice(op,op+20).find(y=>/^Mur\s+en\s+/i.test(y.t)||/(?:^|[\s_])Mur\s+(?:en\s+)?(?:beton|pierre|brique|parpaing|agglo|bois)\b/i.test(y.t)); if(w){ const s2=w.t.toLowerCase(); const v=/beton\s+banche/.test(s2)?'Béton banché':/beton/.test(s2)?'Béton':/pierre/.test(s2)?'Pierre':/brique/.test(s2)?'Brique':/parpaing|agglo/.test(s2)?'Parpaing':/bois/.test(s2)?'Ossature bois':null; if(v) emit(w,B,'wall_structure',v,'paroi-principale',0.9,'',{provenanceNote:`Libellé de la paroi verticale la plus représentative : ${w.t}.`}); } }
     const fen=L.filter(y=>/^Fenetre\b/i.test(y.t)); const mats={}; for(const y of fen){ const v=/\bPVC\b/i.test(y.t)?'PVC':/\balu/i.test(y.t)?'Aluminium':/\bbois\b/i.test(y.t)?'Bois':null; if(v) mats[v]=(mats[v]||{n:0,y}), mats[v].n++; }
     const best=Object.entries(mats).sort((a,b)=>b[1].n-a[1].n)[0]; if(best) emit(best[1].y,B,'window_material',best[0],'menuiseries',0.92,'',{provenanceNote:`${best[1].n} menuiserie(s) ${best[0]} dans le tableau des parois vitrées.`});
   }
   // Feuillets équipement : rattachement par la surface de la zone.
   for(const s of secs.filter(z=>z.kind==='equip')){
     const L=s.lines; const surf=L.find(x=>/^Surface\s+totale\s+utile\s+de\s+la\s+zone\s*\(m2?\)\s*[\d.,]+$/i.test(x.t)); const sv=surf?parseFrNumber(surf.t.match(/([\d.,]+)$/)[1]):null;
-    const bat=bats.find(b=>sv!==null&&Math.abs((surfOf[b.name]||-1)-sv)<0.6)||bats.find(b=>b.id===s.id); if(!bat) continue; const B=bat.name;
+    const bat=bats.find(b=>sv!==null&&Math.abs((surfOf[b.name]||-1)-sv)<0.6)||(s.bat?bats.find(b=>b.id===s.bat||b.name===`Batiment ${s.bat}`):null)||bats.find(b=>b.id===s.id); if(!bat) continue; const B=bat.name;
     const init=L.find(x=>/^Naturelle\s+par\s+conduit\b|^Ventilation\s+naturelle\b/i.test(x.t));
     const proj=L.find(x=>/^Type\s+de\s+centrale\s+de\s+traitement\s+d.air\s*-\s*\S/i.test(x.t));
     const works=L.find(x=>/travaux\s+de\s+renovation\s+thermique\s+ont-ils\s+porte\s+sur\s+la\s+ventilation\s*\?\s*(oui|non)/i.test(x.t));
@@ -2527,8 +2633,8 @@ function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
     const chIdx=L.findIndex(x=>/DONNEES\s*SUR\s*LES\s*EQUIPEMENTS\s*DE\s*CHAUFFAGE/i.test(x.t.replace(/\s+/g,' '))||/^2\s*-\s*DONNEESSURLESEQUIPEMENTSDECHAUFFAGE/i.test(x.t));
     const ecsIdx=L.findIndex(x=>/^4\s*-\s*DONNEESSURL.EAUCHAUDESANITAIRE/i.test(x.t)||/DONNEES\s*SUR\s*L.EAU\s*CHAUDE\s*SANITAIRE/i.test(x.t));
     const typeAfter=i=>L.findIndex((x,k)=>k>i&&/^Type\s+d.energie\s*:/i.test(x.t));
-    if(chIdx>=0){ const k=typeAfter(chIdx); if(k>=0&&(ecsIdx<0||k<ecsIdx)){ const r=rx_energyTable(L,k); if(r.before.length===1) emit(r.before[0].x,B,'heating_vector_before',r.before[0].v,'chauffage-energie-initial',0.94); if(r.after.length===1) emit(r.after[0].x,B,'heating_vector_after',r.after[0].v,'chauffage-energie-projet',0.94); } }
-    if(ecsIdx>=0){ const k=typeAfter(ecsIdx); if(k>=0){ const r=rx_energyTable(L,k); if(r.before.length===1) emit(r.before[0].x,B,'ecs_vector_before',r.before[0].v,'ecs-energie-initial',0.94); if(r.after.length===1) emit(r.after[0].x,B,'ecs_vector_after',r.after[0].v,'ecs-energie-projet',0.94); } }
+    if(chIdx>=0){ const k=typeAfter(chIdx); if(k>=0&&(ecsIdx<0||k<ecsIdx)){ const r=rx_energyTable(L,k); const c=r.rows>=7?0.94:0.8; if(r.before.length===1) emit(r.before[0].x,B,'heating_vector_before',r.before[0].v,'chauffage-energie-initial',c); if(r.after.length===1) emit(r.after[0].x,B,'heating_vector_after',r.after[0].v,'chauffage-energie-projet',c); } }
+    if(ecsIdx>=0){ const k=typeAfter(ecsIdx); if(k>=0){ const r=rx_energyTable(L,k); const c=r.rows>=7?0.94:0.8; if(r.before.length===1) emit(r.before[0].x,B,'ecs_vector_before',r.before[0].v,'ecs-energie-initial',c); if(r.after.length===1) emit(r.after[0].x,B,'ecs_vector_after',r.after[0].v,'ecs-energie-projet',c); } }
   }
   // Feuillets génération : état initial et projet.
   for(const s of secs.filter(z=>z.kind==='gen')){
@@ -2536,16 +2642,25 @@ function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
     const pIdx=L.findIndex(x=>/PROJET\s*:?\s*NOUVEAUX\s*GENERATEURS|^3\s*-\s*PROJET/i.test(x.t.replace(/\s+/g,'')?x.t:x.t));
     const vec=(part)=>{ const te=part.find(x=>/^Type\s+d.energie\s*-\s*\S/i.test(x.t)), tg=part.find(x=>/^Type\s+de\s+generateur\s*-\s*\S/i.test(x.t)), mode=part.find(x=>/^Mode\s+de\s+production/i.test(x.t));
       const g=tg?.t.replace(/^Type\s+de\s+generateur\s*-\s*/i,'')||''; const e=te?.t.replace(/^Type\s+d.energie\s*-\s*/i,'')||'';
-      const v=/reseau\s+de\s+chaleur|chauffage\s+urbain|sous-station/i.test(g)?'Réseau de chaleur urbain':/pompe|pac\b|thermodynamique/i.test(g)?'Électricité':RX_VECT.find(([re])=>re.test(e.toLowerCase()))?.[1]||null;
-      return {v,x:tg&&/reseau|pompe|pac/i.test(g)?tg:te,mixte:/mixte|chauffage\s+et\s+(?:fourniture\s+)?ecs|ecs\s+seul/i.test((mode?.t||'').replace(/^Mode\s+de\s+production\s*\([^)]*\)\s*-?\s*/i,'')),g}; };
+      let v=/reseau\s+de\s+chaleur|chauffage\s+urbain|sous-station/i.test(g)?'Réseau de chaleur urbain':/pompe|pac\b|thermodynamique/i.test(g)?'Électricité':RX_VECT.find(([re])=>re.test(e.toLowerCase()))?.[1]||null;
+      // Plusieurs générateurs en colonnes (« Gaz Electrique Electrique ») : vecteur dominant en nombre × puissance unitaire.
+      const cols=[...e.matchAll(/\b(gaz|electrique|fioul|bois|solaire|reseaux?(?:\s+de\s+chaleur)?)\b/gi)].map(k=>/^gaz/i.test(k[1])?'Gaz':/^elec/i.test(k[1])?'Électricité':/^fioul/i.test(k[1])?'Fioul':/^bois/i.test(k[1])?'Bois / biomasse':/^solaire/i.test(k[1])?'Solaire':'Réseau de chaleur urbain');
+      let share=null;
+      if(cols.length>1){ const nums=re=>{ const l=part.find(x=>re.test(x.t)); return l?(l.t.replace(re,'').match(/\d+(?:[.,]\d+)?/g)||[]).map(parseFrNumber):[]; };
+        const n=nums(/^Nombre\s+de\s+generateurs\s+identiques\s*-?/i), pw=nums(/^Puissance\s+nominale\s+unitaire\s*k\s*w\s*/i);
+        const w={}; cols.forEach((c,k)=>{ w[c]=(w[c]||0)+(n.length===cols.length?n[k]:1)*(pw.length===cols.length?pw[k]:1); });
+        const tot=Object.values(w).reduce((a,b)=>a+b,0); const top=Object.entries(w).sort((a,b)=>b[1]-a[1])[0]; v=top?.[0]||null; share=tot>0?top[1]/tot:null; if(share!==null&&share<0.6) v=null; }
+      return {v,share,x:tg&&/reseau|pompe|pac/i.test(g)?tg:te,mixte:/mixte|chauffage\s+et\s+(?:fourniture\s+)?ecs|ecs\s+seul/i.test((mode?.t||'').replace(/^Mode\s+de\s+production\s*\([^)]*\)\s*-?\s*/i,'')),g}; };
     const init=vec(pIdx>=0?L.slice(0,pIdx):L), proj=pIdx>=0?vec(L.slice(pIdx)):{v:null};
-    if(init.v) emit(init.x,B,'heating_vector_before',init.v,'generation-initiale',0.93);
-    if(proj.v) emit(proj.x,B,'heating_vector_after',proj.v,'generation-projet',0.9,'',{provenanceNote:`Nouveau générateur du projet${proj.g?` (${proj.g})`:''}.`});
+    const shareNote=r=>r.share!==null&&r.share!==undefined?` Vecteur majoritaire en puissance installée (${Math.round(r.share*100)} %).`:'';
+    if(init.v) emit(init.x,B,'heating_vector_before',init.v,'generation-initiale',0.93,'',shareNote(init)?{provenanceNote:`Générateurs de l’état initial.${shareNote(init)}`}:{});
+    if(proj.v) emit(proj.x,B,'heating_vector_after',proj.v,'generation-projet',0.9,'',{provenanceNote:`Nouveau générateur du projet${proj.g?` (${proj.g})`:''}.${shareNote(proj)}`});
     if(init.v&&init.mixte) emit(init.x,B,'ecs_vector_before',init.v,'generation-initiale-ecs',0.88);
     if(proj.v&&proj.mixte) emit(proj.x,B,'ecs_vector_after',proj.v,'generation-projet-ecs',0.86);
   }
   // Données administratives (maître d'ouvrage, logiciel).
   const moa=lines.findIndex(x=>/^MAITRE\s+D.OUVRAGE$/i.test(x.t)); if(moa>=0){ const n=lines[moa+1]; const m=n?.t.match(/^Nom\s+ou\s+raison\s+sociale\s*:\s*(.+)$/i); if(m&&m[1].trim()) emit(n,'Bâtiment unique','owner_company',m[1].replace(/\s*\(\d{5}\)\s*-\s*\d+\s*$/,'').trim(),'maitre-ouvrage',0.9,'',{secondarySourceOk:true}); }
+  const dep=lines.find(x=>/^Departement\s*:?\s*(\d{2,3}|2[AB])$/i.test(x.t)); if(dep) emit(dep,'Bâtiment unique','department',dep.t.match(/(\d{2,3}|2[AB])$/i)[1],'departement',0.95,'',{secondarySourceOk:true});
   return out;
 }
 
@@ -5939,7 +6054,7 @@ function parseBbcaRenovationDocument(doc){
 // confondaient seuils, gains et numéros de page).
 function parseRenovationThermalDocument(doc,kind){
   const fdoc={...doc,type:doc.type||(kind==='plan'?DOC_TYPES.THERMAL:DOC_TYPES.RT_EXISTING)};
-  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
+  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='phases'?parsePhasedThermalNotice(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
   const dedicated=annotateSemanticHierarchy(fdoc,ded.filter(Boolean)).map(o=>({...o,specializedFamily:`renovation-${kind}`}));
   const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','owner_company','department']);
   const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
@@ -5987,6 +6102,7 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
   if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');
+  if(!doc.__skipDedicated&&isPhasedThermalNotice(doc)) return parseRenovationThermalDocument(doc,'phases');
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);
@@ -6449,6 +6565,8 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
         const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+      // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
+      if(f.key==='ventilation'&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
@@ -8412,8 +8530,9 @@ function renderResultNavigator(){
   const nav=$('#resultNavigator'); if(!nav) return;
   const hasAny=state.projects.some(p=>(p.docs||[]).length||p.result); nav.hidden=!hasAny;
   if(!hasAny){ nav.innerHTML=''; return; }
-  nav.innerHTML=`<div class="result-nav-head"><strong>Projets</strong><span class="result-nav-count">${state.projects.length}</span></div><div class="result-quick-drop" id="resultQuickDrop"><small>Déposer d’autres pièces</small><div class="result-quick-actions"><label for="fileInput">＋ Fichiers</label><label for="folderInput">▱ Dossier</label></div></div><div class="result-project-list">${state.projects.map(p=>{const st=projectResultStats(p);return `<button class="result-project-item ${p.id===state.activeProjectId&&state.resultWorkspaceMode==='detail'?'active':''}" data-result-project="${p.id}" type="button" title="${escapeHtml(projectTitle(p))}"><strong>${escapeHtml(projectTitle(p))}</strong><small>${st.docs} doc · ${st.buildings} bât. · ${st.values} valeurs</small><span class="nav-alert ${st.alerts?'':'ok'}">${st.alerts||'✓'}</span></button>`;}).join('')}</div>`;
+  nav.innerHTML=`<div class="result-nav-head"><strong>Projets</strong><span class="result-nav-count">${state.projects.length}</span></div><div class="result-quick-drop" id="resultQuickDrop"><small>Déposer d’autres pièces</small><div class="result-quick-actions"><label for="fileInput">＋ Fichiers</label><label for="folderInput">▱ Dossier</label></div></div><div class="result-project-list">${state.projects.map(p=>{const st=projectResultStats(p);return `<div class="result-project-row"><button class="result-project-item ${p.id===state.activeProjectId&&state.resultWorkspaceMode==='detail'?'active':''}" data-result-project="${p.id}" type="button" title="${escapeHtml(projectTitle(p))}"><strong>${escapeHtml(projectTitle(p))}</strong><small>${st.docs} doc · ${st.buildings} bât. · ${st.values} valeurs</small><span class="nav-alert ${st.alerts?'':'ok'}">${st.alerts||'✓'}</span></button><button class="result-project-delete" data-result-project-delete="${p.id}" type="button" title="Supprimer le projet" aria-label="Supprimer le projet ${escapeHtml(projectTitle(p))}">×</button></div>`;}).join('')}</div>`;
   $$('#resultNavigator [data-result-project]').forEach(b=>b.onclick=()=>activateProject(b.dataset.resultProject));
+  $$('#resultNavigator [data-result-project-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteProject(b.dataset.resultProjectDelete);});
   const q=$('#resultQuickDrop'); if(q){ for(const ev of ['dragenter','dragover']) q.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();q.classList.add('drag');}); q.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!q.contains(e.relatedTarget)) q.classList.remove('drag');}); q.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();q.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}}); }
 }
 function renderResultWorkspaceControls(){
@@ -8721,6 +8840,13 @@ function addNewProject(){
 }
 function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif'); }
 function toggleProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.expanded=!p.expanded; renderSummary(); scheduleWorkspaceCheckpoint('affichage projet'); }
+async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const title=projectTitle(p); const docs=(p.docs||[]).length;
+  if(!confirm(`Supprimer le projet « ${title} » de la liste ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}\nLe journal d’amélioration et les règles de sources sont conservés.`)) return;
+  for(const d of p.docs||[]){ try{await deleteDocumentCheckpoint(d.id);}catch{} }
+  const i=state.projects.findIndex(x=>x.id===id); state.projects.splice(i,1);
+  if(!state.projects.length) state.projects.push(createProject(1));
+  if(state.activeProjectId===id){ state.activeProjectId=(state.projects[Math.min(i,state.projects.length-1)]||state.projects[0]).id; if(state.projects.length>1) state.resultWorkspaceMode='overview'; const np=activeProject(); if(!np.result) rebuildProjectFromCheckpoints(np); syncProjectInput(); }
+  renderAll(); toast(`Projet « ${title} » supprimé.`,'success'); scheduleWorkspaceCheckpoint('suppression projet',80); }
 function renameProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const current=projectTitle(p); const raw=prompt('Renommer le projet',current); if(raw===null)return; const name=raw.trim(); if(!name){ toast('Le nom du projet ne peut pas être vide.','warn'); return; } p.customTitle=name; renderSummary(); toast(`Projet renommé : ${name}`,'success'); scheduleWorkspaceCheckpoint('renommage projet'); }
 
 
@@ -9224,7 +9350,7 @@ async function targetedReanalysis(id){
 
 function projectSectionHeader(p,isActive=false){
   const r=p.result; const title=escapeHtml(projectTitle(p)); const docs=(p.docs||[]).length, bats=r?.rows?.length||0;
-  return `<div class="project-section-head"><button class="project-toggle" data-project-toggle="${p.id}" title="Réduire/agrandir">${p.expanded?'▾':'▸'}</button><div class="project-section-title"><strong>${title}</strong><small>${docs} document(s) · ${bats} bâtiment(s)${isActive?' · projet actif':''}</small></div><button class="icon-btn project-rename" data-project-rename="${p.id}" title="Renommer le projet" aria-label="Renommer le projet">✎</button>${isActive?'<span class="badge ok">Actif</span>':`<button class="btn light project-activate" data-project-activate="${p.id}">Ouvrir / modifier</button>`}</div>`;
+  return `<div class="project-section-head"><button class="project-toggle" data-project-toggle="${p.id}" title="Réduire/agrandir">${p.expanded?'▾':'▸'}</button><div class="project-section-title"><strong>${title}</strong><small>${docs} document(s) · ${bats} bâtiment(s)${isActive?' · projet actif':''}</small></div><button class="icon-btn project-rename" data-project-rename="${p.id}" title="Renommer le projet" aria-label="Renommer le projet">✎</button><button class="icon-btn project-delete" data-project-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">🗑</button>${isActive?'<span class="badge ok">Actif</span>':`<button class="btn light project-activate" data-project-activate="${p.id}">Ouvrir / modifier</button>`}</div>`;
 }
 function staticProjectBody(p,fields){
   const r=p.result;
@@ -9244,6 +9370,7 @@ function decorateProjectSections(wrap,fields){
   }
   $$('#summaryView [data-project-toggle]').forEach(b=>b.onclick=()=>toggleProject(b.dataset.projectToggle));
   $$('#summaryView [data-project-rename]').forEach(b=>b.onclick=e=>{e.stopPropagation();renameProject(b.dataset.projectRename);});
+  $$('#summaryView [data-project-delete]').forEach(b=>b.onclick=e=>{e.stopPropagation();deleteProject(b.dataset.projectDelete);});
   $$('#summaryView [data-project-activate]').forEach(b=>b.onclick=()=>activateProject(b.dataset.projectActivate));
 }
 
@@ -9251,7 +9378,7 @@ function decorateProjectSections(wrap,fields){
 
 function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs(); syncStickyResultTabs();
-  if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); renderResultWorkspaceControls(); return; }
+  if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td class="overview-actions"><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button><button class="overview-delete" data-overview-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">Supprimer</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); $$('#summaryView [data-overview-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.overviewDelete)); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);

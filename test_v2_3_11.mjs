@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.15','version');
+eq(APP_VERSION,'2.3.16','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
@@ -98,5 +98,5 @@ eq(val(io,'wall_insulation'),'Fibre de bois'); eq(val(io,'wall_insulation_thickn
 const r=analyzeDocuments([th,pl,acv],DEFAULT_SOURCE_RULES,'Test');
 const row=b=>r.rows.find(x=>x.building===b)||{};
 eq(row('Bâtiment COUR').window_glazing,'4.16.4 Ar','vitrage Pléiades (4.16.4 Ar) plutôt que « Double vitrage » de la notice');
-eq(row('Bâtiment COUR').eges_pce,351); eq(row('Bâtiment RUE').cep_after_final,140.2); eq(row('Bâtiment COUR').ventilation,'VMC simple flux');
+eq(row('Bâtiment COUR').eges_pce,351); eq(row('Bâtiment RUE').cep_after_final,140.2); eq(row('Bâtiment COUR').ventilation,'VMC Hygro A'); // v2.3.16 : « VMC simple flux » (Pléiades) précisée par la notice
 console.log(`v2.3.11 — ${n} vérifications OK (documents fictifs)`);

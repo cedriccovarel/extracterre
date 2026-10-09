@@ -1,3 +1,27 @@
+# v2.3.16 — Thermique rénovation : notices en chapitres, fiches RT existant scannées ; bandeau compact, suppression de projet
+- **Fiche standardisée RT existant imprimée en image** (RSET-RTex scanné, aucune couche texte) : le parseur de la v2.3.13 ne reconnaissait pas le texte OCR. Résultat : 0 valeur, l'analyse semblait bloquée. Il comprend désormais :
+  - les puces OCR (« > », « BP », « P> ») et « (m?) » pour (m2) ;
+  - les feuillets Pléiades « (Batiment 1) » et « (Batiment 1 -ID: 1) » ;
+  - le Tic en « °c » et les murs « 0_Mur Pierre » ;
+  - les générateurs sur plusieurs colonnes : le vecteur majoritaire est pris en nombre × puissance unitaire.
+
+  Un tableau « Type d'énergie » à qui l'OCR a fait perdre une ligne passe en « à vérifier ». Sur une fiche réelle de 16 pages : 22 valeurs (Cep initial / projet, Ubat, Tic, surface, année, logements, vecteurs, ventilation, structure, menuiseries, département).
+- **Notices thermiques RT existant rédigées en chapitres** « État existant » / « État projeté » (sans tableau standardisé). Nouveau parseur `parsePhasedThermalNotice` ; la phase vient du chapitre, jamais d'une supposition. Il lit :
+  - le Cep de chaque état et le gain ;
+  - l'étiquette DPE calculée (la classe GES est déduite des seuils si la notice ne donne qu'une lettre) ;
+  - les parois projetées : isolant, épaisseur cm → mm, R, en rattachant chaque isolant à la désignation la plus proche ;
+  - la structure des murs, les menuiseries (matériau, vitrage), les occultations ;
+  - le générateur et le vecteur de chauffage de chaque état ;
+  - l'ECS, décrite en clair (vecteur majoritaire en logements), la ventilation et le nombre de logements.
+
+  Le bâtiment parasite « CONCERNE PAR LES TRAVAUX » n'apparaît plus. Sur une notice réelle : 25 valeurs exactes, contre des Cep projet classés en « avant travaux » auparavant.
+- **Consolidation** : « VMC simple flux » (fiche RSET) est remplacée par « VMC Hygro A / B » quand une autre source le précise.
+- **Interface** :
+  - bandeau du haut ramené de 150 px à 60 px (logo 40 px, décor supprimé) ;
+  - bouton **Supprimer** sur chaque projet, dans la liste « Projets », le tableau de synthèse et l'en-tête de projet. Une confirmation est demandée, les analyses du projet sont retirées et le journal d'amélioration est conservé ;
+  - l'en-tête du tableau de synthèse ne masque plus la première ligne.
+- Non-régression : 24 documents réels relancés, 932 → 932 valeurs retenues ; banc du pack inchangé.
+
 # v2.3.15 — XML RE2020 (RSEE) : enveloppe, structure, menuiseries et ventilation
 Un XML RSEE contient à lui seul une grande partie des données du tableur. En plus de la thermique et du carbone (Bbio, Cep, DH, Ic, lots, Stock C), sa partie Datas_Comp remplit désormais :
 - le **nom du projet** (balise operation) ;

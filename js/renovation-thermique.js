@@ -160,6 +160,107 @@ export function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// v2.3.16 — Notice thermique RT existant rédigée en chapitres « État existant » / « État projeté » (sans tableau de
+// synthèse standardisé) : chaque chapitre décrit les parois (« Descriptif des parois » : désignation, isolant, λ,
+// épaisseur en cm, R), les menuiseries, les systèmes (« Combustible Gaz », « Mode Chauffage + ECS ») et donne le Cep
+// (« Cep (kWh/(m²SRT.an) 300,83 ») et l'étiquette DPE calculée. La phase est donnée par le chapitre, jamais devinée.
+const PH_HEAD=/^(\d+(?:\.\d+)*)\.?\s+Etat\s+(existant|initial|actuel|avant\s+travaux|projete|projet|apres\s+travaux|renove)\b/i;
+function ph_phase(t){ const m=t.match(PH_HEAD); if(!m||/\.{5,}/.test(t)) return null; return /existant|initial|actuel|avant/i.test(m[2])?'before':'after'; }
+export function isPhasedThermalNotice(doc){
+  const lines=rt_allLines(doc); const t=lines.map(x=>x.t).join('\n').slice(0,400000);
+  if(!/notice\s+thermique|etude\s+thermique/i.test(t)||!/RT\s*-?\s*Ex(?:istant)?\b|RT\s+existant|Th\s*-?\s*C\s*-?\s*E\s*-?\s*ex\b/i.test(t)) return false;
+  if(/RE\s?2020|RSET\b|Fichier\s+standardise/i.test(t.slice(0,6000))) return false;
+  const ph=new Set(lines.map(x=>ph_phase(x.t)).filter(Boolean)); return ph.has('before')&&ph.has('after');
+}
+const PH_VECT=[[/\bgaz\b/i,'Gaz'],[/\bfioul\b/i,'Fioul'],[/reseau\s+de\s+chaleur|chauffage\s+urbain|\bCPCU\b/i,'Réseau de chaleur urbain'],[/\bbois\b|granul|biomasse/i,'Bois / biomasse'],[/electri|effet\s+joule|pompe\s+a\s+chaleur|\bPAC\b/i,'Électricité']];
+const ph_vector=s=>PH_VECT.find(([re])=>re.test(s))?.[1]||null;
+const PH_GES=[[6,'A'],[11,'B'],[30,'C'],[50,'D'],[70,'E'],[100,'F']];
+export function parsePhasedThermalNotice(doc,occ,canonical=(s)=>s){
+  const out=[]; const lines=rt_allLines(doc); const origin='Notice thermique RT existant (chapitres état existant / projeté)'; const B='Bâtiment unique';
+  const emit=(x,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`notice-rtex-phases:${method}`,conf,unit,{building:canonical(B),structuredPdf:true,origin,dedicatedRank:10,...extra}); if(o) out.push(o); };
+  const P={before:[],after:[]}; let phase=null;
+  for(const x of lines){ const p=ph_phase(x.t); if(p){ phase=p; continue; } if(phase&&!/^\d+\s*\/\s*\d+$|Page\s+\d+\s+sur\s+\d+/i.test(x.t)) P[phase].push(x); }
+  const word={before:'état existant',after:'état projeté'};
+  // Cep du chapitre (première valeur « Cep … » du tableau des consommations).
+  const cep={};
+  for(const ph of ['before','after']){
+    const x=P[ph].find(y=>/^Cep\b(?:\s+(?:projet|initial|existant|total))?\s*(?:\(\s*kWh[^\n]*?\)\s*|[:=]\s*)\d+(?:[.,]\d+)?\s*(?:kWh\S*)?$/i.test(y.t)); if(!x) continue;
+    const v=parseFrNumber(x.t.replace(/\(\s*kWh[^\n]*?\)/i,'').match(/(\d+(?:[.,]\d+)?)/)[1]); if(!(v>0&&v<1500)) continue; cep[ph]=v;
+    const note={provenanceNote:`Tableau des consommations théoriques du chapitre « ${word[ph]} ».`};
+    if(ph==='before') emit(x,'cep_before',v,'cep-existant',0.95,'kWhEP/m².an',note);
+    else { emit(x,'cep_after_final',v,'cep-projet',0.95,'kWhEP/m².an',note); emit(x,'cep',v,'cep-projet',0.9,'kWhEP/m².an',note); }
+  }
+  if(cep.before>0&&cep.after>0){ const x=P.after.find(y=>/^Cep\b/i.test(y.t)); emit(x,'cep_gain',Math.round((cep.before-cep.after)/cep.before*1000)/10,'cep-gain',0.88,'%',{provenanceNote:`Gain calculé entre le Cep de l’état existant (${cep.before}) et celui de l’état projeté (${cep.after}).`}); }
+  // Étiquette DPE calculée : « 295 kWhEP/m²SHAB.an et une emission de 51 kgeqCO2/m²SHAB.an, correspondant respectivement a des etiquettes de niveau E ».
+  for(const ph of ['before','after']){
+    const L=P[ph]; const i=L.findIndex(y=>/\d+(?:[.,]\d+)?\s*kWh\s*EP\/m.{0,12}an\b.{0,80}?\d+(?:[.,]\d+)?\s*kg\s*eq\s*CO2/i.test(y.t)); if(i<0) continue;
+    const txt=L.slice(i,i+3).map(y=>y.t).join(' '); const m=txt.match(/(\d+(?:[.,]\d+)?)\s*kWh\s*EP\/m.{0,12}?an\b.{0,80}?(\d+(?:[.,]\d+)?)\s*kg\s*eq\s*CO2.{0,120}?etiquettes?\s+(?:de\s+(?:niveau|classe)\s+)?([A-G])\b(?:\s+et\s+([A-G])\b)?/i); if(!m) continue;
+    const kg=parseFrNumber(m[2]); const ges=m[4]?m[4]:/respectivement/i.test(txt)?m[3]:(PH_GES.find(([t])=>kg<=t)?.[1]||'G');
+    const fe=ph==='before'?'dpe_energy_before':'dpe_energy_after', fg=ph==='before'?'dpe_ges_before':'dpe_ges_after';
+    emit(L[i],fe,m[3].toUpperCase(),'dpe-energie',0.92,'',{provenanceNote:`Étiquette DPE calculée (${word[ph]}) : ${m[1]} kWhEP/m².an.`});
+    emit(L[i],fg,ges.toUpperCase(),'dpe-ges',m[4]||/respectivement/i.test(txt)?0.92:0.86,'',{provenanceNote:`${m[2]} kgeqCO2/m².an${m[4]||/respectivement/i.test(txt)?'':' (classe GES déduite des seuils DPE)'} — ${word[ph]}.`});
+  }
+  // Parois de l'état projeté : chaque isolant (λ, épaisseur cm) est rattaché à la désignation la plus proche du tableau.
+  const table=(L,re)=>{ const a=L.findIndex(y=>re.test(y.t)); if(a<0) return []; const b=L.findIndex((y,k)=>k>a&&/^Tableau\s+\d+/i.test(y.t)); return L.slice(a+1,b>a?b:a+40); };
+  const DESIG=/\b(Murs?|Couverture|Toiture|Terrasse|Rampants?|Plancher\s+(?:bas|haut)|Combles?|Pignon)\b/i;
+  const kindOf=t=>/\bmurs?\b|pignon/i.test(t)?'wall':/couverture|toiture|terrasse|rampant|plancher\s+haut|combles?/i.test(t)?'roof':/plancher\s+bas/i.test(t)?'floor':null;
+  const walls={};
+  for(const ph of ['before','after']){
+    const T=table(P[ph],/Descriptif\s+des\s+parois/i); if(!T.length) continue;
+    const D=T.map((y,k)=>({y,k})).filter(z=>DESIG.test(z.y.t)&&!/intermediaire/i.test(z.y.t));
+    for(const [k,y] of T.entries()){
+      if(ph==='before') continue;
+      const r=y.t.match(new RegExp(INSUL_RE.source+'[^\\d]{0,20}(0[.,]\\d{2,3})\\s+(\\d{1,3}(?:[.,]\\d)?)(?:\\s+(\\d{1,2}(?:[.,]\\d{1,2})?))?','i')); if(!r) continue;
+      const d=D.slice().sort((p,q)=>Math.abs(p.k-k)-Math.abs(q.k-k)||q.k-p.k)[0]; if(!d||Math.abs(d.k-k)>2) continue;
+      const kind=kindOf(d.y.t); if(!kind||walls[kind]) continue;
+      const type=rt_insul(r[1]); const e=parseFrNumber(r[3]);
+      let R=r[4]?parseFrNumber(r[4]):null; if(R===null&&d.k!==k){ const n=rt_nums(d.y.t.replace(DESIG,'')); const last=n[n.length-1]; if(last>0.4&&last<15&&last!==e) R=last; }
+      walls[kind]={x:d.y,type,e,R,d:d.y.t};
+    }
+    // Structure des murs : matériau porteur décrit dans la désignation ou sa composition.
+    const wd=D.find(z=>/\bmurs?\b/i.test(z.y.t)); if(wd&&!walls.__structure){ const blk=T.slice(Math.max(0,wd.k-1),wd.k+2).map(y=>y.t).join(' ').toLowerCase();
+      const v=/pierre/.test(blk)?'Pierre':/beton/.test(blk)?'Béton':/brique/.test(blk)?'Brique':/parpaing|agglo/.test(blk)?'Parpaing':/ossature\s+bois|\bmob\b/.test(blk)?'Ossature bois':null;
+      if(v){ walls.__structure=1; emit(wd.y,'wall_structure',v,'mur-structure',0.9,'',{provenanceNote:`Composition du mur extérieur (${word[ph]}).`}); } }
+  }
+  for(const kind of ['wall','roof','floor']){ const w=walls[kind]; if(!w) continue; const f=RT_F[kind]; const note={provenanceNote:`Paroi « ${w.d} » de l’état projeté : ${w.type||'isolant'}, ${w.e} cm${w.R?`, R = ${w.R}`:''}.`};
+    if(w.type) emit(w.x,f[0],w.type,`${kind}-isolant`,0.93,'',note); if(w.e>0&&w.e<80) emit(w.x,f[1],Math.round(w.e*10),`${kind}-epaisseur`,0.92,'mm',note); if(w.R>0) emit(w.x,f[2],w.R,`${kind}-r`,0.92,'m².K/W',note); }
+  // Menuiseries et occultations de l'état projeté.
+  const M=table(P.after,/Descriptif\s+des\s+menuiseries/i); const mt=M.map(y=>y.t).join(' ');
+  if(M.length){ const mat=/cadre\s+bois|menuiseries?\s+bois|\bbois\b/i.test(mt)&&/alu/i.test(mt)?'Bois-aluminium':/\bPVC\b/i.test(mt)?'PVC':/alu/i.test(mt)?'Aluminium':/\bbois\b/i.test(mt)?'Bois':null;
+    if(mat) emit(M.find(y=>/bois|pvc|alu/i.test(y.t)),'window_material',mat,'menuiseries',0.92,'',{provenanceNote:'Tableau des menuiseries de l’état projeté.'});
+    const g=mt.match(/\b(\d{1,2}\/\d{1,2}\/\d{1,2}(?:\/\d{1,2}\/\d{1,2})?)\b/); const gl=g?normalizeGlazingType(g[1]):/triple\s+vitrage/i.test(mt)?'Triple vitrage':/double\s+vitrage/i.test(mt)?'Double vitrage':null;
+    if(gl) emit(M.find(y=>g?y.t.includes(g[1]):/vitrage/i.test(y.t)),'window_glazing',gl,'vitrage',0.9,'',{provenanceNote:'Tableau des menuiseries de l’état projeté.'}); }
+  const oi=P.after.findIndex(y=>/Occultations?|protections?\s+solaires/i.test(y.t)&&!/^Tableau/i.test(y.t));
+  if(oi>=0){ const blk=P.after.slice(oi,oi+8).map(y=>y.t).join(' '); const sh=[[/\bBSO\b|brise[- ]soleil\s+orientable/i,'BSO'],[/persiennes?/i,'Persiennes'],[/volets?\s+roulants?/i,'Volets roulants'],[/volets?\s+battants?/i,'Volets battants'],[/stores?\s+(?:exterieurs?|toile)/i,'Stores extérieurs'],[/stores?\s+interieurs?/i,'Stores intérieurs']].filter(([re])=>re.test(blk)).map(z=>z[1]);
+    if(sh.length) emit(P.after[oi],'window_shading',sh.join(' / '),'occultations',0.9,'',{provenanceNote:'Occultations prévues à l’état projeté.'}); }
+  // Systèmes : vecteur de chauffage du générateur principal de chaque chapitre (« Combustible Gaz »).
+  const vec={};
+  for(const ph of ['before','after']){
+    const L=P[ph]; const gi=L.findIndex(y=>/Chauffage\s*[–-]\s*Generation|Generation\s+(?:de\s+)?chauffage|Production\s+de\s+chauffage/i.test(y.t)); if(gi<0) continue;
+    const blk=L.slice(gi,gi+10); const c=blk.find(y=>/^(?:Combustible|Energie|Vecteur)\s*:?\s*\S/i.test(y.t)); const typ=blk.find(y=>/^Type\s*:?\s*\S/i.test(y.t)); const mode=blk.find(y=>/^Mode\s*:?\s*\S/i.test(y.t));
+    const v=c?ph_vector(c.t.replace(/^(?:Combustible|Energie|Vecteur)\s*:?\s*/i,'')):typ?ph_vector(typ.t):null; if(!v) continue; vec[ph]=v;
+    emit(c||typ,ph==='before'?'heating_vector_before':'heating_vector_after',v,`chauffage-${ph}`,0.93,'',{provenanceNote:`Générateur principal de chauffage (${word[ph]}).`});
+    if(mode&&/ECS/i.test(mode.t)) emit(mode,ph==='before'?'ecs_vector_before':'ecs_vector_after',v,`ecs-${ph}`,0.92,'',{provenanceNote:`Générateur mixte chauffage + ECS (${word[ph]}).`});
+    if(ph==='after'&&typ){ const all=L.map(y=>y.t).join(' '); const hm=/pompe\s+a\s+chaleur|\bPAC\b/i.test(typ.t)?'PAC':/chaudiere/i.test(typ.t)?(/condensation/i.test(all)?'Chaudière condensation':v==='Gaz'?'Chaudière gaz':null):/radiateur|convecteur|effet\s+joule/i.test(typ.t)?'Chauffage électrique direct':/sous-station|reseau/i.test(typ.t)?'Réseau de chaleur urbain':null; if(hm) emit(typ,'heating_mode_after',hm,'generateur-projet',0.9,'',{provenanceNote:`${typ.t} (état projeté).`}); }
+  }
+  // ECS décrite en clair : « L'ECS est assuree pour 10 logements par les chaudieres individuelles et par des ballons electriques pour 4 logements ».
+  for(const ph of ['before','after']){
+    const L=P[ph]; const i=L.findIndex(y=>/L.ECS\s+(?:est|sera)\s+assure/i.test(y.t)); if(i<0) continue;
+    const txt=L.slice(i,i+2).map(y=>y.t).join(' ').split(/\.\s/)[0]; const segs=txt.split(/\s+et\s+(?=par\b)/i);
+    const w={}; for(const s2 of segs){ const v=/chaudi/i.test(s2)?(vec[ph]||null):ph_vector(s2); if(!v) continue; const n=Number((s2.match(/(\d+)\s+logements?/i)||[])[1]||1); w[v]=(w[v]||0)+n; }
+    const top=Object.entries(w).sort((a,b)=>b[1]-a[1])[0]; if(!top) continue; const mixed=Object.keys(w).length>1;
+    const f=ph==='before'?'ecs_vector_before':'ecs_vector_after'; if(out.some(o=>o.field===f)) continue;
+    emit(L[i],f,top[0],`ecs-texte-${ph}`,mixed?0.86:0.92,'',{provenanceNote:mixed?`ECS mixte : ${Object.entries(w).map(([k,n])=>`${k} ${n}`).join(', ')} — vecteur majoritaire retenu.`:`ECS décrite par la notice (${word[ph]}).`});
+  }
+  // Ventilation de l'état projeté.
+  const at=P.after.map(y=>y.t).join('\n'); const vx=P.after.find(y=>/ventilation\s+(?:simple|double)\s+flux|VMC|hygro/i.test(y.t));
+  if(vx){ const v=/double\s+flux/i.test(at)?'VMC double flux':(()=>{ const h=at.match(/hygro\w*\s+(?:type\s+)?([AB])\b/i); return h?`VMC Hygro ${h[1].toUpperCase()}`:/simple\s+flux/i.test(at)?'VMC simple flux':null; })(); if(v) emit(vx,'ventilation',v,'ventilation-projet',0.92,'',{provenanceNote:'Système de ventilation de l’état projeté.'}); }
+  // Programme : nombre de logements.
+  const hl=lines.find(y=>/(?:compte|comprenant|de|creation\s+de)\s+(\d{1,4})\s+logements\b/i.test(y.t)&&!/pour\s+\d+\s+logements/i.test(y.t)); if(hl) emit(hl,'housing_count',Number(hl.t.match(/(\d{1,4})\s+logements\b/i)[1]),'logements',0.92);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Plan de repérage des isolants (légende)
 export function isInsulationMarkupPlan(doc){
   const t=String(doc?.read?.text||'').slice(0,100000);

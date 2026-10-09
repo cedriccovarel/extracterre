@@ -389,3 +389,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.15
 - `node test_v2_3_15.mjs` : XML RE2020 fictif — paroi dominante (surface cumulée), épaisseur / R, plancher 400 non pris pour un mur, structure, vitrage, menuiserie, VMC hygro B, valeurs retenues à l’export.
+
+## v2.3.16
+- `node test_v2_3_16.mjs` : notice thermique RT existant en chapitres (Cep, DPE, parois, menuiseries, systèmes, ECS mixte), fiche standardisée RT existant au format OCR / Pléiades (puces, feuillets « (Batiment 1) », générateurs multi-colonnes), VMC précisée par la notice, suppression de projet et bandeau compact (documents fictifs).

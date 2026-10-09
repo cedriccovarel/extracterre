@@ -13,7 +13,7 @@ import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns} from './logiciel
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
-import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan} from './renovation-thermique.js';
+import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan,isPhasedThermalNotice,parsePhasedThermalNotice} from './renovation-thermique.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
 import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
@@ -1973,7 +1973,7 @@ function parseBbcaRenovationDocument(doc){
 // confondaient seuils, gains et numéros de page).
 function parseRenovationThermalDocument(doc,kind){
   const fdoc={...doc,type:doc.type||(kind==='plan'?DOC_TYPES.THERMAL:DOC_TYPES.RT_EXISTING)};
-  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
+  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='phases'?parsePhasedThermalNotice(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
   const dedicated=annotateSemanticHierarchy(fdoc,ded.filter(Boolean)).map(o=>({...o,specializedFamily:`renovation-${kind}`}));
   const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','owner_company','department']);
   const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
@@ -2021,6 +2021,7 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
   if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');
+  if(!doc.__skipDedicated&&isPhasedThermalNotice(doc)) return parseRenovationThermalDocument(doc,'phases');
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);

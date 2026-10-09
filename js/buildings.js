@@ -6,7 +6,7 @@ import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.j
 import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette,bbcaRenovationBuildingNames} from './calculette-bbca.js';
 import {isRtexStandardFiche,rtexStandardBuildingNames} from './rset-rtex.js';
 import {isRecapCarboneRe2020,recapCarboneBuildingName} from './recap-carbone.js';
-import {isRtexThermalNotice,rtexNoticeBuildingNames,isPleiadesRtexReport,pleiadesRtexBuildingNames,isInsulationMarkupPlan} from './renovation-thermique.js';
+import {isRtexThermalNotice,rtexNoticeBuildingNames,isPleiadesRtexReport,pleiadesRtexBuildingNames,isInsulationMarkupPlan,isPhasedThermalNotice} from './renovation-thermique.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
@@ -118,6 +118,7 @@ export function detectBuildings(doc){
     if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};
   }
   if(isInsulationMarkupPlan(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'isolants-plan'};
+  if(isPhasedThermalNotice(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'notice-rtex-phases'};
   if(isBbcaRenovationCalculette(doc)){
     const names=bbcaRenovationBuildingNames(doc,canonicalBuilding).filter(n=>n!=='Bâtiment unique');
     return names.length?{names,expectedCount:names.length,source:'calculette-bbca-reno',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'calculette-bbca-reno'};
