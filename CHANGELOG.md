@@ -1,3 +1,17 @@
+# v2.3.18 — Sorties ClimaWin RT existant : dossier de contrôle et synthèse d'étude RTEx
+Les études RT existant ClimaWin d'un projet de 56 logements (3 collectifs, 6 individuels) ne donnaient aucune valeur exploitable. Le moteur générique créait aussi des bâtiments parasites (« OU ZONES », titres de chapitres) et classait les valeurs projet en « avant travaux ».
+- **Dossier de contrôle** (fiche standardisée RT existant imprimée depuis ClimaWin) : reconnu via « Récapitulatif Standardisé d'Étude » et « Réglementation Thermique Existante ».
+  - Titres de feuillets coupés sur deux lignes recollés ; bâtiments nommés sans « après travaux / OPTION / SOLUTION » (« Bat PISSARO après travaux OPTION BBC 2024 » → Bâtiment PISSARO).
+  - État initial « non calculé » (« -- », « NaN ») : le Cep et le tableau d'énergie à une colonne sont lus comme valeurs projet, plus jamais comme « avant travaux ».
+  - Parois opaques (« 14 4.4 Th-U 121.25 ») : épaisseur et R de la paroi la plus représentative pour les murs, la toiture (terrasse ou plancher sur comble) et le plancher bas (sur caves, terre-plein).
+  - VMC simple flux précisée en hygro A / B ; pompe à chaleur du projet détectée dans les générateurs.
+- **Note ClimaWin « Synthèse d'étude RTEx »** : nouveau parseur.
+  - Ubat initial / projet ; Cep initial / projet / max et gain ; Tic.
+  - Épaisseurs d'isolant (couches additionnées).
+  - Menuiseries (matériau, vitrage, volets).
+  - Vecteurs de chauffage et d'ECS avant / après, issus du « Détail des consommations ».
+- Sur les 5 documents réels du projet : 4 bâtiments (6 logements individuels, PISSARO, POUSSIN, SAUTIN) avec 18 à 26 valeurs chacun. La note et le dossier du même bâtiment se complètent. Non-régression : 932 → 932, banc du pack inchangé.
+
 # v2.3.17 — XML RSEE E+C- (RT2012 + ACV 2017-2020)
 Les RSEE de l'expérimentation E+C- (`referentiel_ec`, RSET RT2012 + RSEnv 2017-2020) n'étaient lus qu'en partie : seule la thermique RT2012 sortait, soit environ 15 valeurs. En cause, des données rangées autrement que dans un RSEE RE2020. Désormais :
 - **Données générales** : `Datas_Comp` est cherché sous `RSET`, puis complété par `RSEnv/data_comp`. Le nom d'opération (`name` / `nom`), l'adresse (`ligne`, `code_postal`, `ville`), le maître d'ouvrage et le logiciel (bloc `BET`) sont lus.

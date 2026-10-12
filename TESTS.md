@@ -395,3 +395,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.17
 - `node test_v2_3_17.mjs` : XML RSEE E+C- fictif — données générales sous RSET, Eges / Eges PCE / seuils, contributeurs rapportés à la SDP avec contrôle de cohérence, enveloppe RT2012, réseau de chaleur.
+
+## v2.3.18
+- `node test_v2_3_18.mjs` : fiche RT existant ClimaWin (feuillets coupés, état initial calculé ou non, parois Th-U, VMC hygro, PAC) et note « Synthèse d’étude RTEx », fusion des deux sur un même bâtiment (documents fictifs).

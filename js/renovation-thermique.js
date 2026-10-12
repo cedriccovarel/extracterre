@@ -261,6 +261,57 @@ export function parsePhasedThermalNotice(doc,occ,canonical=(s)=>s){
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// v2.3.18 — Note ClimaWin « Synthèse d'étude RTEx » (RT existant globale, moteur Th-C-E ex) :
+//  « UBatinit UBatproj UBatref … / Garde-fous conformes 1.929 0.627 0.689 », « Cepinit Cepproj Cepref Cep_p Cepmax /
+//  Tic conforme OUI 396.31 123.85 200.31 105.11 165.00 », Tic initial / projet / référence, parois opaques (isolant en cm,
+//  couches « (20 cm) / … (14 cm) »), menuiseries, « Détail des consommations » par énergie (Initial / projet / référence).
+export function isClimaWinRtexSynthesis(doc){
+  const t=String(doc?.read?.text||'').slice(0,60000);
+  return /ClimaWin/i.test(t)&&/Synthese\s+d.etude\s+RTEx/i.test(t)&&/Cepinit/i.test(t);
+}
+const cw_clean=s=>String(s||'').replace(/^Bat(?:iment)?\.?\s+/i,'').replace(/\s*-?\s*(?:apres|avant)\s+travaux\b.*$/i,'').replace(/\s*-?\s*(?:SOLUTION|OPTION|VARIANTE|SCENARIO)\b.*$/i,'').replace(/\s*-\s*(?:Generalites|Informations|Synthese)\b.*$/i,'').trim();
+export function climaWinRtexBuildingName(doc){
+  for(const x of rt_allLines(doc)){ const m=x.t.match(/^Batiment\s*:\s*(.+?)\s*-\s*Synthese\s+d.etude\s+RTEx/i)||x.t.match(/^Batiment\s*:\s*(.+?)\s*-\s*(?:Informations|Generalites)\b/i); if(m){ const n=cw_clean(m[1]); if(n) return `Batiment ${n}`; } }
+  return 'Bâtiment unique';
+}
+export function parseClimaWinRtexSynthesis(doc,occ,canonical=(s)=>s){
+  const out=[]; const L=rt_allLines(doc); const origin='ClimaWin — Synthèse d’étude RT existant'; const B=climaWinRtexBuildingName(doc);
+  const emit=(x,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value===''||(typeof value==='number'&&!Number.isFinite(value))) return; const o=occ(doc,x.page,x.line,field,value,`climawin-rtex:${method}`,conf,unit,{building:canonical(B),structuredPdf:true,origin,dedicatedRank:6,...extra}); if(o) out.push(o); };
+  const after=(re,n=3)=>{ const i=L.findIndex(x=>re.test(x.t)); return i<0?null:L.slice(i+1,i+1+n).find(x=>rt_nums(x.t).length>=3)||null; };
+  // Ubat initial / projet / référence.
+  { const x=after(/UBatinit.*UBatproj/i); if(x){ const v=rt_nums(x.t); const note={provenanceNote:'Tableau « UBatinit / UBatproj / UBatref » de la synthèse.'}; if(v[0]>0&&v[0]<5) emit(x,'ubat_before',v[0],'ubat-initial',0.95,'W/m².K',note); if(v[1]>0&&v[1]<5) emit(x,'ubat_after',v[1],'ubat-projet',0.95,'W/m².K',note); } }
+  // Cep initial / projet / référence / Cep_p / Cepmax.
+  { const x=after(/Cepinit.*Cepproj/i); if(x){ const v=rt_nums(x.t); const k=v.length; if(k>=5){ const [ci,cp,,,cm]=v.slice(k-5); const note={provenanceNote:'Tableau « Cepinit / Cepproj / Cepref / Cep_p / Cepmax » de la synthèse.'};
+      emit(x,'cep_before',ci,'cep-initial',0.95,'kWhEP/m².an',note); emit(x,'cep_after_final',cp,'cep-projet',0.95,'kWhEP/m².an',note); emit(x,'cep',cp,'cep-projet',0.92,'kWhEP/m².an',note); emit(x,'cep_max',cm,'cep-max',0.92,'kWhEP/m².an',note);
+      if(ci>0) emit(x,'cep_gain',Math.round((ci-cp)/ci*1000)/10,'cep-gain',0.88,'%',{provenanceNote:`Gain Cep projet / état initial (${ci} → ${cp}).`}); } } }
+  // Tic projet / référence.
+  { const i=L.findIndex(x=>/Ticinitial.*Ticprojet.*Ticref/i.test(x.t)); const x=i>=0?L.slice(i+1,i+4).find(y=>rt_nums(y.t).length>=3):null; if(x){ const v=rt_nums(x.t); const k=v.length; emit(x,'tic',v[k-2],'tic',0.95,'°C'); emit(x,'tic_ref',v[k-1],'tic-ref',0.95,'°C'); } }
+  // Parois opaques : chaque ligne commence par la surface et le type ; l'épaisseur est la somme des couches « (n cm) » du bloc.
+  { const rows=[]; L.forEach((x,i)=>{ const m=x.t.match(/^(\d+(?:[.,]\d+)?)\s+(Mur\s+exterieur|Pl\.\s*haut|Pl\.\s*bas|Plancher\s+(?:haut|bas)|Toiture)\b/i); if(m) rows.push({i,s:parseFrNumber(m[1]),kind:/mur/i.test(m[2])?'wall':/bas/i.test(m[2])?'floor':'roof'}); });
+    const best={};
+    rows.forEach((r,k)=>{ const prevEnd=k>0?rows[k-1].i+1:0; let a=r.i; while(a>prevEnd&&!/^(?:APS|AVT|EXI|PRJ)\b|^\S+\s*\/\s*\S+\s*-/i.test(L[a].t)) a--; const nxt=k+1<rows.length?rows[k+1].i:Math.min(L.length,r.i+5);
+      let b=r.i+1; while(b<nxt&&!/^(?:APS|AVT|EXI|PRJ)\b|^Enveloppe\b|^\S+\s*\/\s*\S+\s*-/i.test(L[b].t)) b++;
+      const blk=L.slice(a,b).map(y=>y.t).join(' '); const cms=[...blk.matchAll(/\((\d{1,2}(?:[.,]\d)?)\s*cm\)?/gi)].map(z=>parseFrNumber(z[1])).filter(v=>v>0);
+      const e=cms.reduce((p,q)=>p+q,0); if(!(e>0)) return; if(!best[r.kind]||r.s>best[r.kind].s) best[r.kind]={...r,e,x:L[r.i],blk}; });
+    const F={wall:'wall_insulation_thickness',roof:'roof_insulation_thickness',floor:'floor_insulation_thickness'};
+    for(const [kind,r] of Object.entries(best)) emit(r.x,F[kind],Math.round(r.e*10),`${kind}-epaisseur`,0.92,'mm',{provenanceNote:`Paroi « ${r.x.t.slice(0,80)} » (${r.s} m²) : isolant ${r.e} cm.`}); }
+  // Menuiseries.
+  { const w=L.filter(x=>/^\d+(?:[.,]\d+)?\s+Fenetre\s+/i.test(x.t)); const mat=w.map(x=>/\bPVC\b/i.test(x.t)?'PVC':/alu/i.test(x.t)?'Aluminium':/\bbois\b/i.test(x.t)?'Bois':null).filter(Boolean); if(mat.length) emit(w[0],'window_material',mat[0],'menuiseries',0.92);
+    const g=L.map(x=>x.t).join(' ').match(/\b([DT]V)\s+(\d{1,2}\/\d{1,2}\/\d{1,2})(?:[\s\S]{0,160}?\b(Argon|Krypton)\b)?/i); if(g){ const gl=normalizeGlazingType(`${g[2]} ${g[3]||''}`.trim()); if(gl) emit(w[0]||L[0],'window_glazing',gl,'vitrage',0.9); }
+    if(w.some(x=>/volet/i.test(x.t))) emit(w.find(x=>/volet/i.test(x.t)),'window_shading','Volet roulant','occultations',0.88); }
+  // Détail des consommations (énergie primaire par énergie) : Chauffage / Refroid. / ECS / Ventil. × Initial, projet, référence.
+  { const i=L.findIndex(x=>/^Detail\s+des\s+consommations/i.test(x.t)); if(i>=0){
+      const rows={}; for(const x of L.slice(i+1,i+16)){ if(/^Auxiliaires\b/i.test(x.t)) break; const m=x.t.match(/^(Electricite|Gaz|Fioul|Bois|Reseau)\s+(.*)$/i); if(m){ const v=rt_nums(m[2]); if(v.length>=8) rows[m[1].toLowerCase()]={x,v}; } }
+      const lab={electricite:'Électricité',gaz:'Gaz',fioul:'Fioul',bois:'Bois / biomasse',reseau:'Réseau de chaleur urbain'};
+      const dom=col=>{ const r=Object.entries(rows).map(([k,o])=>[k,o.v[col]||0,o.x]).filter(z=>z[1]>0).sort((a,b)=>b[1]-a[1]); if(!r.length) return null; const tot=r.reduce((s2,z)=>s2+z[1],0); return r[0][1]/tot>=0.6?{v:lab[r[0][0]],x:r[0][2]}:null; };
+      const note=w=>({provenanceNote:`Énergie majoritaire du poste (${w}) dans le « Détail des consommations ».`});
+      const hb=dom(0), ha=dom(1), eb=dom(6), ea=dom(7);
+      if(hb) emit(hb.x,'heating_vector_before',hb.v,'chauffage-initial',0.92,'',note('chauffage initial')); if(ha) emit(ha.x,'heating_vector_after',ha.v,'chauffage-projet',0.92,'',note('chauffage projet'));
+      if(eb) emit(eb.x,'ecs_vector_before',eb.v,'ecs-initial',0.92,'',note('ECS initiale')); if(ea) emit(ea.x,'ecs_vector_after',ea.v,'ecs-projet',0.92,'',note('ECS projet')); } }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Plan de repérage des isolants (légende)
 export function isInsulationMarkupPlan(doc){
   const t=String(doc?.read?.text||'').slice(0,100000);
