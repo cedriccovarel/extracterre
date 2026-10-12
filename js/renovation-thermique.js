@@ -190,7 +190,7 @@ export function parsePhasedThermalNotice(doc,occ,canonical=(s)=>s){
     if(ph==='before') emit(x,'cep_before',v,'cep-existant',0.95,'kWhEP/m².an',note);
     else { emit(x,'cep_after_final',v,'cep-projet',0.95,'kWhEP/m².an',note); emit(x,'cep',v,'cep-projet',0.9,'kWhEP/m².an',note); }
   }
-  if(cep.before>0&&cep.after>0){ const x=P.after.find(y=>/^Cep\b/i.test(y.t)); emit(x,'cep_gain',Math.round((cep.before-cep.after)/cep.before*1000)/10,'cep-gain',0.88,'%',{provenanceNote:`Gain calculé entre le Cep de l’état existant (${cep.before}) et celui de l’état projeté (${cep.after}).`}); }
+  // v2.3.19 — pas de « Gain Cep » ici : la colonne mesure l'écart au Cep max, que la notice ne donne pas.
   // Étiquette DPE calculée : « 295 kWhEP/m²SHAB.an et une emission de 51 kgeqCO2/m²SHAB.an, correspondant respectivement a des etiquettes de niveau E ».
   for(const ph of ['before','after']){
     const L=P[ph]; const i=L.findIndex(y=>/\d+(?:[.,]\d+)?\s*kWh\s*EP\/m.{0,12}an\b.{0,80}?\d+(?:[.,]\d+)?\s*kg\s*eq\s*CO2/i.test(y.t)); if(i<0) continue;
@@ -283,7 +283,11 @@ export function parseClimaWinRtexSynthesis(doc,occ,canonical=(s)=>s){
   // Cep initial / projet / référence / Cep_p / Cepmax.
   { const x=after(/Cepinit.*Cepproj/i); if(x){ const v=rt_nums(x.t); const k=v.length; if(k>=5){ const [ci,cp,,,cm]=v.slice(k-5); const note={provenanceNote:'Tableau « Cepinit / Cepproj / Cepref / Cep_p / Cepmax » de la synthèse.'};
       emit(x,'cep_before',ci,'cep-initial',0.95,'kWhEP/m².an',note); emit(x,'cep_after_final',cp,'cep-projet',0.95,'kWhEP/m².an',note); emit(x,'cep',cp,'cep-projet',0.92,'kWhEP/m².an',note); emit(x,'cep_max',cm,'cep-max',0.92,'kWhEP/m².an',note);
-      if(ci>0) emit(x,'cep_gain',Math.round((ci-cp)/ci*1000)/10,'cep-gain',0.88,'%',{provenanceNote:`Gain Cep projet / état initial (${ci} → ${cp}).`}); } } }
+      if(cm>0) emit(x,'cep_gain',Math.round((cm-cp)/cm*1000)/10,'cep-gain',0.93,'%',{provenanceNote:`Gain = (Cep max − Cep projet) / Cep max = (${cm} − ${cp}) / ${cm}.`}); } } }
+  // Postes de consommation du projet (« Comparatif des consommations en énergie primaire » : Chauffage, Refroid., ECS, Ventil., Aux., Éclair.).
+  { const i=L.findIndex(x=>/^Comparatif\s+des\s+consommations\s+en\s+energie\s+primaire/i.test(x.t)); const x=i>=0?L.slice(i+1,i+5).find(y=>/^Projet\s+[\d.,]/i.test(y.t)):null;
+    if(x){ const v=rt_nums(x.t); if(v.length>=7){ const note={provenanceNote:'Ligne « Projet » du comparatif des consommations en énergie primaire (kWhep/m²).'};
+      emit(x,'cep_cooling',v[1],'cep-froid',0.92,'kWhEP/m².an',note); emit(x,'cep_aux_vent',v[3],'cep-ventilation',0.92,'kWhEP/m².an',note); emit(x,'cep_aux_dist',v[4],'cep-auxiliaires',0.92,'kWhEP/m².an',note); emit(x,'cep_lighting',v[5],'cep-eclairage',0.92,'kWhEP/m².an',note); } } }
   // Tic projet / référence.
   { const i=L.findIndex(x=>/Ticinitial.*Ticprojet.*Ticref/i.test(x.t)); const x=i>=0?L.slice(i+1,i+4).find(y=>rt_nums(y.t).length>=3):null; if(x){ const v=rt_nums(x.t); const k=v.length; emit(x,'tic',v[k-2],'tic',0.95,'°C'); emit(x,'tic_ref',v[k-1],'tic-ref',0.95,'°C'); } }
   // Parois opaques : chaque ligne commence par la surface et le type ; l'épaisseur est la somme des couches « (n cm) » du bloc.

@@ -77,7 +77,8 @@ export function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
       if(noInit&&Number.isFinite(t[0])&&t[1]===null&&t[2]===null) t=[null,t[0],null,null,t[3]];
       if(Number.isFinite(t[0])) emit(x,B,'cep_before',t[0],'cep-initial',0.97,'kWhEP/m².an',{provenanceNote:'Colonne « Initial (a) » du tableau Cep.'});
       if(Number.isFinite(t[1])){ emit(x,B,'cep_after_final',t[1],'cep-projet',0.97,'kWhEP/m².an',{provenanceNote:'Colonne « Projet (b) » du tableau Cep.'}); emit(x,B,'cep',t[1],'cep-projet',0.92,'kWhEP/m².an'); }
-      if(Number.isFinite(t[1])&&Number.isFinite(t[1]-t[0])&&Number.isFinite(t[0])&&t[0]>0) emit(x,B,'cep_gain',Math.round((t[0]-t[1])/t[0]*1000)/10,'cep-gain',0.88,'%',{provenanceNote:'Gain Cep projet / état initial (colonne (b-a)/a).'}); }
+      // v2.3.19 — « Gain Cep » = 1 − Cep / Cep max (colonne réglementaire) : le gain sur l'état initial n'y est plus écrit.
+    }
     if((x=find(/^Ubat\s*\(hiver\)\s/i))){ const t=rx_tok(x.t.replace(/^Ubat\s*\(hiver\)\s*/i,''));
       if(Number.isFinite(t[0])) emit(x,B,'ubat_before',t[0],'ubat-initial',0.97,'W/m².K',{provenanceNote:'Colonne « Initial (a) » de l’Ubat.'});
       if(Number.isFinite(t[1])) emit(x,B,'ubat_after',t[1],'ubat-projet',0.97,'W/m².K',{provenanceNote:'Colonne « Projet (b) » de l’Ubat.'}); }
@@ -146,7 +147,7 @@ export function parseRtexStandardFiche(doc,occ,canonical=(s)=>s){
     if(pIdx>=0){ const pt=L.slice(pIdx).map(x=>x.t).join(' '); if(/\bCompression\b|\[Exterieur\]\s*Air|pompe\s+a\s+chaleur\s+(?:air|eau|geo)/i.test(pt)){ const at=L.slice(pIdx).find(x=>/\bCompression\b|\[Exterieur\]|pompe\s+a\s+chaleur/i.test(x.t)); emit(at,B,'heating_mode_after','PAC','generation-projet-pac',0.9,'',{provenanceNote:'Nouveau générateur thermodynamique (pompe à chaleur) du projet.'}); } }
   }
   // Données administratives (maître d'ouvrage, logiciel).
-  const moa=lines.findIndex(x=>/^MAITRE\s+D.OUVRAGE$/i.test(x.t)); if(moa>=0){ const n=lines[moa+1]; const m=n?.t.match(/^Nom\s+ou\s+raison\s+sociale\s*:\s*(.+)$/i); if(m&&m[1].trim()) emit(n,'Bâtiment unique','owner_company',m[1].replace(/\s*\(\d{5}\)\s*-\s*\d+\s*$/,'').trim(),'maitre-ouvrage',0.9,'',{secondarySourceOk:true}); }
+  const moa=lines.findIndex(x=>/^MAITRE\s+D.OUVRAGE$/i.test(x.t)); if(moa>=0){ const n=lines[moa+1]; const m=n?.t.match(/^Nom\s+ou\s+raison\s+sociale\s*:\s*(.+)$/i); if(m&&m[1].trim()) emit(n,'Bâtiment unique','owner_company',m[1].replace(/\s*\(\d{5}\)\s*-\s*\d+\s*$/,'').trim(),'maitre-ouvrage',0.94,'',{secondarySourceOk:true}); }
   const dep=lines.find(x=>/^Departement\s*:?\s*(\d{2,3}|2[AB])$/i.test(x.t)); if(dep) emit(dep,'Bâtiment unique','department',dep.t.match(/(\d{2,3}|2[AB])$/i)[1],'departement',0.95,'',{secondarySourceOk:true});
   return out;
 }

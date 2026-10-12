@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.18','version');
+eq(APP_VERSION,'2.3.19','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const mk=(name,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=P(ls); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   const read={kind:'pdf',pages:ps,text:ps.map(p=>p.text).join('\n\f\n'),pageCount:ps.length};
@@ -39,7 +39,7 @@ const no=parseDocument(notice); const nv=f=>no.filter(o=>o.field===f).map(o=>o.v
 ok(no.length&&no.filter(o=>!/^(?:operation_name|owner_company|department)$/.test(o.field)).every(o=>/^notice-rtex-phases:/.test(o.method)),'parseur dédié aux notices en chapitres');
 eq(nv('cep_before'),[412.5],'Cep état existant');
 eq(nv('cep_after_final'),[110.2],'Cep état projeté');
-eq(nv('cep_gain'),[73.3],'gain Cep');
+eq(nv('cep_gain'),[],'pas de « Gain Cep » sans Cep max (la colonne mesure l’écart au Cep max)');
 eq([nv('dpe_energy_before')[0],nv('dpe_ges_before')[0]],['F','F'],'étiquettes existantes « respectivement »');
 eq([nv('dpe_energy_after')[0],nv('dpe_ges_after')[0]],['B','A'],'étiquette projet B, GES déduit de 4 kg (A)');
 eq(nv('wall_structure'),['Brique'],'structure des murs');

@@ -126,6 +126,8 @@ export function classifyDocument(fileName, text='', meta={}) {
   if(/ic\.?\s*energie\s+[\d\s,.]+\s*kgeqco2\/m.?\s*sref\s+ic\.?\s*energie\s*max\s*=/i.test(t)){ score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45; for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.THERMAL]) score[k]=(score[k]||0)*0.2; }
   // v2.3.13 — RSET RT existant (fichier standardisé).
   if(/fichier\s+standardise\s+des\s+caracteristiques\s+thermiques\s+d.une\s+construction\s+existante/i.test(t)){ score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+45; }
+  // v2.3.19 — sorties ClimaWin RT existant : « Synthèse d'étude RTEx » et dossier de contrôle (Récapitulatif Standardisé).
+  if(/synthese\s+d.etude\s+rtex|cepinit[\s\S]{0,200}cepproj/i.test(t)||(/recapitulatif\s+standardise\s+d.etude/i.test(t)&&/reglementation\s+thermique\s+existante/i.test(t))){ score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+45; }
   // v2.3.11 — études RT existant (notice BE RT-Ex, rapport Pléiades Th-C-E ex).
   if(/resultats\s+rt\s+existant\s+suivant\s+la\s+methode|notice\s+thermique[\s\S]{0,4000}rt[- ]?ex\b/i.test(t)){
     score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+30;

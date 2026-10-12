@@ -398,3 +398,6 @@ La suite historique `runSelfTests()` reste à **149/149**. Les tests v1.1.22 et 
 
 ## v2.3.18
 - `node test_v2_3_18.mjs` : fiche RT existant ClimaWin (feuillets coupés, état initial calculé ou non, parois Th-U, VMC hygro, PAC) et note « Synthèse d’étude RTEx », fusion des deux sur un même bâtiment (documents fictifs).
+
+## v2.3.19
+- `node test_v2_3_18.mjs` (bloc final) : RT existant source principale du Cep / Cep max / Gain Cep, migration des règles enregistrées, « Gain Cep » = 1 − Cep / Cep max ; `test_v2_3_16.mjs` mis à jour (pas de gain sans Cep max).

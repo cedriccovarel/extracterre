@@ -1,3 +1,17 @@
+# v2.3.19 — Rénovation : Cep retenu, « Gain Cep » corrigé
+Audit complet du projet des Andelys (5 études ClimaWin RT existant) :
+- **Valeurs exactes restées en « à vérifier »** :
+  - en rénovation, l'étude RT existant est l'étude réglementaire du projet ; elle devient source principale du Cep, du Cep max et du Gain Cep, classée après RSEE / RSET / RT2012 / étude thermique qui priment s'ils sont présents ;
+  - les règles enregistrées dans le navigateur, si elles n'ont pas été personnalisées pour ces champs, suivent la nouvelle règle.
+  - Résultat : le Cep de PISSARO, POUSSIN et SAUTIN, ainsi que le Cep max et le gain des 6 logements individuels, passent dans l'export. Le maître d'ouvrage lu dans la fiche standardisée aussi.
+- **Erreur corrigée** : la colonne « Gain Cep » mesure l'écart au Cep max (1 − Cep / Cep max), comme le gain Bbio.
+  - Les parseurs RT existant y écrivaient le gain sur l'état initial (50,1 % au lieu de 0 à 40 %) ; ce gain n'est plus écrit dans la colonne. Il se lit avec Cep avant / après.
+  - Le vrai gain est calculé quand le Cep max est connu (note ClimaWin : 24,9 % ; rapport Pléiades Réaumur : 12,1 %).
+- **Nouvelles valeurs** :
+  - postes de consommation du projet de la note ClimaWin : éclairage, ventilation, auxiliaires, refroidissement ;
+  - les notes « Synthèse d'étude RTEx » et dossiers de contrôle ClimaWin sont toujours classés en étude RT existant.
+- Projet des Andelys : 4 bâtiments, 20 à 33 valeurs chacun, aucune valeur en attente. Non-régression : 932 → 934 (Cep max et gain du rapport Réaumur), banc du pack inchangé.
+
 # v2.3.18 — Sorties ClimaWin RT existant : dossier de contrôle et synthèse d'étude RTEx
 Les études RT existant ClimaWin d'un projet de 56 logements (3 collectifs, 6 individuels) ne donnaient aucune valeur exploitable. Le moteur générique créait aussi des bâtiments parasites (« OU ZONES », titres de chapitres) et classait les valeurs projet en « avant travaux ».
 - **Dossier de contrôle** (fiche standardisée RT existant imprimée depuis ClimaWin) : reconnu via « Récapitulatif Standardisé d'Étude » et « Réglementation Thermique Existante ».
