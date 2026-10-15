@@ -77,4 +77,40 @@ eq(fin('cep_lighting',AB),[6.69],'Cep éclairage'); eq(fin('cep_aux_dist',AB),[0
 eq(fin('cep_gas',AB),[33.8],'Cep gaz'); eq(fin('cep_electricity',AB),[100.8],'Cep électricité = ECS + éclairage + auxiliaires + ventilateurs');
 // Ventilation : le champ décrit l'état après travaux ; la phase « ETAT PROJET » vaut pour les pages suivantes.
 eq(fin('ventilation',AB),['VMC Hygro A'],'ventilation de l\'état projet');
+
+// ---------- 3. Rapport de bureau d'études Th-C-E ex (CYPE « moteur THCEX ») : bilans en kWh EF, Cep Existant / Projet / Réf. ----------
+const be=[
+  ['ETUDE ENERGETIQUE FICTIVE','Ce rapport est une etude thermique ThCex de l\'operation.','Arrete du 8 aout 2008 : publication de la methode TH-CE ex'],
+  ['6. RESULTATS DU BATIMENT','Les calculs ont ete effectues a l\'aide du logiciel CYPE :','CYPECAD MEP v2019.f avec le moteur THCEX v 1.0.3 du CSTB'],
+  ['6.1. ETAT EXISTANT','6.1.1. Resultats de l\'Etat existant','Etat Existant Batiment','Ubat du batiment 1,580','Coefficient Cep Existant (kWh energie primaire / m² Shon) 198,0',
+   'CHAUFFAGE','Gaz (kWh EF) 657 739,6','Total Energie primaire (kWh EP /m²Shon) 110,9','REFROIDISSEMENT','Sans objet','ECS','Gaz (kWh EF) 241 485,5',
+   'Total Energie primaire (kWh EP /m²Shon) 40,7','ECLAIRAGE','Electricite (kWh EF) 56 516,6','Total Energie primaire (kWh EP /m²Shon) 24,6',
+   'Consommation energetique','Valeur en kWhEP/m² de Shon','≤50 A','151 a 230 D 198','231 a330 E','Emission de gaz a effet de serre','≤5 A','36 a55 E 43','56 a80 F'],
+  ['6.2. ETAT PROJETE','6.2.1. Resultats de l\'Etat Projete : Scenario 2','Etat Scenario 2 Batiment','Ubat du batiment 0,660','Ubat max du batiment 1,060',
+   'Coefficient Cep Projet (kWh energie primaire / m² Shon) 97,7','Coefficient Cep Ref. (kWh energie primaire / m² Shon) 157,7','Coefficient Cep Gain(%) 38,0',
+   'CHAUFFAGE','Gaz (kWh EF) 175 124,4','Total Energie primaire (kwh EP /m²Shon) 29,5','ECS','Gaz (kWh EF) 195 702,9','Total Energie primaire (kwh EP /m²Shon) 33,0',
+   'ECLAIRAGE','Electricite (kWh EF) 63 929,6','Total Energie primaire (kwh EP /m²Shon) 27,8','AUXILIAIRES','Electricite (kWh EF) 5 218,7',
+   'Ventilateurs (Electrique) (kWh EF) 11 682,9','Total Energie primaire (kwh EP /m²Shon) 2,3','Vent - Total Energie primaire (kwh EP /m²Shon) 5,1',
+   'Consommation energetique Emission de gaz a effet de','Valeur en kWhEP/m² de Shon serre Valeur en kgeqCO2/m².an','91 a 150 C 98 11 a20 C 18','151 a 230 D 198 21 a 35 D','36 a55 E 43'],
+];
+const bps=be.map((ls,k)=>{ const lines=P(ls); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
+const bread={kind:'pdf',pages:bps,text:bps.map(p=>p.text).join('\n\f\n'),pageCount:bps.length}; const bname='Rapport Etude thermique BE fictif.pdf';
+const bc=classifyDocument(bname,bread.text,{kind:'pdf'}); eq(bc.type,'RT Existant','« moteur THCEX » : étude RT existant globale');
+const bd={id:'be',name:bname,read:bread,familyMode:'auto',status:'ready',classification:{...bc,automaticType:bc.type},type:bc.type}; bd.buildings=detectBuildings(bd);
+const bocc=parseDocument(bd); const bres=analyzeDocuments([{...bd,cachedOccurrences:bocc}],structuredClone(DEFAULT_SOURCE_RULES));
+const bf=f=>bres.finals.filter(o=>o.field===f).map(o=>o.value); const bo=f=>bocc.filter(o=>o.field===f).map(o=>o.value);
+eq(bf('cep_before'),[198],'Cep existant'); eq(bf('cep'),[97.7],'Cep projet'); eq(bf('cep_max'),[157.7],'Cep réf.'); eq(bf('cep_gain'),[38],'gain imprimé');
+eq(bf('ubat_before'),[1.58],'Ubat existant'); eq(bf('ubat_after'),[0.66],'Ubat seul d\'une page « Etat projeté » = après travaux');
+eq(bf('heating_vector_before'),['Gaz'],'« Gaz (kWh EF) 657 739,6 » : un seul nombre'); eq(bf('ecs_vector_after'),['Gaz'],'ECS projet');
+eq(bf('cep_gas'),[62.5],'Cep gaz = 29,5 + 33,0'); eq(bf('cep_electricity'),[35.2],'Cep électricité = 27,8 + 2,3 + 5,1'); eq(bf('cep_aux_vent'),[5.1],'ventilateurs');
+eq(bo('dpe_energy_before'),['D'],'étiquette énergie initiale'); eq(bo('dpe_ges_before'),['E'],'étiquette GES initiale');
+eq(bo('dpe_energy_after'),['C'],'étiquette projet = valeur égale au Cep projet, pas le rappel 198'); eq(bo('dpe_ges_after'),['C'],'GES projet, pas le rappel 43');
+
+// ---------- 4. Une période n'est pas une année ----------
+import {sanitizeOccurrence} from './js/sanity.js';
+for(const [ex,keep] of [['Annee de construction : Avant 1948',false],['Année de construction : entre 1948 et 1974',false],['Année de construction : 1965',true]])
+  eq(!!sanitizeOccurrence({field:'construction_year',value:Number(ex.match(/\d{4}(?!.*\d{4})/)[0]),excerpt:ex,method:'tags:label-value'}),keep,`construction_year « ${ex} »`);
+// ---------- 5. Ligne de tableau : les colonnes chiffrées ne font pas partie du nom du bâtiment ----------
+import {canonicalBuilding} from './js/buildings.js';
+eq(canonicalBuilding('Batiment R1 - R2 0 0 7 14 7 28 2184'),'Bâtiment R1 - R2','typologies + SHAB retirées'); eq(canonicalBuilding('Bâtiment A 12'),'Bâtiment A 12','un seul nombre : partie du nom');
 console.log(`v2.3.20 — ${n} vérifications OK (documents fictifs)`);

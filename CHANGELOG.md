@@ -17,13 +17,22 @@ DPE en image.
     après selon l'énergie réellement consommée (un convecteur saisi mais non consommé ne compte pas) ;
   - période de construction, zones traversantes, logements par bâtiment ; ventilation de l'état projet (la phase
     « ETAT PROJET » vaut pour les pages suivantes).
+- **Rapports de bureau d'études Th-C-E ex (CYPE « moteur THCEX », « règles Th-C existant »)** : classés « RT existant »
+  (un rapport réel de 70 pages ne donnait que 3 valeurs, dont un Ubat projet rangé en initial ; il en donne 22) ;
+  « Coefficient Cep Existant / Projet / Ref. / Gain(%) » ; Ubat seul d'une page « Etat projeté » = après travaux ;
+  bilans « Gaz (kWh EF) 657 739,6 » (milliers séparés par une espace) ; SHAB ; étiquettes énergie / GES de l'étude
+  (échelle d'avant 2021, à vérifier), le rappel de l'état existant sur la page projet étant écarté.
+- **Garde-fous** : « Année de construction : Avant 1948 » ou « entre 1948 et 1974 » ne donnent plus l'année 1948
+  (ce sont des périodes) ; les colonnes d'un tableau (« Batiment R1 - R2 0 0 7 14 7 28 2184 ») ne font plus partie
+  du nom du bâtiment.
 - **Routage** : une étude RT existant est source principale des zones traversantes ; les lignes explicites U48Win
   (période, logements) passent au-dessus du seuil de retenue au lieu de partir en revue.
 - **Redondance** : le parseur réglementaire générique émettait chaque valeur 3 à 7 fois (une par ligne de sa fenêtre) ;
   une seule occurrence par champ, valeur, bâtiment et page. Rapport U48Win : 605 → 166 occurrences, 600 → 40 ms.
 - **Outils** : `tools/doc_bench.mjs` lit de vrais PDF comme l'application (pdf.js + regroupement des lignes), les analyse
   avec le moteur et compare aux valeurs vérifiées d'un pack d'amélioration (identiques / équivalentes / différentes).
-- Non-régression : 37 fichiers de tests (dont `test_v2_3_20.mjs`, 43 vérifications), 149/149 auto-tests, banc du pack inchangé.
+- Non-régression : 37 fichiers de tests (dont `test_v2_3_20.mjs`, 64 vérifications), 149/149 auto-tests, banc du pack inchangé,
+  valeurs finales de 3 RSET réels identiques.
 
 # v2.3.19 — Rénovation : Cep retenu, « Gain Cep » corrigé
 Audit complet du projet des Andelys (5 études ClimaWin RT existant) :

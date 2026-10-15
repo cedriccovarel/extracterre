@@ -9,7 +9,7 @@ import { createRequire } from 'node:module';
 const args = process.argv.slice(2);
 const verbose = args.includes('-v');
 const jsonOut = args.includes('--json') ? args[args.indexOf('--json') + 1] : null;
-const [packDir, ...files] = args.filter((a, i) => !a.startsWith('-') && args[i - 1] !== '--json');
+const [packDir, ...files] = args.filter((a, i) => (a === '-' || !a.startsWith('-')) && args[i - 1] !== '--json');
 const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const pdfjsDir = process.env.PDFJS;
 if (!pdfjsDir || !files.length) { console.error('Usage : PDFJS=<pdfjs-dist> node tools/doc_bench.mjs <pack|-> <fichier.pdf>...'); process.exit(2); }

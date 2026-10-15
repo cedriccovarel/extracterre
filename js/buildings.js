@@ -10,8 +10,10 @@ import {isRtexThermalNotice,rtexNoticeBuildingNames,isPleiadesRtexReport,pleiade
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
+// Ligne de tableau « Batiment R1 - R2 0 0 7 14 7 28 2184 » (typologies, total, SHAB) : les colonnes chiffrées ne font pas le nom.
+const sansColonnes=s=>s.replace(/(?:\s+\d+(?:[.,]\d+)?){3,}\s*$/,'').trim();
 export function canonicalBuilding(raw){
-  let s=normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim();
+  let s=sansColonnes(normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim());
   s=s.replace(/^(?:identifiant\s+)?(?:batiment|bâtiment)\s*[:\-]?\s*/i,'').trim();
   s=s.replace(/^bat\.?\s+/i,'').trim();
   // v2.3.11 — « Bâtiment sur cour », « Immeuble rue », « bat. Cour » désignent le même bâtiment « COUR » / « RUE ».
@@ -75,7 +77,7 @@ function expectedBuildingCount(doc){
 }
 
 function cleanCandidate(raw){
-  let s=normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim();
+  let s=sansColonnes(normalizeText(raw).replace(/^['"“”]+|['"“”]+$/g,'').trim());
   s=s.replace(/\s*\(\s*\d+\s+zones?\s*\)\s*$/i,'').trim();
   s=s.replace(/\s*-\s*zone\s*:?.*$/i,'').trim();
   return s;

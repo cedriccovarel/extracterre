@@ -20,6 +20,8 @@ const lt_nums=s=>(String(s||'').match(/-?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrN
 
 // Nombres d'une ligne U48Win : « ,7 » vaut 0,7 (zéro non imprimé).
 const lt_numsU=s=>lt_nums(String(s||'').replace(/(^|[\s|])([-+]?)[.,](\d)/g,'$1$20,$3'));
+// Bilan BE : « (kWh EF) 657 739,6 » est un seul nombre ; sans unité, les colonnes U48Win restent séparées.
+const lt_numsB=s=>{ const m=String(s||'').match(/^\(kWh\s*E[FP]\)\s*(-?\d{1,3}(?:\s\d{3})*(?:,\d+)?)\s*$/i); return m?[lt_n(m[1])]:lt_numsU(s); };
 const lt_nomBat=s=>normalizeText(String(s||'')).replace(/\s+/g,' ').trim();
 const LT_USAGES={chauffage:/^CHAUFFAGE$/i,refroidissement:/^REFROIDISSEMENT$/i,ecs:/^ECS$/i,eclairage:/^ECLAIRAGE$/i,auxiliaires:/^AUXILIAIRES$/i};
 const LT_CEP_ENERGIE={'Gaz':'cep_gas','Électricité':'cep_electricity','Réseau de chaleur urbain':'cep_district','Bois / biomasse':'cep_biomass'};
@@ -27,7 +29,7 @@ const LT_CEP_ENERGIE={'Gaz':'cep_gas','Électricité':'cep_electricity','Réseau
 // totaux en kWhEP/m². L'énergie majoritaire d'un usage donne le vecteur ; les totaux du projet donnent les postes Cep.
 function emitBilan(b,emit){
   const U=b.usages, x=b.x, B=b.B, apres=b.phase==='after';
-  const note=w=>({provenanceNote:`Bilan de l’état ${apres?'projet':'initial'} (U48Win) : ${w}.`});
+  const note=w=>({provenanceNote:`Bilan de l’état ${apres?'projet':'initial'} (sortie Th-C-E ex) : ${w}.`});
   const dom=k=>{ const e=Object.entries(U[k]?.energies||{}).filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]); if(!e.length) return null; const tot=e.reduce((a,z)=>a+z[1],0); return {v:e[0][0],part:e[0][1]/tot}; };
   const ch=dom('chauffage'), ecs=dom('ecs');
   if(ch) emit(U.chauffage.x||x,B,apres?'heating_vector_after':'heating_vector_before',ch.v,'bilan-chauffage',0.95,'',note(`énergie majoritaire du chauffage (${Math.round(ch.part*100)} % de l’énergie primaire)`));
@@ -77,7 +79,10 @@ export function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
   const nommes=new Set();
   for(const page of doc.read?.pages||[]) for(const line of page.lines||[]){ const m=normalizeText(line.text||'').replace(/\s+/g,' ').trim().match(NOM_BAT); if(m) nommes.add(lt_nomBat(m[2])); }
   // Avec des bilans par usage (pages de résultats), les lignes d'émetteurs ne donnent plus le vecteur.
-  const bilans=/RESULTATS\s+DE\s+L.ETAT\s+(?:INITIAL|PROJET)/i.test(String(doc.read?.text||''));
+  // Rapports BE Th-C-E ex (CYPE, « Etat Existant Batiment ») : même bilan, sans le titre U48Win, en kWh d'énergie finale.
+  const pageBilan=p=>/RESULTATS\s+DE\s+L.ETAT\s+(?:INITIAL|PROJET)/i.test(p.text||'')||(/^CHAUFFAGE$/m.test(p.text||'')&&/^Total\s+Energie\s+primaire\s*\(kwh\s*EP/im.test(p.text||''));
+  const bilans=(doc.read?.pages||[]).some(pageBilan);
+  let gesInitial=null;
   const logements=new Map(); let bilan=null, resultat=false, phaseChapitre=null;
   const finBilan=()=>{ if(bilan){ emitBilan(bilan,emit); bilan=null; } };
   for(const page of doc.read?.pages||[]){
@@ -86,7 +91,8 @@ export function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
     const enTete=lt_phase(lines.slice(0,12).map(x=>x.t).join(' ')); if(enTete) phaseChapitre=enTete;
     const pagePhase=enTete||(nommes.size?phaseChapitre:null)||lt_phase(lines.map(x=>x.t).join(' '));
     let element=null;
-    const phaseBilan=/RESULTATS\s+DE\s+L.ETAT\s+PROJET/i.test(page.text||'')?'after':/RESULTATS\s+DE\s+L.ETAT\s+INITIAL/i.test(page.text||'')?'before':null;
+    const phaseBilan=/RESULTATS\s+DE\s+L.ETAT\s+PROJET/i.test(page.text||'')?'after':/RESULTATS\s+DE\s+L.ETAT\s+INITIAL/i.test(page.text||'')?'before':pageBilan(page)?pagePhase:null;
+    let etiquette=null; const etiquettes={energy:[],ges:[]}; let cepPage=null;
     for(let i=0;i<lines.length;i++){
       const x=lines[i], t=x.t; let m;
       if(/^(?:Batiment\s*:\s*)?B[aâ]timent\s+n\s*[°º]?\s*\d+/i.test(t)&&t.length<70){ finBilan(); resultat=false; const nm=t.match(NOM_BAT); const all=[...t.matchAll(/B[aâ]timent\s+n\s*[°º]?\s*(\d+)/gi)];
@@ -94,12 +100,13 @@ export function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
       if((m=t.match(/^BATIMENT\s*:\s*(.{1,40})$/))&&nommes.has(lt_nomBat(m[1]))){ finBilan(); resultat=false; building=`Batiment ${lt_nomBat(m[1])}`; continue; }
       const B=building;
       // --- U48Win : bilan par usage (pages de résultats) ------------------------------------------------------------------
+      if(!bilan&&phaseBilan&&!/RESULTATS\s+DE\s+L.ETAT\s+(?:INITIAL|PROJET)\b/.test(page.text||'')&&LT_USAGES.chauffage.test(t)) bilan={B:B||'Bâtiment unique',phase:phaseBilan,usages:{},x,cur:null};
       if(bilan){
         const u=Object.keys(LT_USAGES).find(k=>LT_USAGES[k].test(t)); if(u){ bilan.cur=u; bilan.usages[u]??={energies:{},total:null,x}; continue; }
-        if((m=t.match(/^Ventilateurs\s*\((Electrique|Electricite)\)\s+(.+)$/i))){ const v=lt_numsU(m[2]); const ve=(bilan.usages.ventilateurs??={energies:{},total:null,x}); if(v.length) ve.energies['Électricité']=(ve.energies['Électricité']||0)+v[0]; continue; }
+        if((m=t.match(/^Ventilateurs\s*\((Electrique|Electricite)\)\s+(.+)$/i))){ const v=lt_numsB(m[2]); const ve=(bilan.usages.ventilateurs??={energies:{},total:null,x}); if(v.length) ve.energies['Électricité']=(ve.energies['Électricité']||0)+v[0]; continue; }
         if((m=t.match(/^Vent\s*-\s*Total\s+Energie\s+primaire[^)]*\)\s*(.+)$/i))){ const v=lt_numsU(m[1]); const ve=(bilan.usages.ventilateurs??={energies:{},total:null,x}); if(v.length){ ve.total=v[0]; ve.xTotal=x; } continue; }
         if((m=t.match(/^Total\s+Energie\s+primaire[^)]*\)\s*(.+)$/i))&&bilan.cur){ const v=lt_numsU(m[1]); if(v.length){ bilan.usages[bilan.cur].total=v[0]; bilan.usages[bilan.cur].xTotal=x; } continue; }
-        if(bilan.cur&&(m=t.match(/^(Gaz|Electrique|Electricite|Fioul|Bois|Reseau[^\d,]*|Charbon|GPL|Propane)\s+([-+\d,.].*)$/i))){ const e=lt_vector(m[1])||(/gpl|propane/i.test(m[1])?'Gaz':null); const v=lt_numsU(m[2]);
+        if(bilan.cur&&(m=t.match(/^(Gaz|Electrique|Electricite|Fioul|Bois|Reseau[^\d,(]*|Charbon|GPL|Propane)\s*((?:\(kWh\s*E[FP]\)\s*)?[-+\d,.].*)$/i))){ const e=lt_vector(m[1])||(/gpl|propane/i.test(m[1])?'Gaz':null); const v=lt_numsB(m[2]);
           if(e&&v.length){ const us=bilan.usages[bilan.cur]; us.energies[e]=(us.energies[e]||0)+v[0]; if(!us.x||v[0]>0) us.x=x; } continue; }
       }
       // --- U48Win : résumé de l'étude --------------------------------------------------------------------------------------
@@ -121,8 +128,24 @@ export function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
       if((m=t.match(/COEFFICIENT\s+UBAT\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); const ph=lt_phase(near)||pagePhase;
         if(ph==='after'){ if(once(B,'ubat_after',v)) emit(x,B,'ubat_after',v,'ubat-projet',0.94,'W/m².K'); }
         else if(once(B,'ubat_before',v)) emit(x,B,'ubat_before',v,'ubat-calcul',ph==='before'?0.94:0.86,'W/m².K',ph?{}:{reviewCap:0.86,provenanceNote:'« COEFFICIENT UBAT = » d’une page sans mention avant / après travaux : état initial présumé, à vérifier.'}); continue; }
-      if((m=t.match(/^Ubat\s+du\s+b[aâ]timent\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2;
+      if((m=t.match(/^Ubat\s+du\s+b[aâ]timent\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2||pagePhase==='after';
         const f=more?'ubat_after':'ubat_before'; if(once(B,f,v)) emit(x,B,f,v,more?'ubat-synthese-projet':'ubat-synthese-initial',0.9,'W/m².K',{provenanceNote:more?'Ligne de synthèse projet (valeur suivie des colonnes de référence).':'Ligne de synthèse de l’état initial (valeur seule).'}); continue; }
+      if((m=t.match(/^Coefficient\s+Cep\s+(Existant|Initial|Projet|Ref\.?|Reference|Gain)\s*(?:\(%\)|\(kWh[^)]*\))\s*(-?\d+(?:[.,]\d+)?)$/i))){ const v=lt_n(m[2]); const k=normalizeText(m[1]).toLowerCase();
+        const note={provenanceNote:`Synthèse de l’étude : « Coefficient Cep ${m[1]} ».`};
+        if(/existant|initial/.test(k)){ if(once(B,'cep_before',v)) emit(x,B,'cep_before',v,'cep-existant',0.95,'kWhEP/m².an',note); }
+        else if(k==='projet'){ cepPage=v; if(once(B,'cep_after_final',v)){ emit(x,B,'cep_after_final',v,'cep-projet',0.95,'kWhEP/m².an',note); emit(x,B,'cep',v,'cep-projet',0.95,'kWhEP/m².an',note); } }
+        else if(k==='gain'){ if(once(B,'cep_gain',v)) emit(x,B,'cep_gain',v,'cep-gain',0.95,'%',note); }
+        else if(once(B,'cep_max',v)) emit(x,B,'cep_max',v,'cep-reference',0.95,'kWhEP/m².an',{provenanceNote:'Cep de référence (exigence RT existant globale : Cep ≤ Cep réf).'});
+        if(/existant|initial/.test(k)) cepPage=v; continue; }
+      // Étiquettes énergie / GES de l'étude (échelle DPE d'avant 2021) : « 151 a 230 D 198 », colonnes énergie puis GES.
+      if(/^Consommation\s+energetique/i.test(t)){ etiquette=/Emission\s+de\s+gaz/i.test(t)?'both':'energy'; continue; }
+      if(/^Emission\s+de\s+gaz\s+a\s+effet\s+de\s+serre/i.test(t)){ etiquette='ges'; continue; }
+      if(etiquette&&pagePhase){ const cl=[...t.matchAll(/(?:^|\s)(?:[≤<>]\s*\d+|\d+\s*a\s*\d+)\s+([A-G])\s+(\d+(?:[.,]\d+)?)(?=\s|$)/g)].map(z=>({c:z[1],v:lt_n(z[2]),x}));
+        if(etiquette==='both'&&cl.length===2){ etiquettes.energy.push(cl[0]); etiquettes.ges.push(cl[1]); }
+        else if(cl.length===1) (etiquette==='ges'?etiquettes.ges:etiquettes.energy).push(cl[0]);
+        else if(etiquette==='both'&&cl.length===1) (cepPage!==null&&Math.abs(cl[0].v-cepPage)<=1?etiquettes.energy:etiquettes.ges).push(cl[0]);
+        if(cl.length) continue; }
+      if((m=t.match(/^Shab\s+m.?\s+(\d{1,3}(?:\s\d{3})*(?:,\d+)?)$/i))){ const v=lt_n(m[1]); if(v>8&&once(B,'shab',v)) emit(x,B,'shab',v,'shab',0.92,'m²'); continue; }
       if((m=t.match(/^Coefficient\s+Cep\s*\(kWh[^)]*\)\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2;
         const f=more?'cep_after_final':'cep_before'; if(once(B,f,v)) emit(x,B,f,v,more?'cep-synthese-projet':'cep-synthese-initial',0.9,'kWhEP/m².an');
         const col=lt_numsU(m[2]); if(col.length>=3&&col[0]>v*0.5&&col[0]<v*3){ emit(x,B,'cep_max',col[0],'cep-synthese-reference',0.9,'kWhEP/m².an',{provenanceNote:'Colonne « Référence » de la synthèse (Cep réf).'}); emit(x,B,'cep_gain',col[1],'cep-synthese-gain',0.9,'%'); }
@@ -169,6 +192,11 @@ export function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
         if(a.length===1&&b.length===1&&a[0]>5&&b[0]>5){ if(once(B,'bbio',a[0])){ emit(lines[i+2],B,'bbio',a[0],'bbio-vertical',0.88,'points'); emit(lines[i+3],B,'bbio_max',b[0],'bbio-max-vertical',0.88,'points'); } } }
     }
     finBilan(); // un bilan ne déborde pas sur la page suivante
+    if(pagePhase){ const av=pagePhase==='after', B=building||'Bâtiment unique', note={provenanceNote:'Étiquette de l’étude thermique (échelle DPE d’avant 2021, en kWhEP/m² SHON) ; à vérifier.',reviewCap:0.85};
+      // Énergie : la valeur doit être le Cep de la page ; GES : l'état projet rappelle l'étiquette initiale, écartée.
+      const en=etiquettes.energy.filter(e=>cepPage===null||Math.abs(e.v-cepPage)<=1); const ge=etiquettes.ges.filter(e=>!av||e.v!==gesInitial);
+      if(en.length===1&&once(B,av?'dpe_energy_after':'dpe_energy_before',en[0].c)) emit(en[0].x,B,av?'dpe_energy_after':'dpe_energy_before',en[0].c,'etiquette-energie',0.85,'',note);
+      if(ge.length===1&&once(B,av?'dpe_ges_after':'dpe_ges_before',ge[0].c)){ emit(ge[0].x,B,av?'dpe_ges_after':'dpe_ges_before',ge[0].c,'etiquette-ges',0.85,'',note); if(!av) gesInitial=ge[0].v; } }
   }
   finBilan();
   for(const [B,e] of logements) if(e.n>0) emit(e.x,B,'housing_count',e.n,'logements-zones',0.95,'',{provenanceNote:'Somme des « Nombre de logements » des zones du bâtiment.'});

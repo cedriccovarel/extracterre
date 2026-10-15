@@ -81,6 +81,8 @@ export function sanitizeOccurrence(o){
   if(!Number.isFinite(n)) return o;
   const r=EXTRACTION_RANGES[f]||(/^ic_lot_/.test(f)?[-100,1500]:null);
   if(r&&(n<r[0]||n>r[1])) return null;
+  // Période prise pour une année : « Année de construction : Avant 1948 » n'est pas « 1948 » (→ built_before_1948).
+  if(f==='construction_year'&&new RegExp(`(?:avant|apres|depuis|anterieure?s?\\s+a|posterieure?s?\\s+a|entre|entre\\s+\\d{4}\\s+(?:et|a|-))\\s+(?:l.?an(?:nee)?\\s+)?${n}\\b`).test(normalizeText(o.excerpt||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))) return null;
   // Année prise pour une valeur (« RT2012 », « RE2020 ») hors du champ année.
   if(f!=='construction_year'&&sn_YEAR_LIKE.test(String(n))&&/\b(?:RT|RE|E\+C-?)\s?\d{4}\b|\bRT\s?2012\b|\bRE\s?2020\b/i.test(o.excerpt||'')) return null;
   // Ubat entier ≥ 3 : numéro de chapitre ou de page (« 1.6.1.- … Ubat 6 »), jamais un coefficient W/m².K.
