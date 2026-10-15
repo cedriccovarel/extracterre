@@ -1,3 +1,30 @@
+# v2.3.20 — Audit des parseurs : nombres exacts, rapports U48Win (RT existant), bancs d'essai sur documents complets
+Audit du code et mesure sur un vrai rapport U48Win de 148 pages (4 bâtiments, 61 valeurs vérifiées à la main) :
+**6 → 49 valeurs justes**. Les 12 restantes sont contredites par le document lui-même (Cep électricité, Cep réf du
+bâtiment F, chauffage initial A/B), relèvent d'une convention (ventilation : état après travaux) ou sont une étiquette
+DPE en image.
+- **Lecture des nombres (`parseFrNumber`)** — erreur silencieuse corrigée, utilisée par tous les parseurs :
+  « 57,3 kWh/m2 » donnait 57,32 (le « 2 » de m2 collé), « 12,5 / 15 » donnait 12,515, « −4,6 » perdait son signe,
+  « 0,25 W/m².K » ne donnait rien. Seul le premier nombre est lu ; espaces fines = milliers ; « − » = moins ;
+  « Bâtiment - 12 » ne devient pas −12 ; « 1.250.000 » reste refusé (ambigu).
+- **Rapports U48Win (Perrenoud, moteur Th-C-E ex)** :
+  - classés « RT existant » même quand la signature n'apparaît qu'au résumé (au-delà des 120 000 premiers caractères) ;
+  - lus par les motifs logiciel, plus par les heuristiques à fenêtre glissante qui se trompaient de bâtiment et prenaient
+    l'Ubat de base pour l'Ubat initial ;
+  - « BATIMENT : A/B » et « Batiment n° 01 : A/B » désignent le même bâtiment (« Bâtiment A/B ») ;
+  - résumé : Cep et Ubat projet / référence / initial, gain imprimé, Tic ; « Coefficient Cep » à colonnes : Cep réf et gain ;
+  - bilans par usage : Cep éclairage, auxiliaires, ventilateurs, gaz, électricité ; vecteurs chauffage / ECS avant et
+    après selon l'énergie réellement consommée (un convecteur saisi mais non consommé ne compte pas) ;
+  - période de construction, zones traversantes, logements par bâtiment ; ventilation de l'état projet (la phase
+    « ETAT PROJET » vaut pour les pages suivantes).
+- **Routage** : une étude RT existant est source principale des zones traversantes ; les lignes explicites U48Win
+  (période, logements) passent au-dessus du seuil de retenue au lieu de partir en revue.
+- **Redondance** : le parseur réglementaire générique émettait chaque valeur 3 à 7 fois (une par ligne de sa fenêtre) ;
+  une seule occurrence par champ, valeur, bâtiment et page. Rapport U48Win : 605 → 166 occurrences, 600 → 40 ms.
+- **Outils** : `tools/doc_bench.mjs` lit de vrais PDF comme l'application (pdf.js + regroupement des lignes), les analyse
+  avec le moteur et compare aux valeurs vérifiées d'un pack d'amélioration (identiques / équivalentes / différentes).
+- Non-régression : 37 fichiers de tests (dont `test_v2_3_20.mjs`, 43 vérifications), 149/149 auto-tests, banc du pack inchangé.
+
 # v2.3.19 — Rénovation : Cep retenu, « Gain Cep » corrigé
 Audit complet du projet des Andelys (5 études ClimaWin RT existant) :
 - **Valeurs exactes restées en « à vérifier »** :

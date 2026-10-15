@@ -1,3 +1,11 @@
+## v2.3.20 — nombres et rapports U48Win
+- `test_v2_3_20.mjs` (43 vérifications) : `parseFrNumber` (unité ignorée, milliers, signe « − », ambiguïtés refusées) ;
+  rapport U48Win fictif reproduisant un rapport réel de 148 pages : classement au-delà de 120 000 caractères, aucune
+  heuristique à fenêtre glissante, Cep / Ubat projet / référence / initial par bâtiment, vecteurs par énergie consommée,
+  postes Cep, période de construction, zones traversantes, logements, ventilation de l'état projet.
+- `tools/doc_bench.mjs` : banc sur vrais PDF (pdf.js 3.11.174 fourni par `PDFJS=<dossier pdfjs-dist>`) comparé aux valeurs
+  d'un pack d'amélioration.
+
 
 ## v2.2.4 — Stock C/m² ACV
 - `test_v2_2_3_stock_c.mjs` vérifie l’extraction du Stock C/m² sur 4 bâtiments (50,4 ; 80,5 ; 77,0 ; 55,1 kgC/m²).

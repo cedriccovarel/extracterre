@@ -40,9 +40,14 @@ export function normalizeGlazingType(value='') {
 export function parseFrNumber(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (v == null) return null;
-  const s = String(v).replace(/\u00a0/g,' ').replace(/\s(?=\d{3}(?:\D|$))/g,'').replace(',', '.').replace(/[^0-9+\-.]/g,'');
-  if (!s || !/[0-9]/.test(s)) return null;
-  const n = Number(s); return Number.isFinite(n) ? n : null;
+  // Premier nombre du texte seulement : « 57,3 kWh/m2 » donne 57,3 (et non 57,32), « 12,5 / 15 » donne 12,5.
+  // Espaces (y compris insécables et fines) = séparateurs de milliers ; « − » typographique = signe moins.
+  const t = String(v).replace(/[\u00a0\u202f\u2009]/g,' ').replace(/\u2212/g,'-').replace(/\s(?=\d{3}(?:\D|$))/g,'');
+  const m = t.match(/[-+]?\d+(?:[.,]\d+)*/); // signe collé au nombre : « Bâtiment - 12 » ne donne pas −12
+  if (!m) return null;
+  const s = m[0].replace(/\s/g,'');
+  if ((s.match(/[.,]/g)||[]).length > 1) return null; // « 1.234,5 » ou « 1.250.000 » : ambigu, refusé
+  const n = Number(s.replace(',', '.')); return Number.isFinite(n) ? n : null;
 }
 export function maskNonDataNumerics(text='') {
   // Les millésimes réglementaires et versions logicielles sont des identifiants, jamais des valeurs métier.

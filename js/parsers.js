@@ -9,7 +9,7 @@ import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
 import {sanitizeOccurrences} from './sanity.js';
-import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns} from './logiciels-thermiques.js';
+import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns,isU48WinThcexReport} from './logiciels-thermiques.js';
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
@@ -793,6 +793,9 @@ function labelSeparatedFromValue(ctx,re){
 }
 function parseGenericRegulatory(doc){
   const out=[];
+  // La fenêtre glissante (ligne ± 1 à 2) revoit la même valeur depuis chaque ligne voisine : une seule occurrence
+  // par champ, valeur, bâtiment et page suffit (les doublons ne changeaient rien au résultat, seulement au volume).
+  const vus=new Set(); const push=(o_,o)=>{ if(!o) return; const k=`${o.field}|${typeof o.value==='number'?o.value.toFixed(6):o.value}|${o.building||''}|${o.page}|${o.method}`; if(vus.has(k)) return; vus.add(k); o_.push(o); };
   const specs=[
     ['bbio_max',/\bbbio\s*(?:max|maxi|maximal|_max)\b/i,'points'],['bbio',/\bbbio\b(?!\s*(?:max|maxi|maximal|_max))/i,'points'],
     ['cepnr_max',/\bcep\s*[,._-]?\s*nr\s*(?:max|maxi|maximal|_max)\b/i,'kWhEP/m².an'],['cepnr',/\bcep\s*[,._-]?\s*nr\b(?!\s*(?:max|maxi|maximal|_max))/i,'kWhEP/m².an'],
@@ -1982,6 +1985,10 @@ function parseRenovationThermalDocument(doc,kind){
 
 // v2.3.14 — Récapitulatif carbone RE2020 de BE : parseur dédié ; les pages de préconisations FDES (descriptions de
 // produits) ne décrivent pas le projet — seules les données administratives du moteur générique sont reprises.
+function parseU48WinDocument(doc){
+  const out=[...parseTaggedFields(doc),...parseThermalSoftwarePatterns(doc,occ,canonicalBuilding)].filter(Boolean);
+  return annotateSemanticHierarchy(doc,out).map(o=>({...o,specializedFamily:'logiciel-thermique',dedicatedRank:o.dedicatedRank??6}));
+}
 function parseRecapCarboneDocument(doc){
   const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
   const dedicated=annotateSemanticHierarchy(fdoc,parseRecapCarboneRe2020(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'recap-carbone'}));
@@ -2004,7 +2011,7 @@ export function parseDocument(doc){
   let out=parseDocumentCore(doc); if(!Array.isArray(out)) return out;
   // v2.3.12 — motifs de sorties logiciel thermiques (Perrenoud, CYPE, Pléiades RT2012) : complètent tout document
   // thermique qui les porte, quel que soit le parseur principal (les doublons exacts sont écartés).
-  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&!isRtexStandardFiche(doc)&&hasThermalSoftwareMarkers(doc)){
+  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&!isRtexStandardFiche(doc)&&!isU48WinThcexReport(doc)&&hasThermalSoftwareMarkers(doc)){
     const extra=annotateSemanticHierarchy(doc,parseThermalSoftwarePatterns(doc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'logiciel-thermique'}));
     const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
     out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
@@ -2018,6 +2025,9 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
   if(!doc.__skipDedicated&&isRecapCarboneRe2020(doc)) return parseRecapCarboneDocument(doc);
   if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
+  // v2.3.20 — rapport U48Win (Th-C-E ex) : lu par ses motifs propres. Les heuristiques à fenêtre glissante et la notice
+  // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
+  if(!doc.__skipDedicated&&isU48WinThcexReport(doc)) return parseU48WinDocument(doc);
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
   if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');

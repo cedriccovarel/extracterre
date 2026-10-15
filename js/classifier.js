@@ -135,6 +135,10 @@ export function classifyDocument(fileName, text='', meta={}) {
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
   }
+  // Signatures logicielles décisives cherchées dans tout le texte : dans les longs rapports (U48Win : 148 pages),
+  // elles n'apparaissent qu'au résumé, bien après la fenêtre de 120 000 caractères lue ci-dessus.
+  const tout=String(text||'');
+  if(tout.length>120000&&/calculs\s+r[ée]alis[ée]s\s+avec\s+le\s+logiciel\s+U48Win|moteur\s+(?:CSTB\s+)?ThC\s*-?\s*Ex\b/i.test(tout)) score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+45;
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
   const confidence=ranked.length ? Math.min(0.99,0.45+(ranked[0][1]/22)) : 0.25;

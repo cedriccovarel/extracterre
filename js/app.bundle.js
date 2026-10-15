@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.3.19 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.3.20 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.3.19';
+const APP_VERSION='2.3.20';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -384,7 +384,8 @@ DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OP
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
 for(const key of ['dh','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
-for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
+// v2.3.20 — une étude RT existant (Th-C-E ex) déclare explicitement ses zones traversantes, comme une étude thermique.
+for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
 for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON,DOC_TYPES.DIAGNOSTIC]);
 // v2.3.19 — rénovation : l'étude RT existant est l'étude réglementaire du projet ; elle devient source principale du Cep,
 // du Cep max et du gain Cep (classée après RSEE / RSET / RT2012 / étude thermique, qui priment s'ils sont présents).
@@ -606,9 +607,14 @@ function normalizeGlazingType(value='') {
 function parseFrNumber(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (v == null) return null;
-  const s = String(v).replace(/\u00a0/g,' ').replace(/\s(?=\d{3}(?:\D|$))/g,'').replace(',', '.').replace(/[^0-9+\-.]/g,'');
-  if (!s || !/[0-9]/.test(s)) return null;
-  const n = Number(s); return Number.isFinite(n) ? n : null;
+  // Premier nombre du texte seulement : « 57,3 kWh/m2 » donne 57,3 (et non 57,32), « 12,5 / 15 » donne 12,5.
+  // Espaces (y compris insécables et fines) = séparateurs de milliers ; « − » typographique = signe moins.
+  const t = String(v).replace(/[\u00a0\u202f\u2009]/g,' ').replace(/\u2212/g,'-').replace(/\s(?=\d{3}(?:\D|$))/g,'');
+  const m = t.match(/[-+]?\d+(?:[.,]\d+)*/); // signe collé au nombre : « Bâtiment - 12 » ne donne pas −12
+  if (!m) return null;
+  const s = m[0].replace(/\s/g,'');
+  if ((s.match(/[.,]/g)||[]).length > 1) return null; // « 1.234,5 » ou « 1.250.000 » : ambigu, refusé
+  const n = Number(s.replace(',', '.')); return Number.isFinite(n) ? n : null;
 }
 function maskNonDataNumerics(text='') {
   // Les millésimes réglementaires et versions logicielles sont des identifiants, jamais des valeurs métier.
@@ -2521,6 +2527,37 @@ function parseInsulationMarkupPlan(doc,occ){
 const lt_n=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
 const lt_nums=s=>(String(s||'').match(/-?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
 
+// Nombres d'une ligne U48Win : « ,7 » vaut 0,7 (zéro non imprimé).
+const lt_numsU=s=>lt_nums(String(s||'').replace(/(^|[\s|])([-+]?)[.,](\d)/g,'$1$20,$3'));
+const lt_nomBat=s=>normalizeText(String(s||'')).replace(/\s+/g,' ').trim();
+const LT_USAGES={chauffage:/^CHAUFFAGE$/i,refroidissement:/^REFROIDISSEMENT$/i,ecs:/^ECS$/i,eclairage:/^ECLAIRAGE$/i,auxiliaires:/^AUXILIAIRES$/i};
+const LT_CEP_ENERGIE={'Gaz':'cep_gas','Électricité':'cep_electricity','Réseau de chaleur urbain':'cep_district','Bois / biomasse':'cep_biomass'};
+// Bilan d'un bâtiment (page « RÉSULTATS DE L'ÉTAT INITIAL / PROJET » d'U48Win) : énergies par usage (kWh EP) et
+// totaux en kWhEP/m². L'énergie majoritaire d'un usage donne le vecteur ; les totaux du projet donnent les postes Cep.
+function emitBilan(b,emit){
+  const U=b.usages, x=b.x, B=b.B, apres=b.phase==='after';
+  const note=w=>({provenanceNote:`Bilan de l’état ${apres?'projet':'initial'} (U48Win) : ${w}.`});
+  const dom=k=>{ const e=Object.entries(U[k]?.energies||{}).filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]); if(!e.length) return null; const tot=e.reduce((a,z)=>a+z[1],0); return {v:e[0][0],part:e[0][1]/tot}; };
+  const ch=dom('chauffage'), ecs=dom('ecs');
+  if(ch) emit(U.chauffage.x||x,B,apres?'heating_vector_after':'heating_vector_before',ch.v,'bilan-chauffage',0.95,'',note(`énergie majoritaire du chauffage (${Math.round(ch.part*100)} % de l’énergie primaire)`));
+  if(ecs) emit(U.ecs.x||x,B,apres?'ecs_vector_after':'ecs_vector_before',ecs.v,'bilan-ecs',0.95,'',note(`énergie majoritaire de l’ECS (${Math.round(ecs.part*100)} %)`));
+  if(!apres) return;
+  const poste=(k,field,lib)=>{ const u=U[k]; if(u&&u.total!==null&&u.total!==undefined) emit(u.xTotal||x,B,field,u.total,`bilan-${k}`,0.95,'kWhEP/m².an',note(`total ${lib}`)); };
+  poste('eclairage','cep_lighting','éclairage'); poste('auxiliaires','cep_aux_dist','auxiliaires'); poste('ventilateurs','cep_aux_vent','ventilateurs');
+  if(U.refroidissement?.total>0) poste('refroidissement','cep_cooling','refroidissement');
+  // Cep par énergie : chaque total d'usage est réparti selon la part de chaque énergie (les kWh sont déjà en énergie primaire).
+  const parE={};
+  for(const u of Object.values(U)){ if(u.total===null||u.total===undefined) continue; const somme=Object.values(u.energies).reduce((a,c)=>a+c,0);
+    for(const [e,v] of Object.entries(u.energies)) parE[e]=(parE[e]||0)+(somme>0?u.total*v/somme:0); }
+  for(const [e,v] of Object.entries(parE)){ const f=LT_CEP_ENERGIE[e]; if(f&&v>0) emit(x,B,f,Math.round(v*100)/100,'bilan-energie',0.93,'kWhEP/m².an',note(`somme des postes au ${e.toLowerCase()}`)); }
+}
+
+// Rapport U48Win (Perrenoud), RT existant globale (moteur Th-C-E ex) : résumé par bâtiment, saisies, bilans par usage.
+function isU48WinThcexReport(doc){
+  const t=String(doc?.read?.text||'');
+  return /calculs\s+r[ée]alis[ée]s\s+avec\s+le\s+logiciel\s+U48Win/i.test(t)&&/ThC\s*-?\s*Ex\b/i.test(t);
+}
+
 function hasThermalSoftwareMarkers(doc){
   const t=String(doc?.read?.text||'').slice(0,800000);
   return /COEFFICIENT\s+UBAT\s*=|Ubat\s+du\s+b[aâ]timent\s+\d|TIC\s*=\s*\d+[.,]?\d*\s*-\s*TIC\s*R[ée]f|Coefficient\s+Cep\s+\(kWh|<=\s*\d+[.,]\d+\s+-?\d+[.,]\d+\s*%|Ubat\s*\(hiver\)\s*-\s*\d|Coefficient\s+Cep\s+kWh-?ep\/m2|Type\s+de\s+ventilation\s*:|Type\s+de\s+Chauffage\s*:?\s+\S|Surface\s+utile\s*:\s*[\d\s,]+m.?\s+Surface\s+Shon/i.test(t);
@@ -2543,14 +2580,51 @@ function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
   const emit=(x,b,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value==='') return; const o=occ(doc,x.page,x.line,field,value,`logiciel-thermique:${method}`,conf,unit,{building:canonical(b||'Bâtiment unique'),structuredPdf:true,origin,dedicatedRank:12,...extra}); if(o) out.push(o); };
   let building=null; const seen=new Set();
   const once=(b,f,v)=>{ const k=`${b}|${f}|${v}`; if(seen.has(k)) return false; seen.add(k); return true; };
+  // U48Win (Perrenoud, Th-C-E ex) : le résumé nomme « Batiment n° 01 : A/B » et les pages de saisie « BATIMENT : A/B ».
+  // Quand le document fournit ce nom, il identifie le bâtiment, pour que toutes les sections convergent vers le même.
+  const NOM_BAT=/^(?:Batiment\s*:\s*)?B[aâ]timent\s+n\s*[°º]?\s*(\d+)\s*:\s*(?!\s*B[aâ]timent\s+n)([^:]{1,40})$/i;
+  const nommes=new Set();
+  for(const page of doc.read?.pages||[]) for(const line of page.lines||[]){ const m=normalizeText(line.text||'').replace(/\s+/g,' ').trim().match(NOM_BAT); if(m) nommes.add(lt_nomBat(m[2])); }
+  // Avec des bilans par usage (pages de résultats), les lignes d'émetteurs ne donnent plus le vecteur.
+  const bilans=/RESULTATS\s+DE\s+L.ETAT\s+(?:INITIAL|PROJET)/i.test(String(doc.read?.text||''));
+  const logements=new Map(); let bilan=null, resultat=false, phaseChapitre=null;
+  const finBilan=()=>{ if(bilan){ emitBilan(bilan,emit); bilan=null; } };
   for(const page of doc.read?.pages||[]){
     const lines=(page.lines||[]).map(line=>({page,line,t:normalizeText(line.text||'').replace(/\s+/g,' ').trim()}));
-    const pagePhase=lt_phase(lines.slice(0,12).map(x=>x.t).join(' '))||lt_phase(lines.map(x=>x.t).join(' '));
+    // U48Win : le titre « ETAT INITIAL / ETAT PROJET » n'est imprimé qu'en tête de chapitre ; il vaut pour les pages suivantes.
+    const enTete=lt_phase(lines.slice(0,12).map(x=>x.t).join(' ')); if(enTete) phaseChapitre=enTete;
+    const pagePhase=enTete||(nommes.size?phaseChapitre:null)||lt_phase(lines.map(x=>x.t).join(' '));
     let element=null;
+    const phaseBilan=/RESULTATS\s+DE\s+L.ETAT\s+PROJET/i.test(page.text||'')?'after':/RESULTATS\s+DE\s+L.ETAT\s+INITIAL/i.test(page.text||'')?'before':null;
     for(let i=0;i<lines.length;i++){
       const x=lines[i], t=x.t; let m;
-      if(/^(?:Batiment\s*:\s*)?B[aâ]timent\s+n\s*[°º]?\s*\d+/i.test(t)&&t.length<70){ const all=[...t.matchAll(/B[aâ]timent\s+n\s*[°º]?\s*(\d+)/gi)]; building=`Batiment ${all[all.length-1][1]}`; continue; } // « Bâtiment n° 2 : Bâtiment n°5 » → bâtiment 5
+      if(/^(?:Batiment\s*:\s*)?B[aâ]timent\s+n\s*[°º]?\s*\d+/i.test(t)&&t.length<70){ finBilan(); resultat=false; const nm=t.match(NOM_BAT); const all=[...t.matchAll(/B[aâ]timent\s+n\s*[°º]?\s*(\d+)/gi)];
+        building=nm?`Batiment ${lt_nomBat(nm[2])}`:`Batiment ${all[all.length-1][1]}`; if(phaseBilan) bilan={B:building,phase:phaseBilan,usages:{},x,cur:null}; continue; } // « Bâtiment n° 2 : Bâtiment n°5 » → bâtiment 5
+      if((m=t.match(/^BATIMENT\s*:\s*(.{1,40})$/))&&nommes.has(lt_nomBat(m[1]))){ finBilan(); resultat=false; building=`Batiment ${lt_nomBat(m[1])}`; continue; }
       const B=building;
+      // --- U48Win : bilan par usage (pages de résultats) ------------------------------------------------------------------
+      if(bilan){
+        const u=Object.keys(LT_USAGES).find(k=>LT_USAGES[k].test(t)); if(u){ bilan.cur=u; bilan.usages[u]??={energies:{},total:null,x}; continue; }
+        if((m=t.match(/^Ventilateurs\s*\((Electrique|Electricite)\)\s+(.+)$/i))){ const v=lt_numsU(m[2]); const ve=(bilan.usages.ventilateurs??={energies:{},total:null,x}); if(v.length) ve.energies['Électricité']=(ve.energies['Électricité']||0)+v[0]; continue; }
+        if((m=t.match(/^Vent\s*-\s*Total\s+Energie\s+primaire[^)]*\)\s*(.+)$/i))){ const v=lt_numsU(m[1]); const ve=(bilan.usages.ventilateurs??={energies:{},total:null,x}); if(v.length){ ve.total=v[0]; ve.xTotal=x; } continue; }
+        if((m=t.match(/^Total\s+Energie\s+primaire[^)]*\)\s*(.+)$/i))&&bilan.cur){ const v=lt_numsU(m[1]); if(v.length){ bilan.usages[bilan.cur].total=v[0]; bilan.usages[bilan.cur].xTotal=x; } continue; }
+        if(bilan.cur&&(m=t.match(/^(Gaz|Electrique|Electricite|Fioul|Bois|Reseau[^\d,]*|Charbon|GPL|Propane)\s+([-+\d,.].*)$/i))){ const e=lt_vector(m[1])||(/gpl|propane/i.test(m[1])?'Gaz':null); const v=lt_numsU(m[2]);
+          if(e&&v.length){ const us=bilan.usages[bilan.cur]; us.energies[e]=(us.energies[e]||0)+v[0]; if(!us.x||v[0]>0) us.x=x; } continue; }
+      }
+      // --- U48Win : résumé de l'étude --------------------------------------------------------------------------------------
+      if(/^Resultat\s+Projet\s+Reference\s+Gain/i.test(t)){ resultat=true; continue; }
+      if(resultat&&(m=t.match(/^(Ubat|C)\s+([-+\d,.].*)$/))){ const v=lt_numsU(m[2]);
+        if(v.length>=5){ const [pr,ref,gain,ini]=v; const note={provenanceNote:'Résumé de l’étude U48Win : colonnes Projet / Référence / Gain % / Initial.'};
+          if(m[1]==='Ubat'){ if(pr>0&&pr<6) emit(x,B,'ubat_after',pr,'resume-ubat-projet',0.95,'W/m².K',note); if(ini>0&&ini<6) emit(x,B,'ubat_before',ini,'resume-ubat-initial',0.95,'W/m².K',note); }
+          else { emit(x,B,'cep',pr,'resume-cep-projet',0.95,'kWhEP/m².an',note); emit(x,B,'cep_after_final',pr,'resume-cep-projet',0.95,'kWhEP/m².an',note);
+            emit(x,B,'cep_max',ref,'resume-cep-reference',0.95,'kWhEP/m².an',{provenanceNote:'Résumé U48Win : Cep de référence (exigence RT existant globale : Cep ≤ Cep réf).'});
+            emit(x,B,'cep_gain',gain,'resume-cep-gain',0.95,'%',{provenanceNote:`Gain imprimé par U48Win = (Cep réf − Cep projet) / Cep réf = (${ref} − ${pr}) / ${ref}.`});
+            emit(x,B,'cep_before',ini,'resume-cep-initial',0.95,'kWhEP/m².an',note); } }
+        continue; }
+      if(/Groupe\s+Refroidissement\s+Categorie\s+Tic\s+Tic\s+Ref/i.test(lines[i-1]?.t||'')&&/\bCE\d\b/.test(t)){ const v=lt_numsU(t.replace(/^.*?\bCE\d\b/,'')); if(v.length>=2&&v[0]>=15&&v[0]<=45&&once(B,'tic',v[0])){ emit(x,B,'tic',v[0],'resume-tic',0.95,'°C'); emit(x,B,'tic_ref',v[1],'resume-tic-ref',0.95,'°C'); } continue; }
+      if((m=t.match(/^Zone\s+traversante\s*:?\s*(Oui|Non)\b/i))){ const f=/oui/i.test(m[1])?'cross_ventilated':'non_cross_ventilated'; if(once(B,f,'Oui')) emit(x,B,f,'Oui','zone-traversante',0.95); continue; }
+      if((m=t.match(/^Nombre\s+de\s+logements\s*:\s*(\d+)\s*$/i))&&B){ const n=+m[1]; const e=logements.get(B)||{n:0,x}; e.n+=n; logements.set(B,e); continue; }
+      if((m=t.match(/^\d+-\d+-[a-z]\]\s*Ventilation\s*:\s*(.+)$/i))){ const v=lt_vent(m[1]); if(v&&once(B,'ventilation-saisie',v)) emit(x,B,'ventilation',v,'ventilation-saisie',pagePhase==='after'?0.95:0.8,'',pagePhase==='after'?{}:{reviewCap:0.8,provenanceNote:'Ventilation de l’état initial : le champ décrit l’état après travaux.'}); continue; }
       const near=lines.slice(Math.max(0,i-3),i).map(y=>y.t).join(' ');
       // --- Perrenoud U-Win ---------------------------------------------------------------------------------------------
       if((m=t.match(/COEFFICIENT\s+UBAT\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); const ph=lt_phase(near)||pagePhase;
@@ -2559,18 +2633,20 @@ function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
       if((m=t.match(/^Ubat\s+du\s+b[aâ]timent\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2;
         const f=more?'ubat_after':'ubat_before'; if(once(B,f,v)) emit(x,B,f,v,more?'ubat-synthese-projet':'ubat-synthese-initial',0.9,'W/m².K',{provenanceNote:more?'Ligne de synthèse projet (valeur suivie des colonnes de référence).':'Ligne de synthèse de l’état initial (valeur seule).'}); continue; }
       if((m=t.match(/^Coefficient\s+Cep\s*\(kWh[^)]*\)\s+(\d+[.,]\d+)(.*)$/i))){ const v=lt_n(m[1]); const more=lt_nums(m[2]).length>=2;
-        const f=more?'cep_after_final':'cep_before'; if(once(B,f,v)) emit(x,B,f,v,more?'cep-synthese-projet':'cep-synthese-initial',0.9,'kWhEP/m².an'); continue; }
+        const f=more?'cep_after_final':'cep_before'; if(once(B,f,v)) emit(x,B,f,v,more?'cep-synthese-projet':'cep-synthese-initial',0.9,'kWhEP/m².an');
+        const col=lt_numsU(m[2]); if(col.length>=3&&col[0]>v*0.5&&col[0]<v*3){ emit(x,B,'cep_max',col[0],'cep-synthese-reference',0.9,'kWhEP/m².an',{provenanceNote:'Colonne « Référence » de la synthèse (Cep réf).'}); emit(x,B,'cep_gain',col[1],'cep-synthese-gain',0.9,'%'); }
+        continue; }
       if((m=t.match(/TIC\s*=\s*(\d+[.,]?\d*)\s*-\s*TIC\s*R[ée]f\s*=\s*(\d+[.,]?\d*)/i))){ const a=lt_n(m[1]), r=lt_n(m[2]); if(a>=15&&a<=45&&once(B,'tic',a)){ emit(x,B,'tic',a,'tic',0.95,'°C'); emit(x,B,'tic_ref',r,'tic-ref',0.95,'°C'); } continue; }
-      if((m=t.match(/^Type\s+de\s+ventilation\s*:?\s*(.+)$/i))){ const v=lt_vent(m[1]); if(v&&once(B,'ventilation',v)) emit(x,B,'ventilation',v,'ventilation',0.92); continue; }
+      if((m=t.match(/^Type\s+de\s+ventilation\s*:?\s*(.+)$/i))){ const v=lt_vent(m[1]); if(v&&once(B,'ventilation',v)) emit(x,B,'ventilation',v,'ventilation',pagePhase==='before'?0.8:0.92,'',pagePhase==='before'?{reviewCap:0.8,provenanceNote:'Ventilation de l’état initial : le champ décrit l’état après travaux.'}:{}); continue; }
       if((m=t.match(/^(?:Systeme\s+de\s+)?Ventil\.?\s*Ouv\.?\s*de\s*fen[eê]tres?/i))&&!/CTA\s+(?:double|simple)/i.test(t)){ if(once(B,`ventilation-${pagePhase}`,'n')) emit(x,B,'ventilation','Ventilation naturelle','ventilation-fenetres',pagePhase==='after'?0.9:0.84,'',pagePhase==='after'?{}:{reviewCap:0.84,provenanceNote:'Ventilation par ouverture des fenêtres (état décrit par la page ; à vérifier s’il s’agit de l’état initial).'}); continue; }
-      if((m=t.match(/^Type\s+de\s+Chauffage\s*:?\s+(.+)$/i))){ const v=lt_vector(m[1].replace(/Part\s+de\s+besoins.*$/i,'')); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'heating_vector_before':'heating_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'type-chauffage',0.9); } continue; }
-      if((m=t.match(/^Li[ée]e?\s+a\s+la\s+generation\s*:\s*(.+)$/i))){ const v=lt_vector(m[1]); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'heating_vector_before':'heating_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'generation',0.88); } continue; }
-      if((m=t.match(/^Type\s+d.?ECS\s*:?\s+(.+)$/i))){ const v=lt_vector(m[1]); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'ecs_vector_before':'ecs_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'type-ecs',0.88); } continue; }
+      if(!bilans&&(m=t.match(/^Type\s+de\s+Chauffage\s*:?\s+(.+)$/i))){ const v=lt_vector(m[1].replace(/Part\s+de\s+besoins.*$/i,'')); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'heating_vector_before':'heating_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'type-chauffage',0.9); } continue; }
+      if(!bilans&&(m=t.match(/^Li[ée]e?\s+a\s+la\s+generation\s*:\s*(.+)$/i))){ const v=lt_vector(m[1]); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'heating_vector_before':'heating_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'generation',0.88); } continue; }
+      if(!bilans&&(m=t.match(/^Type\s+d.?ECS\s*:?\s+(.+)$/i))){ const v=lt_vector(m[1]); const ph=lt_phase(near)||pagePhase; if(v&&ph){ const f=ph==='before'?'ecs_vector_before':'ecs_vector_after'; if(once(B,f,v)) emit(x,B,f,v,'type-ecs',0.88); } continue; }
       if((m=t.match(/^Surface\s+utile\s*:\s*([\d\s]+[.,]?\d*)\s*m.?\s+Surface\s+Shon/i))){ const v=lt_n(m[1]); if(v>8&&once(B,'shab',v)) emit(x,B,'shab',v,'surface-utile',0.9,'m²',{provenanceNote:'Surface utile de la fiche bâtiment (la SHON est indiquée à côté).'}); continue; }
       if((m=t.match(/^Annee\s+de\s+construction\s+(.+)$/i))){ const s=normalizeText(m[1]).toLowerCase(); const y=s.match(/^(\d{4})$/);
         if(y){ if(once(B,'construction_year',y[1])) emit(x,B,'construction_year',Number(y[1]),'annee',0.9); }
-        else if(/avant\s+1948/.test(s)){ if(once(B,'built_before_1948','Oui')) emit(x,B,'built_before_1948','Oui','periode',0.9,'',{secondarySourceOk:true,provenanceNote:`Année de construction : ${m[1]}.`}); }
-        else if(/entre\s+(19[4-9]\d|20\d\d)|apres\s+1948|depuis\s+19[4-9]\d/.test(s)){ if(once(B,'built_after_1948','Oui')) emit(x,B,'built_after_1948','Oui','periode',0.9,'',{secondarySourceOk:true,provenanceNote:`Année de construction : ${m[1]}.`}); }
+        else if(/avant\s+1948/.test(s)){ if(once(B,'built_before_1948','Oui')) emit(x,B,'built_before_1948','Oui','periode',0.95,'',{secondarySourceOk:true,provenanceNote:`Année de construction : ${m[1]}.`}); }
+        else if(/entre\s+(19[4-9]\d|20\d\d)|apres\s+1948|depuis\s+19[4-9]\d/.test(s)){ if(once(B,'built_after_1948','Oui')) emit(x,B,'built_after_1948','Oui','periode',0.95,'',{secondarySourceOk:true,provenanceNote:`Année de construction : ${m[1]}.`}); }
         continue; }
       if(/^Avant\s+1948$/i.test(t)&&/construction|periode|annee/i.test(near+' '+(lines[i+1]?.t||''))){ if(once(B,'built_before_1948','Oui')) emit(x,B,'built_before_1948','Oui','periode',0.86,'',{secondarySourceOk:true}); continue; }
       // --- CYPE (comparaisons « projet <= référence gain % ») -----------------------------------------------------------
@@ -2601,7 +2677,10 @@ function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
       if(/^(?:Coefficient\s+)?Bbio$/i.test(t)&&/^Bbio\s*max$/i.test(lines[i+1]?.t||'')){ const a=lt_nums(lines[i+2]?.t||''), b=lt_nums(lines[i+3]?.t||'');
         if(a.length===1&&b.length===1&&a[0]>5&&b[0]>5){ if(once(B,'bbio',a[0])){ emit(lines[i+2],B,'bbio',a[0],'bbio-vertical',0.88,'points'); emit(lines[i+3],B,'bbio_max',b[0],'bbio-max-vertical',0.88,'points'); } } }
     }
+    finBilan(); // un bilan ne déborde pas sur la page suivante
   }
+  finBilan();
+  for(const [B,e] of logements) if(e.n>0) emit(e.x,B,'housing_count',e.n,'logements-zones',0.95,'',{provenanceNote:'Somme des « Nombre de logements » des zones du bâtiment.'});
   return out;
 }
 
@@ -3691,6 +3770,10 @@ function classifyDocument(fileName, text='', meta={}) {
   if(/label\s+batiment\s+biosource/i.test(t)&&/masse\s+(?:de\s+)?(?:carbone\s+biogenique|matiere\s+biosourcee)/i.test(t)){
     score[DOC_TYPES.ENV_REPORT]=(score[DOC_TYPES.ENV_REPORT]||0)+40;
   }
+  // Signatures logicielles décisives cherchées dans tout le texte : dans les longs rapports (U48Win : 148 pages),
+  // elles n'apparaissent qu'au résumé, bien après la fenêtre de 120 000 caractères lue ci-dessus.
+  const tout=String(text||'');
+  if(tout.length>120000&&/calculs\s+r[ée]alis[ée]s\s+avec\s+le\s+logiciel\s+U48Win|moteur\s+(?:CSTB\s+)?ThC\s*-?\s*Ex\b/i.test(tout)) score[DOC_TYPES.RT_EXISTING]=(score[DOC_TYPES.RT_EXISTING]||0)+45;
   const ranked=Object.entries(score).sort((a,b)=>b[1]-a[1]);
   const type=ranked[0]?.[0]||DOC_TYPES.UNKNOWN;
   const confidence=ranked.length ? Math.min(0.99,0.45+(ranked[0][1]/22)) : 0.25;
@@ -5020,6 +5103,9 @@ function labelSeparatedFromValue(ctx,re){
 }
 function parseGenericRegulatory(doc){
   const out=[];
+  // La fenêtre glissante (ligne ± 1 à 2) revoit la même valeur depuis chaque ligne voisine : une seule occurrence
+  // par champ, valeur, bâtiment et page suffit (les doublons ne changeaient rien au résultat, seulement au volume).
+  const vus=new Set(); const push=(o_,o)=>{ if(!o) return; const k=`${o.field}|${typeof o.value==='number'?o.value.toFixed(6):o.value}|${o.building||''}|${o.page}|${o.method}`; if(vus.has(k)) return; vus.add(k); o_.push(o); };
   const specs=[
     ['bbio_max',/\bbbio\s*(?:max|maxi|maximal|_max)\b/i,'points'],['bbio',/\bbbio\b(?!\s*(?:max|maxi|maximal|_max))/i,'points'],
     ['cepnr_max',/\bcep\s*[,._-]?\s*nr\s*(?:max|maxi|maximal|_max)\b/i,'kWhEP/m².an'],['cepnr',/\bcep\s*[,._-]?\s*nr\b(?!\s*(?:max|maxi|maximal|_max))/i,'kWhEP/m².an'],
@@ -6209,6 +6295,10 @@ function parseRenovationThermalDocument(doc,kind){
 
 // v2.3.14 — Récapitulatif carbone RE2020 de BE : parseur dédié ; les pages de préconisations FDES (descriptions de
 // produits) ne décrivent pas le projet — seules les données administratives du moteur générique sont reprises.
+function parseU48WinDocument(doc){
+  const out=[...parseTaggedFields(doc),...parseThermalSoftwarePatterns(doc,occ,canonicalBuilding)].filter(Boolean);
+  return annotateSemanticHierarchy(doc,out).map(o=>({...o,specializedFamily:'logiciel-thermique',dedicatedRank:o.dedicatedRank??6}));
+}
 function parseRecapCarboneDocument(doc){
   const fdoc={...doc,type:doc.type||DOC_TYPES.CARBON};
   const dedicated=annotateSemanticHierarchy(fdoc,parseRecapCarboneRe2020(fdoc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'recap-carbone'}));
@@ -6231,7 +6321,7 @@ function parseDocument(doc){
   let out=parseDocumentCore(doc); if(!Array.isArray(out)) return out;
   // v2.3.12 — motifs de sorties logiciel thermiques (Perrenoud, CYPE, Pléiades RT2012) : complètent tout document
   // thermique qui les porte, quel que soit le parseur principal (les doublons exacts sont écartés).
-  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&!isRtexStandardFiche(doc)&&hasThermalSoftwareMarkers(doc)){
+  if(!doc.__skipDedicated&&!doc.__skipEcAcv&&!doc?.read?.re2020&&THERMAL_PATTERN_TYPES.has(doc.type)&&!isRtexStandardFiche(doc)&&!isU48WinThcexReport(doc)&&hasThermalSoftwareMarkers(doc)){
     const extra=annotateSemanticHierarchy(doc,parseThermalSoftwarePatterns(doc,occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'logiciel-thermique'}));
     const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
     out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
@@ -6245,6 +6335,9 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
   if(!doc.__skipDedicated&&isRecapCarboneRe2020(doc)) return parseRecapCarboneDocument(doc);
   if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
+  // v2.3.20 — rapport U48Win (Th-C-E ex) : lu par ses motifs propres. Les heuristiques à fenêtre glissante et la notice
+  // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
+  if(!doc.__skipDedicated&&isU48WinThcexReport(doc)) return parseU48WinDocument(doc);
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
   if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');
