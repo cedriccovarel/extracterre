@@ -1,3 +1,21 @@
+# v2.3.21 — Rapports Pléiades RT existant (Th-C-E ex) : toutes les valeurs du rapport
+Mesuré sur 6 rapports réels Pléiades 5.23 (« Simulation thermique dynamique » / « Résultats RT Existant suivant la
+méthode THCE - Ex », un bâtiment par rapport) : **14 à 18 → 34 à 36 valeurs retenues par rapport**, sans changement
+sur les autres documents réels (412 valeurs finales identiques) ni sur le banc du pack.
+- **Tic / Tic réf** (« Exigence de resultat : Tic » → « Groupe 1 22.93 °C 33.69 °C »).
+- **Postes du Cep projet** (« Decomposition du Cep … Projet ») : éclairage, auxiliaires de ventilation, auxiliaires de
+  génération / distribution, refroidissement ; **Cep gaz / électricité** par somme des postes.
+- **Vecteurs chauffage / ECS** lus dans le détail des consommations (électrique / bois / autres sources), « autres
+  sources » nommées par le générateur décrit (chaudière gaz → Gaz) ; avant travaux : proposé « à vérifier », le rapport
+  ne décrivant pas le générateur initial. Chaudière à condensation reconnue dans la bibliothèque d'équipements.
+- **Menuiseries** : seules les fenêtres et portes-fenêtres comptent, valeur la plus fréquente (la première baie était
+  une porte de placard « Bois » ; les volets roulants étaient ignorés).
+- **Isolants** : couche dont le nom tient sur une ligne et les valeurs sur la suivante (« Ecorock Mono … » / « 13.4
+  0.036 … 3.70 ») ; planchers « Paroi sur locaux non chauffés » ; marques ECOROCK / Rockwool (laine de roche) et
+  EFIGREEN / Efisol / Utherm (PUR).
+- **Année de construction** : « Annee deconstruction 1973 » (espace perdu à l'extraction).
+- Non-régression : 38 fichiers de tests (dont `test_v2_3_21.mjs`, 35 vérifications).
+
 # v2.3.20 — Audit des parseurs : nombres exacts, rapports U48Win (RT existant), bancs d'essai sur documents complets
 Audit du code et mesure sur un vrai rapport U48Win de 148 pages (4 bâtiments, 61 valeurs vérifiées à la main) :
 **6 → 49 valeurs justes**. Les 12 restantes sont contredites par le document lui-même (Cep électricité, Cep réf du

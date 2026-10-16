@@ -56,7 +56,9 @@ export function insulationName(v=''){
   const s=dt_norm(v);
   if(/laine\s+de\s+bois|fibre\s+de\s+bois/.test(s)) return 'Fibre de bois';
   if(/laine\s+de\s+verre|\(lv\)/.test(s)) return 'Laine de verre';
-  if(/laine\s+de\s+roche|\(lr\)/.test(s)) return 'Laine de roche';
+  // Gammes courantes nommées par leur marque dans les bibliothèques logicielles (Pléiades : « ECOROCK MONO », « EFIGREEN DUO+ »).
+  if(/laine\s+de\s+roche|\(lr\)|\becorock\b|\brockwool\b|\brock(?:mur|plus|sol|comble|ciel|tect|facade)\b/.test(s)) return 'Laine de roche';
+  if(/\befigreen\b|\befisol\b|\butherm\b|\bpowerdeck\b/.test(s)) return 'PUR';
   if(/polyurethane|\(pu\)|\bpur\b|\bpir\b/.test(s)) return 'PUR';
   if(/extrude|\bxps\b/.test(s)) return 'XPS';
   if(/polystyrene|\bpse\b/.test(s)) return 'PSE';

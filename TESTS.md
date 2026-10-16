@@ -1,3 +1,8 @@
+## v2.3.21 — rapports Pléiades RT existant
+- `test_v2_3_21.mjs` (35 vérifications) : rapport Pléiades Th-C-E ex fictif reproduisant 6 rapports réels : Tic, postes
+  et Cep par énergie, vecteurs par consommations, menuiseries des seules fenêtres, isolants sur deux lignes et par marque,
+  « Annee deconstruction » ; valeurs déjà lues inchangées.
+
 ## v2.3.20 — nombres et rapports U48Win
 - `test_v2_3_20.mjs` (64 vérifications) : `parseFrNumber` (unité ignorée, milliers, signe « − », ambiguïtés refusées) ;
   rapport U48Win fictif reproduisant un rapport réel de 148 pages : classement au-delà de 120 000 caractères, aucune
