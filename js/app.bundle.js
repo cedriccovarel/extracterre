@@ -2289,8 +2289,9 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
   const poste={};
   { const i=lines.findIndex(x=>/^Decomposition\s+du\s+Cep\b.*\bProjet\s*:/i.test(x.t));
     if(i>=0) for(const x of lines.slice(i+1,i+10)){ if(/^Decomposition|^Conformite/i.test(x.t)) break; const m=x.t.match(/^(Chauffage|Refroidissement|ECS|Eclairage|Aux\.?\s*(?:generation|distribution|ventilation))\s*\(\s*([\d.]+)\s*kWh/i);
-      if(m){ const k=normalizeText(m[1]).toLowerCase().replace(/\s+/g,' '); poste[/generation|distribution/.test(k)?'aux_dist':/ventilation/.test(k)?'aux_vent':k]=(poste[/generation|distribution/.test(k)?'aux_dist':/ventilation/.test(k)?'aux_vent':k]||0)+Number(m[2]); poste.x??=x; } } }
-  if(poste.x){ const note={provenanceNote:'Décomposition du Cep projet (hors production ENR).'}; const r1=v=>Math.round(v*100)/100;
+      if(m){ const k=normalizeText(m[1]).toLowerCase().replace(/\s+/g,' '); const key=/generation|distribution/.test(k)?'aux_dist':/ventilation/.test(k)?'aux_vent':k; poste[key]=(poste[key]||0)+Number(m[2]); poste.x??=x; } } }
+  const r1=v=>Math.round(v*100)/100;
+  if(poste.x){ const note={provenanceNote:'Décomposition du Cep projet (hors production ENR).'};
     if(poste.eclairage!==undefined) emit(poste.x,'cep_lighting',r1(poste.eclairage),'cep-eclairage',0.95,'kWhEP/m².an',note);
     if(poste.aux_vent!==undefined) emit(poste.x,'cep_aux_vent',r1(poste.aux_vent),'cep-aux-ventilation',0.95,'kWhEP/m².an',note);
     if(poste.aux_dist!==undefined) emit(poste.x,'cep_aux_dist',r1(poste.aux_dist),'cep-aux-generation',0.93,'kWhEP/m².an',{provenanceNote:'Décomposition du Cep projet : auxiliaires de génération et de distribution.'});
@@ -2313,7 +2314,7 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
     if(poste.x&&usage.chauffage?.seul&&usage.ECS?.seul){ const parE={}; const add=(e,v)=>{ if(v>0) parE[e]=(parE[e]||0)+v; };
       add(usage.chauffage.vect,poste.chauffage); add(usage.ECS.vect,poste.ecs); add('Électricité',(poste.eclairage||0)+(poste.aux_vent||0)+(poste.aux_dist||0)); add('Électricité',poste.refroidissement);
       const F={'Gaz':'cep_gas','Électricité':'cep_electricity','Réseau de chaleur urbain':'cep_district','Bois / biomasse':'cep_biomass'};
-      for(const [e,v] of Object.entries(parE)) if(F[e]) emit(poste.x,F[e],Math.round(v*100)/100,'cep-energie',0.93,'kWhEP/m².an',{provenanceNote:`Somme des postes du Cep projet au ${e.toLowerCase()}.`}); } }
+      for(const [e,v] of Object.entries(parE)) if(F[e]) emit(poste.x,F[e],r1(v),'cep-energie',0.93,'kWhEP/m².an',{provenanceNote:`Somme des postes du Cep projet au ${e.toLowerCase()}.`}); } }
   // Caractéristiques du projet.
   const dep=find(/^Departement\s*:?\s*(\d{2,3}|2A|2B)\s*-/i); if(dep) emit(dep,'department',dep.t.match(/(\d{2,3}|2A|2B)\s*-/i)[1].padStart(2,'0'),'departement',0.97,'',{building:'Bâtiment unique'});
   const yr=find(/^Annee\s*de\s*construction\s+\d{4}/i); if(yr){ const y=rt_nums(yr.t)[0]; if(y>=1500&&y<=2100) emit(yr,'construction_year',y,'annee',0.95); }
@@ -2322,7 +2323,7 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
   // Compositions : paroi (« Type de paroi Paroi verticale / Plancher haut / Plancher bas ») puis couche isolante
   // « Fibre de bois 036 14.0 0.036 140 0.583 0.26 3.89 » (épaisseur cm, λ, ρ, Cs, U, R).
   let type=null, nature=''; const comp={};
-  for(const x of lines){
+  for(const [k,x] of lines.entries()){
     let m;
     if((m=x.t.match(/^Type\s+de\s+paroi\s+(Paroi\s+verticale|Plancher\s+haut|Plancher\s+bas|Toiture)/i))){ type=/verticale/i.test(m[1])?'wall':/bas/i.test(m[1])?'floor':'roof'; nature=''; continue; }
     // « Paroi sur locaux non chauffes » : la nature dit s'il s'agit d'un plancher (« Plancher sur local NC ») ou d'un mur.
@@ -2333,8 +2334,8 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
     // Couche sur deux lignes (nom long) : « Ecorock Mono L 1200 x l 600 x ep » puis « 13.4 0.036 120 0.286 0.27 3.70 ».
     const NUM=/(\d{1,3}(?:\.\d)?)\s+(0\.0\d{1,3})\s+\d+\s+[\d.]+\s+[\d.]+\s+([\d.]+)\s*$/;
     let r=x.t.match(new RegExp('^(.+?)\\s+'+NUM.source));
-    if(!r){ const q=x.t.match(new RegExp('^'+NUM.source)); const prev=lines[lines.indexOf(x)-1]; if(q&&prev&&/[a-z]/i.test(prev.t)&&!/^\d/.test(prev.t)) r=[x.t,prev.t,q[1],q[2],q[3]]; }
-    if(!r||!(INSUL_RE.test(r[1])||rt_insul(r[1]))) continue;
+    if(!r){ const q=x.t.match(new RegExp('^'+NUM.source)); const prev=lines[k-1]; if(q&&prev&&/[a-z]/i.test(prev.t)&&!/^\d/.test(prev.t)) r=[x.t,prev.t,q[1],q[2],q[3]]; }
+    if(!r) continue;
     if(type==='wall'&&nature&&!/mur\s+exterieur/i.test(nature)) continue;
     const name=rt_insul(r[1]); if(!name) continue;
     (comp[type]=comp[type]||[]).push({x,name,e:Number(r[2]),R:Number(r[4])});
@@ -2356,10 +2357,10 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
     const g=freq(b=>{ const y=dans(b,/^Nom\s+codifie\s+\S/i); return y&&{x:y,v:normalizeGlazingType(y.t.replace(/^Nom\s+codifie\s+/i,''))}; }); if(g) emit(g.x,'window_glazing',g.v,'vitrage',0.94,'',note(g));
     const pr=freq(b=>{ const y=dans(b,/^Protection\s+(?!solaire)\S/i); return y&&!/pas\s+de\s+protection/i.test(y.t)&&{x:y,v:protV(y.t)}; }); if(pr) emit(pr.x,'window_shading',pr.v,'protection',0.92,'',note(pr)); }
   else {
-    const cadre=find(/^Type\s+de\s+cadre\s+\S/i); if(cadre){ const s=cadre.t.replace(/^Type\s+de\s+cadre\s+/i,''); const v=/pvc/i.test(s)?'PVC':/bois.*alu|alu.*bois|mixte/i.test(s)?'Bois-aluminium':/alu/i.test(s)?'Aluminium':/bois/i.test(s)?'Bois':null; if(v) emit(cadre,'window_material',v,'cadre',0.94); }
+    const cadre=find(/^Type\s+de\s+cadre\s+\S/i); if(cadre){ const v=cadreV(cadre.t.replace(/^Type\s+de\s+cadre\s+/i,'')); if(v) emit(cadre,'window_material',v,'cadre',0.94); }
     // Premier vitrage réellement décrit (les portes portent « Nom codifié sans objet »).
     for(const code of lines.filter(x=>/^Nom\s+codifie\s+\S/i.test(x.t))){ const g=normalizeGlazingType(code.t.replace(/^Nom\s+codifie\s+/i,'')); if(g){ emit(code,'window_glazing',g,'vitrage',0.94); break; } }
-    const prot=find(/^Protection\s+(?!solaire)\S/i); if(prot&&!/pas\s+de\s+protection/i.test(prot.t)){ const s=prot.t; const v=/volet\s+roulant/i.test(s)?'Volet roulant':/brise|bso|venitien/i.test(s)?'BSO':/store/i.test(s)?'Store':/battant|persienne/i.test(s)?'Volet battant':null; if(v) emit(prot,'window_shading',v,'protection',0.92); }
+    const prot=find(/^Protection\s+(?!solaire)\S/i); if(prot&&!/pas\s+de\s+protection/i.test(prot.t)){ const v=protV(prot.t); if(v) emit(prot,'window_shading',v,'protection',0.92); }
   }
   // Systèmes.
   const gen=lines.findIndex(x=>/\(Volume\s+chauffe\b/i.test(x.t));
