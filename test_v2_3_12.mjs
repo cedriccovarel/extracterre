@@ -9,7 +9,7 @@ import {numberOnlyGlued,sanitizeOccurrence} from './js/sanity.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.21','version');
+eq(APP_VERSION,'2.4.0','version');
 const doc=(name,type,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12})); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   return {id:'d',name,type,familyMode:'auto',read:{kind:'pdf',pages:ps,pageCount:ps.length,text:ps.map(p=>p.text).join('\n\f\n')},buildings:{names:['Bâtiment unique']}}; };
 const vals=(out,f,b)=>out.filter(o=>o.field===f&&(!b||o.building===b)).map(o=>o.value);
@@ -61,7 +61,7 @@ const B5='Bâtiment 5', B7='Bâtiment 7';
 eq(val(pe,'ubat_before',B5),1.129,'COEFFICIENT UBAT de la page « état initial »'); ok(vals(pe,'ubat_before',B5).includes(1.15),'synthèse initiale (valeur seule)');
 eq(val(pe,'ubat_after',B5),0.99,'synthèse projet (valeur suivie des colonnes de référence)'); eq(val(pe,'cep_after_final',B5),87.49); eq(val(pe,'cep_before',B5),186.85);
 eq(val(pe,'tic',B5),23.9); eq(val(pe,'tic_ref',B5),32.3); eq(val(pe,'tic',B7),24); eq(val(pe,'shab',B7),3358.22,'surface utile de la fiche du bâtiment 7');
-eq(val(pe,'heating_vector_before',B5),'Gaz'); ok(vals(pe,'ventilation',B5).includes('VMC simple flux'),'ventilation mécanique simple flux'); eq(val(pe,'built_after_1948',B5),'Oui','« Entre 1948 et 1975 »');
+eq(val(pe,'heating_vector_before',B5),'Gaz'); ok(vals(pe,'ventilation_before',B5).includes('VMC simple flux'),'ventilation mécanique simple flux (état initial)'); eq(val(pe,'built_after_1948',B5),'Oui','« Entre 1948 et 1975 »');
 const opt=parseDocument(doc('Bao.pdf',DOC_TYPES.THERMAL,[['Etat après travaux','Type de chauffage : Autre (Thermodynamique, Gaz, Fioul, Bois, Réseau,...)']]));
 ok(!opt.some(o=>o.field==='heating_vector_after'),'liste d’options de formulaire ignorée');
 

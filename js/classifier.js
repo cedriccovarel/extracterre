@@ -43,6 +43,8 @@ export function classifyDocument(fileName, text='', meta={}) {
   if (rtExNameHit||rtExTextHit) add(DOC_TYPES.RT_EXISTING,/r[eé]glementation\s+thermique\s+existante/i.test(t)?30:18);
   if (/\bcontrat\b|convention\s+(?:de\s+)?certification|march[eé]\s+de\s+certification/i.test(n+' '+t)) add(DOC_TYPES.CONTRACT,/contrat/i.test(n)?17:9);
   if (/livret\s+d['’]?op[eé]ration|livret\s+op[eé]ration|fiche\s+op[eé]ration/i.test(n+' '+t)) add(DOC_TYPES.OPERATION_BOOKLET,17);
+  // v2.4.0 — page de garde « LIVRET D'OPERATION » de Prestaterre : le livret cite l'étude Th-C-E ex sans en être une.
+  if (/LIVRET\s+D['’]?OPERATION/i.test(t.slice(0,800))&&/prestaterre/i.test(t.slice(0,800))) add(DOC_TYPES.OPERATION_BOOKLET,30);
   if (/compte\s+rendu.{0,25}conception|\bcr\b.{0,20}conception|revue\s+de\s+conception/i.test(n+' '+t)) add(DOC_TYPES.DESIGN_REPORT,16);
   if (/compte\s+rendu.{0,25}environnement|\bcr\b.{0,20}environnement|revue\s+environnementale/i.test(n+' '+t)) add(DOC_TYPES.ENV_REPORT,17);
   if (/choix\s+des?\s+exigences|exigences?\s+(?:retenues?|choisies?)|grille\s+des?\s+exigences/i.test(n+' '+t)) add(DOC_TYPES.REQUIREMENTS,17);

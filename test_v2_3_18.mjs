@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.21','version');
+eq(APP_VERSION,'2.4.0','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const mk=(name,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=P(ls); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   const read={kind:'pdf',pages:ps,text:ps.map(p=>p.text).join('\n\f\n'),pageCount:ps.length};
@@ -74,7 +74,7 @@ const note=mk('Note_thermique_MONET.pdf',[
 ]);
 eq(note.buildings.names,['Bâtiment MONET'],'note : même bâtiment que la fiche');
 eq([vals(note,'ubat_before')[0],vals(note,'ubat_after')[0]],[1.25,0.612],'Ubat initial / projet');
-eq([vals(note,'cep_before')[0],vals(note,'cep_after_final')[0],vals(note,'cep_max')[0],vals(note,'cep_gain')[0]],[210.4,88.2,150,41.2],'Cep initial / projet / max, gain');
+eq([vals(note,'cep_before')[0],vals(note,'cep_after_final')[0],vals(note,'cep_max')[0],vals(note,'cep_gain')[0]],[210.4,88.2,140.6,37.3],'Cep initial / projet / référence, gain');
 eq([vals(note,'tic')[0],vals(note,'tic_ref')[0]],[25.1,32.4],'Tic projet / référence');
 eq([vals(note,'wall_insulation_thickness')[0],vals(note,'roof_insulation_thickness')[0],vals(note,'floor_insulation_thickness')[0]],[160,200,100],'épaisseurs (couches additionnées : 12 + 8 cm)');
 eq([vals(note,'window_material')[0],vals(note,'window_glazing')[0],vals(note,'window_shading')[0]],['PVC','4.16.4 Ar','Volet roulant'],'menuiseries');
@@ -95,7 +95,7 @@ console.log(`v2.3.18 — ${n} vérifications OK (documents fictifs)`);
   assert.equal(sourceTier('cep','RSEE RE2020',R),'main'); assert.ok(R.cep.main.indexOf('RSEE RE2020')<R.cep.main.indexOf('RT Existant'),'RSEE prime sur RT existant');
   assert.ok(LR.cep&&LR.cep.secondary.includes('RT Existant'),'ancienne règle mémorisée pour la migration');
   const r2=analyzeDocuments([A,note,B],structuredClone(R),'T'); const m2=r2.rows.find(x=>x.building==='Bâtiment MONET');
-  assert.equal(m2.cep,88.2,'Cep retenu (plus en « à vérifier »)'); assert.equal(m2.cep_gain,41.2,'Gain Cep = 1 − Cep / Cep max');
-  assert.ok(!vals(A,'cep_gain').length,'pas de gain sur l\'état initial dans la colonne « Gain Cep »');
+  assert.equal(m2.cep,88.2,'Cep retenu (plus en « à vérifier »)'); assert.equal(m2.cep_gain,37.3,'Gain Cep = 1 − Cep / Cep ref');
+  assert.deepEqual(vals(A,'cep_gain'),[37.3],'gain sur le Cep de référence, pas sur l\'état initial (58,08 %)');
   assert.ok(!(r2.uncertain||[]).some(u=>u.field==='cep'||u.field==='cep_gain'),'aucun Cep / gain en attente'); }
 console.log('v2.3.19 — sources Cep et Gain Cep OK');

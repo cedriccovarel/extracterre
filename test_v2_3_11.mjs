@@ -10,15 +10,15 @@ import {analyzeDocuments} from './js/engine.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.21','version');
+eq(APP_VERSION,'2.4.0','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 
 // --- 1. Schéma : 12 colonnes Eges en fin d'export ------------------------------------------------------------------------------
-eq(FIELD_DEFS.length,185);
-eq(FIELD_DEFS.slice(-12).map(f=>f.key),['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']);
-ok(FIELD_DEFS.slice(-12).every(f=>f.family==='Carbone'),'onglet Carbone');
+eq(FIELD_DEFS.length,186);
+eq(FIELD_DEFS.slice(-13,-1).map(f=>f.key),['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']);
+ok(FIELD_DEFS.slice(-13,-1).every(f=>f.family==='Carbone'),'onglet Carbone');
 ok(DEFAULT_SOURCE_RULES.eges_pce.main.includes('Étude carbone / ACV'),'Eges : étude carbone en source principale');
 ok(DEFAULT_SOURCE_RULES.wall_insulation.main.includes('RT Existant'),'enveloppe : étude RT existant autorisée');
 
@@ -82,7 +82,7 @@ eq(pl.type,'RT Existant'); eq(pl.buildings.names,['Bâtiment COUR'],'« Batiment
 const po=parseDocument(pl); const C='Bâtiment COUR';
 eq(val(po,'cep_after_final',C),171.5); eq(val(po,'cep_before',C),520); eq(val(po,'ubat_after',C),0.398); eq(val(po,'ubat_before',C),2.1);
 eq(val(po,'wall_insulation_thickness',C),140); eq(val(po,'roof_insulation',C),'Fibre de bois'); eq(val(po,'roof_insulation_r',C),11.11);
-eq(val(po,'window_glazing',C),'4.16.4 Ar','vitrage de la baie, pas « sans objet » de la porte'); eq(val(po,'window_shading',C),'Store');
+eq(val(po,'window_glazing',C),'4.16.4 Ar','vitrage de la baie, pas « sans objet » de la porte'); eq(val(po,'window_shading',C),'Store extérieur');
 eq(val(po,'heating_mode_after',C),'Chauffage électrique direct'); eq(val(po,'ecs',C),'Ballon électrique'); eq(val(po,'ventilation',C),'VMC simple flux');
 eq(val(po,'construction_year',C),1850); eq(val(po,'housing_count',C),4); eq(val(po,'department'),'75');
 

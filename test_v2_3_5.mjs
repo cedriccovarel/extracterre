@@ -12,13 +12,13 @@ import {isGarbledTextLayer,pdfTextQuality,shouldOcrPdfPage} from './js/readers.j
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.21','version');
+eq(APP_VERSION,'2.4.0','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 
 // --- 1. Schéma : 5 colonnes IC ajoutées à la fin, dans l'ordre demandé ------------------------------
-eq(FIELD_DEFS.length,185,'185 champs');
+eq(FIELD_DEFS.length,186,'186 champs');
 eq(FIELD_DEFS.slice(168,173).map(f=>f.key),['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'],'nouvelles colonnes en fin de schéma');
 ok(DEFAULT_SOURCE_RULES.ic_energy_max.main.includes('RSET RE2020'),'Ic énergie max publié aussi par les RSET');
 
@@ -97,13 +97,13 @@ const st=parseDocument(std);
 eq(val(st,'cooling'),'Aucun','pas de climatisation issue d’une variante'); eq(val(st,'window_shading'),'BSO'); eq(val(st,'window_glazing'),'Triple vitrage');
 ok(st.every(o=>o.field!=='cooling'||o.value==='Aucun'),'aucune « Climatisation active »');
 
-// --- 7. Export : colonne « Tags » après les 185 colonnes ----------------------------------------------------
+// --- 7. Export : colonne « Tags » après les 186 colonnes ----------------------------------------------------
 const sheets={}; globalThis.XLSX={utils:{book_new:()=>({}),aoa_to_sheet:aoa=>({aoa,'!ref':'A1:A1'}),book_append_sheet:(wb,ws,name)=>{ sheets[name]=ws.aoa; },decode_range:()=>({s:{c:0,r:0},e:{c:0,r:0}}),encode_cell:()=>'A1'},writeFile:()=>{}};
 const {exportProjectsExcel}=await import('./js/exporter.js');
 const res=analyzeDocuments([sortie],DEFAULT_SOURCE_RULES,'Projet test');
 exportProjectsExcel([{result:res,projectTags:[{label:'Géothermie'},{label:'BEPOS'}],operationName:'Projet test'}],DEFAULT_SOURCE_RULES);
 const main=sheets['Données par bâtiment'];
-eq(main[0].length,186,'185 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-2),['Eges total Max','Tags']);
+eq(main[0].length,187,'186 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-3),['Eges total Max','Ventilation avant travaux','Tags']);
 eq(main[1].at(-1),'Géothermie ; BEPOS','tags du projet sur chaque ligne');
 eq(main[1][main[0].indexOf('IC énergie Max')],500.2,'Ic énergie max exporté');
 console.log(`v2.3.5 — ${n} vérifications OK (documents fictifs)`);

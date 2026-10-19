@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.21','version');
+eq(APP_VERSION,'2.4.0','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const pages=[
  ['Reglementation Thermique Existante',"Fichier standardise des caracteristiques thermiques d'une construction Existante (en vue",'FEUILLET(S) BATIMENT(S) :',"Batiment : '1'","Batiment ou zones du batiment desservies -",'Correspond a des donnees obligatoires 95'],
@@ -35,5 +35,5 @@ eq(v('wall_structure',B1),'Béton banché'); eq(v('wall_structure',B2),'Pierre')
 eq(v('ventilation',B1),'VMC simple flux'); eq(v('ventilation',B2),'Ventilation naturelle','travaux sans ventilation : naturelle par conduit');
 eq(v('heating_vector_before',B1),'Gaz'); eq(v('heating_vector_after',B1),'Réseau de chaleur urbain','colonne Projet du tableau oui/non'); eq(v('ecs_vector_after',B1),'Gaz');
 eq(v('heating_vector_before',B2),'Gaz'); eq(v('heating_vector_after',B2),'Réseau de chaleur urbain','générateur du projet'); eq(v('ecs_vector_after',B2),undefined,'« Chauffage seul » : pas d’ECS déduite');
-ok(!o.some(x=>x.field==='window_shading'),'« coffres de volets roulants » (article) ≠ occultation'); ok(!o.some(x=>/vector/.test(x.field)&&x.value==='Solaire'),'« solaire non » ≠ vecteur solaire');
+ok(!o.some(x=>x.field==='window_shading'&&/volet/i.test(x.value)),'« coffres de volets roulants » (article) ≠ occultation (« sans » fermeture = sans occultation)'); ok(!o.some(x=>/vector/.test(x.field)&&x.value==='Solaire'),'« solaire non » ≠ vecteur solaire');
 console.log(`v2.3.13 — ${n} vérifications OK (document fictif)`);

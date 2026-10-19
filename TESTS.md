@@ -1,3 +1,11 @@
+## v2.4.0 — parseurs rénovation réécrits
+- `test_v2_4_0.mjs` (30 vérifications) : Pléiades RT existant à deux bâtiments (colonne initiale vide, Tic par groupe,
+  postes sur une ligne, paroi rénovée, baie « (Baie) »), fiche RSET en lettres espacées, DPE 2021 (classes recalculées,
+  recommandations ignorées), fusion « Logement N » → « Logements N et M », notice (tableau de synthèse, prose, légende
+  « Bois » sans effet), livret Prestaterre, OCR sur couche chiffrée.
+- Bancs (hors dépôt, documents réels) : couverture par document et par opération (43 champs rénovation par bâtiment),
+  comparaison des valeurs finales avec la version précédente sur 12 autres documents réels.
+
 ## v2.3.21 — rapports Pléiades RT existant
 - `test_v2_3_21.mjs` (35 vérifications) : rapport Pléiades Th-C-E ex fictif reproduisant 6 rapports réels : Tic, postes
   et Cep par énergie, vecteurs par consommations, menuiseries des seules fenêtres, isolants sur deux lignes et par marque,

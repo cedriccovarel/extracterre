@@ -74,6 +74,13 @@ export function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={})
     modes[n]=mode;
   }
 
+  // v2.4.0 — logement isolé (« Logement 30 » d'un DPE ou d'un récapitulatif) rattaché au groupe de logements qui le cite
+  // (« Logements 30 et 31 », « Logements 28 à 31 ») quand un seul groupe le contient.
+  { const one=n=>{ const m=normalizeText(n).match(/^(?:b[aâ]timent\s+)?(?:logement|lgt|maison)s?\.?\s*n?°?\s*(\d+)$/i); return m?Number(m[1]):null; };
+    const grp=n=>{ const m=normalizeText(n).match(/^(?:b[aâ]timent\s+)?logements?\s+(\d+)\s*(et|a|à|-)\s*(\d+)$/i); return m?{a:Number(m[1]),b:Number(m[3]),et:/et/i.test(m[2])}:null; };
+    const groups=names.map(n=>({n,g:grp(n)})).filter(z=>z.g);
+    if(groups.length) for(const n of names){ if(modes[n]==='manual'||aliasMap[n]!==n) continue; const k=one(n); if(k===null) continue;
+      const hit=groups.filter(({g})=>g.et?(k===g.a||k===g.b):(k>=Math.min(g.a,g.b)&&k<=Math.max(g.a,g.b))); if(hit.length===1){ aliasMap[n]=hit[0].n; modes[n]='auto-groupe'; } } }
   // Une cible manuelle peut elle-même correspondre à une variante typographique d'un maître RSET.
   for(const [n,t0] of Object.entries(aliasMap)){
     let t=resolveManualBuilding(t0,manualOverrides);
@@ -163,7 +170,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
         const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
-      if(f.key==='ventilation'&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
+      if((f.key==='ventilation'||f.key==='ventilation_before')&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
@@ -749,8 +756,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v2.3.11 : 185 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 ajoutées en fin), chacune avec des tags reconnus.
-  assert('Schéma métier = 185 colonnes',FIELD_DEFS.length===185,String(FIELD_DEFS.length));
+  // Contrat de schéma v2.4.0 : 186 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + Ventilation avant travaux v2.4.0, ajoutées en fin), chacune avec des tags reconnus.
+  assert('Schéma métier = 186 colonnes',FIELD_DEFS.length===186,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));

@@ -1,3 +1,55 @@
+# v2.4.0 — Parseurs rénovation réécrits (RT existant / RSET / DPE / notices) : mesurés sur 38 documents réels
+Mesuré par opération (tous les documents d'une opération analysés ensemble, 43 champs rénovation par bâtiment) :
+Sully 60 → 87 %, Chalette 26 → 98 %, Rueil 40 → 93 %, Sartrouville 23 → 81 %, Patton 0 → 60 %, Vineuil 16 → 84 %,
+Melleray 21 → 77 %, Bourg-la-Reine 10 → 71 %, résidence Pléiades K/M/C 82 → 91 %. Les champs restants sont absents des
+documents (état initial non calculé, étiquettes DPE en image, études d'offre sans état initial). Autres documents réels :
+valeurs identiques ou complétées (I3F LEPIC : 41 identiques + 8 équivalentes / 61 vérifiées, contre 37 + 12).
+- **Ventilation avant / après travaux** : nouvelle colonne « Ventilation avant travaux » (`ventilation_before`, ajoutée
+  en fin d'export : 186 colonnes, l'ordre des 185 précédentes est inchangé) ; « Ventilation » reste l'état après travaux.
+  Lue dans Pléiades RT existant (système initial), fiches RSET, U48Win / Perrenoud (état initial), DPE de l'existant,
+  notices et sorties BaO ; une ventilation conservée remplit les deux colonnes.
+- **Cep Ref** : la colonne « Cep Max » s'appelle désormais « Cep Ref » (Cep de référence ; clé `cep_max` inchangée,
+  les anciens en-têtes « Cep Max » restent reconnus à l'import).
+- **Pléiades RT existant** (`js/pleiades-rtex.js`, Pléiades 5.x et 6.x) : un bâtiment par section « 1.N » (résultats),
+  « 2.N » (enveloppe), « 5.N » (caractéristiques) ; colonne « initial » vide détectée (Cep / Ubat / consommations
+  décalés) ; Tic du groupe le plus chaud ; deux postes du Cep sur une ligne ; logements, surfaces et zones traversantes
+  par zone ; générations et ventilations rattachées au bâtiment qu'elles citent ; paroi rénovée choisie (parois
+  « existant / non isolé / intérieures » écartées, « 10* » = paroi modifiée) ; baies « … (Baie) » ; ENR.
+- **Fiche RSET RT existant** (`js/rset-rtex.js`, réécrite) : libellés comparés sans espaces (édition Pléiades en lettres
+  espacées et titres en police sans table Unicode) ; « --non calcule-- » = colonne vide ; postes du Cep recalculés depuis
+  l'énergie finale (kWh × 2,58 / SHON) ; isolants et vitrages des tableaux de parois ; volets « (avec VR) » ; PAC air/eau,
+  chaudière à condensation, ECS.
+- **ClimaWin rénovation** (`js/climawin-etude.js`) : étude « RT pour l'existant » (Cepinit / Cepproj / Cepref, Ubat, Tic,
+  postes du Cep, parois « re. / ex. / av / ap », menuiseries, générateurs) et rapport de saisie d'une étude RT existante
+  (jusqu'ici ignoré entièrement).
+- **U48Win / Perrenoud** (`js/u48win-rtex.js`) : catalogues initial / projet, détails des parois, saisies par
+  « BATIMENT : X », résultats par « Batiment n° k », résumé par bâtiment, éditions récentes et anciennes (« Modification
+  n° 1 », « Variante 1 : Projet »).
+- **DPE 2021 (3CL)** (`js/dpe-3cl.js`) : classes recalculées depuis l'énergie primaire et les émissions imprimées (double
+  seuil) ; énergies du tableau des consommations ; les packs de travaux recommandés et la liste des solutions ENR ne sont
+  plus lus comme l'existant ; « annexe DPE » d'étude = état projeté ; récapitulatif DPE par logement.
+- **Notices de bureau d'études** (`js/notice-renovation.js`) : tableaux de synthèse par bâtiment, blocs de bilan
+  « Batiment n° k », « Cep = 84,9 ≤ 195 », typologies, prose par phase (isolant, épaisseur, λ, R donné ou calculé
+  e / λ ; menuiseries ; générateurs nommés, chaudière existante remplacée, production mixte ; ventilation). Complète
+  aussi les parseurs dédiés (notice en chapitres, ClimaWin, U48Win) sur les seuls champs manquants.
+- **Livret d'opération Prestaterre** (`js/livret-prestaterre.js`) : contrat, code opération, MOA, ouvrage, logements,
+  référentiel, mentions, profil, département (les remarques d'évaluation ne sont plus lues comme le projet).
+- **Cep max = Cep de référence** (exigence « Cep ≤ Cep ref » de la RT existant globale), convention des corrections
+  validées, dans tous les parseurs rénovation ; gain = (Cep ref − Cep) / Cep ref ; le label visé et le Max(CH,ECS,FR)
+  restent dans la note de provenance.
+- **Bâtiments** : un « Logement 30 » (DPE, récapitulatif) rejoint le groupe « Logements 30 et 31 » qui le cite.
+- **Sources** : le DPE devient source principale de l'énergie avant travaux ; l'étude RT existant, de la surface.
+- **OCR** : une couche texte « chiffrée » (police sans table Unicode) déclenche l'OCR même si ses caractères ont l'air
+  propres.
+- **Interface** : onglet **Revue** par défaut (fiche par bâtiment champ par champ : valeur, état retenu / saisi / à vérifier /
+  à compléter, source ; filtres et recherche ; saisie sur place, validation ou rejet des propositions, ouverture du document
+  à la bonne page, copie d'une valeur vers les autres bâtiments, propositions déduites — avant / après 1948, gain Cep ;
+  clavier ↑ ↓ / Entrée / D / V) ; **profil Neuf / Rénovation** (auto, modifiable) qui masque les champs sans objet (export
+  complet inchangé) ; **analyse manuelle guidée** (champs à compléter d'abord, passage au champ suivant, propositions,
+  ↑ ↓) ; accueil allégé (réglages repliables, une carte « Compléments ») ; police IBM Plex Sans chargée (la police
+  « Inter » d'un poste n'existait qu'en Extra Bold) ; mise en page mobile de la barre de résultats et de la revue.
+- Non-régression : 39 fichiers de tests (dont `test_v2_4_0.mjs`, 30 vérifications), auto-tests moteur, banc du pack inchangé.
+
 # v2.3.21 — Rapports Pléiades RT existant (Th-C-E ex) : toutes les valeurs du rapport
 Mesuré sur 6 rapports réels Pléiades 5.23 (« Simulation thermique dynamique » / « Résultats RT Existant suivant la
 méthode THCE - Ex », un bâtiment par rapport) : **14 à 18 → 34 à 36 valeurs retenues par rapport**, sans changement

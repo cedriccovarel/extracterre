@@ -1,7 +1,7 @@
 {
-  "version": "2.3.21",
-  "generatedAt": "2026-10-08T12:43:18.613Z",
-  "count": 185,
+  "version": "2.4.0",
+  "generatedAt": "2026-10-19T08:10:11.444Z",
+  "count": 186,
   "fields": [
     {
       "position": 1,
@@ -3197,11 +3197,13 @@
     {
       "position": 122,
       "key": "cep_max",
-      "label": "Cep Max",
+      "label": "Cep Ref",
       "family": "Performance énergétique",
       "type": "number",
       "presence": false,
       "tags": [
+        "Cep Ref",
+        "Cepref",
         "Cep Max",
         "Cepmax",
         "Cep maximal",
@@ -4838,6 +4840,36 @@
           "RSENV / RSNV",
           "RSEE RE2020",
           "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 186,
+      "key": "ventilation_before",
+      "label": "Ventilation avant travaux",
+      "family": "Systèmes",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Ventilation avant travaux",
+        "ventilation existante",
+        "ventilation initiale",
+        "système de ventilation initiale"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Diagnostic",
+          "Entrée manuelle",
+          "DPE"
         ],
         "secondary": [],
         "forbidden": []

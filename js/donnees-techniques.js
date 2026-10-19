@@ -58,7 +58,12 @@ export function insulationName(v=''){
   if(/laine\s+de\s+verre|\(lv\)/.test(s)) return 'Laine de verre';
   // Gammes courantes nommées par leur marque dans les bibliothèques logicielles (Pléiades : « ECOROCK MONO », « EFIGREEN DUO+ »).
   if(/laine\s+de\s+roche|\(lr\)|\becorock\b|\brockwool\b|\brock(?:mur|plus|sol|comble|ciel|tect|facade)\b/.test(s)) return 'Laine de roche';
-  if(/\befigreen\b|\befisol\b|\butherm\b|\bpowerdeck\b/.test(s)) return 'PUR';
+  if(/\befigreen\b|\befisol\b|\butherm\b|\bpowerdeck\b|\benertherm\b|\beurotoit\b|\brecticel\b|\bthane\b|\bunimat\b|\btms\b|\bsoprema\s+efyos\b|\befyos\b/.test(s)) return 'PUR';
+  if(/\bfibrastyroc\b|\bthermostyr\b/.test(s)) return 'PSE';
+  if(/\bfibraroc\b|\bfibratherm\b|\bfibroc\b/.test(s)) return 'Laine de roche';
+  if(/\bstyrodur\b|\broofmate\b|\bfloormate\b|\bjackodur\b/.test(s)) return 'XPS';
+  if(/\bisover\b|\bisoconfort\b|\bgr\s?32\b|\bibr\b/.test(s)) return 'Laine de verre';
+  if(/\bflocage\b|fibres?\s+minerales?\s+projetees?/.test(s)) return 'Laine minérale';
   if(/polyurethane|\(pu\)|\bpur\b|\bpir\b/.test(s)) return 'PUR';
   if(/extrude|\bxps\b/.test(s)) return 'XPS';
   if(/polystyrene|\bpse\b/.test(s)) return 'PSE';

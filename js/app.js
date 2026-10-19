@@ -17,7 +17,7 @@ import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getR
 import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
 import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud,invokeLlmCloudFunction} from './cloud.js';
 
-function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'generic',expanded:true}; }
+function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'review',profile:'',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
 
 // v2.3 — une seule dropzone : la famille documentaire est détectée à la lecture, modifiable par fichier.
@@ -154,6 +154,7 @@ function syncProjectInput(){ const p=activeProject(); const el=$('#operationName
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const RESULT_VIEWS = Object.freeze({
+  review:{label:'Revue',groups:[]},
   generic:{label:'Données générales',groups:[
     {title:'Administration',families:['Administration']},
     {title:'Projet & programme',families:['Programme']},
@@ -163,7 +164,7 @@ const RESULT_VIEWS = Object.freeze({
   ]},
   thermal:{label:'Thermique',groups:[
     {title:'Confort d’été',keys:['dh','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
-    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']},
+    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
     {title:'Performance réglementaire',keys:['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']},
     {title:'Rénovation — avant / après',keys:['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
     {title:'Consommations par poste / énergie',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']}
@@ -180,11 +181,12 @@ const RESULT_VIEWS = Object.freeze({
   ]}
 });
 const RESULT_VIEW_ALIASES=Object.freeze({thermalNew:'thermal',thermalReno:'thermal',carbonNew:'carbon',carbonReno:'carbon'});
-function normalizedResultViewKey(key){ return RESULT_VIEW_ALIASES[key]||key||'generic'; }
+function normalizedResultViewKey(key){ return RESULT_VIEW_ALIASES[key]||key||'review'; }
 function currentResultView(){ const p=activeProject(); const key=normalizedResultViewKey(p.resultView); if(p.resultView!==key) p.resultView=key; return RESULT_VIEWS[key]||RESULT_VIEWS.generic; }
 function fieldsForResultGroup(group){
-  if(group.keys) return group.keys.map(k=>FIELD_MAP[k]).filter(Boolean);
-  const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&families.has(f.family));
+  const prof=projectProfile();
+  if(group.keys) return group.keys.map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,prof));
+  const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&families.has(f.family)&&fieldInProfile(f.key,prof));
 }
 function fieldsForCurrentResultView(){ return [...new Map(currentResultView().groups.flatMap(fieldsForResultGroup).map(f=>[f.key,f])).values()]; }
 function syncResultTabs(){ const key=normalizedResultViewKey(activeProject().resultView); $$('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.resultView===key)); }
@@ -1043,6 +1045,7 @@ function decorateProjectSections(wrap,fields){
 function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs(); syncStickyResultTabs();
   if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td class="overview-actions"><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button><button class="overview-delete" data-overview-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">Supprimer</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); $$('#summaryView [data-overview-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.overviewDelete)); renderResultWorkspaceControls(); return; }
+  if(r&&normalizedResultViewKey(activeProject().resultView)==='review'){ renderProfileSwitch(); renderReview(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
@@ -1073,6 +1076,148 @@ function renderSummary(){
 }
 
 
+// v2.4.0 — Profil d'opération (construction neuve / rénovation) et vue « Revue » : une fiche par bâtiment, lisible champ par
+// champ (valeur, état, source), filtrable (à compléter / à vérifier / renseigné), corrigeable sur place, avec les candidats
+// proposés et l'accès direct au document. Le profil masque les champs qui n'ont pas de sens pour l'opération ; l'export
+// Excel reste complet.
+const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_max','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
+  ...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility','ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028',
+  'bbio_level','cepnr_level','ic_construction_level','ic_energy_level','biosourced_2013','mention_ec','derogation_ec','effinergie_energy_carbon_level']);
+const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','built_before_1948','built_after_1948','renovation']);
+const RENO_DOC_TYPES=new Set([DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC]);
+const NEW_DOC_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV]);
+function autoProfile(p=activeProject()){
+  const types=(p?.docs||[]).map(d=>d.type); const reno=types.filter(t=>RENO_DOC_TYPES.has(t)).length, neuf=types.filter(t=>NEW_DOC_TYPES.has(t)).length;
+  if(reno||neuf) return reno>=neuf?'reno':'neuf';
+  const rows=p?.result?.rows||[]; return rows.some(r=>['ubat_before','cep_before','dpe_energy_before'].some(k=>r[k]!==undefined))?'reno':'neuf';
+}
+function projectProfile(p=activeProject()){ return p?.profile==='neuf'||p?.profile==='reno'?p.profile:autoProfile(p); }
+function fieldInProfile(key,profile=projectProfile()){ return profile==='reno'?!PROFILE_NEW_ONLY.has(key):!PROFILE_RENO_ONLY.has(key); }
+function setProjectProfile(value){ const p=activeProject(); p.profile=value==='auto'?'':value; renderSummary(); renderProfileSwitch(); scheduleWorkspaceCheckpoint('profil opération',80); }
+function renderProfileSwitch(){ const box=$('#profileSwitch'); if(!box) return; const p=activeProject(), cur=projectProfile(p), auto=!p.profile;
+  box.innerHTML=`<span class="profile-switch-label">Opération</span>${[['neuf','Neuf'],['reno','Rénovation']].map(([k,l])=>`<button type="button" class="profile-opt ${cur===k?'active':''}" data-profile="${k}" aria-pressed="${cur===k}">${l}</button>`).join('')}<button type="button" class="profile-auto ${auto?'active':''}" data-profile="auto" title="Détecté d’après les documents">${auto?'auto':'auto ↺'}</button>`;
+  box.querySelectorAll('[data-profile]').forEach(b=>b.onclick=()=>setProjectProfile(b.dataset.profile)); }
+
+// Groupes de la revue, dans l'ordre d'usage : technique d'abord, données administratives en fin de fiche.
+const REVIEW_GROUPS=Object.freeze([
+  {title:'Programme',keys:['housing_count','shab','housing_typologies','construction_year','built_before_1948','built_after_1948','department','structure']},
+  {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
+  {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
+  {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
+  {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
+  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
+  {title:'Consommations par poste',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']},
+  {title:'Carbone',optional:'reno',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy','ic_energy_max','ic_energy_max_2028','ic_components','ic_site','stock_c_per_m2','eges_total','eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total_max']},
+  {title:'Données administratives',admin:true,families:['Administration'],keys:['reference_name','reference_version','mentions','performance','selected_profile','specific_profile','renovation','mention_effinergie','mention_bbca','mention_biosourced_building']}
+]);
+let reviewState={building:'',filter:'todo',query:'',editing:'',openAdmin:false};
+const isBlank=v=>v===undefined||v===null||v===''||v==='non précisé';
+function reviewFields(group,profile){ const keys=[...(group.keys||[]),...(group.families?FIELD_DEFS.filter(f=>group.families.includes(f.family)).map(f=>f.key):[])]; return [...new Set(keys)].map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,profile)); }
+function reviewEntry(building,def){
+  const r=state.result, row=r?.rows?.find(x=>x.building===building); const v=row?.[def.key];
+  const src=r?.finals?.find(o=>o.field===def.key&&o.building===building)||r?.finals?.find(o=>o.field===def.key&&o.building==='Bâtiment unique');
+  const manual=Object.prototype.hasOwnProperty.call(state.manualValues||{},`${building}|${def.key}`);
+  const cands=visibleUncertain().filter(o=>o.field===def.key&&(o.building===building||o.building==='Bâtiment unique')).sort((a,b)=>b.confidence-a.confidence);
+  if(isBlank(v)&&!(reviewState.dismissed||[]).includes(`${building}|${def.key}`)){ const d=derivedProposal(row,def.key); if(d) cands.unshift({...d,building}); }
+  const status=!isBlank(v)?(manual?'manual':'ok'):cands.length?'review':'missing';
+  return {def,v,src,manual,cands,status};
+}
+// Propositions calculées depuis d'autres champs du même bâtiment (jamais retenues sans validation).
+function derivedProposal(row,key){
+  if(!row) return null; const y=Number(row.construction_year); const mk=(value,why)=>({synthetic:true,field:key,value,fileName:why,page:'',confidence:1,docId:'',excerpt:why});
+  if(key==='built_before_1948'&&y>1000) return mk(y<1948?'Oui':'Non',`Déduit de l’année de construction (${y})`);
+  if(key==='built_after_1948'&&y>1000) return mk(y>=1948?'Oui':'Non',`Déduit de l’année de construction (${y})`);
+  if(key==='cep_gain'&&Number(row.cep_max)>0&&Number.isFinite(Number(row.cep))) return mk(Math.round((row.cep_max-row.cep)/row.cep_max*1000)/10,`(Cep Ref − Cep) / Cep Ref = (${row.cep_max} − ${row.cep}) / ${row.cep_max}`);
+  if(key==='renovation'&&(row.cep_before!==undefined||row.ubat_before!==undefined)) return mk('Oui','Étude avec état initial (Cep / Ubat avant travaux)');
+  return null;
+}
+function reviewBuildings(){ return (state.result?.rows||[]).map(r=>r.building); }
+function reviewCompletion(building,profile){ const defs=REVIEW_GROUPS.filter(g=>!g.admin&&g.optional!==profile).flatMap(g=>reviewFields(g,profile)); const filled=defs.filter(d=>!isBlank(state.result?.rows?.find(x=>x.building===building)?.[d.key])).length; return {filled,total:defs.length,pct:defs.length?Math.round(filled/defs.length*100):0}; }
+function setManualValue(building,field,raw,meta=null){
+  const def=FIELD_MAP[field]; if(!def) return false; let value=String(raw??'').trim();
+  if(def.type==='number'){ if(value===''){ return false; } const n=parseFrNumber(value); if(n===null){ toast(`« ${value} » n’est pas un nombre valable pour ${def.label}.`,'error'); return false; } value=n; }
+  else if(field==='window_glazing') value=normalizeGlazingType(value)||value;
+  if(value==='') return false;
+  const key=`${building}|${field}`, previous=state.result?.rows?.find(r=>r.building===building)?.[field];
+  state.manualValues[key]=value; if(meta) state.manualSources[key]=meta; else delete state.manualSources[key];
+  learn('manual_override',{building,field,label:def.label,previousValue:previous??null,newValue:value,source:meta?.method||'review_inline_edit'},activeProject());
+  applyManualValues(); return true;
+}
+function acceptCandidate(c){ if(c.synthetic){ setManualValue(c.building==='Bâtiment unique'?reviewState.building:(c.building||reviewState.building),c.field,c.value,{docId:'',fileName:'Valeur déduite',page:'',excerpt:c.excerpt,method:'manual:derived-validated',provenanceNote:c.excerpt}); return; } const key=`${c.building==='Bâtiment unique'?reviewState.building:c.building}|${c.field}`; state.manualValues[key]=c.value;
+  state.manualSources[key]={docId:c.docId,fileName:c.fileName,page:c.page,excerpt:c.excerpt,method:'manual:uncertain-candidate-validated',provenanceNote:`Candidat ${Math.round(c.confidence*100)} % validé dans la revue.`};
+  learn('uncertain_decision',{decision:'accept',building:c.building,field:c.field,label:FIELD_MAP[c.field]?.label||c.field,value:c.value,confidence:c.confidence,source:{fileName:c.fileName,page:c.page,method:c.method||'',excerpt:c.excerpt||''}},activeProject());
+  applyManualValues(); }
+function rejectCandidate(c){ if(c.synthetic){ reviewState.dismissed=[...new Set([...(reviewState.dismissed||[]),`${reviewState.building}|${c.field}`])]; return; } state.uncertainRejectedKeys=[...new Set([...(state.uncertainRejectedKeys||[]),uncertainKey(c)])]; learn('uncertain_decision',{decision:'reject',building:c.building,field:c.field,value:c.value,confidence:c.confidence,source:{fileName:c.fileName,page:c.page}},activeProject()); }
+function copyToOtherBuildings(building,field){
+  const row=state.result?.rows?.find(r=>r.building===building); const v=row?.[field]; if(isBlank(v)) return 0; let n=0;
+  for(const b of reviewBuildings()) if(b!==building&&isBlank(state.result.rows.find(r=>r.building===b)?.[field])){ state.manualValues[`${b}|${field}`]=v; state.manualSources[`${b}|${field}`]={docId:'',fileName:'Copie entre bâtiments',page:'',excerpt:`Valeur reprise de ${building}`,method:'manual:copy-building',provenanceNote:`Copié depuis ${building}.`}; n++; }
+  if(n){ learn('manual_copy_between_buildings',{field,from:building,count:n,value:v},activeProject()); applyManualValues(); } return n; }
+function reviewAfterChange(msg){ renderReview(); renderOccurrences(); updateUxMirrors(); scheduleWorkspaceCheckpoint('revue',80); if(msg) toast(msg,'success'); }
+
+function renderReview(){
+  const wrap=$('#summaryView'); const r=state.result; if(!wrap||!r) return;
+  const profile=projectProfile(); const buildings=reviewBuildings();
+  if(!buildings.includes(reviewState.building)) reviewState.building=buildings[0]||'';
+  const B=reviewState.building; const q=normLower(reviewState.query||'');
+  const groups=REVIEW_GROUPS.map(g=>({...g,entries:reviewFields(g,profile).map(d=>reviewEntry(B,d))})).filter(g=>g.entries.length);
+  const all=groups.filter(g=>!g.admin&&g.optional!==profile).flatMap(g=>g.entries); const count=s=>all.filter(e=>s.includes(e.status)).length;
+  const pass=e=>(reviewState.filter==='all'||(reviewState.filter==='todo'&&['missing','review'].includes(e.status))||(reviewState.filter==='review'&&e.status==='review')||(reviewState.filter==='done'&&['ok','manual'].includes(e.status)))&&(!q||normLower(e.def.label).includes(q)||normLower(formatValue(e.v)).includes(q));
+  const pill={ok:'Retenu',manual:'Saisi',review:'À vérifier',missing:'À compléter'};
+  const srcText=e=>e.manual?(state.manualSources?.[`${B}|${e.def.key}`]?.fileName||'Saisie manuelle'):e.src?`${e.src.fileName}${e.src.page?` · p. ${e.src.page}`:''}`:'';
+  const conf=e=>e.src&&!e.manual&&Number.isFinite(e.src.confidence)?`<span class="rv-conf ${e.src.confidence>=.9?'high':'mid'}" title="Confiance">${Math.round(e.src.confidence*100)} %</span>`:'';
+  const unit=d=>d.unit||(/thickness/.test(d.key)?'mm':/_r$/.test(d.key)?'m².K/W':/^ubat/.test(d.key)?'W/m².K':/^cep(?!_gain)/.test(d.key)?'kWhEP/m².an':/gain/.test(d.key)?'%':/^tic/.test(d.key)?'°C':d.key==='shab'?'m²':'');
+  const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
+    const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}`);
+    const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
+    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value">${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
+      <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
+  const tabs=buildings.map(b=>{ const c=reviewCompletion(b,profile); return `<button type="button" class="rv-bld ${b===B?'active':''}" data-rv-building="${escapeHtml(b)}"><span>${escapeHtml(b.replace(/^Bâtiment\s+/,''))}</span><span class="rv-bld-bar" style="--p:${c.pct}%"></span><small>${c.filled}/${c.total}</small></button>`; }).join('');
+  const comp=reviewCompletion(B,profile);
+  const groupHtml=groups.map(g=>{ const shown=g.entries.filter(pass); if(!shown.length) return ''; const filled=g.entries.filter(e=>['ok','manual'].includes(e.status)).length;
+    const body=shown.map(rowHtml).join(''); return g.admin||g.optional===profile?`<details class="rv-group rv-admin" data-rv-group="${escapeHtml(g.title)}" ${(reviewState.open||{})[g.title]||q?'open':''}><summary><h4>${g.title}</h4><span>${filled}/${g.entries.length}</span></summary>${body}</details>`:`<section class="rv-group"><header><h4>${g.title}</h4><span>${filled}/${g.entries.length}</span></header>${body}</section>`; }).join('');
+  wrap.innerHTML=`<div class="rv">
+    <div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${buildings.length} bâtiment(s) · profil ${profile==='reno'?'rénovation':'construction neuve'}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+    <div class="rv-buildings" role="tablist" aria-label="Bâtiments">${tabs}</div>
+    <div class="rv-toolbar">
+      <div class="rv-summary"><strong>${escapeHtml(B)}</strong><span>${comp.filled} champ${comp.filled>1?'s':''} renseigné${comp.filled>1?'s':''} sur ${comp.total}</span></div>
+      <div class="rv-filters" role="group" aria-label="Filtrer les champs">${[['todo',`À compléter · ${count(['missing','review'])}`],['review',`À vérifier · ${count(['review'])}`],['done',`Renseignés · ${count(['ok','manual'])}`],['all','Tout']].map(([k,l])=>`<button type="button" class="rv-filter ${reviewState.filter===k?'active':''}" data-rv-filter="${k}">${l}</button>`).join('')}</div>
+      <input id="rvSearch" class="rv-search" type="search" placeholder="Chercher un champ ou une valeur" value="${escapeHtml(reviewState.query||'')}" aria-label="Chercher un champ">
+      <button type="button" class="btn secondary rv-manual" id="rvManualBtn" title="Ouvrir le document et renseigner les champs manquants un par un">Compléter depuis les documents</button>
+    </div>
+    <div class="rv-groups">${groupHtml||`<div class="rv-done"><strong>${reviewState.filter==='todo'?'Tout est renseigné pour ce bâtiment.':'Aucun champ ne correspond.'}</strong><span>${reviewState.filter==='todo'?'Passez au bâtiment suivant ou affichez « Tout » pour relire.':'Changez de filtre ou de recherche.'}</span></div>`}</div>
+    <p class="rv-keys">Clavier : ↑ ↓ pour changer de champ · Entrée pour saisir · D pour le document · V pour valider la proposition · Échap pour annuler.</p>
+  </div>`;
+  const find=k=>all.concat(groups.filter(g=>g.admin).flatMap(g=>g.entries)).find(e=>e.def.key===k);
+  $$('#summaryView [data-rv-building]').forEach(b=>b.onclick=()=>{ reviewState.building=b.dataset.rvBuilding; reviewState.editing=''; renderReview(); });
+  $$('#summaryView [data-rv-filter]').forEach(b=>b.onclick=()=>{ reviewState.filter=b.dataset.rvFilter; renderReview(); });
+  const s=$('#rvSearch'); if(s){ s.oninput=()=>{ reviewState.query=s.value; const pos=s.selectionStart; renderReview(); const n=$('#rvSearch'); n.focus(); n.setSelectionRange(pos,pos); }; }
+  $('#rvManualBtn').onclick=()=>openManualAnalysisFor(B,'');
+  $$('#summaryView [data-rv-edit]').forEach(b=>b.onclick=()=>{ reviewState.editing=b.dataset.rvEdit; renderReview(); setTimeout(()=>{ const i=$(`#summaryView [data-rv-input="${reviewState.editing}"]`); i?.focus(); i?.select(); },0); });
+  $$('#summaryView [data-rv-cancel]').forEach(b=>b.onclick=()=>{ reviewState.editing=''; renderReview(); });
+  const save=k=>{ const i=$(`#summaryView [data-rv-input="${k}"]`); if(!i) return; if(setManualValue(B,k,i.value,{docId:'',fileName:'Saisie manuelle',page:'',excerpt:i.value,method:'manual:review-entry',provenanceNote:'Saisi dans la revue'})){ reviewState.editing=''; reviewAfterChange(`${FIELD_MAP[k].label} enregistré pour ${B}.`); focusReviewRow(k,1); } };
+  $$('#summaryView [data-rv-save]').forEach(b=>b.onclick=()=>save(b.dataset.rvSave));
+  $$('#summaryView [data-rv-input]').forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(i.dataset.rvInput); } else if(e.key==='Escape'){ e.preventDefault(); reviewState.editing=''; renderReview(); focusReviewRow(i.dataset.rvInput,0); } });
+  $$('#summaryView [data-rv-doc]').forEach(b=>b.onclick=()=>{ const e=find(b.dataset.rvDoc); openManualAnalysisFor(B,b.dataset.rvDoc,e?.src?.docId||e?.cands?.[0]?.docId||'',e?.src?.page||e?.cands?.[0]?.page||null); });
+  $$('#summaryView [data-rv-copy]').forEach(b=>b.onclick=()=>{ const n=copyToOtherBuildings(B,b.dataset.rvCopy); if(n) reviewAfterChange(`${FIELD_MAP[b.dataset.rvCopy].label} recopié dans ${n} bâtiment${n>1?'s':''}.`); else toast('Les autres bâtiments ont déjà une valeur pour ce champ.','info'); });
+  $$('#summaryView [data-rv-accept]').forEach(b=>b.onclick=()=>{ const c=find(b.dataset.rvAccept)?.cands?.[Number(b.dataset.i)]; if(c){ acceptCandidate({...c,building:c.building==='Bâtiment unique'?B:c.building}); reviewAfterChange(`${FIELD_MAP[c.field].label} validé : ${formatValue(c.value)}.`); focusReviewRow(c.field,1); } });
+  $$('#summaryView [data-rv-reject]').forEach(b=>b.onclick=()=>{ const c=find(b.dataset.rvReject)?.cands?.[Number(b.dataset.i)]; if(c){ rejectCandidate(c); reviewAfterChange('Proposition écartée.'); focusReviewRow(c.field,0); } });
+  $$('#summaryView [data-rv-goto]').forEach(b=>b.onclick=()=>{ const c=find(b.dataset.rvGoto)?.cands?.[Number(b.dataset.i)]; if(c) openManualAnalysisFor(B,c.field,c.docId,c.page); });
+  $$('#summaryView .rv-admin').forEach(d=>d.ontoggle=()=>{ reviewState.open={...(reviewState.open||{}),[d.dataset.rvGroup]:d.open}; });
+  $$('#summaryView .rv-row').forEach(row=>row.onkeydown=e=>{ if(e.target!==row) return; const k=row.dataset.rvField;
+    if(e.key==='ArrowDown'||e.key==='j'){ e.preventDefault(); focusReviewRow(k,1); } else if(e.key==='ArrowUp'||e.key==='k'){ e.preventDefault(); focusReviewRow(k,-1); }
+    else if(e.key==='Enter'){ e.preventDefault(); row.querySelector('[data-rv-edit]')?.click(); } else if(e.key==='d'||e.key==='D'){ e.preventDefault(); row.querySelector('[data-rv-doc]')?.click(); }
+    else if(e.key==='v'||e.key==='V'){ e.preventDefault(); row.querySelector('[data-rv-accept]')?.click(); } });
+  const back=$('#detailBackOverview'); if(back) back.onclick=showProjectsOverview; renderResultWorkspaceControls();
+}
+function focusReviewRow(field,delta){ setTimeout(()=>{ const rows=$$('#summaryView .rv-row'); let i=rows.findIndex(r=>r.dataset.rvField===field); if(i<0) i=delta>0?-1:0; const t=rows[Math.max(0,Math.min(rows.length-1,i+delta))]; t?.focus(); },0); }
+// Analyse manuelle ciblée : bâtiment et champ présélectionnés, document et page de la source (ou du candidat) ouverts.
+function openManualAnalysisFor(building,field,docId='',page=null){
+  openManualAnalysisDialog(); if(!$('#betaErrorDialog')?.open) return;
+  manualAnalysisState.building=building||manualAnalysisState.building; manualAnalysisState.filter='todo';
+  if(field){ const sec=Object.entries(MANUAL_ANALYSIS_SECTIONS).find(([,c])=>c.families.has(FIELD_MAP[field]?.family))?.[0]; if(sec) manualAnalysisState.section=sec; manualAnalysisState.field=field; }
+  else { const next=manualAnalysisNextField(''); if(next){ manualAnalysisState.section=next.section; manualAnalysisState.field=next.field; } }
+  renderManualAnalysisSidebar(); if(docId) syncBetaLearningDocument(docId,page); }
+
 let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
 
@@ -1082,7 +1227,7 @@ const MANUAL_ANALYSIS_SECTIONS={
   carbon:{label:'Carbone',families:new Set(['Carbone'])},
   envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
 };
-let manualAnalysisState={building:'',section:'general',field:''};
+let manualAnalysisState={building:'',section:'general',field:'',filter:'todo',chain:true};
 function manualAnalysisMode(){ return $('#betaErrorDialog')?.dataset.mode==='manual'; }
 function manualAnalysisBuildings(){
   const fromResult=(state.result?.rows||[]).map(r=>r.building).filter(Boolean);
@@ -1090,9 +1235,21 @@ function manualAnalysisBuildings(){
   const fromDocs=state.docs.flatMap(d=>d.buildings?.names||[]).filter(Boolean);
   return unique(fromDocs.length?fromDocs:['Bâtiment unique']);
 }
-function manualAnalysisFields(section=manualAnalysisState.section){
-  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general;
-  return FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family));
+function manualAnalysisFields(section=manualAnalysisState.section,{all=false}={}){
+  const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general; const prof=projectProfile();
+  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family)&&fieldInProfile(f.key,prof));
+  // v2.4.0 — « À compléter » : champs vides ou dont la valeur est seulement proposée (à vérifier), le champ actif restant visible.
+  if(all||manualAnalysisState.filter==='all') return defs;
+  return defs.filter(f=>f.key===manualAnalysisState.field||manualAnalysisNeeds(manualAnalysisState.building,f.key));
+}
+function manualAnalysisNeeds(building,field){ return isBlank(manualAnalysisCurrentValue(building,field)); }
+function manualAnalysisCandidates(building,field){ return visibleUncertain().filter(o=>o.field===field&&(o.building===building||o.building==='Bâtiment unique')).sort((a,b)=>b.confidence-a.confidence); }
+// Champ suivant à compléter (même bâtiment), en parcourant les familles dans l'ordre d'affichage : thermique et enveloppe d'abord.
+function manualAnalysisNextField(current=manualAnalysisState.field){
+  const order=['thermal','envelope','general','carbon']; const start=Math.max(0,order.indexOf(manualAnalysisState.section)); const seq=[...order.slice(start),...order.slice(0,start)];
+  let passed=!current;
+  for(const sec of seq){ for(const f of manualAnalysisFields(sec,{all:true})){ if(f.key===current){ passed=true; continue; } if(passed&&manualAnalysisNeeds(manualAnalysisState.building,f.key)) return {section:sec,field:f.key}; } }
+  return null;
 }
 function manualAnalysisCurrentValue(building,field){
   const key=`${building}|${field}`;
@@ -1112,7 +1269,14 @@ function renderManualAnalysisSidebar(){
   if(buildingCount)buildingCount.textContent=`${buildings.length} bâtiment${buildings.length>1?'s':''}`;
   if(bt)bt.innerHTML=buildings.map((b,i)=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}" title="${escapeHtml(b)}">${escapeHtml(b||`Bâtiment ${i+1}`)}</button>`).join('');
   if(st)st.innerHTML=Object.entries(MANUAL_ANALYSIS_SECTIONS).map(([key,cfg])=>`<button type="button" class="manual-section-tab ${key===manualAnalysisState.section?'active':''}" data-section="${key}">${escapeHtml(cfg.label)}</button>`).join('');
-  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=v!==undefined&&v!==null&&v!=='';return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):'À renseigner'}</strong></button>`;}).join('')||'<div class="empty-small">Aucun champ dans cette famille.</div>';
+  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=!isBlank(v),cand=!filled&&manualAnalysisCandidates(manualAnalysisState.building,f.key)[0];return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''} ${cand?'has-cand':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):cand?`proposé : ${escapeHtml(formatValue(cand.value))}`:'À renseigner'}</strong></button>`;}).join('')||`<div class="empty-small">${manualAnalysisState.filter==='todo'?'Tout est renseigné dans cette famille.':'Aucun champ dans cette famille.'}</div>`;
+  const bar=$('#manualFilterBar'); if(bar){ const todo=manualAnalysisFields(manualAnalysisState.section,{all:true}).filter(f=>manualAnalysisNeeds(manualAnalysisState.building,f.key)).length;
+    bar.innerHTML=`<div class="manual-filter-chips" role="group" aria-label="Champs affichés"><button type="button" class="manual-filter ${manualAnalysisState.filter==='todo'?'active':''}" data-mfilter="todo">À compléter dans cette famille · ${todo}</button><button type="button" class="manual-filter ${manualAnalysisState.filter==='all'?'active':''}" data-mfilter="all">Tous les champs</button></div><label class="manual-chain"><input type="checkbox" id="manualChain" ${manualAnalysisState.chain?'checked':''}> Passer au champ suivant après chaque saisie</label>`;
+    bar.querySelectorAll('[data-mfilter]').forEach(b=>b.onclick=()=>{ manualAnalysisState.filter=b.dataset.mfilter; renderManualAnalysisSidebar(); }); const ch=$('#manualChain'); if(ch) ch.onchange=()=>{ manualAnalysisState.chain=ch.checked; }; }
+  const cbox=$('#manualCandidates'); if(cbox){ const cs=manualAnalysisState.field&&isBlank(manualAnalysisCurrentValue(manualAnalysisState.building,manualAnalysisState.field))?manualAnalysisCandidates(manualAnalysisState.building,manualAnalysisState.field).slice(0,3):[];
+    cbox.hidden=!cs.length; cbox.innerHTML=cs.length?`<span class="manual-cand-title">Proposé par l’analyse</span>${cs.map((c,i)=>`<div class="manual-cand"><strong>${escapeHtml(formatValue(c.value))}</strong><small>${escapeHtml(c.fileName)} · p. ${c.page} · ${Math.round(c.confidence*100)} %</small><button type="button" class="btn light" data-mcand-use="${i}">Utiliser</button><button type="button" class="btn light" data-mcand-go="${i}">Voir la page</button></div>`).join('')}`:'';
+    cbox.querySelectorAll('[data-mcand-use]').forEach(b=>b.onclick=()=>{ const c=cs[Number(b.dataset.mcandUse)]; if(!c) return; acceptCandidate({...c,building:manualAnalysisState.building}); renderSummary(); manualAnalysisAdvance(`✓ ${FIELD_MAP[c.field]?.label} = ${formatValue(c.value)}`); });
+    cbox.querySelectorAll('[data-mcand-go]').forEach(b=>b.onclick=()=>{ const c=cs[Number(b.dataset.mcandGo)]; if(c) syncBetaLearningDocument(c.docId,c.page); }); }
   const def=FIELD_MAP[manualAnalysisState.field];
   if(target)target.innerHTML=def?`<span>Cible active</span><strong>${escapeHtml(manualAnalysisState.building)} · ${escapeHtml(def.label)}</strong><small>Surlignez la valeur à gauche, cliquez une cellule Excel ou saisissez-la manuellement ci-dessous.</small>`:'<span>Cible active</span><strong>Sélectionnez une donnée à renseigner</strong><small>Puis utilisez le document ou la saisie manuelle.</small>';
   if(direct){
@@ -1124,6 +1288,8 @@ function renderManualAnalysisSidebar(){
   if(directApply)directApply.disabled=!def;
   bt?.querySelectorAll('.manual-building-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.building=b.dataset.building||'Bâtiment unique';manualAnalysisState.field='';renderManualAnalysisSidebar();});
   st?.querySelectorAll('.manual-section-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.section=b.dataset.section||'thermal';manualAnalysisState.field='';renderManualAnalysisSidebar();});
+  // ↑ ↓ : champ précédent / suivant de la liste.
+  fb?.querySelectorAll('.manual-field-btn').forEach((b,i,all)=>b.onkeydown=e=>{ if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return; e.preventDefault(); const t=all[i+(e.key==='ArrowDown'?1:-1)]; if(t){ t.click(); setTimeout(()=>$(`#manualFieldButtons [data-field="${t.dataset.field}"]`)?.focus(),0); } });
   fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document ou saisissez directement la bonne valeur.`:'';feedback.className='manual-analysis-feedback';}setTimeout(()=>$('#manualDirectValue')?.select?.(),0);});
 }
 function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
@@ -1167,8 +1333,14 @@ function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
   scheduleWorkspaceCheckpoint(manualEntry?'analyse manuelle saisie directe':'analyse manuelle documentaire',80);
   renderManualAnalysisSidebar();
   renderSummary(); renderOccurrences();
-  if(feedback){feedback.textContent=`✓ ${def.label} = ${formatValue(value)} · ${building}${manualEntry?' · saisie manuelle':''}`;feedback.className='manual-analysis-feedback ok';}
+  manualAnalysisAdvance(`✓ ${def.label} = ${formatValue(value)} · ${building}${manualEntry?' · saisie manuelle':''}`);
   return true;
+}
+function manualAnalysisAdvance(message){
+  const feedback=$('#manualAnalysisFeedback'); let extra='';
+  if(manualAnalysisState.chain){ const next=manualAnalysisNextField(); if(next){ manualAnalysisState.section=next.section; manualAnalysisState.field=next.field; extra=` · suivant : ${FIELD_MAP[next.field]?.label}`; } else extra=' · tous les champs de ce bâtiment sont renseignés'; }
+  renderManualAnalysisSidebar(); if(feedback){ feedback.textContent=message+extra; feedback.className='manual-analysis-feedback ok'; }
+  setTimeout(()=>{ const d=$('#manualDirectValue'); if(d&&!d.disabled){ d.focus(); d.select?.(); } },0);
 }
 function manualAnalysisAssignSelection(selectedText=betaLearningSelection?.selectedText||''){
   return manualAnalysisStoreValue(selectedText,{location:betaLearningSelection,manualEntry:false});
@@ -1188,7 +1360,7 @@ function openManualAnalysisDialog(){
   $('#betaErrorIntro').textContent='Choisissez un bâtiment et un champ à droite, puis surlignez la valeur dans le PDF ou cliquez une cellule du tableur. La donnée est affectée immédiatement.';
   const correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
   if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
-  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'general',field:''};
+  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'thermal',field:'',filter:manualAnalysisState.filter||'todo',chain:manualAnalysisState.chain!==false};
   const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
   const direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
   if(direct){direct.value='';direct.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();manualAnalysisApplyDirectValue();}};}

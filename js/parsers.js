@@ -13,7 +13,13 @@ import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns,isU48WinThcexRepo
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
-import {isRtexThermalNotice,parseRtexThermalNotice,isPleiadesRtexReport,parsePleiadesRtexReport,isInsulationMarkupPlan,parseInsulationMarkupPlan,isPhasedThermalNotice,parsePhasedThermalNotice,isClimaWinRtexSynthesis,parseClimaWinRtexSynthesis} from './renovation-thermique.js';
+import {isRtexThermalNotice,parseRtexThermalNotice,isInsulationMarkupPlan,parseInsulationMarkupPlan,isPhasedThermalNotice,parsePhasedThermalNotice,isClimaWinRtexSynthesis,parseClimaWinRtexSynthesis} from './renovation-thermique.js';
+import {isPleiadesRtexReport,parsePleiadesRtexReport} from './pleiades-rtex.js';
+import {isClimaWinRtexStudy,isClimaWinRtexInput,parseClimaWinRenovation} from './climawin-etude.js';
+import {isRenovationNotice,parseRenovationNotice} from './notice-renovation.js';
+import {isU48WinRtexReport,parseU48WinRtex} from './u48win-rtex.js';
+import {isDpe2021,parseDpe2021,isDpeRecapTable,parseDpeRecapTable} from './dpe-3cl.js';
+import {isPrestaterreBooklet,parsePrestaterreBooklet} from './livret-prestaterre.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
 import {isCstbRseeFiche,parseCstbRseeFiche,cstbBuildingContext,isStdReport,parseStdReport} from './rset-cstb.js';
@@ -993,8 +999,8 @@ function parseStructuredRenovationThermal(doc){
           add(page,line,'ecs',mode,'bao:ecs-storage-after',.999,'',{building,excerpt:ctx,provenanceNote:note?`Production ECS : ${note}.`:'Type de stockage explicitement indiqué.'});
         }
       }
-      if((m=raw.match(/systeme\s+de\s+ventilation\s*:\s*(.+)$/i))&&phase==='after'){
-        const vent=findFirstMatch(m[1],HVAC.ventilation)||normalizeText(m[1]); add(page,line,'ventilation',vent,'bao:ventilation-after',.999,'',{building,excerpt:ctx});
+      if((m=raw.match(/systeme\s+de\s+ventilation\s*:\s*(.+)$/i))&&(phase==='after'||phase==='before')){
+        const vent=findFirstMatch(m[1],HVAC.ventilation)||normalizeText(m[1]); add(page,line,phase==='after'?'ventilation':'ventilation_before',vent,`bao:ventilation-${phase}`,.999,'',{building,excerpt:ctx});
       }
 
       // Enveloppe : on privilégie l'état final quand le rapport est une rénovation.
@@ -1232,7 +1238,7 @@ function parseSystems(doc){
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
     if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsCtx,HVAC.ecs), vec=findFirstMatch(ecsCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
 
-    let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent && ventPhase!=='before') push(out,occ(doc,page,line,'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
+    let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
     if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|pas\s+de\s+climatisation\s+active|absence\s+de\s+climatisation/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
@@ -1975,9 +1981,16 @@ function parseBbcaRenovationDocument(doc){
 // Le moteur générique ne complète que les données administratives (ses lectures « Cep avant » de ces documents
 // confondaient seuils, gains et numéros de page).
 function parseRenovationThermalDocument(doc,kind){
-  const fdoc={...doc,type:doc.type||(kind==='plan'?DOC_TYPES.THERMAL:DOC_TYPES.RT_EXISTING)};
-  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='phases'?parsePhasedThermalNotice(fdoc,occ,canonicalBuilding):kind==='climawin-rtex'?parseClimaWinRtexSynthesis(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
-  const dedicated=annotateSemanticHierarchy(fdoc,ded.filter(Boolean)).map(o=>({...o,specializedFamily:`renovation-${kind}`}));
+  const fdoc={...doc,type:(['dpe','dpe-recap'].includes(kind)&&(!doc.type||doc.type===DOC_TYPES.UNKNOWN))?DOC_TYPES.DPE:doc.type||(kind==='plan'?DOC_TYPES.THERMAL:DOC_TYPES.RT_EXISTING)};
+  const ded=kind==='notice'?parseRtexThermalNotice(fdoc,occ,canonicalBuilding):kind==='phases'?parsePhasedThermalNotice(fdoc,occ,canonicalBuilding):kind==='climawin-rtex'?parseClimaWinRtexSynthesis(fdoc,occ,canonicalBuilding):kind==='pleiades'?parsePleiadesRtexReport(fdoc,occ,canonicalBuilding):kind==='climawin-etude'?parseClimaWinRenovation(fdoc,occ,canonicalBuilding):kind==='notice-reno'?parseRenovationNotice(fdoc,occ,canonicalBuilding):kind==='u48win'?parseU48WinRtex(fdoc,occ,canonicalBuilding):kind==='dpe'?parseDpe2021(fdoc,occ,canonicalBuilding):kind==='dpe-recap'?parseDpeRecapTable(fdoc,occ,canonicalBuilding):parseInsulationMarkupPlan(fdoc,occ);
+  let dedicated=annotateSemanticHierarchy(fdoc,ded.filter(Boolean)).map(o=>({...o,specializedFamily:`renovation-${kind}`}));
+  // v2.4.0 — notices rédigées (et note de BE en tête d'un rapport de saisie ClimaWin) : la boîte à outils des notices de
+  // rénovation complète les seuls couples bâtiment / champ que le parseur dédié n'a pas lus.
+  if(['phases','notice','climawin-etude','u48win'].includes(kind)&&!(kind==='climawin-etude'&&isClimaWinRtexStudy(doc))){
+    const got=new Set(dedicated.map(o=>`${o.building}|${o.field}`)); const fieldsGot=new Set(dedicated.map(o=>o.field));
+    const extra=parseRenovationNotice(fdoc,occ,canonicalBuilding).filter(Boolean).filter(o=>!got.has(`${o.building}|${o.field}`)&&!(o.building==='Bâtiment unique'&&fieldsGot.has(o.field)));
+    dedicated=[...dedicated,...annotateSemanticHierarchy(fdoc,extra).map(o=>({...o,specializedFamily:'renovation-notice-complement'}))];
+  }
   const have=new Set(dedicated.map(o=>o.field)); const admin=new Set([...ADMIN_FIELDS,'operation_name','owner_company','department']);
   const generic=parseDocument({...doc,__skipDedicated:true}).filter(o=>admin.has(o.field)&&!have.has(o.field)).map(o=>({...o,building:'Bâtiment unique'}));
   return [...dedicated,...generic];
@@ -2027,12 +2040,19 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
   // v2.3.20 — rapport U48Win (Th-C-E ex) : lu par ses motifs propres. Les heuristiques à fenêtre glissante et la notice
   // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
+  // v2.4.0 — livret d'opération Prestaterre : page de garde seulement (les remarques d'évaluation citent des CCTP).
+  if(!doc.__skipDedicated&&isPrestaterreBooklet(doc)) return annotateSemanticHierarchy(doc,parsePrestaterreBooklet(doc,occ)).map(o=>({...o,specializedFamily:'livret-prestaterre'}));
+  if(!doc.__skipDedicated&&isU48WinRtexReport(doc)) return parseRenovationThermalDocument(doc,'u48win');
+  if(!doc.__skipDedicated&&isDpe2021(doc)) return parseRenovationThermalDocument(doc,'dpe');
+  if(!doc.__skipDedicated&&isDpeRecapTable(doc)) return parseRenovationThermalDocument(doc,'dpe-recap');
   if(!doc.__skipDedicated&&isU48WinThcexReport(doc)) return parseU48WinDocument(doc);
   if(!doc.__skipDedicated&&isRtexThermalNotice(doc)) return parseRenovationThermalDocument(doc,'notice');
   if(!doc.__skipDedicated&&isPleiadesRtexReport(doc)) return parseRenovationThermalDocument(doc,'pleiades');
+  if(!doc.__skipDedicated&&(isClimaWinRtexStudy(doc)||isClimaWinRtexInput(doc))) return parseRenovationThermalDocument(doc,'climawin-etude');
   if(!doc.__skipDedicated&&isInsulationMarkupPlan(doc)) return parseRenovationThermalDocument(doc,'plan');
   if(!doc.__skipDedicated&&isClimaWinRtexSynthesis(doc)) return parseRenovationThermalDocument(doc,'climawin-rtex');
   if(!doc.__skipDedicated&&isPhasedThermalNotice(doc)) return parseRenovationThermalDocument(doc,'phases');
+  if(!doc.__skipDedicated&&doc.type===DOC_TYPES.RT_EXISTING&&isRenovationNotice(doc)&&!isClimaWinInputReport(doc)&&!isClimaWinSynthesis(doc)&&!isPleiadesThermalOutput(doc)&&!isCstbRseeFiche(doc)) return parseRenovationThermalDocument(doc,'notice-reno');
   if(isClimaWinInputReport(doc)) return [];
   if(isClimaWinSynthesis(doc)) return parseClimaWinDocument(doc);
   if(isBeActRecap(doc)) return parseBeActRecapDocument(doc);

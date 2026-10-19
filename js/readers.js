@@ -189,6 +189,8 @@ export function shouldOcrPdfPage(text='',items=[],mode='auto',ctx={}){
   // graphique, séparation de chapitre) ne doit plus déclencher Tesseract à elle seule.
   if(criticalTableNeedsOcr(text)) return true;
   if(q.chars===0 || (items?.length||0)===0) return true;
+  // v2.4.0 — police sans table Unicode (texte « chiffré ») : illisible, même si les caractères ont l'air propres.
+  if(q.garbled) return true;
   const cleanShortPage=q.chars>=24 && q.alnumRatio>=0.62 && q.weirdRatio<=0.012 && q.fragmentRatio<=0.12;
   if(cleanShortPage) return false;
   // OCR automatique seulement si la couche texte est réellement pauvre ou corrompue.

@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION,'2.3.21','version');
+eq(APP_VERSION,'2.4.0','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const mk=(name,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=P(ls); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   const read={kind:'pdf',pages:ps,text:ps.map(p=>p.text).join('\n\f\n'),pageCount:ps.length};
@@ -36,7 +36,7 @@ const notice=mk('Les_Acacias_Notice_thermique.pdf',[
 ]);
 eq(notice.buildings.names,['Bâtiment unique'],'notice : bâtiment unique (pas de bâtiment parasite)');
 const no=parseDocument(notice); const nv=f=>no.filter(o=>o.field===f).map(o=>o.value);
-ok(no.length&&no.filter(o=>!/^(?:operation_name|owner_company|department)$/.test(o.field)).every(o=>/^notice-rtex-phases:/.test(o.method)),'parseur dédié aux notices en chapitres');
+ok(no.length&&no.filter(o=>!/^(?:operation_name|owner_company|department)$/.test(o.field)).every(o=>/^notice-rtex-phases:|^notice-reno:/.test(o.method)),'parseur dédié aux notices en chapitres (complété par la boîte à outils des notices)');
 eq(nv('cep_before'),[412.5],'Cep état existant');
 eq(nv('cep_after_final'),[110.2],'Cep état projeté');
 eq(nv('cep_gain'),[],'pas de « Gain Cep » sans Cep max (la colonne mesure l’écart au Cep max)');

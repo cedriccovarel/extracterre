@@ -6,7 +6,13 @@ import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.j
 import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette,bbcaRenovationBuildingNames} from './calculette-bbca.js';
 import {isRtexStandardFiche,rtexStandardBuildingNames} from './rset-rtex.js';
 import {isRecapCarboneRe2020,recapCarboneBuildingName} from './recap-carbone.js';
-import {isRtexThermalNotice,rtexNoticeBuildingNames,isPleiadesRtexReport,pleiadesRtexBuildingNames,isInsulationMarkupPlan,isPhasedThermalNotice,isClimaWinRtexSynthesis,climaWinRtexBuildingName} from './renovation-thermique.js';
+import {isRtexThermalNotice,rtexNoticeBuildingNames,isInsulationMarkupPlan,isPhasedThermalNotice,isClimaWinRtexSynthesis,climaWinRtexBuildingName} from './renovation-thermique.js';
+import {isPleiadesRtexReport,pleiadesRtexBuildingNames} from './pleiades-rtex.js';
+import {isClimaWinRtexStudy,isClimaWinRtexInput,climaWinStudyBuildingNames} from './climawin-etude.js';
+import {isU48WinRtexReport,u48WinBuildingNames} from './u48win-rtex.js';
+import {isDpe2021,dpe2021BuildingNames,isDpeRecapTable,dpeRecapBuildingNames} from './dpe-3cl.js';
+import {isPrestaterreBooklet} from './livret-prestaterre.js';
+import {isRenovationNotice,renovationNoticeBuildingNames} from './notice-renovation.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,thermalNoticeBuildingNames,isBiosourcedLabelNotice} from './notice-thermique.js';
 
@@ -119,8 +125,14 @@ export function detectBuildings(doc){
     const names=(isRtexThermalNotice(doc)?rtexNoticeBuildingNames(doc):pleiadesRtexBuildingNames(doc)).map(canonicalBuilding);
     if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};
   }
+  if(isPrestaterreBooklet(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'livret-prestaterre'};
+  if(isDpe2021(doc)||isDpeRecapTable(doc)){ const u=[...new Set((isDpe2021(doc)?dpe2021BuildingNames(doc):dpeRecapBuildingNames(doc)).map(n=>n==='Bâtiment unique'?n:canonicalBuilding(n)))]; return u.length&&!(u.length===1&&u[0]==='Bâtiment unique')?{names:u,expectedCount:u.length,source:'dpe-3cl',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'dpe-3cl'}; }
+  if(isU48WinRtexReport(doc)){ const u=[...new Set(u48WinBuildingNames(doc).map(n=>n==='Bâtiment unique'?n:canonicalBuilding(n)))]; return u.length&&!(u.length===1&&u[0]==='Bâtiment unique')?{names:u,expectedCount:u.length,source:'u48win',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'u48win'}; }
+  if(isClimaWinRtexStudy(doc)||isClimaWinRtexInput(doc)){ const names=(isClimaWinRtexStudy(doc)?climaWinStudyBuildingNames(doc):[]).map(n=>/^\d*re\.?batiment$|^batiment$/i.test(n)?'Bâtiment unique':canonicalBuilding(n.replace(/^re\./i,''))); const u=[...new Set(names)]; return u.length&&!(u.length===1&&u[0]==='Bâtiment unique')?{names:u,expectedCount:u.length,source:'climawin-etude',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'climawin-etude'}; }
   if(isInsulationMarkupPlan(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'isolants-plan'};
   if(isClimaWinRtexSynthesis(doc)){ const n=climaWinRtexBuildingName(doc); return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'climawin-rtex'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'climawin-rtex',hits:[]}; }
+  // v2.4.0 — notice de rénovation : bâtiments des tableaux de synthèse, sinon bâtiment unique (pas de lignes de tableau).
+  if(!isPhasedThermalNotice(doc)&&!isClimaWinInputReport(doc)&&isRenovationNotice(doc)&&/RT\s+Existant/i.test(String(doc.type||''))){ const u=[...new Set(renovationNoticeBuildingNames(doc).map(canonicalBuilding))]; return u.length?{names:u,expectedCount:u.length,source:'notice-renovation',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'notice-renovation'}; }
   if(isPhasedThermalNotice(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'notice-rtex-phases'};
   if(isBbcaRenovationCalculette(doc)){
     const names=bbcaRenovationBuildingNames(doc,canonicalBuilding).filter(n=>n!=='Bâtiment unique');

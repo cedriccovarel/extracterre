@@ -1,4 +1,4 @@
-export const APP_VERSION='2.3.21';
+export const APP_VERSION='2.4.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -160,7 +160,7 @@ export const FIELD_DEFS = [
   {key:"bbio_max",label:"Bbio Max",family:"Performance énergétique",type:"number",tags:["Bbio Max", "Bbiomax", "Bbio maximal"] ,presence:false},
   {key:"bbio_gain",label:"Gain Bbio",family:"Performance énergétique",type:"number",tags:["Gain Bbio", "gain de Bbio", "réduction Bbio"] ,presence:false},
   {key:"cep",label:"Cep",family:"Performance énergétique",type:"number",tags:["Cep", "coefficient Cep", "Cep projet"] ,presence:false},
-  {key:"cep_max",label:"Cep Max",family:"Performance énergétique",type:"number",tags:["Cep Max", "Cepmax", "Cep maximal", "Cep référence"] ,presence:false},
+  {key:"cep_max",label:"Cep Ref",family:"Performance énergétique",type:"number",tags:["Cep Ref", "Cepref", "Cep Max", "Cepmax", "Cep maximal", "Cep référence"] ,presence:false},
   {key:"cep_gain",label:"Gain Cep",family:"Performance énergétique",type:"number",tags:["Gain Cep", "gain de Cep", "réduction Cep"] ,presence:false},
   {key:"cepnr",label:"Cepnr",family:"Performance énergétique",type:"number",tags:["Cepnr", "Cep,nr", "Cep nr", "coefficient Cepnr"] ,presence:false},
   {key:"cepnr_max",label:"Cepnr Max",family:"Performance énergétique",type:"number",tags:["Cepnr Max", "Cep,nr max", "Cep nr max", "Cepnr maximal"] ,presence:false},
@@ -224,7 +224,9 @@ export const FIELD_DEFS = [
   {key:"eges_energy_max",label:"Eges énergie Max",family:"Carbone",type:"number",tags:["Eges énergie Max", "Eges énergie max", "Eges energie max"] ,presence:false},
   {key:"eges_site_max",label:"Eges chantier Max",family:"Carbone",type:"number",tags:["Eges chantier Max", "Eges chantier max", "EgesChantier max"] ,presence:false},
   {key:"eges_water_max",label:"Eges eau Max",family:"Carbone",type:"number",tags:["Eges eau Max", "Eges eau max", "EgesEau max"] ,presence:false},
-  {key:"eges_total_max",label:"Eges total Max",family:"Carbone",type:"number",tags:["Eges total Max", "Eges total max"] ,presence:false}
+  {key:"eges_total_max",label:"Eges total Max",family:"Carbone",type:"number",tags:["Eges total Max", "Eges total max"] ,presence:false},
+  // v2.4.0 — colonne ajoutée en fin pour ne pas décaler l'ordre maître ; « Ventilation » reste l'état après travaux.
+  {key:"ventilation_before",label:"Ventilation avant travaux",family:"Systèmes",type:"text",tags:["Ventilation avant travaux", "ventilation existante", "ventilation initiale", "système de ventilation initiale"] ,presence:false}
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -269,6 +271,7 @@ const HEADER_ALIASES={
   'ecs apres travaux':'ecs',
   'refroidissement apres travaux':'cooling',
   'ventilation apres travaux':'ventilation',
+  'ventilation avant travaux':'ventilation_before',
   'mode constructif':'structure',
   'planchers hauts structure':'roof_structure',
   'planchers hauts type isolant':'roof_insulation',
@@ -370,7 +373,7 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insula
 // v2.3.8 — le tableau « Données techniques » du RSEnv décrit la nature de la structure et des isolants (pas les
 // épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
 for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
-for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
+for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
 for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
@@ -395,6 +398,12 @@ for(const key of ['eges_pce','eges_pcena','eges_energy','eges_site','eges_water'
 for(const key of ['ic_energy_max','ic_energy_max_2028']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.stock_c_per_m2=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.CARBON,DOC_TYPES.MANUAL]);
 for(const key of ['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
+// v2.4.0 — le DPE décrit l'énergie de chauffage et d'ECS de l'état visité (source principale de l'état avant travaux),
+// et sert de secours pour les systèmes, la surface et la période de construction.
+for(const key of ['heating_vector_before','ecs_vector_before','ventilation_before']) DEFAULT_SOURCE_RULES[key].main.push(DOC_TYPES.DPE);
+// v2.4.0 — en rénovation, l'étude RT existant donne la surface de l'étude (SHAB / Sref) : source principale de la surface.
+DEFAULT_SOURCE_RULES.shab.main.splice(DEFAULT_SOURCE_RULES.shab.main.length-1,0,DOC_TYPES.RT_EXISTING); DEFAULT_SOURCE_RULES.shab.secondary=DEFAULT_SOURCE_RULES.shab.secondary.filter(t=>t!==DOC_TYPES.RT_EXISTING);
+for(const key of ['heating_vector_after','heating_mode_after','ecs_vector_after','ecs','ventilation','shab','construction_year','built_before_1948','built_after_1948','housing_typologies']) DEFAULT_SOURCE_RULES[key].secondary.push(DOC_TYPES.DPE);
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 

@@ -8,16 +8,19 @@
   <link rel="icon" href="assets/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="assets/favicon-512.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=2.3.21">
-  <script defer src="js/journal-config.js?v=2.3.21"></script>
-  <script defer src="js/security.js?v=2.3.21"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css?v=2.4.0">
+  <script defer src="js/journal-config.js?v=2.4.0"></script>
+  <script defer src="js/security.js?v=2.4.0"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.3.21"></script>
-  <script defer src="js/app.bundle.js?v=2.3.21"></script>
+  <script defer src="js/cloud-config.js?v=2.4.0"></script>
+  <script defer src="js/app.bundle.js?v=2.4.0"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -38,7 +41,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v2.3.21</span>
+      <span class="ux-version-chip" id="version">v2.4.0</span>
     </div>
   </header>
 
@@ -74,14 +77,14 @@
               <div>
                 <span class="ux-eyebrow">Documents</span>
                 <h1>Importer les pièces du projet</h1>
-                <p>Déposez des fichiers unitaires ou un dossier complet avec ses sous-dossiers. Chaque document n’est analysé qu’une fois, sauf si vous lancez volontairement son Crible fin.</p>
+                <p>Fichiers ou dossier complet. Chaque document n’est lu qu’une fois.</p>
               </div>
             </div>
 
             <div id="dropzone" class="single-dropzone" tabindex="0" aria-label="Déposer des documents ou un dossier">
               <div class="single-dropzone-icon">⇪</div>
               <strong>Déposez ici toutes les pièces du projet</strong>
-              <span>PDF, XML (RSET / RSEE / RSEnv RE2020), Excel — fichiers ou dossier complet. La famille documentaire est détectée automatiquement pour chaque fichier ; vous pouvez la corriger dans la liste ci-dessous.</span>
+              <span>PDF, XML RE2020 et Excel. Le type de chaque document est détecté à la lecture et reste modifiable dans la liste.</span>
               <div class="single-dropzone-actions">
                 <label class="btn primary file-picker-label" for="fileInput">＋ Ajouter des fichiers</label>
                 <input id="fileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple>
@@ -90,7 +93,7 @@
                 <label id="addManualBtn" class="btn light file-picker-label manual-analysis-btn" for="manualFileInput" title="Import en moteur libre : classification automatique, tous les parseurs pertinents, sans liste blanche de champs ; OCR ciblé, Crible fin et IA restent disponibles">🛠 Moteur libre</label>
                 <input id="manualFileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple>
               </div>
-              <small class="single-dropzone-hint">Les XML RE2020 sont lus balise par balise (valeurs exactes, multi-bâtiments). Un RSEE est traité à la fois en thermique et en carbone. <b>🛠 Moteur libre</b> : lecture d’un document hors standard sans liste blanche de champs. <b>✦ Analyse manuelle</b> (bloc Analyse du projet) : renseigner les données bâtiment par bâtiment en surlignant le document.</small>
+              <small class="single-dropzone-hint"><b>Moteur libre</b> : document hors standard, sans liste blanche de champs. <b>Analyse manuelle</b> : renseigner les données en surlignant le document.</small>
             </div>
           </section>
 
@@ -98,9 +101,12 @@
             <div class="ux-analysis-head">
               <div class="ux-analysis-title">
                 <span class="analysis-icon">▥</span>
-                <div><h2>Analyse du projet</h2><p>Extraction, OCR intelligent, croisement des sources et consolidation.</p></div>
+                <div><h2>Analyse du projet</h2><p>Lecture, OCR si nécessaire, croisement des sources.</p></div>
               </div>
               <div class="ux-analysis-controls stable-analysis-controls">
+                <details class="analysis-settings">
+                <summary title="OCR, assistance IA, vitesse et lieu de calcul">Réglages</summary>
+                <div class="analysis-settings-body">
                 <label class="ocr-control" title="Tesseract.js complète PDF.js sur les pages scannées, fragmentées ou sur les tableaux métier mal reconstruits">
                   <span>OCR</span>
                   <select id="ocrMode">
@@ -126,6 +132,8 @@
                     <option value="remote">Serveur</option>
                   </select>
                 </label>
+                </div>
+                </details>
                 <span id="statusText" class="badge doc stable-status" title="Prêt">Prêt</span>
                 <button id="manualAnalysisBtn" class="btn secondary stable-manual-analysis-btn" type="button">✦ Analyse manuelle</button>
                 <button id="analyzeBtn" class="btn primary stable-analyze-btn" type="button">▶ Lancer l’analyse</button>
@@ -164,29 +172,19 @@
             <div class="ux-meta-row"><span>État</span><strong id="projectMirrorStatus" class="mirror-status">Prêt</strong></div>
           </section>
 
-          <section class="card ux-side-card ux-manual-card">
-            <div class="ux-side-card-head"><span>⌨</span><h3>Données manuelles</h3></div>
-            <p class="ux-manual-copy">Copiez une zone Excel avec ses en-têtes : ExtracTerre reconnaît les colonnes et l’utilise comme source traçable.</p>
-            <button id="manualDataBtn" class="btn light ux-manual-btn" type="button">▦ Coller depuis Excel</button>
-            <div class="ux-meta-row"><span>Lignes intégrées</span><strong id="manualDataCount">0</strong></div>
-          </section>
-
-          <section class="card ux-side-card ux-local-save-card">
-            <div class="ux-side-card-head"><span>⛁</span><h3>Sauvegarde locale</h3></div>
-            <p class="ux-local-save-copy">Le texte extrait, les résultats et vos validations sont conservés sur ce navigateur. Les PDF bruts ne sont pas copiés.</p>
-            <div class="ux-meta-row"><span>État</span><strong id="localSaveStatus">Initialisation…</strong></div>
-            <div class="ux-meta-row"><span>Dernière sauvegarde</span><strong id="localSaveTime">—</strong></div>
-            <small id="localSaveDetail" class="ux-local-save-detail">Stockage local du navigateur</small>
-          </section>
-
-
-          <section class="card ux-side-card ux-cloud-card">
-            <div class="ux-side-card-head"><span>☁</span><h3>Traitement hybride</h3></div>
-            <p class="ux-local-save-copy">Les PDF lourds et l’OCR peuvent être traités sur le worker GitHub. Les parseurs métier et les 168 champs restent identiques.</p>
-            <div class="ux-meta-row"><span>Cloud</span><strong id="cloudConnectionStatus">Vérification…</strong></div>
-            <div class="ux-meta-row"><span>Mode</span><strong id="cloudExecutionStatus">Hybride auto</strong></div>
-            <button id="cloudConnectionBtn" class="btn light ux-manual-btn" type="button">☁ Connexion Cloud</button>
-            <small id="cloudConnectionDetail" class="ux-local-save-detail">Fallback local automatique si le serveur est indisponible.</small>
+          <section class="card ux-side-card ux-tools-card">
+            <div class="ux-side-card-head"><span>⌨</span><h3>Compléments</h3></div>
+            <div class="ux-tool-row">
+              <div><strong>Données manuelles</strong><small>Coller une zone Excel avec ses en-têtes · <span id="manualDataCount">0</span> ligne(s)</small></div>
+              <button id="manualDataBtn" class="btn light ux-manual-btn" type="button">Coller</button>
+            </div>
+            <div class="ux-tool-row">
+              <div><strong>Sauvegarde locale</strong><small><span id="localSaveStatus">Initialisation…</span> · <span id="localSaveTime">—</span></small><small id="localSaveDetail" class="ux-local-save-detail">Stockage local du navigateur</small></div>
+            </div>
+            <div class="ux-tool-row">
+              <div><strong>Traitement cloud</strong><small><span id="cloudConnectionStatus">Vérification…</span> · <span id="cloudExecutionStatus">Hybride auto</span></small><small id="cloudConnectionDetail" class="ux-local-save-detail">Repli local automatique si le serveur est indisponible.</small></div>
+              <button id="cloudConnectionBtn" class="btn light ux-manual-btn" type="button">Connexion</button>
+            </div>
           </section>
 
           <section class="card ux-side-card ux-kpi-card">
@@ -208,11 +206,12 @@
           <div>
             <span class="ux-eyebrow">Résultats consolidés</span>
             <h2>Espace de résultats</h2>
-            <p>Vue synthèse multi-projets puis fiche détaillée d’un seul projet, avec navigation permanente et ajout de documents sans remonter la page.</p>
+            <p>La revue présente chaque bâtiment champ par champ : ce qui est retenu, à vérifier ou à compléter.</p>
           </div>
           <div class="ux-workspace-tools">
             <div id="resultTabsWrap" class="result-tabs-wrap" aria-label="Répartition des résultats">
-              <button class="result-tab active" data-result-view="generic" type="button">Données générales</button>
+              <button class="result-tab active" data-result-view="review" type="button">Revue</button>
+              <button class="result-tab" data-result-view="generic" type="button">Données générales</button>
               <button class="result-tab" data-result-view="thermal" type="button">Thermique</button>
               <button class="result-tab" data-result-view="carbon" type="button">Carbone</button>
               <button class="result-tab" data-result-view="envelope" type="button">Structure & enveloppe</button>
@@ -232,11 +231,13 @@
             <button id="stickyNextProject" class="sticky-nav-arrow" type="button" title="Projet suivant">›</button>
           </div>
           <div class="sticky-result-tabs" aria-label="Onglets de résultats">
-            <button class="sticky-result-tab active" data-sticky-result-view="generic" type="button">Général</button>
+            <button class="sticky-result-tab active" data-sticky-result-view="review" type="button">Revue</button>
+            <button class="sticky-result-tab" data-sticky-result-view="generic" type="button">Général</button>
             <button class="sticky-result-tab" data-sticky-result-view="thermal" type="button">Thermique</button>
             <button class="sticky-result-tab" data-sticky-result-view="carbon" type="button">Carbone</button>
             <button class="sticky-result-tab" data-sticky-result-view="envelope" type="button">Enveloppe</button>
           </div>
+          <div id="profileSwitch" class="profile-switch" role="group" aria-label="Type d’opération"></div>
           <div class="sticky-result-actions">
             <label class="sticky-file-add" for="fileInput" title="Ajouter des fichiers">＋ Fichiers</label>
             <button id="analysisPauseBtn" class="sticky-control-icon" type="button" title="Mettre l’analyse en pause" hidden>⏸</button>
@@ -416,7 +417,9 @@
           <div id="manualBuildingTabs" class="manual-building-tabs" role="tablist" aria-label="Bâtiments"></div>
         </div>
         <div id="manualSectionTabs" class="manual-section-tabs" role="tablist" aria-label="Familles de données"></div>
+        <div id="manualFilterBar" class="manual-filter-bar"></div>
         <div id="manualSelectedTarget" class="manual-selected-target">Sélectionnez une donnée à renseigner.</div>
+        <div id="manualCandidates" class="manual-candidates" hidden></div>
         <div class="manual-direct-entry">
           <label for="manualDirectValue"><span>Saisie manuelle</span><small>Vous pouvez écrire directement la bonne valeur sans la surligner.</small></label>
           <div class="manual-direct-row"><input id="manualDirectValue" type="text" autocomplete="off" placeholder="Choisissez d’abord un champ"><button id="manualDirectApply" class="btn secondary" type="button" disabled>Appliquer</button></div>
@@ -465,7 +468,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.3.21</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.4.0</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>
