@@ -122,6 +122,7 @@ export function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
       if(cep!==null) emit(ref!==null?row:cm,B,'cep_gain',Math.round((cepMax-cep)/cepMax*1000)/10,'cep-gain',0.92,'%',{provenanceNote:`Gain = (Cep ref − Cep projet) / Cep ref = (${cepMax} − ${cep}) / ${cepMax}.`}); }
     // Étiquettes équivalentes après travaux.
     for(const [re,f,m] of [[/^Energie\s*:\s*Classe\s+equivalente\s+([A-G])\b/i,'dpe_energy_after','etiquette-energie'],[/^CO2\s*:\s*Classe\s+equivalente\s+([A-G])\b/i,'dpe_ges_after','etiquette-co2']]){ const x=find(re); if(x) emit(x,B,f,x.t.match(re)[1].toUpperCase(),m,0.9,'',{provenanceNote:'Étiquette équivalente après travaux (Pléiades).'}); }
+    { const x=find(/^CO2\s*:\s*Classe\s+equivalente\s+[A-G]\s*:\s*\d/i); if(x) emit(x,B,'ges',Number(x.t.match(/:\s*(\d+(?:[.,]\d+)?)\s*kgCO2/i)?.[1]?.replace(',','.')),'ges-etiquette',0.9,'kgCO2/m².an',{provenanceNote:'Émissions de CO2 du projet (étiquette équivalente, kgCO2/m²SHAB.an).'}); }
     // Tic : lignes « <groupe> 25.61 °C 26.84 °C » (projet, référence) ; le groupe le plus chaud fait le Tic du bâtiment.
     { const a=R.findIndex(x=>/^Exigence\s+de\s+resultat\s*:\s*Tic\b/i.test(x.t)), b=R.findIndex(x=>/^Detail\s+des\s+consommations/i.test(x.t));
       const g=a<0?[]:R.slice(a+1,b>a?b:a+12).map(x=>{ const m=x.t.match(/^(.*?)\s*(\d{2}(?:\.\d+)?)\s*°C\s+(\d{2}(?:\.\d+)?)\s*°C\s*$/); return m?{x,grp:m[1],tic:Number(m[2]),ref:Number(m[3])}:null; }).filter(z=>z&&z.tic>=15&&z.tic<=45);
@@ -168,7 +169,8 @@ export function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
     if(env){ const ub=seg(env.i,env.end).find(x=>/^Ubat\s*\(hiver\)/i.test(x.t));
       if(ub){ const u=px_nums(ub.t.replace(/W\/m2\.K/i,'')).filter(z=>z<10);
         if(u.length>=2) emit(ub,B,'ubat_after',u[u.length-2],'ubat-projet',0.96,'W/m².K',{provenanceNote:'Ubat projet (avant-dernière colonne, la dernière étant la référence).'});
-        if(u.length>=3) emit(ub,B,'ubat_before',u[u.length-3],'ubat-initial',0.94,'W/m².K',{provenanceNote:'Ubat initial (première colonne).'}); } }
+        if(u.length>=3) emit(ub,B,'ubat_before',u[u.length-3],'ubat-initial',0.94,'W/m².K',{provenanceNote:'Ubat initial (première colonne).'});
+        if(u.length>=2) emit(ub,B,'ubat_ref',u[u.length-1],'ubat-reference',0.95,'W/m².K',{provenanceNote:'Ubat de référence (dernière colonne).'}); } }
     // Caractéristiques du bâtiment.
     const car=S.car[s.name]||(single?(S.chap.car?{i:S.chap.car.i,end:S.ends.car}:{i:0,end:L.length}):null);
     if(car){ const C=seg(car.i,car.end); const f2=re=>C.find(x=>re.test(x.t));

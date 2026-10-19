@@ -226,7 +226,15 @@ export const FIELD_DEFS = [
   {key:"eges_water_max",label:"Eges eau Max",family:"Carbone",type:"number",tags:["Eges eau Max", "Eges eau max", "EgesEau max"] ,presence:false},
   {key:"eges_total_max",label:"Eges total Max",family:"Carbone",type:"number",tags:["Eges total Max", "Eges total max"] ,presence:false},
   // v2.4.0 — colonne ajoutée en fin pour ne pas décaler l'ordre maître ; « Ventilation » reste l'état après travaux.
-  {key:"ventilation_before",label:"Ventilation avant travaux",family:"Systèmes",type:"text",tags:["Ventilation avant travaux", "ventilation existante", "ventilation initiale", "système de ventilation initiale"] ,presence:false}
+  {key:"ventilation_before",label:"Ventilation avant travaux",family:"Systèmes",type:"text",tags:["Ventilation avant travaux", "ventilation existante", "ventilation initiale", "système de ventilation initiale"] ,presence:false},
+  // v2.4.0 — références de comparaison : en rénovation l'état initial s'il est calculé, sinon la référence du document ;
+  // en neuf la référence. Le gain est recalculé sur cette base (voir applyComparisonBases, engine.js).
+  {key:"ubat_ref",label:"Ubat Ref",family:"Performance énergétique",type:"number",tags:["Ubat Ref", "Ubatref", "Ubat référence", "Ubat de référence", "coefficient Ubat ref"] ,presence:false},
+  {key:"ubat_gain",label:"Gain Ubat",family:"Performance énergétique",type:"number",tags:["Gain Ubat", "gain de Ubat", "gain UBat/UBatref", "gain UBat/UBatinit"] ,presence:false},
+  {key:"ges",label:"GES après travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES après travaux (kgCO2/m²)", "GES projet", "émissions de CO2 projet", "kgCO2/m² projet", "émissions GES projet"] ,presence:false},
+  {key:"ges_before",label:"GES avant travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES avant travaux (kgCO2/m²)", "GES initial", "émissions de CO2 état initial", "émissions GES état initial"] ,presence:false},
+  {key:"ges_ref",label:"GES Ref",family:"Performance énergétique",type:"number",tags:["GES Ref", "GES référence", "émissions de CO2 de référence"] ,presence:false},
+  {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false}
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -289,6 +297,10 @@ const HEADER_ALIASES={
   'cep nr max':'cepnr_max',
   'cep,nr max':'cepnr_max',
   'ubat initial':'ubat_before',
+  'ubat ref':'ubat_ref',
+  'gain ubat':'ubat_gain',
+  'ges ref':'ges_ref',
+  'gain ges':'ges_gain',
   'ubat projet':'ubat_after',
   'cep initial':'cep_before',
   'ic composants batiment':'ic_components',
@@ -374,7 +386,7 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insula
 // épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
 for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
-for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
+for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final", "ubat_ref", "ubat_gain", "ges", "ges_before", "ges_ref", "ges_gain"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
 for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);

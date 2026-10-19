@@ -125,6 +125,7 @@ export function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
       if((m=t.match(/^\d+-\d+-[a-z]\]\s*Ventilation\s*:\s*(.+)$/i))){ const v=lt_vent(m[1]); if(v&&once(B,`ventilation-saisie-${pagePhase}`,v)){ if(pagePhase==='before') emit(x,B,'ventilation_before',v,'ventilation-saisie-initiale',0.95); else emit(x,B,'ventilation',v,'ventilation-saisie',pagePhase==='after'?0.95:0.8,'',pagePhase==='after'?{}:{reviewCap:0.8,provenanceNote:'Phase de la page non identifiée : à vérifier s’il s’agit de l’état après travaux.'}); } continue; }
       const near=lines.slice(Math.max(0,i-3),i).map(y=>y.t).join(' ');
       // --- Perrenoud U-Win ---------------------------------------------------------------------------------------------
+      if((m=t.match(/COEFFICIENT\s+UBAT\s+REF\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); if(once(B,'ubat_ref',v)) emit(x,B,'ubat_ref',v,'ubat-ref',0.93,'W/m².K',{provenanceNote:'Ubat du bâtiment de référence (« COEFFICIENT UBAT REF »).'}); continue; }
       if((m=t.match(/COEFFICIENT\s+UBAT\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); const ph=lt_phase(near)||pagePhase;
         if(ph==='after'){ if(once(B,'ubat_after',v)) emit(x,B,'ubat_after',v,'ubat-projet',0.94,'W/m².K'); }
         else if(once(B,'ubat_before',v)) emit(x,B,'ubat_before',v,'ubat-calcul',ph==='before'?0.94:0.86,'W/m².K',ph?{}:{reviewCap:0.86,provenanceNote:'« COEFFICIENT UBAT = » d’une page sans mention avant / après travaux : état initial présumé, à vérifier.'}); continue; }

@@ -138,11 +138,13 @@ export function parseRenovationNotice(doc,occ,canonical=(s)=>s,opts={}){
       else if(/^ubatprojet$/.test(lab)) per(nums,(n,v)=>emit(y,n,'ubat_after',v,'synthese-ubat-projet',0.92,'W/m².K',note));
       else if(/^(?:lots|logements|nombredelogements|nblogements)$/.test(lab)) per(nums,(n,v)=>emit(y,n,'housing_count',v,'synthese-logements',0.85,'',note));
       else if(/consommation.*energieprimaire.*cep|^cep\(/.test(lab)&&split) per(nums,(n,a,b)=>{ emit(y,n,'cep_before',a,'synthese-cep-initial',0.92,'kWhEP/m².an',note); emit(y,n,'cep_after_final',b,'synthese-cep-projet',0.92,'kWhEP/m².an',note); emit(y,n,'cep',b,'synthese-cep-projet',0.9,'kWhEP/m².an',note); });
+      else if(/^emissions?(?:de)?(?:co2|ges)/.test(lab)&&split) per(nums,(n,a,b)=>{ emit(y,n,'ges_before',a,'synthese-ges-initial',0.9,'kgCO2/m².an',note); emit(y,n,'ges',b,'synthese-ges-projet',0.9,'kgCO2/m².an',note); });
       else if(/classe.*energetique.*dpe|etiquette.*energie/.test(lab)&&split&&grades.length===2*nb) per(grades,(n,a,b)=>{ emit(y,n,'dpe_energy_before',a,'synthese-dpe',0.88,'',note); emit(y,n,'dpe_energy_after',b,'synthese-dpe',0.88,'',note); });
       else if(/classe.*carbone.*dpe|etiquette.*(?:ges|climat|co2)/.test(lab)&&split&&grades.length===2*nb) per(grades,(n,a,b)=>{ emit(y,n,'dpe_ges_before',a,'synthese-ges',0.88,'',note); emit(y,n,'dpe_ges_after',b,'synthese-ges',0.88,'',note); });
       else if(/consommationequivalentedpe/.test(lab)||/emission.*gaz.*effet.*serre/.test(lab2.replace(/\s/g,''))){ const nv=nextVals(); if(!nv) continue;
         const ges=/emission/.test(lab2), init=/initial|existant/.test(lab2);
-        names.forEach((n,j)=>emit(L[k+1],n,ges?(init?'dpe_ges_before':'dpe_ges_after'):(init?'dpe_energy_before':'dpe_energy_after'),nv[j][2],ges?'synthese-ges':'synthese-dpe',0.88,'',{provenanceNote:`${ges?'Émissions':'Consommation équivalente DPE'} ${init?'initiales':'projet'} : ${nv[j][1]} (${n}).`})); }
+        names.forEach((n,j)=>emit(L[k+1],n,ges?(init?'dpe_ges_before':'dpe_ges_after'):(init?'dpe_energy_before':'dpe_energy_after'),nv[j][2],ges?'synthese-ges':'synthese-dpe',0.88,'',{provenanceNote:`${ges?'Émissions':'Consommation équivalente DPE'} ${init?'initiales':'projet'} : ${nv[j][1]} (${n}).`}));
+        if(ges) names.forEach((n,j)=>emit(L[k+1],n,init?'ges_before':'ges',nr_num(nv[j][1]),init?'synthese-ges-initial':'synthese-ges-projet',0.88,'kgCO2/m².an',{provenanceNote:`Émissions de gaz à effet de serre ${init?'initiales':'du projet'} (kgCO2/m²SHAB) : ${nv[j][1]} (${n}).`})); }
     }
   });
   // 2. Blocs de bilan « ETAT INITIAL » / « Projet » + « Batiment n° 1 : A » + « TOTAL kWhEP/m².an : 151,88 ».
@@ -211,6 +213,7 @@ export function parseRenovationNotice(doc,occ,canonical=(s)=>s,opts={}){
   // Résultats en clair : « Consommation totale en energie primaire (kWhep/m2/an) 77.92 », « en classe C ».
   L.forEach((x,i)=>{ let m;
     if((m=x.t.match(/^Consommation\s+totale\s+en\s+energie\s+primaire\s*\([^)]*\)\s*(\d+(?:[.,]\d+)?)$/i))){ const p=ph[i]||'after'; emit(x,U,p==='before'?'cep_before':'cep_after_final',nr_num(m[1]),'cep-texte',0.88,'kWhEP/m².an'); if(p!=='before') emit(x,U,'cep',nr_num(m[1]),'cep-texte',0.85,'kWhEP/m².an'); }
+    if((m=x.t.match(/^Emissions?\s+(?:de\s+)?(?:GES|CO2)\s*\(?k[gq]\s*(?:eq|ep)?\s*CO2\/m2[^)\d]*\)?\s*(\d+(?:[.,]\d+)?)$/i))){ const p=ph[i]||'after'; emit(x,U,p==='before'?'ges_before':'ges',nr_num(m[1]),'ges-texte',0.88,'kgCO2/m².an'); }
     if((m=x.t.match(/^Surface\s+habitable\s*\(m2\)\s*(\d+(?:[.,]\d+)?)$/i))) emit(x,U,'shab',nr_num(m[1]),'shab',0.88,'m²');
     if((m=x.t.match(/^Surface\s+(?:habitable|chauffee)\s+(\d+(?:[.,]\d+)?)\s*m2$/i))&&!has(U,'shab')) emit(x,U,'shab',nr_num(m[1]),'shab',0.8,'m²',{reviewCap:0.85});
     if((m=x.t.match(/logements\s+sont\s+en\s+classe\s+([A-G])\b/i))) emit(x,U,'dpe_energy_after',m[1].toUpperCase(),'dpe-texte',0.86,'',{provenanceNote:x.t});

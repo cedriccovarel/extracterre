@@ -10,7 +10,7 @@ function mk(text){
   doc.buildings=detectBuildings(doc); return doc;
 }
 assert.equal(APP_VERSION,'2.4.0');
-assert.equal(FIELD_DEFS.length,186);
+assert.equal(FIELD_DEFS.length,192);
 const text=[
 '1. Bâtiment A\nStockage carbone Stock,C 39068.7 kgC\nTotal hors parcelle Ic,bâtiment 715.9 Stockage carbone Stock,C (par m²) 50.4 kgC/m²',
 '2. Bâtiment B - 1\nStockage carbone Stock,C 24239.9 kgC\nTotal hors parcelle Ic,bâtiment 717.9 Stockage carbone Stock,C (par m²) 80.5 kgC/m²',

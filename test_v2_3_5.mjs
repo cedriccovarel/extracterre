@@ -18,7 +18,7 @@ const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.cla
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 
 // --- 1. Schéma : 5 colonnes IC ajoutées à la fin, dans l'ordre demandé ------------------------------
-eq(FIELD_DEFS.length,186,'186 champs');
+eq(FIELD_DEFS.length,192,'192 champs');
 eq(FIELD_DEFS.slice(168,173).map(f=>f.key),['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'],'nouvelles colonnes en fin de schéma');
 ok(DEFAULT_SOURCE_RULES.ic_energy_max.main.includes('RSET RE2020'),'Ic énergie max publié aussi par les RSET');
 
@@ -97,13 +97,13 @@ const st=parseDocument(std);
 eq(val(st,'cooling'),'Aucun','pas de climatisation issue d’une variante'); eq(val(st,'window_shading'),'BSO'); eq(val(st,'window_glazing'),'Triple vitrage');
 ok(st.every(o=>o.field!=='cooling'||o.value==='Aucun'),'aucune « Climatisation active »');
 
-// --- 7. Export : colonne « Tags » après les 186 colonnes ----------------------------------------------------
+// --- 7. Export : colonne « Tags » après les 192 colonnes ----------------------------------------------------
 const sheets={}; globalThis.XLSX={utils:{book_new:()=>({}),aoa_to_sheet:aoa=>({aoa,'!ref':'A1:A1'}),book_append_sheet:(wb,ws,name)=>{ sheets[name]=ws.aoa; },decode_range:()=>({s:{c:0,r:0},e:{c:0,r:0}}),encode_cell:()=>'A1'},writeFile:()=>{}};
 const {exportProjectsExcel}=await import('./js/exporter.js');
 const res=analyzeDocuments([sortie],DEFAULT_SOURCE_RULES,'Projet test');
 exportProjectsExcel([{result:res,projectTags:[{label:'Géothermie'},{label:'BEPOS'}],operationName:'Projet test'}],DEFAULT_SOURCE_RULES);
 const main=sheets['Données par bâtiment'];
-eq(main[0].length,187,'186 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-3),['Eges total Max','Ventilation avant travaux','Tags']);
+eq(main[0].length,193,'192 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-9),['Eges total Max','Ventilation avant travaux','Ubat Ref','Gain Ubat','GES après travaux (kgCO2/m²)','GES avant travaux (kgCO2/m²)','GES Ref','Gain GES','Tags']);
 eq(main[1].at(-1),'Géothermie ; BEPOS','tags du projet sur chaque ligne');
 eq(main[1][main[0].indexOf('IC énergie Max')],500.2,'Ic énergie max exporté');
 console.log(`v2.3.5 — ${n} vérifications OK (documents fictifs)`);

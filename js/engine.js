@@ -292,11 +292,38 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
   if(unattributedCount) alerts.push({level:'warning',message:`${unattributedCount} valeur(s) d'indicateur sans bâtiment identifié n'ont pas été recopiées sur chaque bâtiment : elles sont proposées dans « À vérifier ».`});
   // v2.3 — contrôles de cohérence métier : une valeur incohérente avec ses voisines quitte le tableau
   // et part en revue ; les valeurs structurées (XML) et les validations utilisateur ne sont jamais retirées.
+  applyComparisonBases(consolidated);
   const coherence=applyCoherenceChecks(consolidated);
   alerts.push(...coherence.alerts);
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
   const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
   return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
+}
+
+// v2.4.0 — référence de comparaison des gains : en rénovation l'état initial (Cep / Ubat / GES avant travaux) quand il
+// est calculé, sinon la référence du document ; en neuf (pas d'état initial) la référence. Le gain est recalculé sur la base
+// retenue ; une référence ou un gain saisis à la main ne sont jamais remplacés. La référence du document reste en revue.
+const COMPARISON_BASES=[['cep_before','cep_max','cep_gain',['cep','cep_after_final']],['ubat_before','ubat_ref','ubat_gain',['ubat_after']],['ges_before','ges_ref','ges_gain',['ges']]];
+const isManualFinal=o=>!!(o&&(o.userValidated||/^manual:/.test(String(o.method||''))||/^(?:Correction|Entrée) manuelle$/.test(o.docType||'')));
+const numOrNull=v=>v===undefined||v===null||v===''||!Number.isFinite(Number(v))?null:Number(v);
+export function applyComparisonBases(result){
+  for(const row of result?.rows||[]){ const b=row.building; const fin=f=>result.finals.find(o=>o.building===b&&o.field===f);
+    for(const [init,ref,gain,values] of COMPARISON_BASES){
+      const v=numOrNull(row[init]), src=fin(init), prev=fin(ref); if(v===null||!src||!(v>0)||isManualFinal(prev)) continue;
+      if(numOrNull(row[ref])!==v){
+        result.finals=result.finals.filter(o=>o!==prev);
+        result.finals.push({...src,field:ref,method:'derive:reference-etat-initial',derivedFromDocument:true,provenanceNote:`Rénovation : référence = état initial (${FIELD_MAP[init]?.label||init} = ${v})${prev?` ; référence du document : ${prev.value}`:''}.`});
+        row[ref]=v;
+        for(const d of result.detailed||[]) if(d.building===b&&d.field===ref&&d.status==='retenu'&&d!==prev){ d.status='rejeté'; d.rejectionReason='Rénovation : la référence de comparaison retenue est l’état initial.'; }
+      }
+      const vf=values.find(f=>numOrNull(row[f])!==null), g=fin(gain); if(!vf||isManualFinal(g)) continue;
+      const calc=Math.round((v-Number(row[vf]))/v*1000)/10; if(numOrNull(row[gain])===calc) continue;
+      result.finals=result.finals.filter(o=>o!==g);
+      result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[ref]?.label||ref} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (réf − valeur) / réf = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
+      row[gain]=calc;
+    }
+  }
+  return result;
 }
 
 export function freeSearch(docs,query){
@@ -756,8 +783,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v2.4.0 : 186 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + Ventilation avant travaux v2.4.0, ajoutées en fin), chacune avec des tags reconnus.
-  assert('Schéma métier = 186 colonnes',FIELD_DEFS.length===186,String(FIELD_DEFS.length));
+  // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
+  assert('Schéma métier = 192 colonnes',FIELD_DEFS.length===192,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));

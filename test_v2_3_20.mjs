@@ -61,8 +61,8 @@ const res=analyzeDocuments([d],structuredClone(DEFAULT_SOURCE_RULES));
 const fin=(f,b)=>res.finals.filter(o=>o.field===f&&o.building===b).map(o=>o.value);
 const AB='Bâtiment A/B', CD='Bâtiment C/D';
 // Résumé : Projet / Référence / Gain / Initial.
-eq(fin('cep',AB),[134.59],'Cep = C projet'); eq(fin('cep_max',AB),[165.02],'Cep max = C référence (et non le C\'ep max 130)');
-eq(fin('cep_gain',AB),[18.44],'gain imprimé = (réf − projet) / réf'); eq(fin('cep_before',AB),[264.69],'Cep initial');
+eq(fin('cep',AB),[134.59],'Cep = C projet'); eq(fin('cep_max',AB),[264.69],'Cep Ref = C initial (rénovation, état initial calculé)');
+eq(fin('cep_gain',AB),[49.2],'gain sur l’état initial = (264,69 − 134,59) / 264,69 (le gain imprimé 18,44 % est relatif à la référence)'); eq(fin('cep_before',AB),[264.69],'Cep initial');
 eq(fin('ubat_after',AB),[0.649],'Ubat projet'); eq(fin('ubat_before',AB),[1.938],'Ubat initial, jamais l\'Ubat de base 0,723');
 eq(fin('cep',CD),[154.77],'deuxième bâtiment'); eq(fin('ubat_before',CD),[2.227],'Ubat initial du deuxième bâtiment');
 eq(fin('tic',AB),[25.01],'Tic'); eq(fin('tic_ref',AB),[29.8],'Tic réf');
@@ -99,7 +99,7 @@ const bc=classifyDocument(bname,bread.text,{kind:'pdf'}); eq(bc.type,'RT Existan
 const bd={id:'be',name:bname,read:bread,familyMode:'auto',status:'ready',classification:{...bc,automaticType:bc.type},type:bc.type}; bd.buildings=detectBuildings(bd);
 const bocc=parseDocument(bd); const bres=analyzeDocuments([{...bd,cachedOccurrences:bocc}],structuredClone(DEFAULT_SOURCE_RULES));
 const bf=f=>bres.finals.filter(o=>o.field===f).map(o=>o.value); const bo=f=>bocc.filter(o=>o.field===f).map(o=>o.value);
-eq(bf('cep_before'),[198],'Cep existant'); eq(bf('cep'),[97.7],'Cep projet'); eq(bf('cep_max'),[157.7],'Cep réf.'); eq(bf('cep_gain'),[38],'gain imprimé');
+eq(bf('cep_before'),[198],'Cep existant'); eq(bf('cep'),[97.7],'Cep projet'); eq(bf('cep_max'),[198],'Cep Ref = Cep existant (rénovation)'); eq(bf('cep_gain'),[50.7],'gain sur l’état initial'); eq(bo('cep_max'),[157.7],'Cep réf. du document lu (reste proposé)');
 eq(bf('ubat_before'),[1.58],'Ubat existant'); eq(bf('ubat_after'),[0.66],'Ubat seul d\'une page « Etat projeté » = après travaux');
 eq(bf('heating_vector_before'),['Gaz'],'« Gaz (kWh EF) 657 739,6 » : un seul nombre'); eq(bf('ecs_vector_after'),['Gaz'],'ECS projet');
 eq(bf('cep_gas'),[62.5],'Cep gaz = 29,5 + 33,0'); eq(bf('cep_electricity'),[35.2],'Cep électricité = 27,8 + 2,3 + 5,1'); eq(bf('cep_aux_vent'),[5.1],'ventilateurs');

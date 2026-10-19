@@ -5,11 +5,11 @@
 import {FIELD_MAP} from './config.js';
 
 export const PLAUSIBLE_RANGES=Object.freeze({
-  bbio:[5,300], bbio_max:[5,300], cep:[5,700], cep_max:[5,700], cepnr:[5,700], cepnr_max:[5,700],
-  dh:[0,5000], dh_max:[0,5000], tic:[15,45], tic_ref:[15,45], ubat_before:[0.05,5], ubat_after:[0.05,5],
+  bbio:[5,300], bbio_max:[5,300], cep:[5,700], cep_max:[5,1500], cepnr:[5,700], cepnr_max:[5,700],
+  dh:[0,5000], dh_max:[0,5000], tic:[15,45], tic_ref:[15,45], ubat_before:[0.05,5], ubat_after:[0.05,5], ubat_ref:[0.05,5], ges:[0,150], ges_before:[0,250], ges_ref:[0,250],
   cep_before:[5,1500], cep_after_final:[5,1500], shab:[8,500000], housing_count:[1,5000],
   ic_components:[100,2500], ic_site:[0,250], ic_energy:[0,2000], stock_c_per_m2:[0,400],
-  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100], construction_year:[1700,2035]
+  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100], ubat_gain:[-100,100], ges_gain:[-100,100], construction_year:[1700,2035]
 });
 const LOTS=Array.from({length:13},(_,i)=>`ic_lot_${i+1}`);
 const ENERGY_POSTS=['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'];
@@ -53,7 +53,7 @@ export function applyCoherenceChecks(result){
     const cep=get('cep'), cepnr=get('cepnr');
     if(cep!==null&&cepnr!==null){ if(cepnr<=cep+0.5) record('Cep,nr ≤ Cep','ok',`${cepnr} ≤ ${cep}`); else record('Cep,nr ≤ Cep','fail',`Cep,nr = ${cepnr} > Cep = ${cep}`,['cep','cepnr']); }
     // 5. Gains recalculés
-    for(const [v,m,g] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain'],['cepnr','cepnr_max','cepnr_gain']]){
+    for(const [v,m,g] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain'],['cepnr','cepnr_max','cepnr_gain'],['ubat_after','ubat_ref','ubat_gain'],['ges','ges_ref','ges_gain']]){
       const a=get(v), mx=get(m), gain=get(g); if(a===null||!mx) continue;
       const calc=Math.round((mx-a)/mx*1000)/10;
       if(gain===null){

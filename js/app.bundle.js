@@ -231,7 +231,15 @@ const FIELD_DEFS = [
   {key:"eges_water_max",label:"Eges eau Max",family:"Carbone",type:"number",tags:["Eges eau Max", "Eges eau max", "EgesEau max"] ,presence:false},
   {key:"eges_total_max",label:"Eges total Max",family:"Carbone",type:"number",tags:["Eges total Max", "Eges total max"] ,presence:false},
   // v2.4.0 — colonne ajoutée en fin pour ne pas décaler l'ordre maître ; « Ventilation » reste l'état après travaux.
-  {key:"ventilation_before",label:"Ventilation avant travaux",family:"Systèmes",type:"text",tags:["Ventilation avant travaux", "ventilation existante", "ventilation initiale", "système de ventilation initiale"] ,presence:false}
+  {key:"ventilation_before",label:"Ventilation avant travaux",family:"Systèmes",type:"text",tags:["Ventilation avant travaux", "ventilation existante", "ventilation initiale", "système de ventilation initiale"] ,presence:false},
+  // v2.4.0 — références de comparaison : en rénovation l'état initial s'il est calculé, sinon la référence du document ;
+  // en neuf la référence. Le gain est recalculé sur cette base (voir applyComparisonBases, engine.js).
+  {key:"ubat_ref",label:"Ubat Ref",family:"Performance énergétique",type:"number",tags:["Ubat Ref", "Ubatref", "Ubat référence", "Ubat de référence", "coefficient Ubat ref"] ,presence:false},
+  {key:"ubat_gain",label:"Gain Ubat",family:"Performance énergétique",type:"number",tags:["Gain Ubat", "gain de Ubat", "gain UBat/UBatref", "gain UBat/UBatinit"] ,presence:false},
+  {key:"ges",label:"GES après travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES après travaux (kgCO2/m²)", "GES projet", "émissions de CO2 projet", "kgCO2/m² projet", "émissions GES projet"] ,presence:false},
+  {key:"ges_before",label:"GES avant travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES avant travaux (kgCO2/m²)", "GES initial", "émissions de CO2 état initial", "émissions GES état initial"] ,presence:false},
+  {key:"ges_ref",label:"GES Ref",family:"Performance énergétique",type:"number",tags:["GES Ref", "GES référence", "émissions de CO2 de référence"] ,presence:false},
+  {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false}
 ];
 const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -294,6 +302,10 @@ const HEADER_ALIASES={
   'cep nr max':'cepnr_max',
   'cep,nr max':'cepnr_max',
   'ubat initial':'ubat_before',
+  'ubat ref':'ubat_ref',
+  'gain ubat':'ubat_gain',
+  'ges ref':'ges_ref',
+  'gain ges':'ges_gain',
   'ubat projet':'ubat_after',
   'cep initial':'cep_before',
   'ic composants batiment':'ic_components',
@@ -379,7 +391,7 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insula
 // épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
 for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
-for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
+for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final", "ubat_ref", "ubat_gain", "ges", "ges_before", "ges_ref", "ges_gain"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
 for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
@@ -2385,7 +2397,7 @@ function parseClimaWinRtexSynthesis(doc,occ,canonical=(s)=>s){
   const emit=(x,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value===''||(typeof value==='number'&&!Number.isFinite(value))) return; const o=occ(doc,x.page,x.line,field,value,`climawin-rtex:${method}`,conf,unit,{building:canonical(B),structuredPdf:true,origin,dedicatedRank:6,...extra}); if(o) out.push(o); };
   const after=(re,n=3)=>{ const i=L.findIndex(x=>re.test(x.t)); return i<0?null:L.slice(i+1,i+1+n).find(x=>rt_nums(x.t).length>=3)||null; };
   // Ubat initial / projet / référence.
-  { const x=after(/UBatinit.*UBatproj/i); if(x){ const v=rt_nums(x.t); const note={provenanceNote:'Tableau « UBatinit / UBatproj / UBatref » de la synthèse.'}; if(v[0]>0&&v[0]<5) emit(x,'ubat_before',v[0],'ubat-initial',0.95,'W/m².K',note); if(v[1]>0&&v[1]<5) emit(x,'ubat_after',v[1],'ubat-projet',0.95,'W/m².K',note); } }
+  { const x=after(/UBatinit.*UBatproj/i); if(x){ const v=rt_nums(x.t); const note={provenanceNote:'Tableau « UBatinit / UBatproj / UBatref » de la synthèse.'}; if(v[0]>0&&v[0]<5) emit(x,'ubat_before',v[0],'ubat-initial',0.95,'W/m².K',note); if(v[1]>0&&v[1]<5) emit(x,'ubat_after',v[1],'ubat-projet',0.95,'W/m².K',note); if(v[2]>0&&v[2]<5) emit(x,'ubat_ref',v[2],'ubat-ref',0.94,'W/m².K',note); } }
   // Cep initial / projet / référence / Cep_p / Cepmax.
   { const x=after(/Cepinit.*Cepproj/i); if(x){ const v=rt_nums(x.t); const k=v.length; if(k>=5){ const [ci,cp,,,cm]=v.slice(k-5); const note={provenanceNote:'Tableau « Cepinit / Cepproj / Cepref / Cep_p / Cepmax » de la synthèse.'};
       // v2.4.0 — Cep max = Cep de référence (exigence de la RT existant globale) ; le Cepmax reste en note.
@@ -2576,6 +2588,7 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
       if(cep!==null) emit(ref!==null?row:cm,B,'cep_gain',Math.round((cepMax-cep)/cepMax*1000)/10,'cep-gain',0.92,'%',{provenanceNote:`Gain = (Cep ref − Cep projet) / Cep ref = (${cepMax} − ${cep}) / ${cepMax}.`}); }
     // Étiquettes équivalentes après travaux.
     for(const [re,f,m] of [[/^Energie\s*:\s*Classe\s+equivalente\s+([A-G])\b/i,'dpe_energy_after','etiquette-energie'],[/^CO2\s*:\s*Classe\s+equivalente\s+([A-G])\b/i,'dpe_ges_after','etiquette-co2']]){ const x=find(re); if(x) emit(x,B,f,x.t.match(re)[1].toUpperCase(),m,0.9,'',{provenanceNote:'Étiquette équivalente après travaux (Pléiades).'}); }
+    { const x=find(/^CO2\s*:\s*Classe\s+equivalente\s+[A-G]\s*:\s*\d/i); if(x) emit(x,B,'ges',Number(x.t.match(/:\s*(\d+(?:[.,]\d+)?)\s*kgCO2/i)?.[1]?.replace(',','.')),'ges-etiquette',0.9,'kgCO2/m².an',{provenanceNote:'Émissions de CO2 du projet (étiquette équivalente, kgCO2/m²SHAB.an).'}); }
     // Tic : lignes « <groupe> 25.61 °C 26.84 °C » (projet, référence) ; le groupe le plus chaud fait le Tic du bâtiment.
     { const a=R.findIndex(x=>/^Exigence\s+de\s+resultat\s*:\s*Tic\b/i.test(x.t)), b=R.findIndex(x=>/^Detail\s+des\s+consommations/i.test(x.t));
       const g=a<0?[]:R.slice(a+1,b>a?b:a+12).map(x=>{ const m=x.t.match(/^(.*?)\s*(\d{2}(?:\.\d+)?)\s*°C\s+(\d{2}(?:\.\d+)?)\s*°C\s*$/); return m?{x,grp:m[1],tic:Number(m[2]),ref:Number(m[3])}:null; }).filter(z=>z&&z.tic>=15&&z.tic<=45);
@@ -2622,7 +2635,8 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
     if(env){ const ub=seg(env.i,env.end).find(x=>/^Ubat\s*\(hiver\)/i.test(x.t));
       if(ub){ const u=px_nums(ub.t.replace(/W\/m2\.K/i,'')).filter(z=>z<10);
         if(u.length>=2) emit(ub,B,'ubat_after',u[u.length-2],'ubat-projet',0.96,'W/m².K',{provenanceNote:'Ubat projet (avant-dernière colonne, la dernière étant la référence).'});
-        if(u.length>=3) emit(ub,B,'ubat_before',u[u.length-3],'ubat-initial',0.94,'W/m².K',{provenanceNote:'Ubat initial (première colonne).'}); } }
+        if(u.length>=3) emit(ub,B,'ubat_before',u[u.length-3],'ubat-initial',0.94,'W/m².K',{provenanceNote:'Ubat initial (première colonne).'});
+        if(u.length>=2) emit(ub,B,'ubat_ref',u[u.length-1],'ubat-reference',0.95,'W/m².K',{provenanceNote:'Ubat de référence (dernière colonne).'}); } }
     // Caractéristiques du bâtiment.
     const car=S.car[s.name]||(single?(S.chap.car?{i:S.chap.car.i,end:S.ends.car}:{i:0,end:L.length}):null);
     if(car){ const C=seg(car.i,car.end); const f2=re=>C.find(x=>re.test(x.t));
@@ -2839,7 +2853,11 @@ function parseClimaWinRenovation(doc,occ,canonical=(s)=>s){
         if(s.cp) emit(s.cx||x,B,'cep_gain',Math.round((cm-s.cp)/cm*1000)/10,'cep-gain',0.92,'%',{provenanceNote:`Gain = (Cep ref − Cep projet) / Cep ref = (${cm} − ${s.cp}) / ${cm}.`}); } }
     // UBat init / proj / ref.
     { const i=R.findIndex(x=>/UBatinit.*UBatproj/i.test(x.t)); const x=i>=0?R.slice(i+1,i+4).find(y=>/\d\.\d{3}/.test(y.t)):null;
-      if(x){ const tok=x.t.split(/\s+/).filter(t=>/^-$|^\d+\.\d+$/.test(t)).map(t=>t==='-'?null:Number(t)); if(tok.length>=3){ if(tok[0]!==null) emit(x,B,'ubat_before',tok[0],'ubat-initial',0.94,'W/m².K'); if(tok[1]!==null) emit(x,B,'ubat_after',tok[1],'ubat-projet',0.95,'W/m².K'); } } }
+      if(x){ const tok=x.t.split(/\s+/).filter(t=>/^-$|^\d+\.\d+$/.test(t)).map(t=>t==='-'?null:Number(t)); if(tok.length>=3){ if(tok[0]!==null) emit(x,B,'ubat_before',tok[0],'ubat-initial',0.94,'W/m².K'); if(tok[1]!==null) emit(x,B,'ubat_after',tok[1],'ubat-projet',0.95,'W/m².K');
+        const ref=tok[2]??tok[3]; if(ref!=null) emit(x,B,'ubat_ref',ref,'ubat-ref',0.94,'W/m².K',{provenanceNote:`UBatref du tableau Th-C-E ex${tok[2]==null?' (UBatbase, UBatref non calculé)':''}.`}); } } }
+    // « Usage Consommation (kWhep/m²) Emissions CO2 (kgCO2/m²) … » : somme des usages du projet.
+    { const i=R.findIndex(x=>/^Usage\s+Consommation\s*\(kWhep\/m.\)\s+Emissions\s+CO2/i.test(x.t)); if(i>=0){ const rows=[]; for(const y of R.slice(i+1,i+10)){ if(!/^(?:Chauffage|Refroidissement|Production\s+d.eau\s+chaude|Ventilateurs|Eclairage|Auxiliaires)\b/i.test(y.t)) break; const v=cw_nums(y.t); if(v.length>=2) rows.push(v[v.length-2]); }
+      if(rows.length>=3) emit(R[i],B,'ges',Math.round(rows.reduce((a,v)=>a+v,0)*100)/100,'ges-usages',0.9,'kgCO2/m².an',{provenanceNote:`Somme des émissions de CO2 par usage du projet (${rows.length} usages).`}); } }
     // Consommations en énergie primaire par poste (ligne « Projet »).
     { const i=R.findIndex(x=>/^Comparatif\s+des\s+consommations\s+en\s+energie\s+primaire/i.test(x.t)); const p=i>=0?R.slice(i,i+6).find(x=>/^Projet\s+[\d.]/i.test(x.t)):null;
       const p2=p||L.slice(s.end,s.end+60).find(x=>/^Projet\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+/i.test(x.t));
@@ -2999,11 +3017,13 @@ function parseRenovationNotice(doc,occ,canonical=(s)=>s,opts={}){
       else if(/^ubatprojet$/.test(lab)) per(nums,(n,v)=>emit(y,n,'ubat_after',v,'synthese-ubat-projet',0.92,'W/m².K',note));
       else if(/^(?:lots|logements|nombredelogements|nblogements)$/.test(lab)) per(nums,(n,v)=>emit(y,n,'housing_count',v,'synthese-logements',0.85,'',note));
       else if(/consommation.*energieprimaire.*cep|^cep\(/.test(lab)&&split) per(nums,(n,a,b)=>{ emit(y,n,'cep_before',a,'synthese-cep-initial',0.92,'kWhEP/m².an',note); emit(y,n,'cep_after_final',b,'synthese-cep-projet',0.92,'kWhEP/m².an',note); emit(y,n,'cep',b,'synthese-cep-projet',0.9,'kWhEP/m².an',note); });
+      else if(/^emissions?(?:de)?(?:co2|ges)/.test(lab)&&split) per(nums,(n,a,b)=>{ emit(y,n,'ges_before',a,'synthese-ges-initial',0.9,'kgCO2/m².an',note); emit(y,n,'ges',b,'synthese-ges-projet',0.9,'kgCO2/m².an',note); });
       else if(/classe.*energetique.*dpe|etiquette.*energie/.test(lab)&&split&&grades.length===2*nb) per(grades,(n,a,b)=>{ emit(y,n,'dpe_energy_before',a,'synthese-dpe',0.88,'',note); emit(y,n,'dpe_energy_after',b,'synthese-dpe',0.88,'',note); });
       else if(/classe.*carbone.*dpe|etiquette.*(?:ges|climat|co2)/.test(lab)&&split&&grades.length===2*nb) per(grades,(n,a,b)=>{ emit(y,n,'dpe_ges_before',a,'synthese-ges',0.88,'',note); emit(y,n,'dpe_ges_after',b,'synthese-ges',0.88,'',note); });
       else if(/consommationequivalentedpe/.test(lab)||/emission.*gaz.*effet.*serre/.test(lab2.replace(/\s/g,''))){ const nv=nextVals(); if(!nv) continue;
         const ges=/emission/.test(lab2), init=/initial|existant/.test(lab2);
-        names.forEach((n,j)=>emit(L[k+1],n,ges?(init?'dpe_ges_before':'dpe_ges_after'):(init?'dpe_energy_before':'dpe_energy_after'),nv[j][2],ges?'synthese-ges':'synthese-dpe',0.88,'',{provenanceNote:`${ges?'Émissions':'Consommation équivalente DPE'} ${init?'initiales':'projet'} : ${nv[j][1]} (${n}).`})); }
+        names.forEach((n,j)=>emit(L[k+1],n,ges?(init?'dpe_ges_before':'dpe_ges_after'):(init?'dpe_energy_before':'dpe_energy_after'),nv[j][2],ges?'synthese-ges':'synthese-dpe',0.88,'',{provenanceNote:`${ges?'Émissions':'Consommation équivalente DPE'} ${init?'initiales':'projet'} : ${nv[j][1]} (${n}).`}));
+        if(ges) names.forEach((n,j)=>emit(L[k+1],n,init?'ges_before':'ges',nr_num(nv[j][1]),init?'synthese-ges-initial':'synthese-ges-projet',0.88,'kgCO2/m².an',{provenanceNote:`Émissions de gaz à effet de serre ${init?'initiales':'du projet'} (kgCO2/m²SHAB) : ${nv[j][1]} (${n}).`})); }
     }
   });
   // 2. Blocs de bilan « ETAT INITIAL » / « Projet » + « Batiment n° 1 : A » + « TOTAL kWhEP/m².an : 151,88 ».
@@ -3072,6 +3092,7 @@ function parseRenovationNotice(doc,occ,canonical=(s)=>s,opts={}){
   // Résultats en clair : « Consommation totale en energie primaire (kWhep/m2/an) 77.92 », « en classe C ».
   L.forEach((x,i)=>{ let m;
     if((m=x.t.match(/^Consommation\s+totale\s+en\s+energie\s+primaire\s*\([^)]*\)\s*(\d+(?:[.,]\d+)?)$/i))){ const p=ph[i]||'after'; emit(x,U,p==='before'?'cep_before':'cep_after_final',nr_num(m[1]),'cep-texte',0.88,'kWhEP/m².an'); if(p!=='before') emit(x,U,'cep',nr_num(m[1]),'cep-texte',0.85,'kWhEP/m².an'); }
+    if((m=x.t.match(/^Emissions?\s+(?:de\s+)?(?:GES|CO2)\s*\(?k[gq]\s*(?:eq|ep)?\s*CO2\/m2[^)\d]*\)?\s*(\d+(?:[.,]\d+)?)$/i))){ const p=ph[i]||'after'; emit(x,U,p==='before'?'ges_before':'ges',nr_num(m[1]),'ges-texte',0.88,'kgCO2/m².an'); }
     if((m=x.t.match(/^Surface\s+habitable\s*\(m2\)\s*(\d+(?:[.,]\d+)?)$/i))) emit(x,U,'shab',nr_num(m[1]),'shab',0.88,'m²');
     if((m=x.t.match(/^Surface\s+(?:habitable|chauffee)\s+(\d+(?:[.,]\d+)?)\s*m2$/i))&&!has(U,'shab')) emit(x,U,'shab',nr_num(m[1]),'shab',0.8,'m²',{reviewCap:0.85});
     if((m=x.t.match(/logements\s+sont\s+en\s+classe\s+([A-G])\b/i))) emit(x,U,'dpe_energy_after',m[1].toUpperCase(),'dpe-texte',0.86,'',{provenanceNote:x.t});
@@ -3229,7 +3250,8 @@ function parseU48WinRtex(doc,occ,canonical=(s)=>s){
   // Ubat par bâtiment : « ETAT INITIAL : CALCUL du COEFFICIENT UBAT : A » / « Projet - Batiment : A » … « COEFFICIENT UBAT = 0,607 ».
   L.forEach((x,i)=>{ let m=x.t.match(/^ETAT\s+INITIAL\s*:\s*CALCUL\s+du\s+COEFFICIENT\s+UBAT\s*:\s*(.+)$/i), ph='before';
     if(!m&&/CALCUL\s+du\s+COEFFICIENT\s+UBAT$/i.test(x.t)&&/^Projet\s*-\s*Batiment\s*:/i.test(L[i+1]?.t||'')){ m=L[i+1].t.match(/:\s*(.+)$/); ph='after'; }
-    if(!m) return; const B=all.length===1?all[0]:(bByName(m[1].trim())||null); if(!B) return; const u=L.slice(i,i+260).find(y=>/^COEFFICIENT\s+UBAT\s*=\s*[\d,]+$/i.test(y.t)); if(u) emit(u,B,ph==='before'?'ubat_before':'ubat_after',uw_nums(u.t)[0],`ubat-${ph}-calcul`,0.94,'W/m².K'); });
+    if(!m) return; const B=all.length===1?all[0]:(bByName(m[1].trim())||null); if(!B) return; const u=L.slice(i,i+260).find(y=>/^COEFFICIENT\s+UBAT\s*=\s*[\d,]+$/i.test(y.t)); if(u) emit(u,B,ph==='before'?'ubat_before':'ubat_after',uw_nums(u.t)[0],`ubat-${ph}-calcul`,0.94,'W/m².K');
+    const r=L.slice(i,i+260).find(y=>/^COEFFICIENT\s+UBAT\s+REF\s*=\s*[\d,]+$/i.test(y.t)); if(r) emit(r,B,'ubat_ref',uw_nums(r.t)[0],'ubat-ref-calcul',0.93,'W/m².K',{provenanceNote:'Ubat du bâtiment de référence (« COEFFICIENT UBAT REF »).'}); });
   // 6. Données générales.
   { const d=L.find(x=>/^Numero\s+de\s+departement\s*:\s*(\d{2,3}|2[AB])\b/i.test(x.t)); if(d) emit(d,'Bâtiment unique','department',d.t.match(/:\s*(\d{2,3}|2[AB])\b/i)[1],'departement',0.95,'',{secondarySourceOk:true});
     // Surface utile du récapitulatif RT rénovation de chaque bâtiment (« Batiment: X » quelques lignes plus bas).
@@ -3491,6 +3513,7 @@ function parseThermalSoftwarePatterns(doc,occ,canonical=(s)=>s){
       if((m=t.match(/^\d+-\d+-[a-z]\]\s*Ventilation\s*:\s*(.+)$/i))){ const v=lt_vent(m[1]); if(v&&once(B,`ventilation-saisie-${pagePhase}`,v)){ if(pagePhase==='before') emit(x,B,'ventilation_before',v,'ventilation-saisie-initiale',0.95); else emit(x,B,'ventilation',v,'ventilation-saisie',pagePhase==='after'?0.95:0.8,'',pagePhase==='after'?{}:{reviewCap:0.8,provenanceNote:'Phase de la page non identifiée : à vérifier s’il s’agit de l’état après travaux.'}); } continue; }
       const near=lines.slice(Math.max(0,i-3),i).map(y=>y.t).join(' ');
       // --- Perrenoud U-Win ---------------------------------------------------------------------------------------------
+      if((m=t.match(/COEFFICIENT\s+UBAT\s+REF\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); if(once(B,'ubat_ref',v)) emit(x,B,'ubat_ref',v,'ubat-ref',0.93,'W/m².K',{provenanceNote:'Ubat du bâtiment de référence (« COEFFICIENT UBAT REF »).'}); continue; }
       if((m=t.match(/COEFFICIENT\s+UBAT\s*=\s*(\d+[.,]\d+)/i))){ const v=lt_n(m[1]); const ph=lt_phase(near)||pagePhase;
         if(ph==='after'){ if(once(B,'ubat_after',v)) emit(x,B,'ubat_after',v,'ubat-projet',0.94,'W/m².K'); }
         else if(once(B,'ubat_before',v)) emit(x,B,'ubat_before',v,'ubat-calcul',ph==='before'?0.94:0.86,'W/m².K',ph?{}:{reviewCap:0.86,provenanceNote:'« COEFFICIENT UBAT = » d’une page sans mention avant / après travaux : état initial présumé, à vérifier.'}); continue; }
@@ -7576,11 +7599,11 @@ function __learningMemoryTestSimilarity(a,b){return locationSimilarity(a,b);}
 // ou validées par l'utilisateur ne sont jamais retirées : l'incohérence est alors seulement signalée.
 
 const PLAUSIBLE_RANGES=Object.freeze({
-  bbio:[5,300], bbio_max:[5,300], cep:[5,700], cep_max:[5,700], cepnr:[5,700], cepnr_max:[5,700],
-  dh:[0,5000], dh_max:[0,5000], tic:[15,45], tic_ref:[15,45], ubat_before:[0.05,5], ubat_after:[0.05,5],
+  bbio:[5,300], bbio_max:[5,300], cep:[5,700], cep_max:[5,1500], cepnr:[5,700], cepnr_max:[5,700],
+  dh:[0,5000], dh_max:[0,5000], tic:[15,45], tic_ref:[15,45], ubat_before:[0.05,5], ubat_after:[0.05,5], ubat_ref:[0.05,5], ges:[0,150], ges_before:[0,250], ges_ref:[0,250],
   cep_before:[5,1500], cep_after_final:[5,1500], shab:[8,500000], housing_count:[1,5000],
   ic_components:[100,2500], ic_site:[0,250], ic_energy:[0,2000], stock_c_per_m2:[0,400],
-  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100], construction_year:[1700,2035]
+  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100], ubat_gain:[-100,100], ges_gain:[-100,100], construction_year:[1700,2035]
 });
 const LOTS=Array.from({length:13},(_,i)=>`ic_lot_${i+1}`);
 const ENERGY_POSTS=['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'];
@@ -7624,7 +7647,7 @@ function applyCoherenceChecks(result){
     const cep=get('cep'), cepnr=get('cepnr');
     if(cep!==null&&cepnr!==null){ if(cepnr<=cep+0.5) record('Cep,nr ≤ Cep','ok',`${cepnr} ≤ ${cep}`); else record('Cep,nr ≤ Cep','fail',`Cep,nr = ${cepnr} > Cep = ${cep}`,['cep','cepnr']); }
     // 5. Gains recalculés
-    for(const [v,m,g] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain'],['cepnr','cepnr_max','cepnr_gain']]){
+    for(const [v,m,g] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain'],['cepnr','cepnr_max','cepnr_gain'],['ubat_after','ubat_ref','ubat_gain'],['ges','ges_ref','ges_gain']]){
       const a=get(v), mx=get(m), gain=get(g); if(a===null||!mx) continue;
       const calc=Math.round((mx-a)/mx*1000)/10;
       if(gain===null){
@@ -7934,11 +7957,38 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   if(unattributedCount) alerts.push({level:'warning',message:`${unattributedCount} valeur(s) d'indicateur sans bâtiment identifié n'ont pas été recopiées sur chaque bâtiment : elles sont proposées dans « À vérifier ».`});
   // v2.3 — contrôles de cohérence métier : une valeur incohérente avec ses voisines quitte le tableau
   // et part en revue ; les valeurs structurées (XML) et les validations utilisateur ne sont jamais retirées.
+  applyComparisonBases(consolidated);
   const coherence=applyCoherenceChecks(consolidated);
   alerts.push(...coherence.alerts);
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
   const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
   return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
+}
+
+// v2.4.0 — référence de comparaison des gains : en rénovation l'état initial (Cep / Ubat / GES avant travaux) quand il
+// est calculé, sinon la référence du document ; en neuf (pas d'état initial) la référence. Le gain est recalculé sur la base
+// retenue ; une référence ou un gain saisis à la main ne sont jamais remplacés. La référence du document reste en revue.
+const COMPARISON_BASES=[['cep_before','cep_max','cep_gain',['cep','cep_after_final']],['ubat_before','ubat_ref','ubat_gain',['ubat_after']],['ges_before','ges_ref','ges_gain',['ges']]];
+const isManualFinal=o=>!!(o&&(o.userValidated||/^manual:/.test(String(o.method||''))||/^(?:Correction|Entrée) manuelle$/.test(o.docType||'')));
+const numOrNull=v=>v===undefined||v===null||v===''||!Number.isFinite(Number(v))?null:Number(v);
+function applyComparisonBases(result){
+  for(const row of result?.rows||[]){ const b=row.building; const fin=f=>result.finals.find(o=>o.building===b&&o.field===f);
+    for(const [init,ref,gain,values] of COMPARISON_BASES){
+      const v=numOrNull(row[init]), src=fin(init), prev=fin(ref); if(v===null||!src||!(v>0)||isManualFinal(prev)) continue;
+      if(numOrNull(row[ref])!==v){
+        result.finals=result.finals.filter(o=>o!==prev);
+        result.finals.push({...src,field:ref,method:'derive:reference-etat-initial',derivedFromDocument:true,provenanceNote:`Rénovation : référence = état initial (${FIELD_MAP[init]?.label||init} = ${v})${prev?` ; référence du document : ${prev.value}`:''}.`});
+        row[ref]=v;
+        for(const d of result.detailed||[]) if(d.building===b&&d.field===ref&&d.status==='retenu'&&d!==prev){ d.status='rejeté'; d.rejectionReason='Rénovation : la référence de comparaison retenue est l’état initial.'; }
+      }
+      const vf=values.find(f=>numOrNull(row[f])!==null), g=fin(gain); if(!vf||isManualFinal(g)) continue;
+      const calc=Math.round((v-Number(row[vf]))/v*1000)/10; if(numOrNull(row[gain])===calc) continue;
+      result.finals=result.finals.filter(o=>o!==g);
+      result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[ref]?.label||ref} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (réf − valeur) / réf = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
+      row[gain]=calc;
+    }
+  }
+  return result;
 }
 
 function freeSearch(docs,query){
@@ -8398,8 +8448,8 @@ CH FR ECS Eclairage Aux. ventilation Aux. distribution Déplacements`;
 Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
-  // Contrat de schéma v2.4.0 : 186 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + Ventilation avant travaux v2.4.0, ajoutées en fin), chacune avec des tags reconnus.
-  assert('Schéma métier = 186 colonnes',FIELD_DEFS.length===186,String(FIELD_DEFS.length));
+  // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
+  assert('Schéma métier = 192 colonnes',FIELD_DEFS.length===192,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));
@@ -8623,7 +8673,7 @@ function exportProjectsExcel(projects,rules){
   const wb=XLSX.utils.book_new();
   const fields=FIELD_DEFS;
 
-  // La feuille principale respecte strictement le schéma métier : 186 colonnes dans l'ordre de référence
+  // La feuille principale respecte strictement le schéma métier : 192 colonnes dans l'ordre de référence
   // (les nouvelles colonnes sont toujours ajoutées à la fin), puis la colonne « Tags » du projet.
   const data=[[...fields.map(f=>f.label),'Tags']];
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });
@@ -10665,7 +10715,7 @@ function renderSummary(){
 const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_max','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
   ...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility','ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028',
   'bbio_level','cepnr_level','ic_construction_level','ic_energy_level','biosourced_2013','mention_ec','derogation_ec','effinergie_energy_carbon_level']);
-const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','built_before_1948','built_after_1948','renovation']);
+const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','ges_before','built_before_1948','built_after_1948','renovation']);
 const RENO_DOC_TYPES=new Set([DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC]);
 const NEW_DOC_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV]);
 function autoProfile(p=activeProject()){
@@ -10683,7 +10733,7 @@ function renderProfileSwitch(){ const box=$('#profileSwitch'); if(!box) return; 
 // Groupes de la revue, dans l'ordre d'usage : technique d'abord, données administratives en fin de fiche.
 const REVIEW_GROUPS=Object.freeze([
   {title:'Programme',keys:['housing_count','shab','housing_typologies','construction_year','built_before_1948','built_after_1948','department','structure']},
-  {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
+  {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','ubat_ref','ubat_gain','ges_before','ges','ges_ref','ges_gain','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
   {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
   {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
@@ -11204,6 +11254,7 @@ function applyManualValuesToProject(project){
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; result.finals.push(manual); result.detailed.push(manual);
   }
+  applyComparisonBases(result);
 }
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){

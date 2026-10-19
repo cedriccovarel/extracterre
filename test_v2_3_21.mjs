@@ -45,7 +45,7 @@ const d={id:'za',name,read,familyMode:'auto',status:'ready',classification:{...c
 const occ=parseDocument(d); const res=analyzeDocuments([{...d,cachedOccurrences:occ}],structuredClone(DEFAULT_SOURCE_RULES));
 const f=k=>res.finals.filter(o=>o.field===k).map(o=>o.value); const o=k=>occ.filter(x=>x.field===k).map(x=>x.value);
 // Déjà lus avant la v2.3.21 : ne bougent pas.
-eq(f('cep_before'),[195.307],'Cep initial'); eq(f('cep'),[72.768],'Cep projet'); eq(f('cep_max'),[111.165],'Cep max = Cep de référence (le label 104 reste en note)'); eq(f('ubat_before'),[1.96],'Ubat initial'); eq(f('ubat_after'),[0.68],'Ubat projet');
+eq(f('cep_before'),[195.307],'Cep initial'); eq(f('cep'),[72.768],'Cep projet'); eq(f('cep_max'),[195.307],'Cep Ref = Cep initial (rénovation, état initial calculé)'); eq(f('ubat_before'),[1.96],'Ubat initial'); eq(f('ubat_after'),[0.68],'Ubat projet');
 eq(f('housing_count'),[20],'logements'); eq(f('shab'),[1446],'SHAB'); eq(f('ventilation'),['VMC simple flux'],'ventilation projet');
 // Nouveaux.
 eq(f('tic'),[22.93],'Tic projet'); eq(f('tic_ref'),[33.69],'Tic référence'); eq(f('construction_year'),[1973],'« Annee deconstruction 1973 »');

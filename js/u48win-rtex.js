@@ -136,7 +136,8 @@ export function parseU48WinRtex(doc,occ,canonical=(s)=>s){
   // Ubat par bâtiment : « ETAT INITIAL : CALCUL du COEFFICIENT UBAT : A » / « Projet - Batiment : A » … « COEFFICIENT UBAT = 0,607 ».
   L.forEach((x,i)=>{ let m=x.t.match(/^ETAT\s+INITIAL\s*:\s*CALCUL\s+du\s+COEFFICIENT\s+UBAT\s*:\s*(.+)$/i), ph='before';
     if(!m&&/CALCUL\s+du\s+COEFFICIENT\s+UBAT$/i.test(x.t)&&/^Projet\s*-\s*Batiment\s*:/i.test(L[i+1]?.t||'')){ m=L[i+1].t.match(/:\s*(.+)$/); ph='after'; }
-    if(!m) return; const B=all.length===1?all[0]:(bByName(m[1].trim())||null); if(!B) return; const u=L.slice(i,i+260).find(y=>/^COEFFICIENT\s+UBAT\s*=\s*[\d,]+$/i.test(y.t)); if(u) emit(u,B,ph==='before'?'ubat_before':'ubat_after',uw_nums(u.t)[0],`ubat-${ph}-calcul`,0.94,'W/m².K'); });
+    if(!m) return; const B=all.length===1?all[0]:(bByName(m[1].trim())||null); if(!B) return; const u=L.slice(i,i+260).find(y=>/^COEFFICIENT\s+UBAT\s*=\s*[\d,]+$/i.test(y.t)); if(u) emit(u,B,ph==='before'?'ubat_before':'ubat_after',uw_nums(u.t)[0],`ubat-${ph}-calcul`,0.94,'W/m².K');
+    const r=L.slice(i,i+260).find(y=>/^COEFFICIENT\s+UBAT\s+REF\s*=\s*[\d,]+$/i.test(y.t)); if(r) emit(r,B,'ubat_ref',uw_nums(r.t)[0],'ubat-ref-calcul',0.93,'W/m².K',{provenanceNote:'Ubat du bâtiment de référence (« COEFFICIENT UBAT REF »).'}); });
   // 6. Données générales.
   { const d=L.find(x=>/^Numero\s+de\s+departement\s*:\s*(\d{2,3}|2[AB])\b/i.test(x.t)); if(d) emit(d,'Bâtiment unique','department',d.t.match(/:\s*(\d{2,3}|2[AB])\b/i)[1],'departement',0.95,'',{secondarySourceOk:true});
     // Surface utile du récapitulatif RT rénovation de chaque bâtiment (« Batiment: X » quelques lignes plus bas).

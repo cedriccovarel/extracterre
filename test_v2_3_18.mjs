@@ -95,7 +95,7 @@ console.log(`v2.3.18 — ${n} vérifications OK (documents fictifs)`);
   assert.equal(sourceTier('cep','RSEE RE2020',R),'main'); assert.ok(R.cep.main.indexOf('RSEE RE2020')<R.cep.main.indexOf('RT Existant'),'RSEE prime sur RT existant');
   assert.ok(LR.cep&&LR.cep.secondary.includes('RT Existant'),'ancienne règle mémorisée pour la migration');
   const r2=analyzeDocuments([A,note,B],structuredClone(R),'T'); const m2=r2.rows.find(x=>x.building==='Bâtiment MONET');
-  assert.equal(m2.cep,88.2,'Cep retenu (plus en « à vérifier »)'); assert.equal(m2.cep_gain,37.3,'Gain Cep = 1 − Cep / Cep ref');
+  assert.equal(m2.cep,88.2,'Cep retenu (plus en « à vérifier »)'); assert.equal(m2.cep_gain,58.1,'Gain Cep = 1 − Cep / Cep initial (rénovation : état initial calculé)');
   assert.deepEqual(vals(A,'cep_gain'),[37.3],'gain sur le Cep de référence, pas sur l\'état initial (58,08 %)');
   assert.ok(!(r2.uncertain||[]).some(u=>u.field==='cep'||u.field==='cep_gain'),'aucun Cep / gain en attente'); }
 console.log('v2.3.19 — sources Cep et Gain Cep OK');

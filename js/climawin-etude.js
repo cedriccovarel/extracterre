@@ -123,7 +123,11 @@ export function parseClimaWinRenovation(doc,occ,canonical=(s)=>s){
         if(s.cp) emit(s.cx||x,B,'cep_gain',Math.round((cm-s.cp)/cm*1000)/10,'cep-gain',0.92,'%',{provenanceNote:`Gain = (Cep ref − Cep projet) / Cep ref = (${cm} − ${s.cp}) / ${cm}.`}); } }
     // UBat init / proj / ref.
     { const i=R.findIndex(x=>/UBatinit.*UBatproj/i.test(x.t)); const x=i>=0?R.slice(i+1,i+4).find(y=>/\d\.\d{3}/.test(y.t)):null;
-      if(x){ const tok=x.t.split(/\s+/).filter(t=>/^-$|^\d+\.\d+$/.test(t)).map(t=>t==='-'?null:Number(t)); if(tok.length>=3){ if(tok[0]!==null) emit(x,B,'ubat_before',tok[0],'ubat-initial',0.94,'W/m².K'); if(tok[1]!==null) emit(x,B,'ubat_after',tok[1],'ubat-projet',0.95,'W/m².K'); } } }
+      if(x){ const tok=x.t.split(/\s+/).filter(t=>/^-$|^\d+\.\d+$/.test(t)).map(t=>t==='-'?null:Number(t)); if(tok.length>=3){ if(tok[0]!==null) emit(x,B,'ubat_before',tok[0],'ubat-initial',0.94,'W/m².K'); if(tok[1]!==null) emit(x,B,'ubat_after',tok[1],'ubat-projet',0.95,'W/m².K');
+        const ref=tok[2]??tok[3]; if(ref!=null) emit(x,B,'ubat_ref',ref,'ubat-ref',0.94,'W/m².K',{provenanceNote:`UBatref du tableau Th-C-E ex${tok[2]==null?' (UBatbase, UBatref non calculé)':''}.`}); } } }
+    // « Usage Consommation (kWhep/m²) Emissions CO2 (kgCO2/m²) … » : somme des usages du projet.
+    { const i=R.findIndex(x=>/^Usage\s+Consommation\s*\(kWhep\/m.\)\s+Emissions\s+CO2/i.test(x.t)); if(i>=0){ const rows=[]; for(const y of R.slice(i+1,i+10)){ if(!/^(?:Chauffage|Refroidissement|Production\s+d.eau\s+chaude|Ventilateurs|Eclairage|Auxiliaires)\b/i.test(y.t)) break; const v=cw_nums(y.t); if(v.length>=2) rows.push(v[v.length-2]); }
+      if(rows.length>=3) emit(R[i],B,'ges',Math.round(rows.reduce((a,v)=>a+v,0)*100)/100,'ges-usages',0.9,'kgCO2/m².an',{provenanceNote:`Somme des émissions de CO2 par usage du projet (${rows.length} usages).`}); } }
     // Consommations en énergie primaire par poste (ligne « Projet »).
     { const i=R.findIndex(x=>/^Comparatif\s+des\s+consommations\s+en\s+energie\s+primaire/i.test(x.t)); const p=i>=0?R.slice(i,i+6).find(x=>/^Projet\s+[\d.]/i.test(x.t)):null;
       const p2=p||L.slice(s.end,s.end+60).find(x=>/^Projet\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+/i.test(x.t));

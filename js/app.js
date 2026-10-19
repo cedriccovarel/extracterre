@@ -3,7 +3,7 @@ import {classifyDocument} from './classifier.js';
 import {readFile,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
-import {analyzeDocuments,freeSearch,runSelfTests,buildBuildingGrouping} from './engine.js';
+import {analyzeDocuments,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType} from './utils.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
@@ -1083,7 +1083,7 @@ function renderSummary(){
 const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_max','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
   ...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility','ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028',
   'bbio_level','cepnr_level','ic_construction_level','ic_energy_level','biosourced_2013','mention_ec','derogation_ec','effinergie_energy_carbon_level']);
-const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','built_before_1948','built_after_1948','renovation']);
+const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','ges_before','built_before_1948','built_after_1948','renovation']);
 const RENO_DOC_TYPES=new Set([DOC_TYPES.RT_EXISTING,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC]);
 const NEW_DOC_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSENV]);
 function autoProfile(p=activeProject()){
@@ -1101,7 +1101,7 @@ function renderProfileSwitch(){ const box=$('#profileSwitch'); if(!box) return; 
 // Groupes de la revue, dans l'ordre d'usage : technique d'abord, données administratives en fin de fiche.
 const REVIEW_GROUPS=Object.freeze([
   {title:'Programme',keys:['housing_count','shab','housing_typologies','construction_year','built_before_1948','built_after_1948','department','structure']},
-  {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
+  {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','ubat_ref','ubat_gain','ges_before','ges','ges_ref','ges_gain','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
   {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
   {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
@@ -1622,6 +1622,7 @@ function applyManualValuesToProject(project){
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; result.finals.push(manual); result.detailed.push(manual);
   }
+  applyComparisonBases(result);
 }
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){

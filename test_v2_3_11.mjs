@@ -16,9 +16,9 @@ const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.cla
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 
 // --- 1. Schéma : 12 colonnes Eges en fin d'export ------------------------------------------------------------------------------
-eq(FIELD_DEFS.length,186);
-eq(FIELD_DEFS.slice(-13,-1).map(f=>f.key),['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']);
-ok(FIELD_DEFS.slice(-13,-1).every(f=>f.family==='Carbone'),'onglet Carbone');
+eq(FIELD_DEFS.length,192);
+eq(FIELD_DEFS.slice(-19,-7).map(f=>f.key),['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']);
+ok(FIELD_DEFS.slice(-19,-7).every(f=>f.family==='Carbone'),'onglet Carbone');
 ok(DEFAULT_SOURCE_RULES.eges_pce.main.includes('Étude carbone / ACV'),'Eges : étude carbone en source principale');
 ok(DEFAULT_SOURCE_RULES.wall_insulation.main.includes('RT Existant'),'enveloppe : étude RT existant autorisée');
 

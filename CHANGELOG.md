@@ -8,8 +8,16 @@ valeurs identiques ou complétées (I3F LEPIC : 41 identiques + 8 équivalentes 
   en fin d'export : 186 colonnes, l'ordre des 185 précédentes est inchangé) ; « Ventilation » reste l'état après travaux.
   Lue dans Pléiades RT existant (système initial), fiches RSET, U48Win / Perrenoud (état initial), DPE de l'existant,
   notices et sorties BaO ; une ventilation conservée remplit les deux colonnes.
-- **Cep Ref** : la colonne « Cep Max » s'appelle désormais « Cep Ref » (Cep de référence ; clé `cep_max` inchangée,
-  les anciens en-têtes « Cep Max » restent reconnus à l'import).
+- **Cep Ref** : la colonne « Cep Max » s'appelle désormais « Cep Ref » (clé `cep_max` inchangée, les anciens en-têtes
+  « Cep Max » restent reconnus à l'import).
+- **Références de comparaison** (`applyComparisonBases`, engine.js) : en rénovation, Cep Ref / Ubat Ref / GES Ref = état
+  initial (Cep / Ubat / GES avant travaux) quand il est calculé, sinon la référence du document ; en neuf, la référence.
+  Les gains (Cep, Ubat, GES) sont recalculés sur cette base ; la référence du document reste en note et en revue ; une
+  référence ou un gain saisis à la main ne sont jamais remplacés (règle rejouée après chaque correction).
+- **Nouvelles colonnes** en fin d'export (192 colonnes) : « Ubat Ref », « Gain Ubat », « GES après travaux (kgCO2/m²) »,
+  « GES avant travaux (kgCO2/m²) », « GES Ref », « Gain GES ». Lues dans Pléiades RT existant (Ubat de référence,
+  étiquette CO2), ClimaWin (UBatref / UBatbase, émissions de CO2 par usage), U48Win / Perrenoud (« COEFFICIENT UBAT
+  REF »), synthèses ClimaWin RTEx et notices (émissions de GES initial / projet).
 - **Pléiades RT existant** (`js/pleiades-rtex.js`, Pléiades 5.x et 6.x) : un bâtiment par section « 1.N » (résultats),
   « 2.N » (enveloppe), « 5.N » (caractéristiques) ; colonne « initial » vide détectée (Cep / Ubat / consommations
   décalés) ; Tic du groupe le plus chaud ; deux postes du Cep sur une ligne ; logements, surfaces et zones traversantes

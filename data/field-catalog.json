@@ -1,7 +1,7 @@
 {
   "version": "2.4.0",
-  "generatedAt": "2026-10-19T08:10:11.444Z",
-  "count": 186,
+  "generatedAt": "2026-10-19T08:30:35.319Z",
+  "count": 192,
   "fields": [
     {
       "position": 1,
@@ -4870,6 +4870,162 @@
           "Diagnostic",
           "Entrée manuelle",
           "DPE"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 187,
+      "key": "ubat_ref",
+      "label": "Ubat Ref",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Ubat Ref",
+        "Ubatref",
+        "Ubat référence",
+        "Ubat de référence",
+        "coefficient Ubat ref"
+      ],
+      "sources": {
+        "main": [
+          "RT Existant",
+          "Étude thermique",
+          "RT2012",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 188,
+      "key": "ubat_gain",
+      "label": "Gain Ubat",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Gain Ubat",
+        "gain de Ubat",
+        "gain UBat/UBatref",
+        "gain UBat/UBatinit"
+      ],
+      "sources": {
+        "main": [
+          "RT Existant",
+          "Étude thermique",
+          "RT2012",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 189,
+      "key": "ges",
+      "label": "GES après travaux (kgCO2/m²)",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "GES après travaux (kgCO2/m²)",
+        "GES projet",
+        "émissions de CO2 projet",
+        "kgCO2/m² projet",
+        "émissions GES projet"
+      ],
+      "sources": {
+        "main": [
+          "RT Existant",
+          "Étude thermique",
+          "RT2012",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 190,
+      "key": "ges_before",
+      "label": "GES avant travaux (kgCO2/m²)",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "GES avant travaux (kgCO2/m²)",
+        "GES initial",
+        "émissions de CO2 état initial",
+        "émissions GES état initial"
+      ],
+      "sources": {
+        "main": [
+          "RT Existant",
+          "Étude thermique",
+          "RT2012",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 191,
+      "key": "ges_ref",
+      "label": "GES Ref",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "GES Ref",
+        "GES référence",
+        "émissions de CO2 de référence"
+      ],
+      "sources": {
+        "main": [
+          "RT Existant",
+          "Étude thermique",
+          "RT2012",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 192,
+      "key": "ges_gain",
+      "label": "Gain GES",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Gain GES",
+        "gain émissions de CO2",
+        "réduction GES"
+      ],
+      "sources": {
+        "main": [
+          "RT Existant",
+          "Étude thermique",
+          "RT2012",
+          "RSEE RE2020",
+          "RSET RE2020",
+          "Entrée manuelle"
         ],
         "secondary": [],
         "forbidden": []

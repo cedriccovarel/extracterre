@@ -6,7 +6,7 @@ import {APP_VERSION,DEFAULT_SOURCE_RULES} from './js/config.js';
 import {classifyDocument} from './js/classifier.js';
 import {detectBuildings} from './js/buildings.js';
 import {parseDocument} from './js/parsers.js';
-import {analyzeDocuments} from './js/engine.js';
+import {analyzeDocuments,applyComparisonBases} from './js/engine.js';
 import {normalizeText} from './js/utils.js';
 import {shouldOcrPdfPage} from './js/readers.js';
 import {dpeClasses} from './js/dpe-3cl.js';
@@ -42,7 +42,7 @@ const pl=mk('Etude RT ex fictive.pdf',[
    'Systeme de ventilation initiale Ventilation naturelle par conduit','Nouveau systeme de ventilation Residentiel: Ventilation hybride',H]]);
 eq(pl.buildings.names,['Bâtiment B','Bâtiment C'],'Pléiades : un bâtiment par section « 1.N »');
 const pr=fin([pl]); const B='Bâtiment B', C='Bâtiment C';
-eq([get(pr,B,'cep_before')[0],get(pr,B,'cep_after_final')[0],get(pr,B,'cep_max')[0],get(pr,B,'cep_gain')[0]],[196.6,82.2,110.1,25.3],'Cep initial / projet / référence (Cep max), gain sur la référence');
+eq([get(pr,B,'cep_before')[0],get(pr,B,'cep_after_final')[0],get(pr,B,'cep_max')[0],get(pr,B,'cep_gain')[0]],[196.6,82.2,196.6,58.2],'Cep initial / projet ; Cep Ref = Cep initial, gain sur l’état initial');
 eq([get(pr,C,'cep_before').length,get(pr,C,'cep_after_final')[0],get(pr,C,'cep_max')[0]],[0,165.126,232.281],'colonne initiale absente : rien en avant travaux, projet et référence décalés');
 eq([get(pr,B,'tic')[0],get(pr,B,'tic_ref')[0]],[25.61,26.84],'Tic du groupe le plus chaud');
 eq([get(pr,B,'cep_lighting')[0],get(pr,B,'cep_aux_dist')[0],get(pr,B,'cep_gas')[0],get(pr,B,'cep_electricity')[0]],[6.7,8.4,65.1,17.3],'deux postes sur une ligne, Cep par énergie');
@@ -52,6 +52,20 @@ eq([get(pr,B,'housing_count')[0],get(pr,B,'shab')[0],get(pr,B,'cross_ventilated'
 eq([get(pr,B,'wall_insulation')[0],get(pr,B,'wall_insulation_thickness')[0],get(pr,B,'wall_structure')[0],get(pr,B,'roof_insulation')[0]],['Fibre de bois',180,'Béton armé','PUR'],'paroi rénovée (le mur non isolé est écarté), marque IKO enertherm = PUR');
 eq([get(pr,B,'window_material')[0],get(pr,B,'window_shading')[0],get(pr,B,'ventilation')[0]],['PVC','Volet roulant','Ventilation hybride'],'baie (titre PVC), « protection Motorisee » ignorée, ventilation du groupe');
 eq(get(pr,B,'ventilation_before')[0],'Ventilation naturelle','ventilation initiale du groupe (colonne « Ventilation avant travaux »)');
+eq([get(pr,B,'ubat_before')[0],get(pr,B,'ubat_after')[0],get(pr,B,'ubat_ref')[0],get(pr,B,'ubat_gain')[0]],[0.951,0.631,0.951,33.6],'Ubat Ref = Ubat initial, gain sur l’état initial');
+eq(get(pr,B,'ges')[0],19,'GES projet (étiquette CO2 en kgCO2/m²SHAB.an)');
+// Référence de comparaison : initial s'il est calculé, sinon référence du document ; une saisie manuelle n'est jamais remplacée.
+{ const fz=(field,value,extra={})=>({field,value,building:'B1',docId:'d',fileName:'t.pdf',docType:'RT Existant',page:1,excerpt:'',confidence:0.95,method:'test',status:'retenu',...extra});
+  const mkR=(row,fields)=>({rows:[{building:'B1',...row}],finals:fields.map(([f,v,x])=>fz(f,v,x)),detailed:[]});
+  const r1=applyComparisonBases(mkR({cep_before:200,cep:80,cep_max:110,cep_gain:27.3},[['cep_before',200],['cep',80],['cep_max',110],['cep_gain',27.3]]));
+  eq([r1.rows[0].cep_max,r1.rows[0].cep_gain],[200,60],'réno : Cep Ref = Cep initial, gain recalculé');
+  ok(/référence du document : 110/.test(r1.finals.find(o=>o.field==='cep_max').provenanceNote),'la référence du document reste en note');
+  const r2=applyComparisonBases(mkR({cep:80,cep_max:110,ubat_after:0.79,ubat_ref:0.967},[['cep',80],['cep_max',110],['ubat_after',0.79],['ubat_ref',0.967]]));
+  eq([r2.rows[0].cep_max,r2.rows[0].ubat_ref,r2.rows[0].cep_gain],[110,0.967,undefined],'initial non calculé : la référence du document est conservée');
+  const r3=applyComparisonBases(mkR({cep_before:200,cep:80,cep_max:120},[['cep_before',200],['cep',80],['cep_max',120,{method:'manual:override',docType:'Correction manuelle'}]]));
+  eq(r3.rows[0].cep_max,120,'Cep Ref saisi à la main : jamais remplacé');
+  const r4=applyComparisonBases(mkR({ges_before:50,ges:19},[['ges_before',50],['ges',19]]));
+  eq([r4.rows[0].ges_ref,r4.rows[0].ges_gain],[50,62],'GES Ref = GES initial, gain GES'); }
 
 // 2. Fiche RSET Th-C-E ex (édition Pléiades, lettres espacées).
 const rs=mk('Fiche RSET fictive.pdf',[
@@ -66,7 +80,7 @@ const rs=mk('Fiche RSET fictive.pdf',[
    'FEUILLET GENERATION (Collectif)','3 - PКЉЄϿУ : NЉЏАϿϻЏВ','Type d\'e ne rgie - Electrique Electrique','Type de ge ne ra te ur - thermodynamique','C ate go rie ge ne ra te ur the rm odyna m ique - Compression electrique','[Exterieur] A ir exterieur - [Interieur]','Eau VCV']]);
 const rr=fin([rs]); const K='Bâtiment COLLECTIF';
 eq([get(rr,K,'shab')[0],get(rr,K,'construction_year')[0],get(rr,K,'housing_count')[0]],[222.02,1975,4],'libellés en lettres espacées');
-eq([get(rr,K,'cep_before')[0],get(rr,K,'cep_after_final')[0],get(rr,K,'cep_max')[0],get(rr,K,'cep_gain')[0]],[445.24,93.94,175.7,46.5],'Cep (a) / (b) / référence (c) et gain');
+eq([get(rr,K,'cep_before')[0],get(rr,K,'cep_after_final')[0],get(rr,K,'cep_max')[0],get(rr,K,'cep_gain')[0]],[445.24,93.94,445.24,78.9],'Cep (a) / (b) ; Cep Ref = Cep initial (a), gain sur l’état initial');
 eq([get(rr,K,'cep_lighting')[0],get(rr,K,'tic')[0],get(rr,K,'ubat_after')[0]],[6.61,24.41,0.6],'éclairage recalculé (kWh × 2,58 / SHON), Tic, Ubat');
 eq([get(rr,K,'heating_vector_before')[0],get(rr,K,'heating_vector_after')[0],get(rr,K,'ecs_vector_after')[0],get(rr,K,'ecs')[0],get(rr,K,'heating_mode_after')[0]],['Gaz','Électricité','Électricité','Ballon électrique','PAC air/eau'],'tableaux « oui / non » espacés, PAC air / eau');
 eq([get(rr,K,'wall_insulation')[0],get(rr,K,'wall_insulation_r')[0],get(rr,K,'window_material')[0]],['PSE',6.16,'PVC'],'parois espacées');

@@ -199,7 +199,7 @@ export function parseClimaWinRtexSynthesis(doc,occ,canonical=(s)=>s){
   const emit=(x,field,value,method,conf,unit='',extra={})=>{ if(!x||value===null||value===undefined||value===''||(typeof value==='number'&&!Number.isFinite(value))) return; const o=occ(doc,x.page,x.line,field,value,`climawin-rtex:${method}`,conf,unit,{building:canonical(B),structuredPdf:true,origin,dedicatedRank:6,...extra}); if(o) out.push(o); };
   const after=(re,n=3)=>{ const i=L.findIndex(x=>re.test(x.t)); return i<0?null:L.slice(i+1,i+1+n).find(x=>rt_nums(x.t).length>=3)||null; };
   // Ubat initial / projet / référence.
-  { const x=after(/UBatinit.*UBatproj/i); if(x){ const v=rt_nums(x.t); const note={provenanceNote:'Tableau « UBatinit / UBatproj / UBatref » de la synthèse.'}; if(v[0]>0&&v[0]<5) emit(x,'ubat_before',v[0],'ubat-initial',0.95,'W/m².K',note); if(v[1]>0&&v[1]<5) emit(x,'ubat_after',v[1],'ubat-projet',0.95,'W/m².K',note); } }
+  { const x=after(/UBatinit.*UBatproj/i); if(x){ const v=rt_nums(x.t); const note={provenanceNote:'Tableau « UBatinit / UBatproj / UBatref » de la synthèse.'}; if(v[0]>0&&v[0]<5) emit(x,'ubat_before',v[0],'ubat-initial',0.95,'W/m².K',note); if(v[1]>0&&v[1]<5) emit(x,'ubat_after',v[1],'ubat-projet',0.95,'W/m².K',note); if(v[2]>0&&v[2]<5) emit(x,'ubat_ref',v[2],'ubat-ref',0.94,'W/m².K',note); } }
   // Cep initial / projet / référence / Cep_p / Cepmax.
   { const x=after(/Cepinit.*Cepproj/i); if(x){ const v=rt_nums(x.t); const k=v.length; if(k>=5){ const [ci,cp,,,cm]=v.slice(k-5); const note={provenanceNote:'Tableau « Cepinit / Cepproj / Cepref / Cep_p / Cepmax » de la synthèse.'};
       // v2.4.0 — Cep max = Cep de référence (exigence de la RT existant globale) ; le Cepmax reste en note.
