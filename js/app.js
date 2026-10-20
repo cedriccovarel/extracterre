@@ -1227,7 +1227,7 @@ const MANUAL_ANALYSIS_SECTIONS={
   carbon:{label:'Carbone',families:new Set(['Carbone'])},
   envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
 };
-let manualAnalysisState={building:'',section:'general',field:'',filter:'todo',chain:true};
+let manualAnalysisState={building:'',section:'general',field:'',filter:'todo',chain:true,query:''};
 function manualAnalysisMode(){ return $('#betaErrorDialog')?.dataset.mode==='manual'; }
 function manualAnalysisBuildings(){
   const fromResult=(state.result?.rows||[]).map(r=>r.building).filter(Boolean);
@@ -1235,9 +1235,12 @@ function manualAnalysisBuildings(){
   const fromDocs=state.docs.flatMap(d=>d.buildings?.names||[]).filter(Boolean);
   return unique(fromDocs.length?fromDocs:['Bâtiment unique']);
 }
-function manualAnalysisFields(section=manualAnalysisState.section,{all=false}={}){
+function manualAnalysisSectionOf(field){ const fam=FIELD_MAP[field]?.family; return Object.keys(MANUAL_ANALYSIS_SECTIONS).find(k=>MANUAL_ANALYSIS_SECTIONS[k].families.has(fam)); }
+function manualAnalysisFields(section=manualAnalysisState.section,{all=false,search=!all}={}){
   const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general; const prof=projectProfile();
-  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&cfg.families.has(f.family)&&fieldInProfile(f.key,prof));
+  // v2.4.1 — recherche : toutes les familles, libellé ou synonymes contenant le texte saisi (casse et accents ignorés).
+  const q=search?normLower(manualAnalysisState.query||''):'';
+  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&(q?manualAnalysisSectionOf(f.key):cfg.families.has(f.family))&&fieldInProfile(f.key,prof)&&(!q||normLower([f.label,...(f.tags||[])].join(' | ')).includes(q)));
   // v2.4.0 — « À compléter » : champs vides ou dont la valeur est seulement proposée (à vérifier), le champ actif restant visible.
   if(all||manualAnalysisState.filter==='all') return defs;
   return defs.filter(f=>f.key===manualAnalysisState.field||manualAnalysisNeeds(manualAnalysisState.building,f.key));
@@ -1246,6 +1249,7 @@ function manualAnalysisNeeds(building,field){ return isBlank(manualAnalysisCurre
 function manualAnalysisCandidates(building,field){ return visibleUncertain().filter(o=>o.field===field&&(o.building===building||o.building==='Bâtiment unique')).sort((a,b)=>b.confidence-a.confidence); }
 // Champ suivant à compléter (même bâtiment), en parcourant les familles dans l'ordre d'affichage : thermique et enveloppe d'abord.
 function manualAnalysisNextField(current=manualAnalysisState.field){
+  if(manualAnalysisState.query.trim()){ const list=manualAnalysisFields(manualAnalysisState.section,{all:true,search:true}); const f=list.slice(list.findIndex(x=>x.key===current)+1).find(x=>manualAnalysisNeeds(manualAnalysisState.building,x.key)); return f?{section:manualAnalysisSectionOf(f.key),field:f.key}:null; }
   const order=['thermal','envelope','general','carbon']; const start=Math.max(0,order.indexOf(manualAnalysisState.section)); const seq=[...order.slice(start),...order.slice(0,start)];
   let passed=!current;
   for(const sec of seq){ for(const f of manualAnalysisFields(sec,{all:true})){ if(f.key===current){ passed=true; continue; } if(passed&&manualAnalysisNeeds(manualAnalysisState.building,f.key)) return {section:sec,field:f.key}; } }
@@ -1269,9 +1273,9 @@ function renderManualAnalysisSidebar(){
   if(buildingCount)buildingCount.textContent=`${buildings.length} bâtiment${buildings.length>1?'s':''}`;
   if(bt)bt.innerHTML=buildings.map((b,i)=>`<button type="button" class="manual-building-tab ${b===manualAnalysisState.building?'active':''}" data-building="${escapeHtml(b)}" title="${escapeHtml(b)}">${escapeHtml(b||`Bâtiment ${i+1}`)}</button>`).join('');
   if(st)st.innerHTML=Object.entries(MANUAL_ANALYSIS_SECTIONS).map(([key,cfg])=>`<button type="button" class="manual-section-tab ${key===manualAnalysisState.section?'active':''}" data-section="${key}">${escapeHtml(cfg.label)}</button>`).join('');
-  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=!isBlank(v),cand=!filled&&manualAnalysisCandidates(manualAnalysisState.building,f.key)[0];return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''} ${cand?'has-cand':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):cand?`proposé : ${escapeHtml(formatValue(cand.value))}`:'À renseigner'}</strong></button>`;}).join('')||`<div class="empty-small">${manualAnalysisState.filter==='todo'?'Tout est renseigné dans cette famille.':'Aucun champ dans cette famille.'}</div>`;
-  const bar=$('#manualFilterBar'); if(bar){ const todo=manualAnalysisFields(manualAnalysisState.section,{all:true}).filter(f=>manualAnalysisNeeds(manualAnalysisState.building,f.key)).length;
-    bar.innerHTML=`<div class="manual-filter-chips" role="group" aria-label="Champs affichés"><button type="button" class="manual-filter ${manualAnalysisState.filter==='todo'?'active':''}" data-mfilter="todo">À compléter dans cette famille · ${todo}</button><button type="button" class="manual-filter ${manualAnalysisState.filter==='all'?'active':''}" data-mfilter="all">Tous les champs</button></div><label class="manual-chain"><input type="checkbox" id="manualChain" ${manualAnalysisState.chain?'checked':''}> Passer au champ suivant après chaque saisie</label>`;
+  if(fb)fb.innerHTML=fields.map(f=>{const v=manualAnalysisCurrentValue(manualAnalysisState.building,f.key),filled=!isBlank(v),cand=!filled&&manualAnalysisCandidates(manualAnalysisState.building,f.key)[0];return `<button type="button" class="manual-field-btn ${manualAnalysisState.field===f.key?'active':''} ${filled?'filled':''} ${cand?'has-cand':''}" data-field="${f.key}"><span>${escapeHtml(f.label)}</span><strong>${filled?escapeHtml(formatValue(v)):cand?`proposé : ${escapeHtml(formatValue(cand.value))}`:'À renseigner'}</strong></button>`;}).join('')||`<div class="empty-small">${manualAnalysisState.query.trim()?`Aucun champ ${manualAnalysisState.filter==='todo'?'à compléter ':''}ne contient « ${escapeHtml(manualAnalysisState.query.trim())} ».`:manualAnalysisState.filter==='todo'?'Tout est renseigné dans cette famille.':'Aucun champ dans cette famille.'}</div>`;
+  const bar=$('#manualFilterBar'); if(bar){ const todo=manualAnalysisFields(manualAnalysisState.section,{all:true,search:true}).filter(f=>manualAnalysisNeeds(manualAnalysisState.building,f.key)).length;
+    bar.innerHTML=`<div class="manual-filter-chips" role="group" aria-label="Champs affichés"><button type="button" class="manual-filter ${manualAnalysisState.filter==='todo'?'active':''}" data-mfilter="todo">À compléter ${manualAnalysisState.query.trim()?'· recherche':'dans cette famille'} · ${todo}</button><button type="button" class="manual-filter ${manualAnalysisState.filter==='all'?'active':''}" data-mfilter="all">Tous les champs</button></div><label class="manual-chain"><input type="checkbox" id="manualChain" ${manualAnalysisState.chain?'checked':''}> Passer au champ suivant après chaque saisie</label>`;
     bar.querySelectorAll('[data-mfilter]').forEach(b=>b.onclick=()=>{ manualAnalysisState.filter=b.dataset.mfilter; renderManualAnalysisSidebar(); }); const ch=$('#manualChain'); if(ch) ch.onchange=()=>{ manualAnalysisState.chain=ch.checked; }; }
   const cbox=$('#manualCandidates'); if(cbox){ const cs=manualAnalysisState.field&&isBlank(manualAnalysisCurrentValue(manualAnalysisState.building,manualAnalysisState.field))?manualAnalysisCandidates(manualAnalysisState.building,manualAnalysisState.field).slice(0,3):[];
     cbox.hidden=!cs.length; cbox.innerHTML=cs.length?`<span class="manual-cand-title">Proposé par l’analyse</span>${cs.map((c,i)=>`<div class="manual-cand"><strong>${escapeHtml(formatValue(c.value))}</strong><small>${escapeHtml(c.fileName)} · p. ${c.page} · ${Math.round(c.confidence*100)} %</small><button type="button" class="btn light" data-mcand-use="${i}">Utiliser</button><button type="button" class="btn light" data-mcand-go="${i}">Voir la page</button></div>`).join('')}`:'';
@@ -1290,7 +1294,7 @@ function renderManualAnalysisSidebar(){
   st?.querySelectorAll('.manual-section-tab').forEach(b=>b.onclick=()=>{manualAnalysisState.section=b.dataset.section||'thermal';manualAnalysisState.field='';renderManualAnalysisSidebar();});
   // ↑ ↓ : champ précédent / suivant de la liste.
   fb?.querySelectorAll('.manual-field-btn').forEach((b,i,all)=>b.onkeydown=e=>{ if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return; e.preventDefault(); const t=all[i+(e.key==='ArrowDown'?1:-1)]; if(t){ t.click(); setTimeout(()=>$(`#manualFieldButtons [data-field="${t.dataset.field}"]`)?.focus(),0); } });
-  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document ou saisissez directement la bonne valeur.`:'';feedback.className='manual-analysis-feedback';}setTimeout(()=>$('#manualDirectValue')?.select?.(),0);});
+  fb?.querySelectorAll('.manual-field-btn').forEach(b=>b.onclick=()=>{manualAnalysisState.field=b.dataset.field||'';manualAnalysisState.section=manualAnalysisSectionOf(manualAnalysisState.field)||manualAnalysisState.section;renderManualAnalysisSidebar();const feedback=$('#manualAnalysisFeedback');if(feedback){const d=FIELD_MAP[manualAnalysisState.field];feedback.textContent=d?`Prêt : surlignez « ${d.label} » dans le document ou saisissez directement la bonne valeur.`:'';feedback.className='manual-analysis-feedback';}setTimeout(()=>$('#manualDirectValue')?.select?.(),0);});
 }
 function manualAnalysisStoreValue(raw,{location=null,manualEntry=false}={}){
   if(!manualAnalysisMode())return false;
@@ -1360,7 +1364,8 @@ function openManualAnalysisDialog(){
   $('#betaErrorIntro').textContent='Choisissez un bâtiment et un champ à droite, puis surlignez la valeur dans le PDF ou cliquez une cellule du tableur. La donnée est affectée immédiatement.';
   const correction=$('#betaCorrectionSidebar'),manual=$('#manualAnalysisSidebar'),submit=$('#betaErrorSubmit'),cancel=$('#betaErrorCancel');
   if(correction)correction.hidden=true;if(manual)manual.hidden=false;if(submit)submit.hidden=true;if(cancel)cancel.textContent='Terminer l’analyse manuelle';
-  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'thermal',field:'',filter:manualAnalysisState.filter||'todo',chain:manualAnalysisState.chain!==false};
+  manualAnalysisState={building:manualAnalysisBuildings()[0]||'Bâtiment unique',section:'thermal',field:'',filter:manualAnalysisState.filter||'todo',chain:manualAnalysisState.chain!==false,query:''};
+  const search=$('#manualFieldSearch');if(search){search.value='';search.oninput=()=>{manualAnalysisState.query=search.value;renderManualAnalysisSidebar();};search.onkeydown=e=>{if(e.key==='Escape'&&search.value){e.preventDefault();e.stopPropagation();search.value='';search.oninput();}else if(e.key==='Enter'){e.preventDefault();$('#manualFieldButtons .manual-field-btn')?.click();}};}
   const feedback=$('#manualAnalysisFeedback');if(feedback){feedback.textContent='Sélectionnez un champ à droite pour commencer.';feedback.className='manual-analysis-feedback';}
   const direct=$('#manualDirectValue'),directApply=$('#manualDirectApply');
   if(direct){direct.value='';direct.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();manualAnalysisApplyDirectValue();}};}

@@ -1,3 +1,9 @@
+# v2.4.1 — Analyse manuelle : recherche de champs
+- **Barre de recherche** au-dessus des champs de l'analyse manuelle : « DH » affiche tous les champs dont le libellé
+  (ou un synonyme) contient « DH » (DH, DH Max), dans toutes les familles ; casse et accents ignorés. Le filtre
+  « À compléter » / « Tous les champs » s'applique aux résultats ; Entrée choisit le premier résultat, Échap efface.
+- Après une saisie, « Passer au champ suivant » parcourt les résultats de la recherche en cours.
+
 # v2.4.0 — Parseurs rénovation réécrits (RT existant / RSET / DPE / notices) : mesurés sur 38 documents réels
 Mesuré par opération (tous les documents d'une opération analysés ensemble, 43 champs rénovation par bâtiment) :
 Sully 60 → 87 %, Chalette 26 → 98 %, Rueil 40 → 93 %, Sartrouville 23 → 81 %, Patton 0 → 60 %, Vineuil 16 → 84 %,

@@ -1,3 +1,7 @@
+## v2.4.1 — recherche de champs (analyse manuelle)
+- `test_v2_4_1.mjs` : barre `#manualFieldSearch`, recherche sur toutes les familles dans `app.js` et le bundle.
+  Vérifié dans Chrome (document XML) : « dh » → DH / DH Max, « zzz » → message vide, Échap efface.
+
 ## v2.4.0 — parseurs rénovation réécrits
 - `test_v2_4_0.mjs` (30 vérifications) : Pléiades RT existant à deux bâtiments (colonne initiale vide, Tic par groupe,
   postes sur une ligne, paroi rénovée, baie « (Baie) »), fiche RSET en lettres espacées, DPE 2021 (classes recalculées,

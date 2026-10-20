@@ -1164,6 +1164,7 @@ dialog#betaErrorDialog,
 @media(prefers-reduced-motion:reduce){.rv-row .rv-actions .rv-ghost{transition:none}}
 
 /* --- Analyse manuelle guidée --- */
+.manual-field-search{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5d1;border-radius:8px;font:inherit}
 .manual-filter-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .manual-filter-chips{display:flex;gap:4px}
 .manual-filter{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;color:#3e5148;cursor:pointer;font-variant-numeric:tabular-nums}
