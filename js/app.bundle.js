@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.4.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.4.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.4.1';
+const APP_VERSION='2.4.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -9478,17 +9478,22 @@ const LLM_CONSENT_KEY='extracterre.llm.consent.v1';
 const LLM_PROVIDERS=Object.freeze({
   openai:{label:'ChatGPT (OpenAI)',defaultModel:'gpt-5.4-mini',keyHint:'sk-…',endpoint:'https://api.openai.com/v1/chat/completions'},
   gemini:{label:'Gemini (Google)',defaultModel:'gemini-3.5-flash',keyHint:'AIza…',endpoint:'https://generativelanguage.googleapis.com/v1beta/models'},
-  anthropic:{label:'Claude (Anthropic)',defaultModel:'claude-sonnet-5-5',keyHint:'sk-ant-…',endpoint:'https://api.anthropic.com/v1/messages'}
+  anthropic:{label:'Claude (Anthropic)',defaultModel:'claude-sonnet-5-5',keyHint:'sk-ant-…',endpoint:'https://api.anthropic.com/v1/messages'},
+  // v2.4.2 — IA locale gratuite, sans clé : le texte ne quitte pas l'ordinateur.
+  // shortcut: adresse fixe (port Ollama par défaut), à rendre réglable si un poste utilise un autre port.
+  ollama:{label:'IA locale (Ollama)',defaultModel:'qwen2.5:7b',keyHint:'',endpoint:'http://localhost:11434',local:true}
 });
 const LLM_DEFAULT_PROVIDER='openai';
 const LLM_MAX_CONFIDENCE=0.85;
 const LLM_DEFAULT_MODEL=LLM_PROVIDERS[LLM_DEFAULT_PROVIDER].defaultModel;
-const LLM_MODES=Object.freeze({off:'Désactivée',edge:'Serveur ExtracTerre (Edge Function Supabase)',direct:'Clé API personnelle (cette session uniquement)'});
+const LLM_MODES=Object.freeze({off:'Désactivée',edge:'Serveur ExtracTerre (Edge Function Supabase)',direct:'Clé API personnelle (cette session uniquement)',local:'IA locale gratuite, sans clé (Ollama sur cet ordinateur)'});
 
 function getLlmConfig(){
   let c={}; try{ c=JSON.parse(localStorage.getItem(LLM_CONFIG_KEY)||'{}')||{}; }catch{}
-  const provider=LLM_PROVIDERS[c.provider]?c.provider:LLM_DEFAULT_PROVIDER;
-  return {mode:LLM_MODES[c.mode]?c.mode:'off',provider,model:String(c.model||LLM_PROVIDERS[provider].defaultModel),maxPages:Math.max(1,Math.min(12,Number(c.maxPages)||6))};
+  const mode=LLM_MODES[c.mode]?c.mode:'off';
+  // Mode local = Ollama ; les modes cloud n'utilisent jamais Ollama.
+  const provider=mode==='local'?'ollama':LLM_PROVIDERS[c.provider]&&!LLM_PROVIDERS[c.provider].local?c.provider:LLM_DEFAULT_PROVIDER;
+  return {mode,provider,model:String(c.model||LLM_PROVIDERS[provider].defaultModel),maxPages:Math.max(1,Math.min(12,Number(c.maxPages)||6))};
 }
 function saveLlmConfig(cfg={}){ const cur=getLlmConfig(); const next={...cur,...cfg}; if(!LLM_PROVIDERS[next.provider]) next.provider=LLM_DEFAULT_PROVIDER; try{ localStorage.setItem(LLM_CONFIG_KEY,JSON.stringify({mode:next.mode,provider:next.provider,model:next.model,maxPages:next.maxPages})); }catch{} return getLlmConfig(); }
 // Une clé par fournisseur, en sessionStorage uniquement (effacée à la fermeture de l'onglet).
@@ -9599,11 +9604,14 @@ function providerHttpRequest(request,key){
   const p=request.provider||LLM_DEFAULT_PROVIDER, user=request.messages?.[0]?.content||'';
   if(p==='openai') return {url:LLM_PROVIDERS.openai.endpoint,init:{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${key}`},body:JSON.stringify({model:request.model,max_completion_tokens:request.max_tokens||2000,response_format:{type:'json_object'},messages:[{role:'system',content:request.system},{role:'user',content:user}]})}};
   if(p==='gemini') return {url:`${LLM_PROVIDERS.gemini.endpoint}/${encodeURIComponent(request.model)}:generateContent`,init:{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':key},body:JSON.stringify({systemInstruction:{parts:[{text:request.system}]},contents:[{role:'user',parts:[{text:user}]}],generationConfig:{responseMimeType:'application/json',maxOutputTokens:request.max_tokens||2000,temperature:0}})}};
+  // Ollama : format natif /api/chat ; contexte élargi (6 pages ≈ 10 000 jetons, défaut Ollama trop court).
+  if(p==='ollama') return {url:`${LLM_PROVIDERS.ollama.endpoint}/api/chat`,init:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:request.model,stream:false,format:'json',options:{temperature:0,num_ctx:16384,num_predict:request.max_tokens||2000},messages:[{role:'system',content:request.system},{role:'user',content:user}]})}};
   if(p==='anthropic') return {url:LLM_PROVIDERS.anthropic.endpoint,init:{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:request.model,max_tokens:request.max_tokens||2000,system:request.system,messages:request.messages})}};
   throw new Error(`Fournisseur IA inconnu : ${p}`);
 }
 function providerResponseText(provider,data){
   if(provider==='openai') return {text:String(data?.choices?.[0]?.message?.content||''),usage:data?.usage||null};
+  if(provider==='ollama') return {text:String(data?.message?.content||''),usage:data?.eval_count?{prompt_tokens:data.prompt_eval_count||0,completion_tokens:data.eval_count}:null};
   if(provider==='gemini') return {text:(data?.candidates?.[0]?.content?.parts||[]).map(x=>x?.text||'').join('\n'),usage:data?.usageMetadata||null};
   return {text:(data?.content||[]).map(c=>c.type==='text'?c.text:'').join('\n'),usage:data?.usage||null};
 }
@@ -9624,7 +9632,26 @@ async function llmTransport(request,cfg,{fetchImpl,invokeFunction}={}){
     if(!res.ok) throw new Error(providerError(data,res.status));
     return providerResponseText(provider,data);
   }
+  if(cfg.mode==='local'){
+    const {url,init}=providerHttpRequest({...request,provider:'ollama'},'');
+    let res; try{ res=await (fetchImpl||globalThis.fetch)(url,init); }catch{ throw new Error(OLLAMA_UNREACHABLE); }
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(/not found/i.test(providerError(data,res.status))?`Modèle « ${request.model} » absent : lancez « ollama pull ${request.model} » dans le Terminal.`:providerError(data,res.status));
+    return providerResponseText('ollama',data);
+  }
   throw new Error('Assistance IA désactivée.');
+}
+const OLLAMA_UNREACHABLE='Ollama ne répond pas sur cet ordinateur : lancez l’application Ollama et autorisez ExtracTerre (OLLAMA_ORIGINS, voir les réglages IA).';
+// Test de connexion des réglages : {ok, models, hasModel, error}.
+async function checkOllama(model=LLM_PROVIDERS.ollama.defaultModel,fetchImpl=null){
+  try{
+    const res=await (fetchImpl||globalThis.fetch)(`${LLM_PROVIDERS.ollama.endpoint}/api/tags`);
+    if(!res.ok) return {ok:false,models:[],hasModel:false,error:`Erreur Ollama ${res.status}`};
+    const models=((await res.json())?.models||[]).map(m=>String(m.name||m.model||'')).filter(Boolean);
+    // « qwen2.5:7b » = « qwen2.5:7b » ; « mistral » = « mistral:latest ».
+    const hasModel=models.some(m=>m===model||m===`${model}:latest`);
+    return {ok:true,models,hasModel};
+  }catch{ return {ok:false,models:[],hasModel:false,error:OLLAMA_UNREACHABLE}; }
 }
 
 // Point d'entrée : renvoie les occurrences vérifiées (pour la fenêtre ✓ / ✕) et les rejets motivés.
@@ -11397,29 +11424,42 @@ function openLlmSettings(onReady=null){
   dlg.innerHTML=`<form method="dialog" class="llm-form">
   <header class="llm-head"><h2>🤖 Assistance IA — réglages</h2><button value="cancel" class="icon-btn llm-close" type="submit" aria-label="Fermer">×</button></header>
   <div class="llm-body">
-    <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+    <p class="llm-warning" id="llmWarnCloud"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+    <p class="llm-warning llm-local-ok" id="llmWarnLocal"><strong>IA locale :</strong> gratuite et sans clé ; le texte des pages est traité par Ollama sur cet ordinateur et n’est envoyé à aucun service extérieur. Plus lente qu’une IA en ligne sans carte graphique.</p>
     <div class="llm-grid">
       <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
-      <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+      <label id="llmProviderWrap">Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).filter(([,p])=>!p.local).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
       <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"></label>
       <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
     </div>
     <small class="llm-hint">Le modèle est modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small>
+    <div id="llmLocalWrap" class="llm-local">
+      <div class="llm-local-row"><button id="llmOllamaTest" class="btn light" type="button">Tester la connexion</button><span id="llmOllamaState" class="llm-hint" aria-live="polite"></span></div>
+      <details><summary>Installer Ollama (une seule fois)</summary><ol>
+        <li>Télécharger et installer Ollama : <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>.</li>
+        <li>Dans le Terminal (Mac) ou l’Invite de commandes (Windows), télécharger le modèle (≈ 5 Go) : <code>ollama pull qwen2.5:7b</code></li>
+        <li>Autoriser ExtracTerre à interroger Ollama, puis quitter et relancer Ollama :<br>Mac : <code>launchctl setenv OLLAMA_ORIGINS "*"</code><br>Windows : <code>setx OLLAMA_ORIGINS "*"</code></li>
+        <li>Cliquer « Tester la connexion ». Un autre modèle installé (mistral, llama3.1…) peut être saisi dans « Modèle ».</li>
+      </ol></details>
+    </div>
     <label id="llmKeyWrap"><span>Clé API <span id="llmKeyProvider"></span> — conservée pour cette session seulement</span><input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
     <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> <span>J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</span></label>
   </div>
   <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="llmSave" value="default" class="btn primary" type="submit">Enregistrer</button></footer></form>`;
   let lastProvider=cfg.provider;
-  const sync=()=>{ const prov=$('#llmProvider').value, p=LLM_PROVIDERS[prov];
-    $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct';
+  const sync=()=>{ const local=$('#llmMode').value==='local', prov=local?'ollama':$('#llmProvider').value, p=LLM_PROVIDERS[prov];
+    $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct'; $('#llmProviderWrap').hidden=local; $('#llmLocalWrap').hidden=!local;
+    $('#llmWarnCloud').hidden=local; $('#llmWarnLocal').hidden=!local;
     $('#llmKeyProvider').textContent=p.label; $('#llmKey').placeholder=p.keyHint;
     $('#llmKeyState').textContent=llmHasDirectKey(prov)?'Une clé est déjà enregistrée pour cette session (laisser vide pour la conserver).':'Aucune clé enregistrée pour cette session.';
     // Changement de fournisseur : on propose son modèle par défaut si l'utilisateur n'a pas personnalisé le champ.
     if(prov!==lastProvider){ const cur=$('#llmModel').value.trim(); if(!cur||cur===LLM_PROVIDERS[lastProvider]?.defaultModel) $('#llmModel').value=p.defaultModel; lastProvider=prov; } };
   $('#llmMode').onchange=sync; $('#llmProvider').onchange=sync; sync();
+  $('#llmOllamaTest').onclick=async()=>{ const st=$('#llmOllamaState'), model=$('#llmModel').value.trim()||LLM_PROVIDERS.ollama.defaultModel; st.textContent='Test en cours…';
+    const r=await checkOllama(model); st.textContent=!r.ok?r.error:r.hasModel?`✓ Ollama répond, modèle « ${model} » installé.`:`Ollama répond, mais « ${model} » n’est pas installé : ollama pull ${model}${r.models.length?` (installés : ${r.models.join(', ')})`:''}`; };
   $('#llmSave').onclick=e=>{ e.preventDefault(); const mode=$('#llmMode').value; const consent=$('#llmConsent').checked;
     if(mode!=='off'&&!consent){ toast('Cochez la case de consentement pour activer l’assistance IA.','warn'); return; }
-    const provider=$('#llmProvider').value;
+    const provider=mode==='local'?'ollama':$('#llmProvider').value;
     saveLlmConfig({mode,provider,model:$('#llmModel').value.trim()||LLM_PROVIDERS[provider].defaultModel,maxPages:Number($('#llmMaxPages').value)||6}); setLlmConsent(consent);
     const key=$('#llmKey')?.value; if(key) setLlmDirectKey(key,provider);
     learn('llm_settings',{mode,provider,model:$('#llmModel').value.trim()},activeProject());

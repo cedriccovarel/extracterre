@@ -1,3 +1,11 @@
+# v2.4.2 — Assistance IA locale gratuite (Ollama), sans clé API
+- Nouveau mode « IA locale gratuite, sans clé (Ollama sur cet ordinateur) » dans 🤖 IA : le texte des pages est traité
+  par Ollama (`http://localhost:11434`, modèle par défaut `qwen2.5:7b`, modifiable) et n'est envoyé à aucun service
+  extérieur. Mêmes garde-fous : citation vérifiée mot pour mot, confiance plafonnée à 85 %, validation ✓ / ✕.
+- Bouton « Tester la connexion » (Ollama lancé ? modèle installé ?) et aide d'installation pas à pas dans les réglages
+  (installation, `ollama pull qwen2.5:7b`, autorisation `OLLAMA_ORIGINS`). Messages clairs si Ollama est arrêté ou si
+  le modèle manque.
+
 # v2.4.1 — Analyse manuelle : recherche de champs
 - **Barre de recherche** au-dessus des champs de l'analyse manuelle : « DH » affiche tous les champs dont le libellé
   (ou un synonyme) contient « DH » (DH, DH Max), dans toutes les familles ; casse et accents ignorés. Le filtre

@@ -10,7 +10,7 @@ import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {analyzeEconomicData} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
-import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
+import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
@@ -1765,29 +1765,42 @@ function openLlmSettings(onReady=null){
   dlg.innerHTML=`<form method="dialog" class="llm-form">
   <header class="llm-head"><h2>🤖 Assistance IA — réglages</h2><button value="cancel" class="icon-btn llm-close" type="submit" aria-label="Fermer">×</button></header>
   <div class="llm-body">
-    <p class="llm-warning"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+    <p class="llm-warning" id="llmWarnCloud"><strong>Confidentialité :</strong> les pages du document qui mentionnent les champs manquants (texte uniquement, ${cfg.maxPages} pages max.) sont envoyées au modèle. N’activez pas cette fonction pour des pièces que le client n’autorise pas à transmettre à un service tiers.</p>
+    <p class="llm-warning llm-local-ok" id="llmWarnLocal"><strong>IA locale :</strong> gratuite et sans clé ; le texte des pages est traité par Ollama sur cet ordinateur et n’est envoyé à aucun service extérieur. Plus lente qu’une IA en ligne sans carte graphique.</p>
     <div class="llm-grid">
       <label>Mode<select id="llmMode">${Object.entries(LLM_MODES).map(([k,l])=>`<option value="${k}" ${k===cfg.mode?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label>
-      <label>Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+      <label id="llmProviderWrap">Fournisseur<select id="llmProvider">${Object.entries(LLM_PROVIDERS).filter(([,p])=>!p.local).map(([k,p])=>`<option value="${k}" ${k===cfg.provider?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
       <label>Modèle<input id="llmModel" value="${escapeHtml(cfg.model)}" spellcheck="false"></label>
       <label>Pages max. envoyées<input id="llmMaxPages" type="number" min="1" max="12" value="${cfg.maxPages}"></label>
     </div>
     <small class="llm-hint">Le modèle est modifiable : saisissez l’identifiant exact proposé par le fournisseur.</small>
+    <div id="llmLocalWrap" class="llm-local">
+      <div class="llm-local-row"><button id="llmOllamaTest" class="btn light" type="button">Tester la connexion</button><span id="llmOllamaState" class="llm-hint" aria-live="polite"></span></div>
+      <details><summary>Installer Ollama (une seule fois)</summary><ol>
+        <li>Télécharger et installer Ollama : <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>.</li>
+        <li>Dans le Terminal (Mac) ou l’Invite de commandes (Windows), télécharger le modèle (≈ 5 Go) : <code>ollama pull qwen2.5:7b</code></li>
+        <li>Autoriser ExtracTerre à interroger Ollama, puis quitter et relancer Ollama :<br>Mac : <code>launchctl setenv OLLAMA_ORIGINS "*"</code><br>Windows : <code>setx OLLAMA_ORIGINS "*"</code></li>
+        <li>Cliquer « Tester la connexion ». Un autre modèle installé (mistral, llama3.1…) peut être saisi dans « Modèle ».</li>
+      </ol></details>
+    </div>
     <label id="llmKeyWrap"><span>Clé API <span id="llmKeyProvider"></span> — conservée pour cette session seulement</span><input id="llmKey" type="password" autocomplete="off"><small id="llmKeyState" class="llm-hint"></small></label>
     <label class="llm-consent"><input id="llmConsent" type="checkbox" ${llmConsentGiven()?'checked':''}> <span>J’ai compris que le texte des pages sélectionnées est transmis au modèle et que chaque proposition devra être validée.</span></label>
   </div>
   <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="llmSave" value="default" class="btn primary" type="submit">Enregistrer</button></footer></form>`;
   let lastProvider=cfg.provider;
-  const sync=()=>{ const prov=$('#llmProvider').value, p=LLM_PROVIDERS[prov];
-    $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct';
+  const sync=()=>{ const local=$('#llmMode').value==='local', prov=local?'ollama':$('#llmProvider').value, p=LLM_PROVIDERS[prov];
+    $('#llmKeyWrap').hidden=$('#llmMode').value!=='direct'; $('#llmProviderWrap').hidden=local; $('#llmLocalWrap').hidden=!local;
+    $('#llmWarnCloud').hidden=local; $('#llmWarnLocal').hidden=!local;
     $('#llmKeyProvider').textContent=p.label; $('#llmKey').placeholder=p.keyHint;
     $('#llmKeyState').textContent=llmHasDirectKey(prov)?'Une clé est déjà enregistrée pour cette session (laisser vide pour la conserver).':'Aucune clé enregistrée pour cette session.';
     // Changement de fournisseur : on propose son modèle par défaut si l'utilisateur n'a pas personnalisé le champ.
     if(prov!==lastProvider){ const cur=$('#llmModel').value.trim(); if(!cur||cur===LLM_PROVIDERS[lastProvider]?.defaultModel) $('#llmModel').value=p.defaultModel; lastProvider=prov; } };
   $('#llmMode').onchange=sync; $('#llmProvider').onchange=sync; sync();
+  $('#llmOllamaTest').onclick=async()=>{ const st=$('#llmOllamaState'), model=$('#llmModel').value.trim()||LLM_PROVIDERS.ollama.defaultModel; st.textContent='Test en cours…';
+    const r=await checkOllama(model); st.textContent=!r.ok?r.error:r.hasModel?`✓ Ollama répond, modèle « ${model} » installé.`:`Ollama répond, mais « ${model} » n’est pas installé : ollama pull ${model}${r.models.length?` (installés : ${r.models.join(', ')})`:''}`; };
   $('#llmSave').onclick=e=>{ e.preventDefault(); const mode=$('#llmMode').value; const consent=$('#llmConsent').checked;
     if(mode!=='off'&&!consent){ toast('Cochez la case de consentement pour activer l’assistance IA.','warn'); return; }
-    const provider=$('#llmProvider').value;
+    const provider=mode==='local'?'ollama':$('#llmProvider').value;
     saveLlmConfig({mode,provider,model:$('#llmModel').value.trim()||LLM_PROVIDERS[provider].defaultModel,maxPages:Number($('#llmMaxPages').value)||6}); setLlmConsent(consent);
     const key=$('#llmKey')?.value; if(key) setLlmDirectKey(key,provider);
     learn('llm_settings',{mode,provider,model:$('#llmModel').value.trim()},activeProject());

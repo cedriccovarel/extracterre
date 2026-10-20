@@ -874,6 +874,11 @@ dialog#betaErrorDialog,
 .llm-body .llm-consent{flex-direction:row;align-items:flex-start;gap:8px;font-weight:400}
 .llm-body .llm-consent input{margin-top:3px;width:auto}
 .llm-warning{margin:0;font-size:.82rem}
+.llm-local-ok{background:#e9f5ee}
+.llm-local{display:flex;flex-direction:column;gap:8px;font-size:.84rem}
+.llm-local-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.llm-local ol{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.llm-local code{background:#f1f4f2;border-radius:4px;padding:1px 5px;font-size:.8rem;user-select:all}
 @media(max-width:560px){.llm-grid{grid-template-columns:1fr}.targeted-dialog-foot{flex-direction:column;align-items:stretch}}
 .file-specialized-badge.manual{background:#fff1d7;color:#8a5a00}
 .manual-analysis-btn{border-style:dashed}

@@ -1,3 +1,8 @@
+## v2.4.2 — IA locale (Ollama)
+- `test_v2_4_2.mjs` (17 vérifications, Ollama simulé) : appel `/api/chat` sans clé, JSON forcé, contexte élargi,
+  vérification littérale inchangée, Ollama arrêté / modèle absent, test de connexion, mode local = Ollama seul.
+  Fenêtre de réglages vérifiée dans Chrome (bascule local / clé API, test de connexion, enregistrement).
+
 ## v2.4.1 — recherche de champs (analyse manuelle)
 - `test_v2_4_1.mjs` : barre `#manualFieldSearch`, recherche sur toutes les familles dans `app.js` et le bundle.
   Vérifié dans Chrome (document XML) : « dh » → DH / DH Max, « zzz » → message vide, Échap efface.

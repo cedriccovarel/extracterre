@@ -16,17 +16,22 @@ const LLM_CONSENT_KEY='extracterre.llm.consent.v1';
 export const LLM_PROVIDERS=Object.freeze({
   openai:{label:'ChatGPT (OpenAI)',defaultModel:'gpt-5.4-mini',keyHint:'sk-…',endpoint:'https://api.openai.com/v1/chat/completions'},
   gemini:{label:'Gemini (Google)',defaultModel:'gemini-3.5-flash',keyHint:'AIza…',endpoint:'https://generativelanguage.googleapis.com/v1beta/models'},
-  anthropic:{label:'Claude (Anthropic)',defaultModel:'claude-sonnet-5-5',keyHint:'sk-ant-…',endpoint:'https://api.anthropic.com/v1/messages'}
+  anthropic:{label:'Claude (Anthropic)',defaultModel:'claude-sonnet-5-5',keyHint:'sk-ant-…',endpoint:'https://api.anthropic.com/v1/messages'},
+  // v2.4.2 — IA locale gratuite, sans clé : le texte ne quitte pas l'ordinateur.
+  // shortcut: adresse fixe (port Ollama par défaut), à rendre réglable si un poste utilise un autre port.
+  ollama:{label:'IA locale (Ollama)',defaultModel:'qwen2.5:7b',keyHint:'',endpoint:'http://localhost:11434',local:true}
 });
 export const LLM_DEFAULT_PROVIDER='openai';
 export const LLM_MAX_CONFIDENCE=0.85;
 export const LLM_DEFAULT_MODEL=LLM_PROVIDERS[LLM_DEFAULT_PROVIDER].defaultModel;
-export const LLM_MODES=Object.freeze({off:'Désactivée',edge:'Serveur ExtracTerre (Edge Function Supabase)',direct:'Clé API personnelle (cette session uniquement)'});
+export const LLM_MODES=Object.freeze({off:'Désactivée',edge:'Serveur ExtracTerre (Edge Function Supabase)',direct:'Clé API personnelle (cette session uniquement)',local:'IA locale gratuite, sans clé (Ollama sur cet ordinateur)'});
 
 export function getLlmConfig(){
   let c={}; try{ c=JSON.parse(localStorage.getItem(LLM_CONFIG_KEY)||'{}')||{}; }catch{}
-  const provider=LLM_PROVIDERS[c.provider]?c.provider:LLM_DEFAULT_PROVIDER;
-  return {mode:LLM_MODES[c.mode]?c.mode:'off',provider,model:String(c.model||LLM_PROVIDERS[provider].defaultModel),maxPages:Math.max(1,Math.min(12,Number(c.maxPages)||6))};
+  const mode=LLM_MODES[c.mode]?c.mode:'off';
+  // Mode local = Ollama ; les modes cloud n'utilisent jamais Ollama.
+  const provider=mode==='local'?'ollama':LLM_PROVIDERS[c.provider]&&!LLM_PROVIDERS[c.provider].local?c.provider:LLM_DEFAULT_PROVIDER;
+  return {mode,provider,model:String(c.model||LLM_PROVIDERS[provider].defaultModel),maxPages:Math.max(1,Math.min(12,Number(c.maxPages)||6))};
 }
 export function saveLlmConfig(cfg={}){ const cur=getLlmConfig(); const next={...cur,...cfg}; if(!LLM_PROVIDERS[next.provider]) next.provider=LLM_DEFAULT_PROVIDER; try{ localStorage.setItem(LLM_CONFIG_KEY,JSON.stringify({mode:next.mode,provider:next.provider,model:next.model,maxPages:next.maxPages})); }catch{} return getLlmConfig(); }
 // Une clé par fournisseur, en sessionStorage uniquement (effacée à la fermeture de l'onglet).
@@ -137,11 +142,14 @@ export function providerHttpRequest(request,key){
   const p=request.provider||LLM_DEFAULT_PROVIDER, user=request.messages?.[0]?.content||'';
   if(p==='openai') return {url:LLM_PROVIDERS.openai.endpoint,init:{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${key}`},body:JSON.stringify({model:request.model,max_completion_tokens:request.max_tokens||2000,response_format:{type:'json_object'},messages:[{role:'system',content:request.system},{role:'user',content:user}]})}};
   if(p==='gemini') return {url:`${LLM_PROVIDERS.gemini.endpoint}/${encodeURIComponent(request.model)}:generateContent`,init:{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':key},body:JSON.stringify({systemInstruction:{parts:[{text:request.system}]},contents:[{role:'user',parts:[{text:user}]}],generationConfig:{responseMimeType:'application/json',maxOutputTokens:request.max_tokens||2000,temperature:0}})}};
+  // Ollama : format natif /api/chat ; contexte élargi (6 pages ≈ 10 000 jetons, défaut Ollama trop court).
+  if(p==='ollama') return {url:`${LLM_PROVIDERS.ollama.endpoint}/api/chat`,init:{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:request.model,stream:false,format:'json',options:{temperature:0,num_ctx:16384,num_predict:request.max_tokens||2000},messages:[{role:'system',content:request.system},{role:'user',content:user}]})}};
   if(p==='anthropic') return {url:LLM_PROVIDERS.anthropic.endpoint,init:{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:request.model,max_tokens:request.max_tokens||2000,system:request.system,messages:request.messages})}};
   throw new Error(`Fournisseur IA inconnu : ${p}`);
 }
 export function providerResponseText(provider,data){
   if(provider==='openai') return {text:String(data?.choices?.[0]?.message?.content||''),usage:data?.usage||null};
+  if(provider==='ollama') return {text:String(data?.message?.content||''),usage:data?.eval_count?{prompt_tokens:data.prompt_eval_count||0,completion_tokens:data.eval_count}:null};
   if(provider==='gemini') return {text:(data?.candidates?.[0]?.content?.parts||[]).map(x=>x?.text||'').join('\n'),usage:data?.usageMetadata||null};
   return {text:(data?.content||[]).map(c=>c.type==='text'?c.text:'').join('\n'),usage:data?.usage||null};
 }
@@ -162,7 +170,26 @@ async function llmTransport(request,cfg,{fetchImpl,invokeFunction}={}){
     if(!res.ok) throw new Error(providerError(data,res.status));
     return providerResponseText(provider,data);
   }
+  if(cfg.mode==='local'){
+    const {url,init}=providerHttpRequest({...request,provider:'ollama'},'');
+    let res; try{ res=await (fetchImpl||globalThis.fetch)(url,init); }catch{ throw new Error(OLLAMA_UNREACHABLE); }
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(/not found/i.test(providerError(data,res.status))?`Modèle « ${request.model} » absent : lancez « ollama pull ${request.model} » dans le Terminal.`:providerError(data,res.status));
+    return providerResponseText('ollama',data);
+  }
   throw new Error('Assistance IA désactivée.');
+}
+const OLLAMA_UNREACHABLE='Ollama ne répond pas sur cet ordinateur : lancez l’application Ollama et autorisez ExtracTerre (OLLAMA_ORIGINS, voir les réglages IA).';
+// Test de connexion des réglages : {ok, models, hasModel, error}.
+export async function checkOllama(model=LLM_PROVIDERS.ollama.defaultModel,fetchImpl=null){
+  try{
+    const res=await (fetchImpl||globalThis.fetch)(`${LLM_PROVIDERS.ollama.endpoint}/api/tags`);
+    if(!res.ok) return {ok:false,models:[],hasModel:false,error:`Erreur Ollama ${res.status}`};
+    const models=((await res.json())?.models||[]).map(m=>String(m.name||m.model||'')).filter(Boolean);
+    // « qwen2.5:7b » = « qwen2.5:7b » ; « mistral » = « mistral:latest ».
+    const hasModel=models.some(m=>m===model||m===`${model}:latest`);
+    return {ok:true,models,hasModel};
+  }catch{ return {ok:false,models:[],hasModel:false,error:OLLAMA_UNREACHABLE}; }
 }
 
 // Point d'entrée : renvoie les occurrences vérifiées (pour la fenêtre ✓ / ✕) et les rejets motivés.
