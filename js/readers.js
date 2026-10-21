@@ -1,3 +1,4 @@
+import {isFinancialJson,financialJsonRead} from './economics.js';
 import {MAX_OCR_WORKERS} from './config.js';
 import {normalizeText, uid} from './utils.js';
 import {parseXmlDocument,isRe2020XmlDocument,extractRe2020,re2020SummaryPages} from './xml-re2020.js';
@@ -38,7 +39,8 @@ export function setOcrConcurrencyLimit(limit=MAX_OCR_WORKERS){
 export function ocrPoolStatus(){ return {active:OCR_ACTIVE,waiting:OCR_WAITING.length,max:OCR_LIMIT}; }
 
 export function groupItemsIntoLines(items, yTolerance=2.8) {
-  const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,h:Math.abs(it.transform?.[3]||it.height||0),idx})).filter(i=>i.text.trim());
+  // sb : un fragment « espace » précède l'élément (PDF à lettres espacées où les mots se touchent presque).
+  const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,h:Math.abs(it.transform?.[3]||it.height||0),idx,sb:idx>0&&typeof items[idx-1]?.str==='string'&&!items[idx-1].str.trim()})).filter(i=>i.text.trim());
   // v2.3 — tri strict (ordre total) : y décroissant puis x croissant. L'ancien comparateur intégrait
   // la tolérance et n'était pas transitif, ce qui pouvait mélanger les fragments des pages denses.
   enriched.sort((a,b)=>(b.y-a.y)||(a.x-b.x));
@@ -53,8 +55,33 @@ export function groupItemsIntoLines(items, yTolerance=2.8) {
     line.items.sort((a,b)=>a.x-b.x);
     let text=''; let prev=null;
     for(const it of line.items){ if(prev){ const gap=it.x-(prev.x+prev.w); if(gap>2) text+=' '; } text+=it.text; prev=it; }
-    return {index,y:line.y,text:normalizeText(text),items:line.items.map(it=>({text:it.text,x:it.x}))};
+    return {index,y:line.y,text:normalizeText(text),items:line.items.map(it=>({text:it.text,x:it.x,w:it.w,sb:it.sb}))};
   }).filter(l=>l.text);
+}
+
+// v2.5.0 — synthèse PDF du questionnaire financier Prestaterre : cellules reconstruites par position (conservées après
+// compactage et sauvegarde), accents et espaces d'origine gardés. Sous l'en-tête d'un tableau, une cellule par colonne ;
+// ailleurs, un segment par bloc de texte séparé d'un large blanc. Le texte des lignes (lu par les autres parseurs) est inchangé.
+const FINANCIAL_PAGE_SIGNATURE=/questionnairefinancier|donneesfinancieresvalidees|aidesmobilisees|bilanfinancierdel.?operation/;
+function joinItems(items){ let t='',prev=null; for(const it of items){ if(prev&&(it.sb||it.x-(prev.x+(prev.w||0))>2)) t+=' '; t+=it.text; prev=it; } return t.replace(/\s+/g,' ').trim(); }
+export function attachFinancialCells(lines,pageText=''){
+  if(!FINANCIAL_PAGE_SIGNATURE.test(normalizeText(pageText).toLowerCase().replace(/\s+/g,''))) return lines;
+  let cols=null;
+  for(const line of lines){
+    const items=line.items||[]; if(!items.length) continue;
+    const segs=[]; let cur=null,prev=null;
+    for(const it of items){ if(!cur||it.x-(prev.x+(prev.w||0))>12){ cur={x:it.x,items:[]}; segs.push(cur); } cur.items.push(it); prev=it; }
+    const flat=normalizeText(line.text).toLowerCase().replace(/\s+/g,'');
+    if(segs.length>=4&&/montant/.test(flat)&&/source|statut/.test(flat)){ cols=segs.map(g=>g.x); line.cells=segs.map(g=>joinItems(g.items)); continue; }
+    if(cols&&/^(?:aidesnonremboursables|prestaterrecertifications|https?:)/.test(flat)) cols=null;
+    if(cols){
+      const buckets=cols.map(()=>[]);
+      for(const it of items){ let k=0; for(let i=0;i<cols.length;i++) if(it.x>=cols[i]-6) k=i; buckets[k].push(it); }
+      line.cells=buckets.map(joinItems);
+      if(/^totaloperation/.test(flat)) cols=null;
+    } else line.cells=segs.map(g=>joinItems(g.items));
+  }
+  return lines;
 }
 
 function ocrTextToLines(text=''){
@@ -314,6 +341,7 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
         throwIfAborted(opts.signal);
         const pdfLines=groupItemsIntoLines(content.items);
         const pdfText=pdfLines.map(l=>l.text).join('\n');
+        attachFinancialCells(pdfLines,pdfText);
         const pdfQuality=pdfTextQuality(pdfText,content.items);
         let finalLines=pdfLines, textSource='pdf', ocrConfidence=null;
         // v2.3.12 — en mode « toujours », une page propre et dense n'est OCRisée que si elle contient une image.
@@ -436,6 +464,12 @@ export async function readFile(file,onProgress=()=>{},options={}){
   if(lower.endsWith('.pdf')) return readPdf(file,onProgress,options);
   if(lower.endsWith('.xml')) return readXml(file);
   if(lower.endsWith('.xlsx')||lower.endsWith('.xls')) return readSpreadsheet(file);
+  if(lower.endsWith('.json')){
+    if(file.size>20*1024*1024) throw new Error(`JSON trop volumineux : ${file.name}`);
+    let data; try{ data=JSON.parse(await file.text()); }catch{ throw new Error(`JSON illisible : ${file.name}`); }
+    if(!isFinancialJson(data)) throw new Error(`JSON non reconnu (export du questionnaire financier Prestaterre attendu) : ${file.name}`);
+    return financialJsonRead(data);
+  }
   throw new Error(`Format non pris en charge : ${file.name}`);
 }
 

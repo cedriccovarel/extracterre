@@ -1200,3 +1200,14 @@ body,button,input,select,textarea{font-family:var(--font-ui)}
   .rv-row{grid-template-columns:1fr;padding:10px 10px 10px 9px}.rv-meta,.rv-actions,.rv-cands{grid-column:1}
   .rv-cand{gap:6px}.rv-cand-src{flex-basis:100%}
 }
+
+/* v2.5.0 — onglet Économie */
+.eco-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;margin:12px 0}
+.eco-ident{display:flex;flex-direction:column;gap:2px}.eco-ident span{font-size:.75rem;color:var(--muted,#6c7b74)}.eco-ident strong{font-size:1rem}
+.eco-head .manual-filter-chips{margin-left:auto}
+.eco-group{margin:14px 0;padding:12px 14px;border:1px solid var(--line,#dde4df);border-radius:12px;background:#fff}
+.eco-group h4,.eco-group summary{margin:0 0 10px;font-size:.92rem;color:var(--forest,#173e31);font-weight:700;cursor:default}.eco-group summary{cursor:pointer;margin:0}
+.eco-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 14px}
+.eco-field{display:flex;flex-direction:column;gap:3px;font-size:.8rem}.eco-field span{color:var(--muted,#6c7b74)}
+.eco-input{padding:6px 8px;border:1px solid var(--line,#cbd5d1);border-radius:7px;font:inherit;font-size:.88rem;min-width:0}
+.eco-input.manual{border-color:#c98a1b;background:#fff8ec}

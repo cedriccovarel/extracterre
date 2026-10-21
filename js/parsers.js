@@ -18,6 +18,7 @@ import {isPleiadesRtexReport,parsePleiadesRtexReport} from './pleiades-rtex.js';
 import {isClimaWinRtexStudy,isClimaWinRtexInput,parseClimaWinRenovation} from './climawin-etude.js';
 import {isRenovationNotice,parseRenovationNotice} from './notice-renovation.js';
 import {isU48WinRtexReport,parseU48WinRtex} from './u48win-rtex.js';
+import {isFinancialQuestionnaire,parseFinancialQuestionnaire} from './economics.js';
 import {isDpe2021,parseDpe2021,isDpeRecapTable,parseDpeRecapTable} from './dpe-3cl.js';
 import {isPrestaterreBooklet,parsePrestaterreBooklet} from './livret-prestaterre.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
@@ -1724,6 +1725,7 @@ export const DOCUMENT_FAMILIES=Object.freeze({
   cctp:{label:'CCTP',short:'CCTP',type:DOC_TYPES.CCTP},
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
+  financier:{label:'Questionnaire financier Prestaterre',short:'Financier',type:DOC_TYPES.FINANCIAL},
   annex:{label:'Moteur libre — sans liste blanche',short:'Libre',type:null}
 });
 export const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});
@@ -1738,6 +1740,7 @@ export function autoFamiliesForType(type){
     case DOC_TYPES.CCTP: return ['cctp'];
     case DOC_TYPES.DPGF: return ['dpgf'];
     case DOC_TYPES.DPE: return ['dpe'];
+    case DOC_TYPES.FINANCIAL: return ['financier'];
     default: return ['annex'];
   }
 }
@@ -1767,6 +1770,7 @@ export const FAMILY_ALLOWED_FIELDS=Object.freeze({
   cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
+  financier:new Set(['internal_code','contract_number']),
   dpe:new Set([...ADMIN_FIELDS,'shab','construction_year',...ENVELOPE_FIELDS,'heating_vector_before','ecs_vector_before','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'])
 });
 // Complétude attendue : sous-ensemble strict des champs autorisés (vérifié par les tests).
@@ -1779,6 +1783,7 @@ export const FAMILY_EXPECTED_FIELDS=Object.freeze({
   cctp:['wall_insulation','roof_insulation','floor_insulation','window_material','window_glazing','heating_mode_after','ventilation'],
   dpgf:['wall_insulation','roof_insulation','window_material','heating_mode_after','ventilation'],
   dpe:[['dpe_energy_before','dpe_energy_after'],['dpe_ges_before','dpe_ges_after']],
+  financier:['internal_code'],
   annex:[]
 });
 export function documentExpectedFields(doc){
@@ -2032,6 +2037,13 @@ export function parseDocument(doc){
   return sanitizeOccurrences(out);
 }
 const THERMAL_PATTERN_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
+function parseFinancialIdentity(doc){
+  const id=parseFinancialQuestionnaire(doc).identity, out=[];
+  for(const page of doc.read?.pages||[]){ const line=(page.lines||[]).find(l=>id.fin_operation_code&&String(l.text||'').includes(id.fin_operation_code)); if(!line) continue;
+    for(const [field,value,m] of [['internal_code',id.fin_operation_code,'operation'],['contract_number',id.fin_contract,'contrat']]){ const o=value&&occ(doc,page,line,field,value,`questionnaire:${m}`,0.95,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Questionnaire financier Prestaterre',dedicatedRank:3}); if(o) out.push(o); }
+    break; }
+  return out;
+}
 function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
@@ -2042,6 +2054,8 @@ function parseDocumentCore(doc){
   // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
   // v2.4.0 — livret d'opération Prestaterre : page de garde seulement (les remarques d'évaluation citent des CCTP).
   if(!doc.__skipDedicated&&isPrestaterreBooklet(doc)) return annotateSemanticHierarchy(doc,parsePrestaterreBooklet(doc,occ)).map(o=>({...o,specializedFamily:'livret-prestaterre'}));
+  // v2.5.0 — questionnaire financier : seuls le code opération et le n° de contrat vont au tableau ; le reste va à l'onglet Économie.
+  if(!doc.__skipDedicated&&isFinancialQuestionnaire(doc)) return annotateSemanticHierarchy(doc,parseFinancialIdentity(doc)).map(o=>({...o,specializedFamily:'questionnaire-financier'}));
   if(!doc.__skipDedicated&&isU48WinRtexReport(doc)) return parseRenovationThermalDocument(doc,'u48win');
   if(!doc.__skipDedicated&&isDpe2021(doc)) return parseRenovationThermalDocument(doc,'dpe');
   if(!doc.__skipDedicated&&isDpeRecapTable(doc)) return parseRenovationThermalDocument(doc,'dpe-recap');

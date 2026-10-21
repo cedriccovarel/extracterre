@@ -6,7 +6,7 @@ import {detectBuildings} from './js/buildings.js';
 import {runLlmAssist,checkOllama,getLlmConfig,saveLlmConfig,LLM_MODES} from './js/llm-assist.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.4.2','version');
+eq(APP_VERSION, '2.5.0','version');
 ok(!!LLM_MODES.local,'mode local proposé');
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind}); d.classification={...c,automaticType:c.type}; d.type=d.type||c.type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
 const doc=prep(textDoc('o1','Notice.pdf',DOC_TYPES.NOTICE,'Notice descriptive\nLe programme comprend 18 logements collectifs.\nSurface habitable totale : 1 234,5 m²'));

@@ -1,4 +1,4 @@
-export const APP_VERSION='2.4.2';
+export const APP_VERSION='2.5.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -26,6 +26,7 @@ export const DOC_TYPES = {
   PROJECT_DESCRIPTION: 'Descriptif du projet',
   CCTP: 'CCTP',
   DPGF: 'DPGF',
+  FINANCIAL: 'Questionnaire financier',
   PLAN: 'Plan architectural',
   SURFACE: 'Tableau de surfaces',
   NOTICE: 'Notice architecturale / pièce écrite architecte',
@@ -416,6 +417,8 @@ for(const key of ['heating_vector_before','ecs_vector_before','ventilation_befor
 // v2.4.0 — en rénovation, l'étude RT existant donne la surface de l'étude (SHAB / Sref) : source principale de la surface.
 DEFAULT_SOURCE_RULES.shab.main.splice(DEFAULT_SOURCE_RULES.shab.main.length-1,0,DOC_TYPES.RT_EXISTING); DEFAULT_SOURCE_RULES.shab.secondary=DEFAULT_SOURCE_RULES.shab.secondary.filter(t=>t!==DOC_TYPES.RT_EXISTING);
 for(const key of ['heating_vector_after','heating_mode_after','ecs_vector_after','ecs','ventilation','shab','construction_year','built_before_1948','built_after_1948','housing_typologies']) DEFAULT_SOURCE_RULES[key].secondary.push(DOC_TYPES.DPE);
+// v2.5.0 — le questionnaire financier Prestaterre rappelle le code opération et le n° de contrat : source secondaire.
+for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].secondary.push(DOC_TYPES.FINANCIAL);
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 

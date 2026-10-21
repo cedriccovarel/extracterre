@@ -51,6 +51,8 @@ export function classifyDocument(fileName, text='', meta={}) {
   if (/descriptif\s+(?:du\s+)?projet|description\s+(?:du\s+)?projet|pr[eé]sentation\s+(?:du\s+)?projet/i.test(n+' '+t)) add(DOC_TYPES.PROJECT_DESCRIPTION,13);
   if (/cctp|cahier des clauses techniques/i.test(n+' '+t)) add(DOC_TYPES.CCTP,12);
   if (/dpgf|decomposition du prix global/i.test(n+' '+t)) add(DOC_TYPES.DPGF,12);
+  // v2.5.0 — synthèse PDF du questionnaire financier Prestaterre (lettres espacées : texte comparé sans espaces).
+  { const flat=t.replace(/\s+/g,''); if(/questionnairefinancier/.test(flat+n.replace(/\s+/g,''))&&/donneesfinancieresvalidees|aidesmobilisees/.test(flat)) add(DOC_TYPES.FINANCIAL,60); }
   if (/tableau.*surface|surfaces?\s+(?:habitables|shab|sref)/i.test(n+' '+t)) add(DOC_TYPES.SURFACE,9);
   if (/plan(?:s)?\s+(?:architect|niveau|rdc|etage)|echelle\s*1\s*\//i.test(n+' '+t)) add(DOC_TYPES.PLAN,8);
   if (/notice\s+(?:architect|descriptive)/i.test(n+' '+t)) add(DOC_TYPES.NOTICE,9);

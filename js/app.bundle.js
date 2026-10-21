@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.4.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.5.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.4.2';
+const APP_VERSION='2.5.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -31,6 +31,7 @@ const DOC_TYPES = {
   PROJECT_DESCRIPTION: 'Descriptif du projet',
   CCTP: 'CCTP',
   DPGF: 'DPGF',
+  FINANCIAL: 'Questionnaire financier',
   PLAN: 'Plan architectural',
   SURFACE: 'Tableau de surfaces',
   NOTICE: 'Notice architecturale / pièce écrite architecte',
@@ -421,6 +422,8 @@ for(const key of ['heating_vector_before','ecs_vector_before','ventilation_befor
 // v2.4.0 — en rénovation, l'étude RT existant donne la surface de l'étude (SHAB / Sref) : source principale de la surface.
 DEFAULT_SOURCE_RULES.shab.main.splice(DEFAULT_SOURCE_RULES.shab.main.length-1,0,DOC_TYPES.RT_EXISTING); DEFAULT_SOURCE_RULES.shab.secondary=DEFAULT_SOURCE_RULES.shab.secondary.filter(t=>t!==DOC_TYPES.RT_EXISTING);
 for(const key of ['heating_vector_after','heating_mode_after','ecs_vector_after','ecs','ventilation','shab','construction_year','built_before_1948','built_after_1948','housing_typologies']) DEFAULT_SOURCE_RULES[key].secondary.push(DOC_TYPES.DPE);
+// v2.5.0 — le questionnaire financier Prestaterre rappelle le code opération et le n° de contrat : source secondaire.
+for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].secondary.push(DOC_TYPES.FINANCIAL);
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
@@ -1082,7 +1085,7 @@ function buildingForPosition(doc,pageNo,lineIndex){
 
 function operationNameFromFiles(docs){
   if(!docs.length) return 'Opération';
-  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls|json)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
   return s||'Opération';
 }
 
@@ -4688,6 +4691,8 @@ function classifyDocument(fileName, text='', meta={}) {
   if (/descriptif\s+(?:du\s+)?projet|description\s+(?:du\s+)?projet|pr[eé]sentation\s+(?:du\s+)?projet/i.test(n+' '+t)) add(DOC_TYPES.PROJECT_DESCRIPTION,13);
   if (/cctp|cahier des clauses techniques/i.test(n+' '+t)) add(DOC_TYPES.CCTP,12);
   if (/dpgf|decomposition du prix global/i.test(n+' '+t)) add(DOC_TYPES.DPGF,12);
+  // v2.5.0 — synthèse PDF du questionnaire financier Prestaterre (lettres espacées : texte comparé sans espaces).
+  { const flat=t.replace(/\s+/g,''); if(/questionnairefinancier/.test(flat+n.replace(/\s+/g,''))&&/donneesfinancieresvalidees|aidesmobilisees/.test(flat)) add(DOC_TYPES.FINANCIAL,60); }
   if (/tableau.*surface|surfaces?\s+(?:habitables|shab|sref)/i.test(n+' '+t)) add(DOC_TYPES.SURFACE,9);
   if (/plan(?:s)?\s+(?:architect|niveau|rdc|etage)|echelle\s*1\s*\//i.test(n+' '+t)) add(DOC_TYPES.PLAN,8);
   if (/notice\s+(?:architect|descriptive)/i.test(n+' '+t)) add(DOC_TYPES.NOTICE,9);
@@ -4821,7 +4826,8 @@ function setOcrConcurrencyLimit(limit=MAX_OCR_WORKERS){
 function ocrPoolStatus(){ return {active:OCR_ACTIVE,waiting:OCR_WAITING.length,max:OCR_LIMIT}; }
 
 function groupItemsIntoLines(items, yTolerance=2.8) {
-  const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,h:Math.abs(it.transform?.[3]||it.height||0),idx})).filter(i=>i.text.trim());
+  // sb : un fragment « espace » précède l'élément (PDF à lettres espacées où les mots se touchent presque).
+  const enriched=items.map((it,idx)=>({text:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0,w:it.width||0,h:Math.abs(it.transform?.[3]||it.height||0),idx,sb:idx>0&&typeof items[idx-1]?.str==='string'&&!items[idx-1].str.trim()})).filter(i=>i.text.trim());
   // v2.3 — tri strict (ordre total) : y décroissant puis x croissant. L'ancien comparateur intégrait
   // la tolérance et n'était pas transitif, ce qui pouvait mélanger les fragments des pages denses.
   enriched.sort((a,b)=>(b.y-a.y)||(a.x-b.x));
@@ -4836,8 +4842,33 @@ function groupItemsIntoLines(items, yTolerance=2.8) {
     line.items.sort((a,b)=>a.x-b.x);
     let text=''; let prev=null;
     for(const it of line.items){ if(prev){ const gap=it.x-(prev.x+prev.w); if(gap>2) text+=' '; } text+=it.text; prev=it; }
-    return {index,y:line.y,text:normalizeText(text),items:line.items.map(it=>({text:it.text,x:it.x}))};
+    return {index,y:line.y,text:normalizeText(text),items:line.items.map(it=>({text:it.text,x:it.x,w:it.w,sb:it.sb}))};
   }).filter(l=>l.text);
+}
+
+// v2.5.0 — synthèse PDF du questionnaire financier Prestaterre : cellules reconstruites par position (conservées après
+// compactage et sauvegarde), accents et espaces d'origine gardés. Sous l'en-tête d'un tableau, une cellule par colonne ;
+// ailleurs, un segment par bloc de texte séparé d'un large blanc. Le texte des lignes (lu par les autres parseurs) est inchangé.
+const FINANCIAL_PAGE_SIGNATURE=/questionnairefinancier|donneesfinancieresvalidees|aidesmobilisees|bilanfinancierdel.?operation/;
+function joinItems(items){ let t='',prev=null; for(const it of items){ if(prev&&(it.sb||it.x-(prev.x+(prev.w||0))>2)) t+=' '; t+=it.text; prev=it; } return t.replace(/\s+/g,' ').trim(); }
+function attachFinancialCells(lines,pageText=''){
+  if(!FINANCIAL_PAGE_SIGNATURE.test(normalizeText(pageText).toLowerCase().replace(/\s+/g,''))) return lines;
+  let cols=null;
+  for(const line of lines){
+    const items=line.items||[]; if(!items.length) continue;
+    const segs=[]; let cur=null,prev=null;
+    for(const it of items){ if(!cur||it.x-(prev.x+(prev.w||0))>12){ cur={x:it.x,items:[]}; segs.push(cur); } cur.items.push(it); prev=it; }
+    const flat=normalizeText(line.text).toLowerCase().replace(/\s+/g,'');
+    if(segs.length>=4&&/montant/.test(flat)&&/source|statut/.test(flat)){ cols=segs.map(g=>g.x); line.cells=segs.map(g=>joinItems(g.items)); continue; }
+    if(cols&&/^(?:aidesnonremboursables|prestaterrecertifications|https?:)/.test(flat)) cols=null;
+    if(cols){
+      const buckets=cols.map(()=>[]);
+      for(const it of items){ let k=0; for(let i=0;i<cols.length;i++) if(it.x>=cols[i]-6) k=i; buckets[k].push(it); }
+      line.cells=buckets.map(joinItems);
+      if(/^totaloperation/.test(flat)) cols=null;
+    } else line.cells=segs.map(g=>joinItems(g.items));
+  }
+  return lines;
 }
 
 function ocrTextToLines(text=''){
@@ -5097,6 +5128,7 @@ async function readPdf(file, onProgress=()=>{}, options={}) {
         throwIfAborted(opts.signal);
         const pdfLines=groupItemsIntoLines(content.items);
         const pdfText=pdfLines.map(l=>l.text).join('\n');
+        attachFinancialCells(pdfLines,pdfText);
         const pdfQuality=pdfTextQuality(pdfText,content.items);
         let finalLines=pdfLines, textSource='pdf', ocrConfidence=null;
         // v2.3.12 — en mode « toujours », une page propre et dense n'est OCRisée que si elle contient une image.
@@ -5219,6 +5251,12 @@ async function readFile(file,onProgress=()=>{},options={}){
   if(lower.endsWith('.pdf')) return readPdf(file,onProgress,options);
   if(lower.endsWith('.xml')) return readXml(file);
   if(lower.endsWith('.xlsx')||lower.endsWith('.xls')) return readSpreadsheet(file);
+  if(lower.endsWith('.json')){
+    if(file.size>20*1024*1024) throw new Error(`JSON trop volumineux : ${file.name}`);
+    let data; try{ data=JSON.parse(await file.text()); }catch{ throw new Error(`JSON illisible : ${file.name}`); }
+    if(!isFinancialJson(data)) throw new Error(`JSON non reconnu (export du questionnaire financier Prestaterre attendu) : ${file.name}`);
+    return financialJsonRead(data);
+  }
   throw new Error(`Format non pris en charge : ${file.name}`);
 }
 
@@ -7036,6 +7074,7 @@ const DOCUMENT_FAMILIES=Object.freeze({
   cctp:{label:'CCTP',short:'CCTP',type:DOC_TYPES.CCTP},
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
+  financier:{label:'Questionnaire financier Prestaterre',short:'Financier',type:DOC_TYPES.FINANCIAL},
   annex:{label:'Moteur libre — sans liste blanche',short:'Libre',type:null}
 });
 const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});
@@ -7050,6 +7089,7 @@ function autoFamiliesForType(type){
     case DOC_TYPES.CCTP: return ['cctp'];
     case DOC_TYPES.DPGF: return ['dpgf'];
     case DOC_TYPES.DPE: return ['dpe'];
+    case DOC_TYPES.FINANCIAL: return ['financier'];
     default: return ['annex'];
   }
 }
@@ -7079,6 +7119,7 @@ const FAMILY_ALLOWED_FIELDS=Object.freeze({
   cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
+  financier:new Set(['internal_code','contract_number']),
   dpe:new Set([...ADMIN_FIELDS,'shab','construction_year',...ENVELOPE_FIELDS,'heating_vector_before','ecs_vector_before','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after'])
 });
 // Complétude attendue : sous-ensemble strict des champs autorisés (vérifié par les tests).
@@ -7091,6 +7132,7 @@ const FAMILY_EXPECTED_FIELDS=Object.freeze({
   cctp:['wall_insulation','roof_insulation','floor_insulation','window_material','window_glazing','heating_mode_after','ventilation'],
   dpgf:['wall_insulation','roof_insulation','window_material','heating_mode_after','ventilation'],
   dpe:[['dpe_energy_before','dpe_energy_after'],['dpe_ges_before','dpe_ges_after']],
+  financier:['internal_code'],
   annex:[]
 });
 function documentExpectedFields(doc){
@@ -7344,6 +7386,13 @@ function parseDocument(doc){
   return sanitizeOccurrences(out);
 }
 const THERMAL_PATTERN_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
+function parseFinancialIdentity(doc){
+  const id=parseFinancialQuestionnaire(doc).identity, out=[];
+  for(const page of doc.read?.pages||[]){ const line=(page.lines||[]).find(l=>id.fin_operation_code&&String(l.text||'').includes(id.fin_operation_code)); if(!line) continue;
+    for(const [field,value,m] of [['internal_code',id.fin_operation_code,'operation'],['contract_number',id.fin_contract,'contrat']]){ const o=value&&occ(doc,page,line,field,value,`questionnaire:${m}`,0.95,'',{building:'Bâtiment unique',structuredPdf:true,origin:'Questionnaire financier Prestaterre',dedicatedRank:3}); if(o) out.push(o); }
+    break; }
+  return out;
+}
 function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
@@ -7354,6 +7403,8 @@ function parseDocumentCore(doc){
   // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
   // v2.4.0 — livret d'opération Prestaterre : page de garde seulement (les remarques d'évaluation citent des CCTP).
   if(!doc.__skipDedicated&&isPrestaterreBooklet(doc)) return annotateSemanticHierarchy(doc,parsePrestaterreBooklet(doc,occ)).map(o=>({...o,specializedFamily:'livret-prestaterre'}));
+  // v2.5.0 — questionnaire financier : seuls le code opération et le n° de contrat vont au tableau ; le reste va à l'onglet Économie.
+  if(!doc.__skipDedicated&&isFinancialQuestionnaire(doc)) return annotateSemanticHierarchy(doc,parseFinancialIdentity(doc)).map(o=>({...o,specializedFamily:'questionnaire-financier'}));
   if(!doc.__skipDedicated&&isU48WinRtexReport(doc)) return parseRenovationThermalDocument(doc,'u48win');
   if(!doc.__skipDedicated&&isDpe2021(doc)) return parseRenovationThermalDocument(doc,'dpe');
   if(!doc.__skipDedicated&&isDpeRecapTable(doc)) return parseRenovationThermalDocument(doc,'dpe-recap');
@@ -8604,12 +8655,240 @@ Groupe Refroidissement Categorie Tic Tic Ref.
 }
 
 /* ---- economics.js ---- */
+// v2.5.0 — Données économiques : nomenclature Excel du questionnaire financier MOA Prestaterre (V0.56).
+// Source principale : la synthèse PDF « Questionnaire financier d'opération » (lignes de coûts validées, aides mobilisées).
+// Repli : DPGF (prix HT par lot), quand aucun questionnaire n'est fourni. Les totaux, parts et le plan de financement sont
+// recalculés à partir des lignes (mêmes règles que le questionnaire) ; aucune valeur n'est inventée.
+
+
+// —— Nomenclature du questionnaire (catégories de coûts, postes, dispositifs d'aide)
+const COST_CATEGORIES=[
+  {id:'travaux',label:'Travaux',posts:['0. Travaux préparatoires (global)','0.1. Curage et démolition','0.2. Désamiantage et déplombage','0.3. Installation de chantier','1. Le Gros Œuvre (global)','1.1. Terrassement','1.2. Fondations et soubassement','1.3. Assainissement','1.4. Maçonnerie et élévation','1.5. Charpente','1.6. Couverture et Zinguerie','1.7. Étanchéité (Toits-terrasses, fondations)','1.8. Menuiseries extérieures','1.9. Façade / Enduits extérieurs','2. Le Second Œuvre (global)','2.1. Plâtrerie / Cloisons / Faux-plafonds','2.2. Isolation (Thermique et Phonique)','2.3. Menuiseries intérieures','2.4. Électricité, Domotique et Sécurité','2.5. Plomberie et Sanitaire','2.6. Chauffage, Climatisation et Ventilation (CVC)','2.7. Énergies Renouvelables (ENR)','2.8. Appareils élévateurs','2.9. Chapes','2.10. Revêtements de sols','2.11. Revêtements muraux et Peinture','2.12. Agencement sur mesure','3. Les Aménagements extérieurs (global)','3.1. VRD (Voirie et Réseaux Divers)','3.2. Menuiseries extérieures d’aménagement (portails, portes de garage)','3.3. Serrurerie / Ferronnerie extérieure','3.4. Paysagisme (espaces verts, terrasses)']},
+  {id:'moe',label:'Maîtrise d’œuvre',posts:['Architecte','Maîtrise d’œuvre de conception','Maîtrise d’œuvre d’exécution / DET','OPC','Économiste de la construction','BET Structure','BET Fluides / CVC / Plomberie','BET Électricité','BET Thermique / Énergie','BET Acoustique','BET Environnement / Carbone','BIM / Synthèse','Paysagiste','Coordination SSI','Visa / suivi architectural']},
+  {id:'etudes',label:'Études / diagnostics',posts:['Étude de faisabilité / programmation','Relevés / géomètre','Étude géotechnique','Diagnostic amiante','Diagnostic plomb','Diagnostic termites / parasitaire','Audit énergétique','DPE / 3CL','Étude thermique réglementaire','Étude ACV / carbone','Étude acoustique','Étude structure','Étude de sol / pollution','Diagnostic PEMD / déchets','Étude hydraulique / assainissement','Étude environnementale / biodiversité','Tests / mesures / infiltrométrie','CSPS','Contrôle technique','AMO / conseil']},
+  {id:'foncier',label:'Foncier',posts:['Prix du terrain','Charges foncières','Frais de notaire liés au foncier','Frais d’agence / intermédiaire foncier','Géomètre / bornage foncier','Servitudes / droits de passage','Évictions / libération foncière','Dépollution / remise en état foncière','Participation foncière / soulte','Portage foncier']},
+  {id:'acquisition',label:'Acquisition',posts:['Prix d’acquisition de l’immeuble / bâtiment','Frais de notaire acquisition','Droits de mutation','Frais d’agence acquisition','Frais d’acte / formalités','Audit / due diligence acquisition','Indemnités / éviction liées à l’acquisition','Frais de copropriété liés à l’acquisition']},
+  {id:'assurances',label:'Assurances / garanties',posts:['Dommages-ouvrage (DO)','Tous Risques Chantier (TRC)','Constructeur Non Réalisateur (CNR)','Responsabilité civile maître d’ouvrage','Garantie financière d’achèvement','Garantie de paiement','Assurance chantier','Assurance décennale spécifique','Frais de caution / garanties']},
+  {id:'taxes',label:'Taxes / raccordements',posts:['Taxe d’aménagement','PFAC / participation assainissement','Raccordement eau','Raccordement électricité','Raccordement gaz','Raccordement télécom / fibre','Raccordement réseau de chaleur','Voirie / concessionnaires','Redevances / participations','Taxes locales / urbanisme','Frais ENEDIS / GRDF / opérateurs']},
+  {id:'financement',label:'Financement',posts:['Intérêts intercalaires','Frais de dossier bancaire','Frais de garantie / caution bancaire','Commissions bancaires','Frais de montage financier','Frais de trésorerie','Coût du crédit','Frais de couverture / swap','Frais liés aux prêts / subventions']},
+  {id:'commercialisation',label:'Commercialisation',posts:['Honoraires de commercialisation','Commission de vente','Marketing / communication','Publicité / supports','Bureau / bulle de vente','Appartement témoin','Frais de vente','Frais de lancement','Portails / annonces','Gestion des réservations']},
+  {id:'moa',label:'Maîtrise d’ouvrage / gestion',posts:['Honoraires de maîtrise d’ouvrage','AMO','Gestion de projet','Frais administratifs','Frais juridiques','Comptabilité / gestion','Frais de syndic / copropriété','Permis / autorisations','Consultations / appels d’offres','Gestion chantier / coordination interne']},
+  {id:'relogement',label:'Relogement / accompagnement',posts:['Relogement temporaire','Déménagement','Garde-meubles','Indemnités aux occupants','Accompagnement social','Communication locataires','Permanence / médiation','Hébergement temporaire','Aides aux occupants','Remise en état après relogement']},
+  {id:'autres',label:'Autres',posts:['Honoraires divers','Frais divers','Provision / aléas','Imprévus','Frais de livraison','Mobilier / équipements non travaux','Autre poste']}
+];
+// Lots de DPGF / libellés libres → poste travaux du questionnaire (premier motif trouvé ; ordre = du plus précis au plus large).
+const TRAVAUX_KEYWORDS=[
+  [2,/amiant|desamiant|deplomb/],[29,/portail|porte de garage|motoris/],[17,/menuiseries? interieure/],[3,/installation de chantier|base vie/],
+  [1,/curage|demoli|mise a nu/],[5,/terrassement/],[6,/fondation|soubassement|pieux/],[7,/assainissement/],[9,/charpente/],[10,/couverture|zinguerie/],
+  [11,/etanche/],[13,/facade|ravalement|enduit/],[15,/platrerie|cloison|faux[- ]?plafond|doublage/],[16,/isolation|isolant/],
+  [18,/electricit|courants? (?:forts|faibles)|teledistribution|fibre|tnt\b|alarme|interphon|domotique/],[19,/plomberie|sanitaire/],
+  [20,/chauffage|ventilation|\bcvc\b|climatisation|\bvmc\b|genie climatique/],[21,/photovolta|solaire|geotherm|\benr\b/],[22,/ascenseur|monte[- ]?charge|elevateur/],
+  [23,/\bchapes?\b/],[24,/\bsols?\b|carrelage|faience|parquet/],[25,/peinture|revetements? muraux/],[26,/agencement/],[28,/\bvrd\b|voirie|reseaux divers/],
+  [30,/serrurerie|metallerie|ferronnerie/],[31,/paysag|espaces? verts?|plantation/],[12,/menuiserie|fenetre/],[4,/gros[^a-z]*(?:oe|œ)uvre/],[8,/maconnerie|elevation/]
+];
+const AID_CATEGORIES=[
+  {id:'sub',label:'Subventions',short:'Subvention',kind:'capital'},{id:'cee',label:'Primes énergie (CEE)',short:'Prime CEE',kind:'capital'},
+  {id:'pret',label:'Prêts aidés et bonifiés',short:'Prêt aidé',kind:'pret'},{id:'fisc',label:'Avantages fiscaux',short:'Avantage fiscal',kind:'fisc'},
+  {id:'contrat',label:'Contrats de performance et tiers-financement',short:'Tiers-financement',kind:'contrat'},{id:'revenu',label:'Recettes et valorisation',short:'Recette',kind:'revenu'},
+  {id:'autre',label:'Autre aide',short:'Autre',kind:'capital'}
+];
+const AID_LEVELS=['Europe','État','Opérateurs nationaux','Région','Département','Intercommunalité / commune','Organismes sociaux','Établissements financiers','Acteurs privés'];
+const AID_CATALOG=[
+  ['feder','sub','FEDER – Fonds européen de développement régional'],['ftj','sub','FTJ – Fonds pour une transition juste'],['feader','sub','FEADER – développement rural (LEADER)'],
+  ['elena','sub','ELENA – assistance technique (BEI)'],['life','sub','Programme LIFE (transition énergétique propre)'],['europe_autre','sub','Autre fonds européen (Interreg, FSE+…)'],
+  ['ap_plai','sub','Aides à la pierre – subvention PLAI'],['ap_plai_adapte','sub','Aides à la pierre – prime PLAI adapté'],['ap_plus','sub','Aides à la pierre – subvention PLUS (délégataire)'],
+  ['ap_bonus','sub','Aides à la pierre – bonus (petits logements, recyclage foncier, transformation de bureaux…)'],['ap_surcharge','sub','Aides à la pierre – subvention pour surcharge foncière'],
+  ['ap_palulos','sub','Aides à la pierre – Palulos / rénovation énergétique'],['fonds_vert','sub','Fonds vert'],['anah','sub','Anah (MaPrimeRénov’ Copropriété…)'],
+  ['anru','sub','ANRU – renouvellement urbain (NPNRU)'],['fonds_chaleur','sub','Fonds Chaleur (ADEME)'],['agence_eau','sub','Agence de l’eau'],['region','sub','Région'],
+  ['departement','sub','Département'],['epci','sub','Métropole / EPCI / commune'],['action_logement_sub','sub','Action Logement – subvention'],
+  ['cee','cee','Certificats d’économies d’énergie (CEE, Coup de pouce…)'],
+  ['eco_pls','pret','Éco-prêt logement social'],['adapteo','pret','Prêt Adaptéo (chauffage décarboné)'],['pret_plai','pret','Prêt PLAI – prêt locatif aidé d’intégration (dont PLAI adapté, PLAI RO ANRU)'],
+  ['pret_plus','pret','Prêt PLUS – prêt locatif à usage social (dont PLUS Constructions vertes)'],['pret_pls','pret','Prêt PLS – prêt locatif social'],['pret_psla','pret','Prêt PSLA – location-accession'],
+  ['pret_pli','pret','Prêt PLI – logement intermédiaire'],['pret_brs','pret','Prêt Gaïa / BRS – foncier en bail réel solidaire'],['prets_bdt','pret','Autres prêts Banque des Territoires (PAM, PHB 2.0, Intracting…)'],
+  ['pret_vert','pret','Prêt vert bancaire (banques, Bpifrance)'],['action_logement_pret','pret','Action Logement – prêt'],
+  ['tfpb','fisc','Exonération ou abattement de TFPB'],['tva_reduite','fisc','TVA à taux réduit (5,5 % ou 10 %)'],
+  ['cpe','contrat','Contrat de performance énergétique (CPE)'],['tiers_financement','contrat','Tiers-financement (CPE tiers-financé, société de tiers-financement)'],
+  ['marges_locales','revenu','Marges locales bonifiées – majoration de loyer'],['lbc','revenu','Label bas-carbone – crédits carbone'],['pv_revente','revenu','Photovoltaïque – revente ou autoconsommation'],
+  ['autre','autre','Autre dispositif (préciser)']
+].map(([id,cat,label])=>({id,cat,label}));
+const AID_SECURED=new Set(['Versée','Accordée']);
+const MARGE_MOTIFS=['Performance énergétique','Certification / label','Qualité d’usage / confort','Autre critère local'];
+
+// —— Colonnes exportées (ordre = ordre Excel, après « Code interne » et « Nom opération »)
+const F=(key,label,group,type='number')=>({key,label,group,type});
+const ECONOMIC_GROUPS=[
+  {id:'ident',label:'Questionnaire & opération'},{id:'synthese',label:'Synthèse financière'},{id:'couts',label:'Coûts par catégorie'},
+  ...COST_CATEGORIES.map(c=>({id:`postes_${c.id}`,label:`${c.label} — postes`})),
+  {id:'aides_cat',label:'Aides par catégorie'},{id:'aides_porteur',label:'Aides par porteur'},{id:'aides',label:'Aides par dispositif'}
+];
+const ECONOMIC_FIELDS=[
+  F('fin_operation_code','N° opération (questionnaire)','ident','text'),F('fin_contract','N° contrat (questionnaire)','ident','text'),
+  F('fin_operation_label','Libellé opération (questionnaire)','ident','text'),F('fin_siap','N° opération SIAP','ident','text'),
+  F('fin_siap_aids','Financements agréés SIAP','ident','text'),F('fin_version','Version du questionnaire','ident','text'),
+  F('fin_confirmed_at','Date de confirmation','ident','text'),F('fin_authorization','Habilitation à transmettre','ident','text'),
+  F('fin_privacy','Notice confidentialité','ident','text'),F('fin_sources','Sources utilisées','ident','text'),
+  F('fin_lines_count','Lignes financières','ident'),F('fin_pdf_count','PDF joints autorisés','ident'),F('fin_excel_count','Excel joints autorisés','ident'),
+  F('fin_coverage','Couverture du coût de l’opération','ident','text'),F('fin_missing_known','Postes manquants signalés','ident','text'),
+  F('fin_missing','Postes manquants','ident','text'),F('fin_control_comment','Commentaire de contrôle','ident','text'),
+  F('fin_final_cost','Coût final déclaré (€)','ident'),F('fin_final_same','Coût final identique au montant détaillé','ident','text'),
+  F('fin_final_comment','Commentaire avant envoi','ident','text'),F('fin_aids_status','Aides mobilisées (réponse)','ident','text'),
+  F('fin_aids_comment','Commentaire sur les aides','ident','text'),F('fin_dwellings','Nombre de logements (aides)','ident'),
+  F('fin_notice_version','Version de la notice de confidentialité','ident','text'),F('fin_aid_catalog','Référentiel des aides','ident','text'),
+  F('fin_alerts','Alertes du questionnaire','ident','text'),
+  F('cost_total','Coût total opération HT (€)','synthese'),F('aid_capital','Aides non remboursables (€)','synthese'),
+  F('aid_capital_pct_total','Aides non remboursables / coût total (%)','synthese'),F('aid_capital_pct_works','Aides non remboursables / travaux (%)','synthese'),
+  F('aid_loans','Prêts aidés (€)','synthese'),F('aid_loans_pct_total','Prêts aidés / coût total (%)','synthese'),
+  F('aid_tax_revenue','Avantages fiscaux et recettes (€)','synthese'),F('aid_third_party','Tiers-financement (€)','synthese'),
+  F('own_funds','Fonds propres / emprunts classiques (€)','synthese'),F('own_funds_pct','Fonds propres / emprunts classiques (%)','synthese'),
+  F('aid_mobilized','Montants mobilisés (€)','synthese'),F('aid_secured_pct','Montants sécurisés (%)','synthese'),F('aid_to_secure','Reste à sécuriser (€)','synthese'),
+  F('aid_count','Nombre de dispositifs','synthese'),F('aid_levels_count','Nombre de niveaux de financeurs','synthese'),
+  F('aid_first_level','Premier financeur','synthese','text'),F('aid_first_level_pct','Part du premier financeur (%)','synthese'),
+  F('aid_strategy','Stratégie dominante','synthese','text'),F('aid_strategy_pct','Part de la stratégie dominante (%)','synthese'),
+  F('marge_pct','Marge locale : majoration de loyer (%)','synthese'),F('marge_motif','Marge locale : motif','synthese','text'),
+  F('marge_territory','Marge locale : territoire','synthese','text'),F('marge_revenue','Marge locale : recette annuelle (€)','synthese'),
+  F('marge_reference_rent','Marge locale : loyer annuel de référence (€)','synthese'),F('aid_capital_per_dwelling','Aides non remboursables par logement (€)','synthese'),
+  ...COST_CATEGORIES.flatMap(c=>[F(`cost_${c.id}`,`${c.label} (€ HT)`,'couts'),F(`cost_${c.id}_pct`,`${c.label} (% du coût total)`,'couts')]),
+  ...COST_CATEGORIES.flatMap(c=>[...c.posts.map((p,i)=>F(`post_${c.id}_${i}`,`${c.label} — ${p} (€ HT)`,`postes_${c.id}`)),F(`post_${c.id}_other`,`${c.label} — non ventilé / postes groupés (€ HT)`,`postes_${c.id}`)]),
+  ...AID_CATEGORIES.map(c=>F(`aidcat_${c.id}`,`${c.label} (€)`,'aides_cat')),
+  ...AID_LEVELS.map(l=>F(`aidlvl_${normLower(l).replace(/[^a-z0-9]+/g,'_')}`,`Porteur — ${l} (€)`,'aides_porteur')),
+  ...AID_CATALOG.flatMap(a=>[F(`aid_${a.id}`,`${a.label} (€)`,'aides'),F(`aid_${a.id}_status`,`${a.label} — statut`,'aides','text')])
+];
+const ECONOMIC_FIELD_MAP=Object.fromEntries(ECONOMIC_FIELDS.map(f=>[f.key,f]));
+
+// —— Lecture
+const key=s=>normLower(s).replace(/[’']/g,"'").replace(/[^a-z0-9œ]+/g,' ').trim();
 function moneyValue(v){
-  const s=String(v??'').replace(/\u00a0/g,' ').trim();
+  const s=String(v??'').replace(/ /g,' ').trim();
   if(!s) return null;
-  const cleaned=s.replace(/€/g,'').replace(/\s/g,'');
-  const n=parseFrNumber(cleaned); return n!==null&&n>=0?n:null;
+  const n=parseFrNumber(s.replace(/€/g,'').replace(/\s/g,'')); return n!==null&&n>=0?n:null;
 }
+const round1=x=>Math.round(x*10)/10;
+const pct=(a,b)=>b>0?round1(a/b*100):null;
+const catById=id=>COST_CATEGORIES.find(c=>c.id===id);
+function costCategory(label){ const k=key(label); return COST_CATEGORIES.find(c=>key(c.label)===k)?.id||(/travaux/.test(k)?'travaux':'autres'); }
+// Poste d'une ligne : libellé exact de la nomenclature, sinon (travaux) mot-clé ; plusieurs postes « a | b » → non ventilé.
+function costPostIndex(catId,label){
+  const cat=catById(catId); if(!cat) return null;
+  const parts=String(label||'').split('|').map(s=>s.trim()).filter(Boolean);
+  if(parts.length!==1) return null;
+  const k=key(parts[0]).replace(/^(?:lot\s*)?(?:n\s*)?\d+[a-z]?\s*/,'').trim();
+  const exact=cat.posts.findIndex(p=>key(p)===key(parts[0])||key(p).replace(/^\d+(?: \d+)? /,'')===k);
+  if(exact>=0) return exact;
+  if(catId!=='travaux') return null;
+  const hit=TRAVAUX_KEYWORDS.find(([,re])=>re.test(normLower(parts[0])));
+  return hit?hit[0]:null;
+}
+function aidFromLabel(label){
+  const k=key(label);
+  return AID_CATALOG.find(a=>key(a.label)===k)||AID_CATALOG.find(a=>a.id!=='autre'&&(k.startsWith(key(a.label))||key(a.label).startsWith(k)))||AID_CATALOG.find(a=>a.id==='autre');
+}
+
+// Pages de la synthèse PDF du questionnaire (cellules reconstruites à la lecture, voir readers.js).
+function isFinancialQuestionnaire(doc){
+  if(doc?.read?.financialQuestionnaire) return true;
+  const t=normLower(String(doc?.read?.text||'').slice(0,60000)).replace(/\s+/g,'');
+  return /questionnairefinancier/.test(t)&&/donneesfinancieresvalidees|aidesmobilisees/.test(t);
+}
+const cellText=l=>(Array.isArray(l.cells)?l.cells.filter(Boolean).join(' · '):String(l.text||''));
+// Tableaux « Données financières validées » et « Aides mobilisées » : une ligne commence quand la 1re colonne est remplie,
+// les lignes suivantes sans 1re colonne la complètent (libellés sur plusieurs lignes).
+function readTables(doc){
+  const costs=[],aids=[]; let total=null;
+  for(const page of doc.read?.pages||[]){
+    let cols=null,kind=null,row=null;
+    for(const line of page.lines||[]){
+      const c=line.cells; const flat=key(cellText(line));
+      if(Array.isArray(c)&&c.length>=4&&/montant/.test(flat)&&(/lot poste/.test(flat)||/statut/.test(flat))){
+        kind=/statut/.test(flat)?'aid':'cost'; cols=c.map(key); row=null; continue;
+      }
+      if(!cols) continue;
+      if(!Array.isArray(c)||/^(?:aides non remboursables|prestaterre certifications|https?)/.test(flat)){ cols=null; continue; }
+      const at=re=>cols.findIndex(x=>re.test(x));
+      if(kind==='cost'&&/^total operation/.test(key(c[0]||''))){ total=moneyValue(c[at(/montant/)]); cols=null; continue; }
+      if(String(c[0]||'').trim()){ row={cols,parts:c.map(v=>v?[v]:[]),page:page.page,excerpt:cellText(line)}; (kind==='cost'?costs:aids).push(row); }
+      else if(row) c.forEach((v,i)=>{ if(v) row.parts[i]?.push(v); });
+    }
+  }
+  return {costs,aids,total};
+}
+function costLine(r,doc){
+  const col=re=>{ const i=(r.cols||[]).findIndex(x=>re.test(x)); return i>=0?r.parts[i]||[]:[]; };
+  const label=col(/lot poste/).join(' ').replace(/\s+/g,' ').trim(), category=costCategory(col(/categorie/).join(' '));
+  return {source:col(/source/).join(' '),label,category,amount:moneyValue(col(/montant/).join(' ')),comment:col(/commentaire/).join(' '),document:doc.name,docId:doc.id,page:r.page,excerpt:r.excerpt};
+}
+function aidLine(r,doc){
+  const col=re=>{ const i=(r.cols||[]).findIndex(x=>re.test(x)); return i>=0?r.parts[i]||[]:[]; };
+  const who=[...col(/aide porteur/)]; const level=AID_LEVELS.find(l=>key(l)===key(who[who.length-1]||''))||''; if(level) who.pop();
+  const label=who.join(' ').replace(/\s+/g,' ').trim(); const aid=aidFromLabel(label);
+  const status=col(/statut/).join(' ').trim(); const calc=col(/calcul/).join(' ').replace(/\s+/g,' ').trim();
+  return {category:col(/categorie/).join(' '),label,aid:aid.id,aidCategory:aid.cat,level,calc,amount:moneyValue(col(/montant/).join(' ')),status,comment:col(/commentaire/).join(' '),document:doc.name,docId:doc.id,page:r.page,excerpt:r.excerpt};
+}
+function readIdentity(doc){
+  const v={}; const pages=doc.read?.pages||[];
+  const all=pages.flatMap(p=>(p.lines||[]).map(cellText));
+  for(const t of all){
+    let m;
+    if(!v.fin_operation_code&&(m=t.match(/\b(OPE-\d{3,})\s*·\s*Contrat\s*(\d+)\s*·\s*([^·←]+?)\s*(?:·|$)/))){ v.fin_operation_code=m[1]; v.fin_contract=m[2]; v.fin_operation_label=m[3].trim(); }
+    if(!v.fin_version&&(m=t.match(/Questionnaire\s*financier\s*MOA\s*V\s*(\d+[.,]\d+)/i))) v.fin_version=`V${m[1]}`;
+    if((m=t.match(/Lignes\s*financi[eè]res\s*:\s*(\d+)/i))) v.fin_lines_count=Number(m[1]);
+    if((m=t.match(/PDF\s*joints\s*:\s*(\d+)/i))) v.fin_pdf_count=Number(m[1]);
+    if((m=t.match(/Excel\s*joints\s*:\s*(\d+)/i))) v.fin_excel_count=Number(m[1]);
+    if((m=t.match(/Habilitation\s*à\s*transmettre\s*:\s*([^·]+)/i))) v.fin_authorization=m[1].trim();
+    if((m=t.match(/Notice\s*confidentialit[ée]\s*:\s*([^·]+)/i))) v.fin_privacy=m[1].trim();
+    if((m=t.match(/Confirmation\s*:\s*(\d{2}\/\d{2}\/\d{4})/i))) v.fin_confirmed_at=m[1];
+  }
+  // N° SIAP : la ligne suivant le titre ; le texte d'aide « N° d'opération SIAP » signifie champ vide.
+  for(const p of pages){ const L=(p.lines||[]).map(cellText); const i=L.findIndex(t=>/NUM[ÉE]RO\s*D.OP[ÉE]RATION\s*SIAP/i.test(t));
+    if(i<0) continue; const n=(L[i+1]||'').trim(); if(n&&!/^N°\s*d.op[ée]ration\s*SIAP$/i.test(n)) v.fin_siap=n;
+    const j=L.findIndex(t=>/financements\s*agr[ée]{2}s\s*dans\s*SIAP/i.test(t)); const tail=j<0?[]:L.slice(j+1).filter(t=>!/^https?:|^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}/.test(t.trim())); if(tail.length) v.fin_siap_aids=tail.join(' ; ').replace(/\s+/g,' ').trim(); }
+  return v;
+}
+function parseFinancialQuestionnaire(doc){
+  if(doc?.read?.financialQuestionnaire) return parseFinancialJson(doc.read.financialQuestionnaire,doc);
+  const {costs,aids,total}=readTables(doc);
+  return {identity:readIdentity(doc),costs:costs.map(r=>costLine(r,doc)).filter(l=>l.label&&l.amount!==null),aids:aids.map(r=>aidLine(r,doc)).filter(l=>l.amount!==null),total};
+}
+
+// —— Export JSON du questionnaire (« _questionnaire.json », seul ou dans le paquet .zip) : source prioritaire, sans
+// reconstruction de mise en page. Fichier transmis par un tiers : seuls les champs attendus sont lus, typés un par un.
+const ecoTxt=v=>v===undefined||v===null?'':String(v).replace(/\s+/g,' ').trim();
+const ecoNum=v=>{ const n=typeof v==='number'?v:parseFrNumber(String(v??'')); return Number.isFinite(n)?n:null; };
+const ecoYesNo=v=>v===true||v==='yes'?'Oui':v===false||v==='no'?'Non':v==='pending'?'En cours':ecoTxt(v);
+const ecoArr=v=>Array.isArray(v)?v:[];
+function isFinancialJson(data){ return !!(data&&typeof data==='object'&&data.operation&&typeof data.operation==='object'&&Array.isArray(data.financier?.lignesValidees)); }
+const SIAP_AIDS=new Set(['ap_plai','ap_plai_adapte','ap_plus','ap_bonus','ap_surcharge','ap_palulos','pret_plai','pret_plus','pret_pls','pret_psla']);
+function parseFinancialJson(d,doc={}){
+  const op=d.operation||{}, fi=d.financier||{}, tr=d.transmission||{}, co=d.complementaires||{}, cf=d.conformite||{}, ai=d.aides||{};
+  const costs=ecoArr(fi.lignesValidees).map(l=>({source:ecoTxt(l.source),label:ecoTxt(l.lot),category:costCategory(ecoTxt(l.categorie)),amount:ecoNum(l.montant),comment:ecoTxt(l.commentaire),document:ecoTxt(l.fichier)||doc.name||'',docId:doc.id,page:''})).filter(l=>l.label&&l.amount!==null);
+  const aids=ecoArr(ai.lignes).map(a=>{ const known=AID_CATALOG.find(x=>x.id===ecoTxt(a.aideId)); const cat=AID_CATEGORIES.find(c=>c.id===ecoTxt(a.categorie))?.id||known?.cat||'autre';
+    return {category:ecoTxt(a.nature),label:ecoTxt(a.dispositif)||known?.label||'',aid:known?.id||'autre',aidCategory:cat,level:AID_LEVELS.find(l=>l===ecoTxt(a.porteur))||ecoTxt(a.porteur),calc:ecoTxt(a.saisieLibelle),amount:ecoNum(a.montant),status:ecoTxt(a.statut),comment:ecoTxt(a.commentaire),siapNumber:ecoTxt(a.numeroSIAP),document:doc.name||'',docId:doc.id,page:''}; }).filter(a=>a.amount!==null);
+  const confirmed=Date.parse(cf.confirmeLe||''); const version=ecoTxt(ai.referentielAides).match(/V\s*(\d+[.,]\d+)/i);
+  const identity={fin_operation_code:ecoTxt(op.numeroOperation),fin_contract:ecoTxt(op.contrat),fin_operation_label:ecoTxt(op.commune),
+    fin_siap:ecoTxt(op.numeroSIAP)||aids.map(a=>a.siapNumber).find(Boolean)||'',fin_siap_aids:[...new Set(aids.filter(a=>SIAP_AIDS.has(a.aid)).map(a=>a.label))].join(' ; '),
+    fin_version:version?`V${version[1]}`:'',fin_confirmed_at:Number.isFinite(confirmed)?new Date(confirmed).toLocaleDateString('fr-FR'):'',
+    fin_authorization:cf.habilitationTransmission===true?'confirmée':cf.habilitationTransmission===false?'non confirmée':'',
+    fin_privacy:cf.priseConnaissanceConfidentialite===true?'prise en compte':cf.priseConnaissanceConfidentialite===false?'non prise en compte':'',
+    fin_lines_count:costs.length,fin_pdf_count:Array.isArray(tr.fichiersPDFJoints)?tr.fichiersPDFJoints.length:null,fin_excel_count:Array.isArray(tr.fichiersExcelJoints)?tr.fichiersExcelJoints.length:null,
+    fin_coverage:ecoTxt(fi.couverture),fin_missing_known:ecoYesNo(fi.postesManquantsConnus),fin_missing:ecoTxt(fi.postesManquants),fin_control_comment:ecoTxt(fi.commentaireControle),
+    fin_final_cost:ecoNum(co.coutFinal),fin_final_same:co.coutFinalIdentiqueMontantDetaille===undefined?'':ecoYesNo(co.coutFinalIdentiqueMontantDetaille),fin_final_comment:ecoTxt(co.commentaireAvantEnvoi),
+    fin_aids_status:ecoYesNo(ai.statut),fin_aids_comment:ecoTxt(ai.commentaire),fin_dwellings:ecoNum(ai.nombreLogements),aid_capital_per_dwelling:ecoNum(ai.aidesNonRemboursablesParLogement),
+    fin_notice_version:ecoTxt(cf.versionNotice),fin_aid_catalog:ecoTxt(ai.referentielAides),fin_alerts:ecoArr(ai.alertes).map(a=>ecoTxt(typeof a==='object'?(a.message||a.texte||a.label):a)).filter(Boolean).join(' ; ')};
+  const marge=ecoArr(ai.margesLocales)[0];
+  if(marge) Object.assign(identity,{marge_pct:ecoNum(marge.tauxMajorationLoyer),marge_motif:ecoTxt(marge.motif),marge_territory:ecoTxt(marge.territoire),marge_reference_rent:ecoNum(marge.loyerAnnuelReference),marge_revenue:ecoNum(marge.recetteAnnuelleEstimee)});
+  for(const k of Object.keys(identity)) if(identity[k]===''||identity[k]===null) delete identity[k];
+  return {identity,costs,aids,total:ecoNum(fi.montantTotalOperation),json:true};
+}
+// Page de texte lisible pour la recherche libre, l'assistance IA et le classement du document.
+function financialJsonRead(d){
+  const p=parseFinancialJson(d); const id=p.identity; const eur=n=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(n)} €`;
+  const lines=[`Questionnaire financier Prestaterre — export JSON ${id.fin_version||''}`.trim(),[id.fin_operation_code,id.fin_contract&&`Contrat ${id.fin_contract}`,id.fin_operation_label].filter(Boolean).join(' · '),
+    p.total!==null?`Total opération ${eur(p.total)}`:'','Données financières validées',...p.costs.map(l=>[l.source,l.label,COST_CATEGORIES.find(c=>c.id===l.category)?.label,eur(l.amount)].join(' · ')),
+    'Aides mobilisées',...p.aids.map(a=>[a.label,a.level,a.calc,eur(a.amount),a.status].filter(Boolean).join(' · '))].filter(Boolean);
+  const text=lines.join('\n');
+  return {kind:'json',pages:[{page:1,text,lines:lines.map((t,index)=>({index,text:normalizeText(t),items:[]}))}],text,pageCount:1,financialQuestionnaire:d};
+}
+
+// —— DPGF (repli) : prix HT par lot
 function cleanLotLabel(s){ return normalizeText(String(s||'')).replace(/^total\s+/i,'').replace(/\s*[:|].*$/,'').replace(/\s{2,}/g,' ').trim(); }
 function canonicalLotKey(label){ return normLower(label).replace(/\bn[°o]\b/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
 function candidateFromCells(cells,sheet=''){
@@ -8645,19 +8924,67 @@ function parseDpgfDocument(doc){
     // Feuille dédiée à un lot : accepter un total HT explicite même si la ligne ne répète pas le mot LOT.
     if(page.sheet&&/\blot\b/i.test(page.sheet)){
       const totals=lines.filter(l=>/total\s*(?:du\s*)?(?:lot)?\s*ht|montant\s*ht|total\s*ht/i.test(l.text||''));
-      for(const line of totals){ const nums=(line.cells||[]).map(moneyValue).filter(x=>x!==null); if(nums.length){ out.push({label:cleanLotLabel(page.sheet),amount:nums[nums.length-1],confidence:.98,sheet:page.sheet,excerpt:normalizeText(line.text),document:doc.name,page:page.page,docId:doc.id}); } }
+      for(const line of totals){ const nums=(line.cells||[]).map(moneyValue).filter(x=>x!==null); if(nums.length){ out.push({label:cleanLotLabel(page.sheet),amount:nums[nums.length-1],confidence:.98,sheet:page.sheet,excerpt:normalizeText(line.text),document:doc.name,page:page.page,docId:doc.id}); break; } }
     }
   }
   return out;
 }
-function analyzeEconomicData(docs,operation='',manual={}){
-  const candidates=docs.filter(d=>d.status==='ready'&&d.type===DOC_TYPES.DPGF).flatMap(parseDpgfDocument);
+function dpgfLines(docs){
   const best=new Map();
-  for(const c of candidates){ const key=canonicalLotKey(c.label); const prev=best.get(key); if(!prev||c.confidence>prev.confidence||c.confidence===prev.confidence) best.set(key,c); }
-  const lots=[...best.values()].sort((a,b)=>a.label.localeCompare(b.label,'fr',{numeric:true}));
-  for(const [label,value] of Object.entries(manual||{})){ const key=canonicalLotKey(label); const existing=lots.find(x=>canonicalLotKey(x.label)===key); if(existing){existing.amount=value;existing.manual=true;existing.confidence=1;} else lots.push({label,amount:value,manual:true,confidence:1,document:'Correction utilisateur',page:'',excerpt:'Valeur économique saisie manuellement'}); }
-  const total=lots.reduce((s,x)=>s+(Number(x.amount)||0),0);
-  return {operation,lots,total,documents:docs.filter(d=>d.status==='ready'&&d.type===DOC_TYPES.DPGF).map(d=>d.name)};
+  for(const c of docs.filter(d=>d.type===DOC_TYPES.DPGF).flatMap(parseDpgfDocument)){ const k=canonicalLotKey(c.label); const prev=best.get(k); if(!prev||c.confidence>=prev.confidence) best.set(k,c); }
+  return [...best.values()].sort((a,b)=>a.label.localeCompare(b.label,'fr',{numeric:true})).map(c=>({source:'DPGF',label:c.label,category:'travaux',amount:c.amount,comment:'',document:c.document,docId:c.docId,page:c.page,excerpt:c.excerpt}));
+}
+
+// —— Agrégation : une ligne de valeurs par opération (clé = colonne de la nomenclature)
+function aggregate(costs,aids,pdfTotal){
+  const v={}; const add=(k,x)=>{ v[k]=(v[k]||0)+x; };
+  for(const l of costs){ add(`cost_${l.category}`,l.amount); const i=costPostIndex(l.category,l.label); add(i===null?`post_${l.category}_other`:`post_${l.category}_${i}`,l.amount); }
+  const sum=costs.reduce((s,l)=>s+l.amount,0);
+  if(costs.length||pdfTotal) v.cost_total=pdfTotal??sum;
+  for(const c of COST_CATEGORIES) if(v[`cost_${c.id}`]) v[`cost_${c.id}_pct`]=pct(v[`cost_${c.id}`],v.cost_total);
+  if(costs.length) v.fin_sources=[...new Set(costs.map(l=>l.source).filter(Boolean))].join(' + ');
+  if(aids.length){
+    const kind=id=>AID_CATEGORIES.find(c=>c.id===id)?.kind;
+    const by=k=>aids.filter(a=>kind(a.aidCategory)===k).reduce((s,a)=>s+a.amount,0);
+    v.aid_capital=by('capital'); v.aid_loans=by('pret'); v.aid_tax_revenue=by('fisc')+by('revenu'); v.aid_third_party=by('contrat');
+    v.aid_mobilized=aids.reduce((s,a)=>s+a.amount,0);
+    const secured=aids.filter(a=>AID_SECURED.has(a.status)).reduce((s,a)=>s+a.amount,0);
+    v.aid_secured_pct=pct(secured,v.aid_mobilized); v.aid_to_secure=v.aid_mobilized-secured;
+    v.aid_count=aids.length; v.aid_levels_count=new Set(aids.map(a=>a.level).filter(Boolean)).size;
+    if(v.cost_total){ v.aid_capital_pct_total=pct(v.aid_capital,v.cost_total); v.aid_loans_pct_total=pct(v.aid_loans,v.cost_total); v.own_funds=v.cost_total-v.aid_capital-v.aid_loans; v.own_funds_pct=pct(v.own_funds,v.cost_total); }
+    if(v.cost_travaux) v.aid_capital_pct_works=pct(v.aid_capital,v.cost_travaux);
+    for(const c of AID_CATEGORIES){ const s=aids.filter(a=>a.aidCategory===c.id).reduce((t,a)=>t+a.amount,0); if(s) v[`aidcat_${c.id}`]=s; }
+    const levels=new Map(); for(const a of aids) if(a.level) levels.set(a.level,(levels.get(a.level)||0)+a.amount);
+    for(const [l,s] of levels) v[`aidlvl_${normLower(l).replace(/[^a-z0-9]+/g,'_')}`]=s;
+    const first=[...levels].sort((a,b)=>b[1]-a[1])[0]; if(first){ v.aid_first_level=first[0]; v.aid_first_level_pct=pct(first[1],v.aid_mobilized); }
+    const strat=[['subventions et primes',v.aid_capital],['prêts aidés',v.aid_loans],['avantages fiscaux et recettes',v.aid_tax_revenue],['tiers-financement',v.aid_third_party]].sort((a,b)=>b[1]-a[1])[0];
+    if(strat[1]>0){ v.aid_strategy=strat[0]; v.aid_strategy_pct=pct(strat[1],v.aid_mobilized); }
+    for(const a of aids){ add(`aid_${a.aid}`,a.amount); const k=`aid_${a.aid}_status`; v[k]=[...new Set([...(v[k]?String(v[k]).split(' ; '):[]),a.status].filter(Boolean))].join(' ; '); }
+    const marge=aids.find(a=>a.aid==='marges_locales');
+    if(marge){ const m=marge.calc.match(/(\d+(?:[.,]\d+)?)\s*%/); if(m) v.marge_pct=parseFrNumber(m[1]); v.marge_motif=MARGE_MOTIFS.find(x=>key(marge.calc).includes(key(x)))||'';
+      const parts=marge.calc.split('·').map(s=>s.trim()); const terr=parts.find(p=>p&&!/%|€/.test(p)&&!MARGE_MOTIFS.some(x=>key(x)===key(p))); if(terr) v.marge_territory=terr; v.marge_revenue=marge.amount; }
+  }
+  for(const k of Object.keys(v)) if(v[k]===''||v[k]===null) delete v[k];
+  return v;
+}
+
+// Point d'entrée : {operation, values, costs, aids, documents, source} ; `manual` = saisies de l'onglet Économie
+// ({clé de colonne: valeur}) ; une ancienne saisie « libellé de lot → montant » (≤ v2.4) devient une ligne travaux.
+function analyzeEconomicData(docs,operation='',manual={}){
+  const ready=(docs||[]).filter(d=>d.status==='ready');
+  // shortcut: un seul questionnaire par opération (le premier lu) ; à fusionner si plusieurs versions sont jointes.
+  // L'export JSON prime sur la synthèse PDF (mêmes données, sans reconstruction de mise en page).
+  const qDoc=ready.find(d=>d.read?.financialQuestionnaire)||ready.find(d=>d.type===DOC_TYPES.FINANCIAL||isFinancialQuestionnaire(d));
+  const q=qDoc?parseFinancialQuestionnaire(qDoc):null;
+  // Le questionnaire reprend déjà les DPGF joints : les lire aussi compterait les lots deux fois.
+  const costs=q?q.costs:dpgfLines(ready), aids=q?q.aids:[];
+  const legacy={};
+  for(const [k,val] of Object.entries(manual||{})){ if(!ECONOMIC_FIELD_MAP[k]&&Number.isFinite(Number(val))) costs.push({source:'Manuel',label:k,category:'travaux',amount:Number(val),comment:'Saisie manuelle',document:'Correction utilisateur',page:''}); else legacy[k]=val; }
+  // Valeurs déclarées par le questionnaire (JSON : marge locale, couverture…) prioritaires sur les valeurs recalculées.
+  const values=q?.json?{...aggregate(costs,aids,q.total??null),...q.identity}:{...(q?.identity||{}),...aggregate(costs,aids,q?.total??null)};
+  const manualKeys=[];
+  for(const [k,val] of Object.entries(legacy)){ if(val===''||val===null||val===undefined) continue; values[k]=val; manualKeys.push(k); }
+  return {operation,values,manualKeys,costs,aids,source:qDoc?`Questionnaire financier (${qDoc.name})`:costs.length?'DPGF':'',documents:qDoc?[qDoc.name]:ready.filter(d=>d.type===DOC_TYPES.DPGF).map(d=>d.name),total:values.cost_total??0};
 }
 
 /* ---- exporter.js ---- */
@@ -8679,6 +9006,19 @@ function exportProjectsExcel(projects,rules){
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });
   const ws1=aoaSheet(data); autoWidth(ws1); XLSX.utils.book_append_sheet(wb,ws1,'Données par bâtiment');
 
+  // v2.5.0 — 2e feuille : nomenclature économique (une ligne par opération), identifiant du projet en tête.
+  const blank=v=>v===undefined||v===null||v===''||v==='non précisé';
+  const eco=usable.map((p,idx)=>{ const e=analyzeEconomicData(p.docs||[],p.result?.operation||'',p.manualEconomics||{}); const rows=p.result?.rows||[]; const first=k=>rows.map(r=>r[k]).find(x=>!blank(x));
+    return {p,e,code:first('internal_code')??e.values.fin_operation_code??'',name:first('operation_name')??(p.operationName||p.result?.operation||e.values.fin_operation_label||projectName(p,idx))}; });
+  if(eco.some(x=>x.e.source||Object.keys(x.e.values).length)){
+    const sheet=[['Code interne','Nom opération',...ECONOMIC_FIELDS.map(f=>f.label)],...eco.map(x=>[x.code,x.name,...ECONOMIC_FIELDS.map(f=>x.e.values[f.key]??'')])];
+    const wsE=aoaSheet(sheet); autoWidth(wsE); XLSX.utils.book_append_sheet(wb,wsE,'Données économiques');
+    const det=[['Code interne','Nom opération','Type','Source','Lot / poste / aide','Catégorie','Porteur','Calcul','Montant (€)','Statut','Commentaire','Document','Page']];
+    for(const x of eco){ for(const l of x.e.costs) det.push([x.code,x.name,'Coût',l.source,l.label,COST_CATEGORIES.find(c=>c.id===l.category)?.label||l.category,'','',l.amount,'',l.comment||'',l.document||'',l.page??'']);
+      for(const a of x.e.aids) det.push([x.code,x.name,'Aide','',a.label,a.category,a.level,a.calc,a.amount,a.status,a.comment||'',a.document||'',a.page??'']); }
+    if(det.length>1){ const wsD=aoaSheet(det); autoWidth(wsD); XLSX.utils.book_append_sheet(wb,wsD,'Lignes financières'); }
+  }
+
   const tr=[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']];
   usable.forEach((p,idx)=>{ const r=p.result,pname=projectName(p,idx); for(const o of r.finals) tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
   const ws2=aoaSheet(tr); autoWidth(ws2); XLSX.utils.book_append_sheet(wb,ws2,'Traçabilité');
@@ -8690,14 +9030,6 @@ function exportProjectsExcel(projects,rules){
   const bg=[['Projet','Nom détecté','Bâtiment consolidé','Mode de regroupement']];
   usable.forEach((p,idx)=>{ const pname=projectName(p,idx); for(const a of p.result.buildingAliases||[]) bg.push([pname,a.source,a.target,a.mode]); });
   const wsBg=aoaSheet(bg); autoWidth(wsBg); XLSX.utils.book_append_sheet(wb,wsBg,'Regroupement bâtiments');
-
-  const allLotLabels=[]; const seenLots=new Set();
-  usable.forEach(p=>{ for(const lot of p.economic?.lots||[]){ if(!seenLots.has(lot.label)){ seenLots.add(lot.label); allLotLabels.push(lot.label); } } });
-  if(allLotLabels.length){
-    const econ=[['Projet','Opération',...allLotLabels,'Total HT travaux']];
-    usable.forEach((p,idx)=>{ const pname=projectName(p,idx), map=new Map((p.economic?.lots||[]).map(x=>[x.label,x.amount])); econ.push([pname,p.economic?.operation||p.result.operation||pname,...allLotLabels.map(l=>map.get(l)??''),p.economic?.total??'']); });
-    const wsEco=aoaSheet(econ); autoWidth(wsEco); XLSX.utils.book_append_sheet(wb,wsEco,'Données économiques');
-  }
 
   const rr=[['Donnée','Sources principales','Sources secondaires','Sources interdites']];
   for(const f of FIELD_DEFS){ const r=rules[f.key]; rr.push([f.label,(r?.main||[]).join(' ; '),(r?.secondary||[]).join(' ; '),(r?.forbidden||[]).join(' ; ')]); }
@@ -8778,7 +9110,7 @@ function serializeRead(read){
     else base.text=String(page.text||lines.map(l=>String(l.text||'')).join('\n'));
     return base;
   });
-  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null),...(read.re2020?{re2020:safeJsonClone(read.re2020,null),xmlFormat:read.xmlFormat||'re2020'}:{})};
+  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null),...(read.re2020?{re2020:safeJsonClone(read.re2020,null),xmlFormat:read.xmlFormat||'re2020'}:{}),...(read.financialQuestionnaire?{financialQuestionnaire:safeJsonClone(read.financialQuestionnaire,null)}:{})};
 }
 function hydrateRead(read){
   if(!read) return null;
@@ -9834,6 +10166,7 @@ const RESULT_VIEWS = Object.freeze({
     {title:'Eges (E+C- / BBCA Rénovation)',keys:['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']},
     {title:'IC énergie — postes',keys:['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
+  economics:{label:'Économie',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
@@ -10092,9 +10425,22 @@ function renderFiles(){
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
+// v2.5.0 — paquet complet du questionnaire financier (.zip) : seul l'export « _questionnaire.json » est importé (il reprend
+// la synthèse PDF et les montants des DPGF joints, qui feraient doublon).
+async function addQuestionnaireZip(file,specializedFamily,opts){
+  try{
+    if(!globalThis.JSZip) throw new Error('JSZip non chargé');
+    const zip=await globalThis.JSZip.loadAsync(file);
+    const entries=Object.values(zip.files).filter(f=>!f.dir&&/_questionnaire\.json$/i.test(f.name));
+    if(!entries.length){ toast(`Aucun export « _questionnaire.json » dans ${file.name}.`,'warn'); return; }
+    const files=await Promise.all(entries.map(async f=>new File([await f.async('blob')],f.name.split('/').pop(),{type:'application/json'})));
+    addFiles(files,specializedFamily,opts);
+  }catch(err){ toast(`Paquet illisible : ${file.name} (${err?.message||err})`,'error'); }
+}
 function addFiles(fileList,specializedFamily=null,opts={}){
-  const allowed=/\.(pdf|xml|xlsx?|xls)$/i; let added=0,rehydrated=0;
+  const allowed=/\.(pdf|xml|xlsx?|xls|json)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
+    if(/\.zip$/i.test(file.name)){ addQuestionnaireZip(file,specializedFamily,opts); continue; }
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
     const rel=file._relativePath||file.webkitRelativePath||file.name;
     const existing=state.docs.find(d=>(d.relativePath||d.name)===rel&&d.size===file.size);
@@ -10705,6 +11051,7 @@ function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs(); syncStickyResultTabs();
   if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td class="overview-actions"><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button><button class="overview-delete" data-overview-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">Supprimer</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); $$('#summaryView [data-overview-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.overviewDelete)); renderResultWorkspaceControls(); return; }
   if(r&&normalizedResultViewKey(activeProject().resultView)==='review'){ renderProfileSwitch(); renderReview(); return; }
+  if(normalizedResultViewKey(activeProject().resultView)==='economics'){ renderEconomic(wrap); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
@@ -11297,10 +11644,38 @@ function rebuildProjectFromCheckpoints(project){
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
   // automatiquement dès qu'un document est relu ou qu'une donnée est modifiée.
 }
-function refreshEconomic(){ state.economic=analyzeEconomicData(state.docs,state.result?.operation||$('#operationName').value.trim(),state.manualEconomics); }
-function editEconomic(label){ const cur=state.economic?.lots?.find(x=>x.label===label)?.amount??''; const raw=prompt(`Prix HT — ${label}`,String(cur)); if(raw===null)return; const n=parseFrNumber(raw); if(n===null||n<0){toast('Montant HT invalide.','error');return;} state.manualEconomics[label]=n; refreshEconomic(); renderEconomic(); scheduleWorkspaceCheckpoint('donnée économique'); }
-function addEconomicLot(){ const label=prompt('Nom du lot économique à ajouter :',''); if(label===null||!label.trim())return; const raw=prompt(`Prix HT — ${label.trim()}`,''); if(raw===null)return; const n=parseFrNumber(raw); if(n===null||n<0){toast('Montant HT invalide.','error');return;} state.manualEconomics[label.trim()]=n; refreshEconomic(); renderEconomic(); scheduleWorkspaceCheckpoint('lot économique'); }
-function renderEconomic(){ const wrap=$('#economicView'); if(!wrap)return; refreshEconomic(); const e=state.economic; if(!e?.lots?.length){wrap.innerHTML='<div class="empty-state">Ajoutez un DPGF complété pour obtenir les prix HT par lot. Vous pouvez aussi ajouter un lot manuellement.</div><div class="economic-actions"><button class="btn secondary" id="addEconomicLotBtn">+ Ajouter un lot manuellement</button></div>'; $('#addEconomicLotBtn').onclick=addEconomicLot; return;} wrap.innerHTML=`<div class="economic-head"><div><h3>Données économiques</h3><p>Une ligne par opération, colonnes dynamiques par lot. Cette feuille sera exportée dans Excel.</p></div><button class="btn secondary" id="addEconomicLotBtn">+ Ajouter un lot</button></div><div class="table-scroll"><table><thead><tr><th>Opération</th>${e.lots.map(x=>`<th>${escapeHtml(x.label)}</th>`).join('')}<th>Total HT travaux</th></tr></thead><tbody><tr><td class="strong">${escapeHtml(e.operation||'Opération')}</td>${e.lots.map(x=>`<td class="economic-value" data-lot="${escapeHtml(x.label)}" title="${escapeHtml([x.document,x.page?`p.${x.page}`:'',x.manual?'manuel':''].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(x.amount))} € <button class="cell-edit economic-edit" data-lot="${escapeHtml(x.label)}">✎</button></td>`).join('')}<td class="strong">${escapeHtml(formatValue(e.total))} €</td></tr></tbody></table></div><div class="footnote">Les montants sont lus uniquement dans les documents classés DPGF. Double-cliquez une valeur ou utilisez ✎ pour la corriger avant export.</div>`; $('#addEconomicLotBtn').onclick=addEconomicLot; $$('#economicView .economic-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();editEconomic(b.dataset.lot)}); $$('#economicView .economic-value').forEach(td=>td.ondblclick=()=>editEconomic(td.dataset.lot)); }
+function refreshEconomic(project=activeProject()){ project.economic=analyzeEconomicData(project.docs,project.result?.operation||project.operationName||'',project.manualEconomics); return project.economic; }
+// v2.5.0 — onglet Économie : nomenclature du questionnaire financier (2e feuille de l'export), modifiable champ par champ.
+let economicShowAll=false;
+function economicIdentity(project=activeProject()){
+  const rows=project.result?.rows||[], v=project.economic?.values||{}; const first=k=>rows.map(r=>r[k]).find(x=>!isBlank(x));
+  return {code:first('internal_code')??v.fin_operation_code??'',name:first('operation_name')??(project.operationName||project.result?.operation||v.fin_operation_label||'')};
+}
+function economicInput(f,v,manual){
+  const shown=v===undefined||v===null?'':f.type==='number'?formatValue(v):String(v);
+  return `<input class="eco-input ${manual?'manual':''}" data-eco-key="${f.key}" value="${escapeHtml(shown)}" placeholder="—" aria-label="${escapeHtml(f.label)}"${f.type==='number'?' inputmode="decimal"':''}>`;
+}
+function renderEconomic(wrap=$('#summaryView')){
+  if(!wrap) return; const p=activeProject(); const e=refreshEconomic(p); const v=e.values||{}; const manual=new Set(e.manualKeys||[]); const id=economicIdentity(p);
+  const filled=ECONOMIC_FIELDS.filter(f=>!isBlank(v[f.key])).length;
+  const groups=ECONOMIC_GROUPS.map(g=>({...g,fields:ECONOMIC_FIELDS.filter(f=>f.group===g.id&&(economicShowAll||!isBlank(v[f.key])))})).filter(g=>g.fields.length);
+  const lines=(rows,cols)=>`<div class="table-scroll"><table><thead><tr>${cols.map(c=>`<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${escapeHtml(formatValue(c[1](r)??''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Données économiques · ${e.source?escapeHtml(e.source):'aucune source économique'}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+  <section class="eco-head"><div class="eco-ident"><span>Code interne</span><strong>${escapeHtml(id.code||'—')}</strong></div><div class="eco-ident"><span>Nom opération</span><strong>${escapeHtml(id.name||'—')}</strong></div>
+  <div class="manual-filter-chips" role="group" aria-label="Colonnes affichées"><button type="button" class="manual-filter ${economicShowAll?'':'active'}" data-eco-all="0">Colonnes renseignées · ${filled}</button><button type="button" class="manual-filter ${economicShowAll?'active':''}" data-eco-all="1">Toutes les colonnes · ${ECONOMIC_FIELDS.length}</button></div></section>
+  ${e.source?'':`<div class="empty-state"><h3>Aucune donnée économique</h3><p>Ajoutez la synthèse PDF du questionnaire financier Prestaterre (ou un DPGF), lancez l’analyse, ou saisissez les valeurs dans « Toutes les colonnes ».</p></div>`}
+  ${groups.map(g=>`<section class="eco-group"><h4>${escapeHtml(g.label)}</h4><div class="eco-grid">${g.fields.map(f=>`<label class="eco-field"><span>${escapeHtml(f.label)}</span>${economicInput(f,v[f.key],manual.has(f.key))}</label>`).join('')}</div></section>`).join('')}
+  ${e.costs?.length?`<details class="eco-group"><summary>Lignes de coûts lues · ${e.costs.length}</summary>${lines(e.costs,[['Source',r=>r.source],['Lot / poste',r=>r.label],['Catégorie',r=>COST_CATEGORIES.find(c=>c.id===r.category)?.label],['Montant HT',r=>r.amount],['Document',r=>r.document],['Page',r=>r.page]])}</details>`:''}
+  ${e.aids?.length?`<details class="eco-group"><summary>Aides lues · ${e.aids.length}</summary>${lines(e.aids,[['Aide',r=>r.label],['Porteur',r=>r.level],['Calcul',r=>r.calc],['Montant',r=>r.amount],['Statut',r=>r.status],['Page',r=>r.page]])}</details>`:''}`;
+  $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
+  wrap.querySelectorAll('[data-eco-all]').forEach(b=>b.onclick=()=>{ economicShowAll=b.dataset.ecoAll==='1'; renderEconomic(wrap); });
+  // Saisie : valeur vide = retour à la valeur lue ; nombres au format français.
+  wrap.querySelectorAll('[data-eco-key]').forEach(i=>i.onchange=()=>{ const k=i.dataset.ecoKey, f=ECONOMIC_FIELD_MAP[k], raw=i.value.trim(); p.manualEconomics=p.manualEconomics||{};
+    if(!raw) delete p.manualEconomics[k];
+    else if(f.type==='number'){ const n=parseFrNumber(raw); if(n===null){ toast(`${f.label} : nombre invalide.`,'error'); i.value=''; return; } p.manualEconomics[k]=n; }
+    else p.manualEconomics[k]=raw;
+    renderEconomic(wrap); scheduleWorkspaceCheckpoint('donnée économique'); });
+}
 
 function renderOccurrences(){
   const r=state.result, wrap=$('#occView'); if(!r){wrap.innerHTML='<div class="empty-state">Aucune analyse.</div>';return;} const q=($('#occSearch').value||'').toLowerCase(), status=$('#occStatus').value;
@@ -11358,8 +11733,8 @@ function renderSearchResults(){
 
 
 function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount) manualCount.textContent=String(state.manualPasteRows.length); const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; }
-function renderAll(){ renderFiles(); renderSummary(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); renderEconomic(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
-function switchTab(name){ state.activeTab=name; $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); if(name==='economics') renderEconomic(); scheduleWorkspaceCheckpoint('onglet actif'); }
+function renderAll(){ renderFiles(); renderSummary(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
+function switchTab(name){ state.activeTab=name; $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
 function renderPatchUi(){
   const list=$('#patchList'), status=$('#patchStatus'); if(!list) return;
@@ -11567,7 +11942,8 @@ async function initializeApp(){
       restoringWorkspace=true;
       state.projects=restored.projects;
       state.activeProjectId=state.projects.some(p=>p.id===restored.activeProjectId)?restored.activeProjectId:state.projects[0].id; state.resultWorkspaceMode=restored.resultWorkspaceMode||'overview';
-      state.activeTab=restored.activeTab||'summary';
+      // v2.5.0 — l'ancien onglet latéral « Données économiques » est devenu l'onglet de résultats « Économie ».
+      state.activeTab=restored.activeTab==='economics'?'summary':(restored.activeTab||'summary');
       lastLocalSaveAt=restored.savedAt||null;
       for(const project of state.projects) rebuildProjectFromCheckpoints(project);
       restoringWorkspace=false;

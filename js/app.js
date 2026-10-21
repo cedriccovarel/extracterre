@@ -8,7 +8,7 @@ import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType} from './utils.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
-import {analyzeEconomicData} from './economics.js';
+import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
@@ -175,6 +175,7 @@ const RESULT_VIEWS = Object.freeze({
     {title:'Eges (E+C- / BBCA Rénovation)',keys:['eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total','eges_pce_max','eges_pcena_max','eges_energy_max','eges_site_max','eges_water_max','eges_total_max']},
     {title:'IC énergie — postes',keys:['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
+  economics:{label:'Économie',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
@@ -433,9 +434,22 @@ function renderFiles(){
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
 }
 
+// v2.5.0 — paquet complet du questionnaire financier (.zip) : seul l'export « _questionnaire.json » est importé (il reprend
+// la synthèse PDF et les montants des DPGF joints, qui feraient doublon).
+async function addQuestionnaireZip(file,specializedFamily,opts){
+  try{
+    if(!globalThis.JSZip) throw new Error('JSZip non chargé');
+    const zip=await globalThis.JSZip.loadAsync(file);
+    const entries=Object.values(zip.files).filter(f=>!f.dir&&/_questionnaire\.json$/i.test(f.name));
+    if(!entries.length){ toast(`Aucun export « _questionnaire.json » dans ${file.name}.`,'warn'); return; }
+    const files=await Promise.all(entries.map(async f=>new File([await f.async('blob')],f.name.split('/').pop(),{type:'application/json'})));
+    addFiles(files,specializedFamily,opts);
+  }catch(err){ toast(`Paquet illisible : ${file.name} (${err?.message||err})`,'error'); }
+}
 function addFiles(fileList,specializedFamily=null,opts={}){
-  const allowed=/\.(pdf|xml|xlsx?|xls)$/i; let added=0,rehydrated=0;
+  const allowed=/\.(pdf|xml|xlsx?|xls|json)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
+    if(/\.zip$/i.test(file.name)){ addQuestionnaireZip(file,specializedFamily,opts); continue; }
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
     const rel=file._relativePath||file.webkitRelativePath||file.name;
     const existing=state.docs.find(d=>(d.relativePath||d.name)===rel&&d.size===file.size);
@@ -1046,6 +1060,7 @@ function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs(); syncStickyResultTabs();
   if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td class="overview-actions"><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button><button class="overview-delete" data-overview-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">Supprimer</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); $$('#summaryView [data-overview-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.overviewDelete)); renderResultWorkspaceControls(); return; }
   if(r&&normalizedResultViewKey(activeProject().resultView)==='review'){ renderProfileSwitch(); renderReview(); return; }
+  if(normalizedResultViewKey(activeProject().resultView)==='economics'){ renderEconomic(wrap); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
@@ -1638,10 +1653,38 @@ function rebuildProjectFromCheckpoints(project){
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
   // automatiquement dès qu'un document est relu ou qu'une donnée est modifiée.
 }
-function refreshEconomic(){ state.economic=analyzeEconomicData(state.docs,state.result?.operation||$('#operationName').value.trim(),state.manualEconomics); }
-function editEconomic(label){ const cur=state.economic?.lots?.find(x=>x.label===label)?.amount??''; const raw=prompt(`Prix HT — ${label}`,String(cur)); if(raw===null)return; const n=parseFrNumber(raw); if(n===null||n<0){toast('Montant HT invalide.','error');return;} state.manualEconomics[label]=n; refreshEconomic(); renderEconomic(); scheduleWorkspaceCheckpoint('donnée économique'); }
-function addEconomicLot(){ const label=prompt('Nom du lot économique à ajouter :',''); if(label===null||!label.trim())return; const raw=prompt(`Prix HT — ${label.trim()}`,''); if(raw===null)return; const n=parseFrNumber(raw); if(n===null||n<0){toast('Montant HT invalide.','error');return;} state.manualEconomics[label.trim()]=n; refreshEconomic(); renderEconomic(); scheduleWorkspaceCheckpoint('lot économique'); }
-function renderEconomic(){ const wrap=$('#economicView'); if(!wrap)return; refreshEconomic(); const e=state.economic; if(!e?.lots?.length){wrap.innerHTML='<div class="empty-state">Ajoutez un DPGF complété pour obtenir les prix HT par lot. Vous pouvez aussi ajouter un lot manuellement.</div><div class="economic-actions"><button class="btn secondary" id="addEconomicLotBtn">+ Ajouter un lot manuellement</button></div>'; $('#addEconomicLotBtn').onclick=addEconomicLot; return;} wrap.innerHTML=`<div class="economic-head"><div><h3>Données économiques</h3><p>Une ligne par opération, colonnes dynamiques par lot. Cette feuille sera exportée dans Excel.</p></div><button class="btn secondary" id="addEconomicLotBtn">+ Ajouter un lot</button></div><div class="table-scroll"><table><thead><tr><th>Opération</th>${e.lots.map(x=>`<th>${escapeHtml(x.label)}</th>`).join('')}<th>Total HT travaux</th></tr></thead><tbody><tr><td class="strong">${escapeHtml(e.operation||'Opération')}</td>${e.lots.map(x=>`<td class="economic-value" data-lot="${escapeHtml(x.label)}" title="${escapeHtml([x.document,x.page?`p.${x.page}`:'',x.manual?'manuel':''].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(x.amount))} € <button class="cell-edit economic-edit" data-lot="${escapeHtml(x.label)}">✎</button></td>`).join('')}<td class="strong">${escapeHtml(formatValue(e.total))} €</td></tr></tbody></table></div><div class="footnote">Les montants sont lus uniquement dans les documents classés DPGF. Double-cliquez une valeur ou utilisez ✎ pour la corriger avant export.</div>`; $('#addEconomicLotBtn').onclick=addEconomicLot; $$('#economicView .economic-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();editEconomic(b.dataset.lot)}); $$('#economicView .economic-value').forEach(td=>td.ondblclick=()=>editEconomic(td.dataset.lot)); }
+function refreshEconomic(project=activeProject()){ project.economic=analyzeEconomicData(project.docs,project.result?.operation||project.operationName||'',project.manualEconomics); return project.economic; }
+// v2.5.0 — onglet Économie : nomenclature du questionnaire financier (2e feuille de l'export), modifiable champ par champ.
+let economicShowAll=false;
+function economicIdentity(project=activeProject()){
+  const rows=project.result?.rows||[], v=project.economic?.values||{}; const first=k=>rows.map(r=>r[k]).find(x=>!isBlank(x));
+  return {code:first('internal_code')??v.fin_operation_code??'',name:first('operation_name')??(project.operationName||project.result?.operation||v.fin_operation_label||'')};
+}
+function economicInput(f,v,manual){
+  const shown=v===undefined||v===null?'':f.type==='number'?formatValue(v):String(v);
+  return `<input class="eco-input ${manual?'manual':''}" data-eco-key="${f.key}" value="${escapeHtml(shown)}" placeholder="—" aria-label="${escapeHtml(f.label)}"${f.type==='number'?' inputmode="decimal"':''}>`;
+}
+function renderEconomic(wrap=$('#summaryView')){
+  if(!wrap) return; const p=activeProject(); const e=refreshEconomic(p); const v=e.values||{}; const manual=new Set(e.manualKeys||[]); const id=economicIdentity(p);
+  const filled=ECONOMIC_FIELDS.filter(f=>!isBlank(v[f.key])).length;
+  const groups=ECONOMIC_GROUPS.map(g=>({...g,fields:ECONOMIC_FIELDS.filter(f=>f.group===g.id&&(economicShowAll||!isBlank(v[f.key])))})).filter(g=>g.fields.length);
+  const lines=(rows,cols)=>`<div class="table-scroll"><table><thead><tr>${cols.map(c=>`<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${escapeHtml(formatValue(c[1](r)??''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Données économiques · ${e.source?escapeHtml(e.source):'aucune source économique'}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+  <section class="eco-head"><div class="eco-ident"><span>Code interne</span><strong>${escapeHtml(id.code||'—')}</strong></div><div class="eco-ident"><span>Nom opération</span><strong>${escapeHtml(id.name||'—')}</strong></div>
+  <div class="manual-filter-chips" role="group" aria-label="Colonnes affichées"><button type="button" class="manual-filter ${economicShowAll?'':'active'}" data-eco-all="0">Colonnes renseignées · ${filled}</button><button type="button" class="manual-filter ${economicShowAll?'active':''}" data-eco-all="1">Toutes les colonnes · ${ECONOMIC_FIELDS.length}</button></div></section>
+  ${e.source?'':`<div class="empty-state"><h3>Aucune donnée économique</h3><p>Ajoutez la synthèse PDF du questionnaire financier Prestaterre (ou un DPGF), lancez l’analyse, ou saisissez les valeurs dans « Toutes les colonnes ».</p></div>`}
+  ${groups.map(g=>`<section class="eco-group"><h4>${escapeHtml(g.label)}</h4><div class="eco-grid">${g.fields.map(f=>`<label class="eco-field"><span>${escapeHtml(f.label)}</span>${economicInput(f,v[f.key],manual.has(f.key))}</label>`).join('')}</div></section>`).join('')}
+  ${e.costs?.length?`<details class="eco-group"><summary>Lignes de coûts lues · ${e.costs.length}</summary>${lines(e.costs,[['Source',r=>r.source],['Lot / poste',r=>r.label],['Catégorie',r=>COST_CATEGORIES.find(c=>c.id===r.category)?.label],['Montant HT',r=>r.amount],['Document',r=>r.document],['Page',r=>r.page]])}</details>`:''}
+  ${e.aids?.length?`<details class="eco-group"><summary>Aides lues · ${e.aids.length}</summary>${lines(e.aids,[['Aide',r=>r.label],['Porteur',r=>r.level],['Calcul',r=>r.calc],['Montant',r=>r.amount],['Statut',r=>r.status],['Page',r=>r.page]])}</details>`:''}`;
+  $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
+  wrap.querySelectorAll('[data-eco-all]').forEach(b=>b.onclick=()=>{ economicShowAll=b.dataset.ecoAll==='1'; renderEconomic(wrap); });
+  // Saisie : valeur vide = retour à la valeur lue ; nombres au format français.
+  wrap.querySelectorAll('[data-eco-key]').forEach(i=>i.onchange=()=>{ const k=i.dataset.ecoKey, f=ECONOMIC_FIELD_MAP[k], raw=i.value.trim(); p.manualEconomics=p.manualEconomics||{};
+    if(!raw) delete p.manualEconomics[k];
+    else if(f.type==='number'){ const n=parseFrNumber(raw); if(n===null){ toast(`${f.label} : nombre invalide.`,'error'); i.value=''; return; } p.manualEconomics[k]=n; }
+    else p.manualEconomics[k]=raw;
+    renderEconomic(wrap); scheduleWorkspaceCheckpoint('donnée économique'); });
+}
 
 function renderOccurrences(){
   const r=state.result, wrap=$('#occView'); if(!r){wrap.innerHTML='<div class="empty-state">Aucune analyse.</div>';return;} const q=($('#occSearch').value||'').toLowerCase(), status=$('#occStatus').value;
@@ -1699,8 +1742,8 @@ function renderSearchResults(){
 
 
 function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount) manualCount.textContent=String(state.manualPasteRows.length); const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; }
-function renderAll(){ renderFiles(); renderSummary(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); renderEconomic(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
-function switchTab(name){ state.activeTab=name; $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); if(name==='economics') renderEconomic(); scheduleWorkspaceCheckpoint('onglet actif'); }
+function renderAll(){ renderFiles(); renderSummary(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
+function switchTab(name){ state.activeTab=name; $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
 function renderPatchUi(){
   const list=$('#patchList'), status=$('#patchStatus'); if(!list) return;
@@ -1908,7 +1951,8 @@ async function initializeApp(){
       restoringWorkspace=true;
       state.projects=restored.projects;
       state.activeProjectId=state.projects.some(p=>p.id===restored.activeProjectId)?restored.activeProjectId:state.projects[0].id; state.resultWorkspaceMode=restored.resultWorkspaceMode||'overview';
-      state.activeTab=restored.activeTab||'summary';
+      // v2.5.0 — l'ancien onglet latéral « Données économiques » est devenu l'onglet de résultats « Économie ».
+      state.activeTab=restored.activeTab==='economics'?'summary':(restored.activeTab||'summary');
       lastLocalSaveAt=restored.savedAt||null;
       for(const project of state.projects) rebuildProjectFromCheckpoints(project);
       restoringWorkspace=false;

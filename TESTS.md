@@ -1,3 +1,12 @@
+## v2.5.0 — questionnaire financier et onglet Économie
+- `test_v2_5_0.mjs` (35 vérifications, questionnaire FICTIF à la mise en page V0.56, puis export JSON fictif : priorité sur le
+  PDF, décimales, JSON refusé ou illisible, texte transmis échappé à l'affichage, données absentes du PDF) : classement, cellules reconstruites
+  (espaces, accents, libellés sur plusieurs lignes, compactage), identification, coûts par catégorie et poste, aides,
+  parts, fonds propres, marge locale, saisies manuelles, export (2e feuille, identifiant en tête, toutes les colonnes).
+- Vérifié sur une synthèse réelle (hors dépôt) : 26 lignes de coûts et 6 aides ; totaux, parts (12,3 % / 13,1 % / 8,2 % /
+  79,4 %), 94 % sécurisés et 39,9 % premier financeur identiques au PDF ; parcours complet dans Chrome (lecture, onglet
+  Économie, saisie, export).
+
 ## v2.4.2 — IA locale (Ollama)
 - `test_v2_4_2.mjs` (17 vérifications, Ollama simulé) : appel `/api/chat` sans clé, JSON forcé, contexte élargi,
   vérification littérale inchangée, Ollama arrêté / modèle absent, test de connexion, mode local = Ollama seul.

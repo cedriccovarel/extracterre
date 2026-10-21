@@ -66,7 +66,7 @@ function serializeRead(read){
     else base.text=String(page.text||lines.map(l=>String(l.text||'')).join('\n'));
     return base;
   });
-  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null),...(read.re2020?{re2020:safeJsonClone(read.re2020,null),xmlFormat:read.xmlFormat||'re2020'}:{})};
+  return {kind:read.kind||'',pageCount:Number.isFinite(read.pageCount)?read.pageCount:pages.length,pages,ocr:safeJsonClone(read.ocr,null),...(read.re2020?{re2020:safeJsonClone(read.re2020,null),xmlFormat:read.xmlFormat||'re2020'}:{}),...(read.financialQuestionnaire?{financialQuestionnaire:safeJsonClone(read.financialQuestionnaire,null)}:{})};
 }
 function hydrateRead(read){
   if(!read) return null;

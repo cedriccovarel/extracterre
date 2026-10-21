@@ -1,3 +1,26 @@
+# v2.5.0 — Données économiques : questionnaire financier Prestaterre, onglet Économie, 2e feuille Excel
+- **Onglet « Économie »** à la suite de Général / Thermique / Carbone / Enveloppe (l'entrée « Données économiques » de la
+  barre latérale est retirée). Il présente la nomenclature économique complète (321 colonnes), groupée : questionnaire &
+  opération, synthèse financière, coûts par catégorie, postes de chaque catégorie, aides par catégorie / porteur / dispositif.
+  « Colonnes renseignées » ou « Toutes les colonnes » ; chaque valeur est modifiable (saisie surlignée, vide = valeur lue).
+- **Import de l'export du questionnaire** (source prioritaire) : le fichier `_questionnaire.json` (bouton « Exporter le
+  questionnaire (.json) ») ou directement le paquet complet `.zip` (seul le JSON en est extrait : il reprend la synthèse et
+  les DPGF joints). Montants exacts au centime, identifiants du catalogue des aides, et des données absentes du PDF :
+  couverture du coût, postes manquants, coût final déclaré, commentaires, logements et aides par logement, loyer de
+  référence de la marge locale, version de la notice, référentiel des aides, alertes (338 colonnes au total).
+- **Lecture de la synthèse PDF du questionnaire financier MOA** (nouveau type « Questionnaire financier », famille
+  « Financier ») : lignes de coûts validées (source, lot / poste, catégorie, montant HT), aides mobilisées (dispositif,
+  porteur, calcul, montant, statut), identification (OPE, contrat, libellé, version, confirmation, habilitation, SIAP).
+  Colonnes du tableau reconstruites par position, accents et espaces conservés (édition à lettres espacées).
+- **Nomenclature** reprise du questionnaire : 12 catégories de coûts et leurs postes (lots de travaux rattachés par mots-clés,
+  lignes à plusieurs postes en « non ventilé / postes groupés »), 41 dispositifs d'aide (montant + statut), 7 catégories
+  d'aide, 9 niveaux de porteurs, marge locale bonifiée. Totaux, parts, fonds propres, montants sécurisés, premier financeur
+  et stratégie dominante recalculés à partir des lignes (identiques à la synthèse PDF).
+- **Export Excel** : 2e feuille « Données économiques » (une ligne par opération, « Code interne » et « Nom opération » en
+  premières colonnes, repris de la 1re feuille) puis « Lignes financières » (détail des coûts et aides lus).
+- Le code opération et le n° de contrat du questionnaire alimentent aussi « Code interne » et « Contrat : Numéro du contrat »
+  (source secondaire). Sans questionnaire, les prix HT des DPGF restent lus et rattachés aux postes travaux.
+
 # v2.4.2 — Assistance IA locale gratuite (Ollama), sans clé API
 - Nouveau mode « IA locale gratuite, sans clé (Ollama sur cet ordinateur) » dans 🤖 IA : le texte des pages est traité
   par Ollama (`http://localhost:11434`, modèle par défaut `qwen2.5:7b`, modifiable) et n'est envoyé à aucun service

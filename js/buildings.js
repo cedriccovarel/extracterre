@@ -293,6 +293,6 @@ export function buildingForPosition(doc,pageNo,lineIndex){
 
 export function operationNameFromFiles(docs){
   if(!docs.length) return 'Opération';
-  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls|json)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
   return s||'Opération';
 }

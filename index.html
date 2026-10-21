@@ -11,16 +11,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=2.4.2">
-  <script defer src="js/journal-config.js?v=2.4.2"></script>
-  <script defer src="js/security.js?v=2.4.2"></script>
+  <link rel="stylesheet" href="styles.css?v=2.5.0">
+  <script defer src="js/journal-config.js?v=2.5.0"></script>
+  <script defer src="js/security.js?v=2.5.0"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.4.2"></script>
-  <script defer src="js/app.bundle.js?v=2.4.2"></script>
+  <script defer src="js/cloud-config.js?v=2.5.0"></script>
+  <script defer src="js/app.bundle.js?v=2.5.0"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -41,7 +41,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v2.4.2</span>
+      <span class="ux-version-chip" id="version">v2.5.0</span>
     </div>
   </header>
 
@@ -50,7 +50,6 @@
       <nav class="ux-side-nav" aria-label="Navigation principale">
         <button class="tab ux-nav-item active" data-tab="summary" type="button"><span class="nav-ico">⌂</span><span>Accueil</span></button>
         <button class="ux-nav-item" id="newProjectBtn" type="button"><span class="nav-ico">＋</span><span>Nouveau projet</span></button>
-        <button class="tab ux-nav-item" data-tab="economics" type="button"><span class="nav-ico">€</span><span>Données économiques</span></button>
         <button class="tab ux-nav-item" data-tab="occ" type="button"><span class="nav-ico">≡</span><span>Occurrences</span></button>
         <button class="tab ux-nav-item" data-tab="search" type="button"><span class="nav-ico">⌕</span><span>Recherche libre</span></button>
         <button class="tab ux-nav-item" data-tab="rules" type="button"><span class="nav-ico">◫</span><span>Modèles de données</span></button>
@@ -84,14 +83,14 @@
             <div id="dropzone" class="single-dropzone" tabindex="0" aria-label="Déposer des documents ou un dossier">
               <div class="single-dropzone-icon">⇪</div>
               <strong>Déposez ici toutes les pièces du projet</strong>
-              <span>PDF, XML RE2020 et Excel. Le type de chaque document est détecté à la lecture et reste modifiable dans la liste.</span>
+              <span>PDF, XML RE2020, Excel et export du questionnaire financier (.json ou paquet .zip). Le type de chaque document est détecté à la lecture et reste modifiable dans la liste.</span>
               <div class="single-dropzone-actions">
                 <label class="btn primary file-picker-label" for="fileInput">＋ Ajouter des fichiers</label>
-                <input id="fileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple>
+                <input id="fileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls,.json,.zip" multiple>
                 <label id="addFolderBtn" class="btn light file-picker-label" for="folderInput">▱ Ajouter un dossier</label>
                 <input id="folderInput" class="file-input-native" type="file" webkitdirectory directory multiple>
                 <label id="addManualBtn" class="btn light file-picker-label manual-analysis-btn" for="manualFileInput" title="Import en moteur libre : classification automatique, tous les parseurs pertinents, sans liste blanche de champs ; OCR ciblé, Crible fin et IA restent disponibles">🛠 Moteur libre</label>
-                <input id="manualFileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls" multiple>
+                <input id="manualFileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls,.json,.zip" multiple>
               </div>
               <small class="single-dropzone-hint"><b>Moteur libre</b> : document hors standard, sans liste blanche de champs. <b>Analyse manuelle</b> : renseigner les données en surlignant le document.</small>
             </div>
@@ -215,6 +214,7 @@
               <button class="result-tab" data-result-view="thermal" type="button">Thermique</button>
               <button class="result-tab" data-result-view="carbon" type="button">Carbone</button>
               <button class="result-tab" data-result-view="envelope" type="button">Structure & enveloppe</button>
+              <button class="result-tab" data-result-view="economics" type="button">Économie</button>
             </div>
             <div id="rulesActionWrap" class="context-rule-actions" hidden>
               <button class="btn secondary" id="saveRules" type="button">Enregistrer règles</button>
@@ -236,6 +236,7 @@
             <button class="sticky-result-tab" data-sticky-result-view="thermal" type="button">Thermique</button>
             <button class="sticky-result-tab" data-sticky-result-view="carbon" type="button">Carbone</button>
             <button class="sticky-result-tab" data-sticky-result-view="envelope" type="button">Enveloppe</button>
+            <button class="sticky-result-tab" data-sticky-result-view="economics" type="button">Économie</button>
           </div>
           <div id="profileSwitch" class="profile-switch" role="group" aria-label="Type d’opération"></div>
           <div class="sticky-result-actions">
@@ -250,7 +251,6 @@
           <aside class="result-left-panel" id="resultNavigator" aria-label="Navigation des résultats"></aside>
           <div class="result-main-panel">
             <div id="summaryPanel" class="panel view"><div id="summaryView"></div></div>
-            <div id="economicsPanel" class="panel view" hidden><div id="economicView"></div></div>
         <div id="occPanel" class="panel view" hidden>
           <div class="occ-filters">
             <input id="occSearch" placeholder="Filtrer les occurrences…">
@@ -469,7 +469,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.4.2</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.5.0</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>
