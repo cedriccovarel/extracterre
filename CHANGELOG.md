@@ -1,3 +1,8 @@
+# v2.7.4 — collage libre : bâtiments créés visibles
+- Après « Intégrer au projet », le message liste les bâtiments créés et la Revue s'ouvre sur le premier bâtiment collé,
+  filtre « Renseignés » (le filtre « À compléter » masquait les valeurs collées, qui semblaient absentes).
+- Vérifié : opération avec documents (« Bâtiment unique ») + fiche de 3 maisons → 3 bâtiments créés et remplis.
+
 # v2.7.3 — revue : validation des propositions
 - Correctif : « Valider » / « Écarter » / « Voir » ne trouvaient pas la proposition des groupes repliables selon le profil
   (ex. Carbone d'une opération en rénovation) : la valeur n'était pas appliquée et la ligne restait « À vérifier ».

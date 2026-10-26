@@ -6,7 +6,7 @@ import {APP_VERSION,FIELD_DEFS,FIELD_MAP,matchFieldByHeader} from './js/config.j
 import {parseFreePaste,freePasteValues,freePastePrompt,applyFreePasteAi,looksLikeFreeText,matchFreeLabel} from './js/collage-libre.js';
 import {sanitizeOccurrence} from './js/sanity.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.7.3','version');
+eq(APP_VERSION, '2.7.4','version');
 const TXT=`Bâtiment X :
 Nombre de logements = 30
 Sref (ou Srt) = 2000,5
@@ -98,4 +98,5 @@ eq([fv[0].values.floor_insulation_thickness,fv[0].values.floor_insulation_r,fv[0
 eq([fv[0].values.window_material,fv[0].values.window_glazing,fv[0].values.window_shading,fv[0].values.heating_mode_after,fv[0].values.ventilation,fv[0].values.enr],['PVC','4.16.4','Volet roulant','PAC air/eau','VMC Hygro B','Non'],'menuiseries, chauffage, ventilation, ENR');
 ok(/reportées sur tous les bâtiments de l'analyse/.test(app)&&/if\(ownByTarget\[b\]\?\.has\(field\)\) continue;/.test(app),'« toute l’opération » sur tous les bâtiments, sauf valeur propre au bâtiment');
 ok(/const find=k=>groups\.flatMap\(g=>g\.entries\)/.test(app)&&/acceptCandidate\(\{\.\.\.c,field:k,building:B\}\)/.test(app),'revue : validation trouvée dans tous les groupes, appliquée au champ et au bâtiment affichés');
-console.log(`v2.7.3 — ${n} vérifications OK (données fictives)`);
+ok(/créé\(s\) : /.test(app)&&/reviewState\.filter='done'/.test(app),'collage : bâtiments créés signalés, revue ouverte sur les champs renseignés');
+console.log(`v2.7.4 — ${n} vérifications OK (données fictives)`);

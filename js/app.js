@@ -715,6 +715,7 @@ function applyFreePaste(){
   // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
+  const before=new Set((p.result?.rows||[]).map(r=>r.building));
   recomputeProject('');
   const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
   const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
@@ -724,7 +725,11 @@ function applyFreePaste(){
   for(const b of allRows) for(const [field,value] of Object.entries(allVals.values)){ if(ownByTarget[b]?.has(field)) continue; const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre — toute l’opération',page:'',excerpt:allVals.sources[field]||'',method:'manual:free-paste',provenanceNote:'Donnée collée pour toute l’opération : prioritaire sur les documents'}; nAll++; }
   applyManualValues(); $('#manualDataDialog')?.close(); freePaste=null; renderAll(); scheduleWorkspaceCheckpoint('collage libre',80);
   const nb=new Set([...vals.map(v=>target(v.building)),...allRows]).size;
-  learn('manual_paste',{mode:'free',buildings:nb,values:n+nAll},p); toast(`${n+nAll} valeur(s) appliquée(s) sur ${nb} bâtiment(s)${allRows.length?` (dont « toute l’opération » sur les ${allRows.length} bâtiments)`:''} — prioritaires sur les documents.`,'success');
+  const created=(state.result?.rows||[]).map(r=>r.building).filter(b=>!before.has(b));
+  // Montrer le résultat : revue du premier bâtiment collé, champs renseignés (« À compléter » masque les champs remplis).
+  const first=target(vals.find(v=>v.building)?.building||''); if(first){ reviewState.building=first; reviewState.filter='done'; reviewState.editing=''; activeProject().resultView='review'; state.resultWorkspaceMode='detail'; renderSummary(); setTimeout(()=>$('#workspaceSection')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
+  learn('manual_paste',{mode:'free',buildings:nb,created:created.length,values:n+nAll},p);
+  toast(`${n+nAll} valeur(s) appliquée(s) sur ${nb} bâtiment(s)${created.length?` · créé(s) : ${created.map(b=>b.replace(/^Bâtiment\s+/,'')).join(', ')}`:''}${allRows.length?` · « toute l’opération » sur les ${allRows.length} bâtiments`:''} — prioritaires sur les documents.`,'success');
 }
 function applyManualPaste(){
   if(freePaste){ applyFreePaste(); return; }
