@@ -1,3 +1,7 @@
+# v2.6.2 — fiche d'analyse pleine largeur
+- La colonne « Projets » à gauche des résultats est retirée : les résultats occupent toute la largeur. On change
+  d'opération par l'accueil (tuiles) ou le sélecteur ‹ › de la barre ; « ＋ Fichiers » reste dans la barre.
+
 # v2.6.1 — écran d'accueil en tuiles, en-têtes de tableaux d'opérations
 - **Écran d'accueil = uniquement les tuiles** : macro-tuiles par maître d'ouvrage → tuiles d'opérations → fiche de
   l'opération (dépôt des documents, analyse, résultats). « Accueil » et « ← Synthèse projets » ramènent aux tuiles.

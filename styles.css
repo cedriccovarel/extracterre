@@ -1255,3 +1255,7 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .home-view{padding:4px 0 24px}.home-view .result-overview-intro h3{font-size:1.5rem;margin:0}
 .op-tile.action{cursor:pointer;border-style:dashed;border-left-style:dashed;background:#fbfcfb;align-items:flex-start;justify-content:center;min-height:150px}
 .op-tile.action:hover{background:#f1f7f3}.op-tile-plus{font-size:1.6rem;line-height:1;color:var(--forest,#173e31)}
+
+/* v2.6.2 — fiche d'analyse sans colonne « Projets » : les résultats prennent toute la largeur (navigation par l'accueil
+   et le sélecteur d'opération de la barre). */
+.result-workspace-layout,.result-workspace-layout[class]{grid-template-columns:minmax(0,1fr)}
