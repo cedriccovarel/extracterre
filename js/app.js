@@ -225,12 +225,14 @@ function projectCompletion(p){
   return Math.round(ratios.reduce((a,b)=>a+b,0)/ratios.length*100);
 }
 const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
-function renderTiles(wrap){
-  const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length;
+function renderTiles(wrap,{home=false}={}){
+  const rerender=()=>home?renderHome():renderSummary();
+  const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
   const grouped=items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
   if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
-  let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`;
+  let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
   if(grouped&&!state.overviewOwner){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
@@ -238,18 +240,27 @@ function renderTiles(wrap){
       return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
     const xs=grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items;
-    if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; }
+    if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
     body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
       <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
   }
-  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(title)}</h3><p>${escapeHtml(sub)} · une tuile par opération ; cliquez pour ouvrir la fiche.</p></div><span class="badge doc">${items.length} opération(s)</span></div><div class="op-tiles">${body}</div></div>`;
-  wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; renderSummary(); });
-  wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; renderSummary(); });
+  // Accueil : tuiles d'action (créer une opération, coller ou importer un tableau d'opérations).
+  const actions=home&&!(grouped&&state.overviewOwner)?`<button type="button" class="op-tile action" data-home-act="new"><span class="op-tile-plus" aria-hidden="true">＋</span><strong>Nouvelle opération</strong><span class="op-tile-meta">Déposer les documents d’une opération</span></button>
+    <button type="button" class="op-tile action" data-home-act="paste"><span class="op-tile-plus" aria-hidden="true">⌨</span><strong>Coller un tableau</strong><span class="op-tile-meta">Zone Excel copiée avec ses en-têtes (contrat, n° d’opération, maître d’ouvrage…)</span></button>
+    <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
+  if(home&&!items.length) sub='Aucune opération pour le moment';
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}</div><div class="op-tiles">${body}${actions}</div></div>`;
+  wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; rerender(); });
+  wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });
+  wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
   wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
 }
+// v2.6.1 — écran d'accueil : uniquement les tuiles ; une opération ouverte affiche l'espace d'analyse habituel.
+function setHomeMode(on){ state.homeView=!!on; document.body.classList.toggle('home-mode',state.homeView); const h=$('#homeView'); if(h) h.hidden=!state.homeView; $$('.tab').forEach(b=>b.classList.toggle('active',state.homeView?b.dataset.tab==='summary':b.dataset.tab===state.activeTab)); if(state.homeView){ renderHome(); window.scrollTo?.(0,0); } }
+function renderHome(){ const h=$('#homeView'); if(h&&state.homeView) renderTiles(h,{home:true}); }
 // Tableau d'opérations (Excel importé ou collé) : une opération par n° de contrat / code interne / nom d'opération.
 function operationKey(v={}){ return String(v.contract_number||v.internal_code||v.operation_name||'').trim(); }
 function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status==='ready'); p.result=analyzeDocuments(valid,state.rules,p.operationName||'',p.buildingOverrides||{},manualPasteOccurrences(p)); applyDeletedBuildings(p); p.result.documentsCount=valid.length; applyManualValuesToProject(p); }
@@ -264,7 +275,7 @@ function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
     if(!p.operationName) p.operationName=String(v.operation_name||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
     computeProjectResult(p);
   }
-  state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
+  state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); setHomeMode(true); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
   learn('manual_paste',{rows:rows.length,operations:groups.size,created,updated,source,split:true},activeProject());
   toast(`${groups.size} opérations importées (${source}) : ${created} créée(s), ${updated} mise(s) à jour.`,'success'); return true;
 }
@@ -280,7 +291,7 @@ async function addSpreadsheetOrOperations(file,specializedFamily,opts){
   }catch{}
   addFiles([file],specializedFamily,{...opts,skipOperationCheck:true});
 }
-function showProjectsOverview(){ state.resultWorkspaceMode='overview'; switchTab('summary'); renderSummary(); renderResultWorkspaceControls(); scheduleWorkspaceCheckpoint('vue synthèse'); }
+function showProjectsOverview(){ state.resultWorkspaceMode='overview'; switchTab('summary'); setHomeMode(true); renderSummary(); renderResultWorkspaceControls(); scheduleWorkspaceCheckpoint('vue synthèse'); }
 function moveProject(delta){ const i=state.projects.findIndex(p=>p.id===state.activeProjectId),p=state.projects[i+delta]; if(p) activateProject(p.id); }
 
 
@@ -536,7 +547,7 @@ function addFiles(fileList,specializedFamily=null,opts={}){
     const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
     // v2.3.2 — Analyse manuelle : moteur libre (famille « annex » imposée), sans liste blanche de champs.
     if(opts.manualAnalysis){ rec.familyMode='manual'; rec.families=['annex']; }
-    state.docs.push(rec); added++;
+    state.docs.push(rec); added++; if(state.homeView) setHomeMode(false);
   }
   if(rehydrated) toast(`${rehydrated} fichier(s) rechargé(s) pour permettre une nouvelle analyse OCR.`,'success');
   if(added) toast(state.result?`${added} nouveau${added>1?'x':''} document${added>1?'s':''} ajouté${added>1?'s':''} — prêt${added>1?'s':''} à compléter l’analyse.`:`${added} fichier${added>1?'s':''} ajouté${added>1?'s':''}`,'success');
@@ -589,9 +600,9 @@ function unloadProjectFiles(p){
 }
 function addNewProject(){
   const current=activeProject(); current.operationName=$('#operationName').value.trim()||current.result?.operation||current.operationName||current.label; current.expanded=false; unloadProjectFiles(current);
-  const p=createProject(state.projects.length+1); state.projects.push(p); state.activeProjectId=p.id; syncProjectInput(); renderAll(); switchTab('summary'); toast(`${projectTitle(current)} conservé. Nouveau projet prêt à recevoir ses documents.`,'success'); scheduleWorkspaceCheckpoint('nouveau projet',80);
+  const p=createProject(state.projects.length+1); state.projects.push(p); state.activeProjectId=p.id; setHomeMode(false); syncProjectInput(); renderAll(); switchTab('summary'); toast(`${projectTitle(current)} conservé. Nouveau projet prêt à recevoir ses documents.`,'success'); scheduleWorkspaceCheckpoint('nouveau projet',80);
 }
-function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif'); }
+function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; setHomeMode(false); window.scrollTo?.(0,0); activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif'); }
 function toggleProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.expanded=!p.expanded; renderSummary(); scheduleWorkspaceCheckpoint('affichage projet'); }
 async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const title=projectTitle(p); const docs=(p.docs||[]).length;
   if(!confirm(`Supprimer le projet « ${title} » de la liste ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}\nLe journal d’amélioration et les règles de sources sont conservés.`)) return;
@@ -1928,8 +1939,8 @@ function renderSearchResults(){
 
 
 function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount) manualCount.textContent=String(state.manualPasteRows.length); const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; }
-function renderAll(){ renderFiles(); renderSummary(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
-function switchTab(name){ state.activeTab=name; $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
+function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
+function switchTab(name){ state.activeTab=name; if(name!=='summary'&&state.homeView) setHomeMode(false); $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
 function renderPatchUi(){
   const list=$('#patchList'), status=$('#patchStatus'); if(!list) return;
@@ -2095,7 +2106,8 @@ function wire(){
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
   $('#exportBtn').onclick=openExportDialog;
-  $$('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab)); $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
+  $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
+  const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});
   const searchApply=$('#searchIntegrateApply'); if(searchApply) searchApply.onclick=applySearchIntegration; const searchClose=$('#searchIntegrateClose'); if(searchClose) searchClose.onclick=()=>$('#searchIntegrateDialog')?.close();
@@ -2151,6 +2163,6 @@ async function initializeApp(){
   }catch(err){
     console.warn('IndexedDB restore failed',err); persistenceReady=false; setLocalSaveUi('Indisponible'); const detail=$('#localSaveDetail'); if(detail) detail.textContent='Le navigateur ne permet pas la restauration locale dans ce contexte.';
   }
-  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
+  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); setHomeMode(true); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
 initializeApp();

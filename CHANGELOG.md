@@ -1,3 +1,12 @@
+# v2.6.1 — écran d'accueil en tuiles, en-têtes de tableaux d'opérations
+- **Écran d'accueil = uniquement les tuiles** : macro-tuiles par maître d'ouvrage → tuiles d'opérations → fiche de
+  l'opération (dépôt des documents, analyse, résultats). « Accueil » et « ← Synthèse projets » ramènent aux tuiles.
+  Tuiles d'action sur l'accueil : Nouvelle opération, Coller un tableau, Importer un Excel. Les opérations vides
+  n'apparaissent pas.
+- Import / collage d'un tableau d'opérations : « Numéro de contrat », « N° de contrat », « Contrat », « N° d'opération »,
+  « Société », « Bailleur » sont reconnus (contrat, code interne, maître d'ouvrage). Alias d'en-têtes seulement : la
+  lecture du texte des documents n'est pas modifiée.
+
 # v2.6.0 — Tuiles d'opérations, export à la carte, recherches personnalisées, pack du 26/10/2026
 - **Page principale en tuiles** : une tuile par opération (n° de contrat a minima, nom, code interne, taux de complétion,
   documents / bâtiments / valeurs / alertes). Dès qu'un maître d'ouvrage est connu, les opérations sont rangées dans des

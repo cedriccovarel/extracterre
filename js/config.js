@@ -1,4 +1,4 @@
-export const APP_VERSION='2.6.0';
+export const APP_VERSION='2.6.1';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -252,6 +252,10 @@ for(const f of FIELD_DEFS) for(const tag of f.tags){ const n=normalizeFieldHeade
 // de colonnes CRM / OPERATIONS sans créer de nouveaux champs ExtracTerre.
 const HEADER_ALIASES={
   'numero du contrat':'contract_number',
+  // v2.6.1 — tableaux d'opérations (import / collage) : en-têtes courts usuels.
+  'numero de contrat':'contract_number','n de contrat':'contract_number','n contrat':'contract_number','numero contrat':'contract_number','contrat':'contract_number','no contrat':'contract_number',
+  'n operation':'internal_code','numero d operation':'internal_code','n d operation':'internal_code','code operation':'internal_code',
+  'societe':'owner_company','nom de la societe':'owner_company','societe moa':'owner_company','maitre d ouvrage societe':'owner_company','bailleur':'owner_company',
   'operation code interne':'internal_code',
   'statut':'contract_status',
   'operation etape':'stage',

@@ -2,7 +2,7 @@
 // Documents FICTIFS reproduisant les formulations observées (CCTP, études thermiques).
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {APP_VERSION,DOC_TYPES} from './js/config.js';
+import {APP_VERSION,DOC_TYPES,matchFieldByHeader} from './js/config.js';
 import {normalizeText} from './js/utils.js';
 import {normalizeGrid,runSearchGrid,searchCellValue,termRegex,SECURITY_GRID,keywordPrompt,gridPrompt,parseLlmObject} from './js/recherches.js';
 import {parseStudyLabelPatterns} from './js/parsers.js';
@@ -10,7 +10,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {applyComparisonBases} from './js/engine.js';
 import {parseLlmJson,llmComplete} from './js/llm-assist.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.6.0','version');
+eq(APP_VERSION, '2.6.1','version');
 const page=(no,ls)=>({page:no,lines:ls.map((t,index)=>({index,text:normalizeText(t),items:[]}))});
 const D=(name,pages,type='CCTP')=>({id:name,name,type,status:'ready',read:{pages}});
 
@@ -68,6 +68,8 @@ eq(parseLlmJson('{"proposals":[{"field":"shab","value":1,"page":1,"quote":"a"},{
 
 // 4. Interface : tuiles, macro-tuiles par maître d'ouvrage, import multi-opérations, export à la carte
 const app=fs.readFileSync('./js/app.js','utf8'), html=fs.readFileSync('./index.html','utf8');
-for(const re of [/function renderTiles\(/,/data-tile-owner/,/function importOperationRows\(/,/function addSpreadsheetOrOperations\(/,/function openExportDialog\(/,/data-exp-owner/,/function renderSearches\(/]) ok(re.test(app),`interface : ${re}`);
+for(const re of [/function setHomeMode\(/,/id="homeView"|homeView/,/data-home-act/,/function renderTiles\(/,/data-tile-owner/,/function importOperationRows\(/,/function addSpreadsheetOrOperations\(/,/function openExportDialog\(/,/data-exp-owner/,/function renderSearches\(/]) ok(re.test(app),`interface : ${re}`);
 ok(/data-result-view="searches"/.test(html)&&/data-sticky-result-view="searches"/.test(html),'onglet Recherches');
-console.log(`v2.6.0 — ${n} vérifications OK (documents fictifs)`);
+// v2.6.1 — en-têtes usuels d'un tableau d'opérations
+eq(['Numéro de contrat','Contrat','N° opération','Société','Bailleur','Contrat: Statut'].map(h=>matchFieldByHeader(h)?.key),['contract_number','contract_number','internal_code','owner_company','owner_company','contract_status'],'en-têtes contrat / opération / société');
+console.log(`v2.6.1 — ${n} vérifications OK (documents fictifs)`);
