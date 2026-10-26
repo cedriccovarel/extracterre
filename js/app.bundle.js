@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.7.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.7.3 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.7.2';
+const APP_VERSION='2.7.3';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11706,7 +11706,8 @@ function renderReview(){
     <div class="rv-groups">${groupHtml||`<div class="rv-done"><strong>${reviewState.filter==='todo'?'Tout est renseigné pour ce bâtiment.':'Aucun champ ne correspond.'}</strong><span>${reviewState.filter==='todo'?'Passez au bâtiment suivant ou affichez « Tout » pour relire.':'Changez de filtre ou de recherche.'}</span></div>`}</div>
     <p class="rv-keys">Clavier : ↑ ↓ pour changer de champ · Entrée pour saisir · D pour le document · V pour valider la proposition · Échap pour annuler.</p>
   </div>`;
-  const find=k=>all.concat(groups.filter(g=>g.admin).flatMap(g=>g.entries)).find(e=>e.def.key===k);
+  // Tous les groupes affichés, y compris les groupes repliables (administratif, Carbone en rénovation…).
+  const find=k=>groups.flatMap(g=>g.entries).find(e=>e.def.key===k);
   $$('#summaryView [data-rv-building]').forEach(b=>b.onclick=()=>{ reviewState.building=b.dataset.rvBuilding; reviewState.editing=''; renderReview(); });
   $$('#summaryView [data-rv-filter]').forEach(b=>b.onclick=()=>{ reviewState.filter=b.dataset.rvFilter; renderReview(); });
   const s=$('#rvSearch'); if(s){ s.oninput=()=>{ reviewState.query=s.value; const pos=s.selectionStart; renderReview(); const n=$('#rvSearch'); n.focus(); n.setSelectionRange(pos,pos); }; }
@@ -11718,7 +11719,12 @@ function renderReview(){
   $$('#summaryView [data-rv-input]').forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(i.dataset.rvInput); } else if(e.key==='Escape'){ e.preventDefault(); reviewState.editing=''; renderReview(); focusReviewRow(i.dataset.rvInput,0); } });
   $$('#summaryView [data-rv-doc]').forEach(b=>b.onclick=()=>{ const e=find(b.dataset.rvDoc); openManualAnalysisFor(B,b.dataset.rvDoc,e?.src?.docId||e?.cands?.[0]?.docId||'',e?.src?.page||e?.cands?.[0]?.page||null); });
   $$('#summaryView [data-rv-copy]').forEach(b=>b.onclick=()=>{ const n=copyToOtherBuildings(B,b.dataset.rvCopy); if(n) reviewAfterChange(`${FIELD_MAP[b.dataset.rvCopy].label} recopié dans ${n} bâtiment${n>1?'s':''}.`); else toast('Les autres bâtiments ont déjà une valeur pour ce champ.','info'); });
-  $$('#summaryView [data-rv-accept]').forEach(b=>b.onclick=()=>{ const c=find(b.dataset.rvAccept)?.cands?.[Number(b.dataset.i)]; if(c){ acceptCandidate({...c,building:c.building==='Bâtiment unique'?B:c.building}); reviewAfterChange(`${FIELD_MAP[c.field].label} validé : ${formatValue(c.value)}.`); focusReviewRow(c.field,1); } });
+  $$('#summaryView [data-rv-accept]').forEach(b=>b.onclick=()=>{ const k=b.dataset.rvAccept; const c=find(k)?.cands?.[Number(b.dataset.i)];
+    if(!c){ toast('Proposition introuvable : rechargez la revue.','warn'); renderReview(); return; }
+    // La proposition est validée pour le bâtiment affiché et le champ de la ligne cliquée.
+    acceptCandidate({...c,field:k,building:B});
+    const applied=!isBlank(state.result?.rows?.find(r=>r.building===B)?.[k]);
+    reviewAfterChange(applied?`${FIELD_MAP[k].label} validé : ${formatValue(c.value)}.`:''); if(!applied) toast(`${FIELD_MAP[k].label} : la valeur n’a pas pu être appliquée à ${B}.`,'error'); focusReviewRow(k,1); });
   $$('#summaryView [data-rv-reject]').forEach(b=>b.onclick=()=>{ const c=find(b.dataset.rvReject)?.cands?.[Number(b.dataset.i)]; if(c){ rejectCandidate(c); reviewAfterChange('Proposition écartée.'); focusReviewRow(c.field,0); } });
   $$('#summaryView [data-rv-goto]').forEach(b=>b.onclick=()=>{ const c=find(b.dataset.rvGoto)?.cands?.[Number(b.dataset.i)]; if(c) openManualAnalysisFor(B,c.field,c.docId,c.page); });
   $$('#summaryView .rv-admin').forEach(d=>d.ontoggle=()=>{ reviewState.open={...(reviewState.open||{}),[d.dataset.rvGroup]:d.open}; });

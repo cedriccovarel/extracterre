@@ -1,3 +1,8 @@
+# v2.7.3 — revue : validation des propositions
+- Correctif : « Valider » / « Écarter » / « Voir » ne trouvaient pas la proposition des groupes repliables selon le profil
+  (ex. Carbone d'une opération en rénovation) : la valeur n'était pas appliquée et la ligne restait « À vérifier ».
+- La valeur validée est appliquée au champ de la ligne cliquée et au bâtiment affiché ; un message signale tout échec.
+
 # v2.7.2 — collage libre : « toute l'opération » sur tous les bâtiments
 - Les valeurs du texte descriptif (« Toute l'opération » dans l'aperçu) sont reportées sur **tous les bâtiments de
   l'analyse**, y compris ceux issus des documents ; une valeur collée dans la section d'un bâtiment reste prioritaire
