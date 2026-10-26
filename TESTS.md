@@ -1,3 +1,9 @@
+## v2.7.0 — collage libre, Q4Pa-surf, session JSON, observatoire
+- `test_v2_7_0.mjs` (16 vérifications, données fictives) : texte libre ≠ tableau, bâtiments, rangement de toutes les lignes
+  d'une note de BE (DH le plus défavorable), lignes non reconnues, IA (colonne inventée refusée, valeur relue dans la ligne),
+  193e colonne, libellés courts, borne Q4, priorité du collage (correction manuelle), export de session, observatoire.
+- Vérifié dans Chrome : tableau collé (Cep 99) puis collage libre (Cep 37,7) → 37,7 retenu ; observatoire alimenté.
+
 ## v2.6.0 — tuiles, export à la carte, recherches personnalisées, pack du 26/10/2026
 - `test_v2_6_0.mjs` (38 vérifications, documents fictifs) : grille Sécurité (vrais / faux positifs observés dans des CCTP :
   crémone de fenêtre ≠ serrure de porte, « SAS CABINET », barreaudage de clôture, 30 mm ≠ 30 m, porte basculante = indice

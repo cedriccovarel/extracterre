@@ -12,7 +12,7 @@ import {shouldOcrPdfPage} from './js/readers.js';
 import {dpeClasses} from './js/dpe-3cl.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.6.2','version');
+eq(APP_VERSION, '2.7.0','version');
 const mk=(name,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12,items:[{text:normalizeText(t),x:40}]})); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   const read={kind:'pdf',pages:ps,text:ps.map(p=>p.text).join('\n\f\n'),pageCount:ps.length}; const c=classifyDocument(name,read.text,{kind:'pdf'});
   const d={id:name,name,read,familyMode:'auto',status:'ready',classification:{...c,automaticType:c.type},type:c.type}; d.buildings=detectBuildings(d); d.cachedOccurrences=parseDocument(d); return d; };

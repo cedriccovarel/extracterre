@@ -1,4 +1,4 @@
-export const APP_VERSION='2.6.2';
+export const APP_VERSION='2.7.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -235,7 +235,9 @@ export const FIELD_DEFS = [
   {key:"ges",label:"GES après travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES après travaux (kgCO2/m²)", "GES projet", "émissions de CO2 projet", "kgCO2/m² projet", "émissions GES projet"] ,presence:false},
   {key:"ges_before",label:"GES avant travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES avant travaux (kgCO2/m²)", "GES initial", "émissions de CO2 état initial", "émissions GES état initial"] ,presence:false},
   {key:"ges_ref",label:"GES Ref",family:"Performance énergétique",type:"number",tags:["GES Ref", "GES référence", "émissions de CO2 de référence"] ,presence:false},
-  {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false}
+  {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false},
+  // v2.7.0 — perméabilité à l'air (notes de BE collées) ; ajoutée en fin d'export.
+  {key:"q4pa_surf",label:"Q4Pa-surf (m³/h.m²)",family:"Performance énergétique",type:"number",tags:["Q4Pa-surf (m³/h.m²)", "Q4Pa-surf", "Q4 Pa-surf", "Q4Pa surf", "Q4 Pa surf"] ,presence:false}
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -252,6 +254,8 @@ for(const f of FIELD_DEFS) for(const tag of f.tags){ const n=normalizeFieldHeade
 // de colonnes CRM / OPERATIONS sans créer de nouveaux champs ExtracTerre.
 const HEADER_ALIASES={
   'numero du contrat':'contract_number',
+  // v2.7.0 — collage libre (libellés courts des notes de BE)
+  'sref ou srt':'shab','srt ou sref':'shab','sref':'shab','srt':'shab','cepnrmax':'cepnr_max','cep nr max':'cepnr_max','cepnr max':'cepnr_max','bbio max':'bbio_max','cep max':'cep_max',
   // v2.6.1 — tableaux d'opérations (import / collage) : en-têtes courts usuels.
   'numero de contrat':'contract_number','n de contrat':'contract_number','n contrat':'contract_number','numero contrat':'contract_number','contrat':'contract_number','no contrat':'contract_number',
   'n operation':'internal_code','numero d operation':'internal_code','n d operation':'internal_code','code operation':'internal_code',

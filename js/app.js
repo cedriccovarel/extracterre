@@ -8,6 +8,8 @@ import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
+import {parseFreePaste,freePasteValues,freePastePrompt,applyFreePasteAi,looksLikeFreeText} from './collage-libre.js';
+import {canonicalBuilding} from './buildings.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
@@ -225,7 +227,7 @@ function projectCompletion(p){
   return Math.round(ratios.reduce((a,b)=>a+b,0)/ratios.length*100);
 }
 const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
-const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length;
+const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length&&!(p.freePasteRows||[]).length;
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
   const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
@@ -645,6 +647,7 @@ function retainRemovedDocument(project,doc){
 }
 function manualPasteOccurrences(project=activeProject()){
   const out=[...retainedOccurrences(project)]; let n=0;
+  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
@@ -663,7 +666,7 @@ function recomputeProject(message='Consolidation recalculée.'){
 }
 function openManualDataDialog(){
   const dlg=$('#manualDataDialog'); if(!dlg) return;
-  $('#manualDataPaste').value=state.manualPasteRaw||''; renderManualPastePreview(parseManualClipboard(state.manualPasteRaw||'')); dlg.showModal();
+  $('#manualDataPaste').value=state.manualPasteRaw||''; onManualPasteInput(); dlg.showModal();
 }
 function renderManualPastePreview(parsed){
   const box=$('#manualDataPreview'); if(!box) return;
@@ -672,7 +675,41 @@ function renderManualPastePreview(parsed){
   const flexible=recognized.filter(x=>x.mode!=='exact').length;
   box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span>${flexible?`<span><b>${flexible}</b> rapprochement(s) souple(s)</span>`:''}<span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span title="${x.mode==='exact'?'Intitulé exact':'Intitulé rapproché automatiquement'}">${escapeHtml(x.label)}${x.mode==='exact'?'':' ≈'}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus (aucun équivalent existant suffisamment fiable) : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
 }
+// v2.7.0 — collage libre (« Bâtiment G : / Cep = 37,7 … ») : chaque ligne est rangée dans une colonne ; les valeurs
+// appliquées priment sur toutes les données extraites des documents (comme une correction manuelle).
+let freePaste=null;
+function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||''; if(raw.trim()&&looksLikeFreeText(raw)){ freePaste=parseFreePaste(raw); renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
+function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">— ignorer</option>${FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`<option value="${f.key}" ${f.key===cur?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}</select>`; }
+function renderFreePastePreview(){
+  const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;
+  const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
+  box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length).length}</b> bâtiment(s)</span><span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
+  <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
+  <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
+  ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
+  ${fp.unmatched.map((u,ui)=>`<tr class="unmatched"><td>${escapeHtml(u.building||'—')}</td><td>${escapeHtml(u.line)}</td><td>${freeFieldSelect('',`data-fp-u="${ui}"`)}</td><td><small>non reconnue</small></td></tr>`).join('')}
+  </tbody></table></div>${fp.unmatched.length?`<button type="button" class="btn secondary" id="freePasteAi">✨ Ranger les ${fp.unmatched.length} ligne(s) non reconnue(s) avec l’IA</button><small class="llm-hint"> Seules les lignes collées sont envoyées (Ollama en local si activé dans 🤖 IA) ; la valeur reste celle de la ligne.</small>`:''}`;
+  box.querySelectorAll('[data-fp-b]').forEach(sel=>sel.onchange=()=>{ const it=fp.buildings[Number(sel.dataset.fpB)].items[Number(sel.dataset.fpI)]; it.field=sel.value||null; it.dhZone=null; if(it.field){ const tmp={buildings:[],unmatched:[{building:'_',line:it.line,label:it.label,raw:it.raw}]}; applyFreePasteAi(tmp,{lines:[{n:1,field:it.field,value:it.raw}]}); const v=tmp.buildings[0]?.items[0]?.value; if(v===undefined){ toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); it.field=null; } else it.value=v; } renderFreePastePreview(); });
+  box.querySelectorAll('[data-fp-u]').forEach(sel=>sel.onchange=()=>{ if(!sel.value) return; const u=fp.unmatched[Number(sel.dataset.fpU)]; const tmp={buildings:fp.buildings,unmatched:[u]}; if(!applyFreePasteAi(tmp,{lines:[{n:1,field:sel.value,value:u.raw||u.line}]})) toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); else { fp.unmatched=fp.unmatched.filter(x=>x!==u); const last=fp.buildings.find(x=>x.name===u.building)?.items.slice(-1)[0]; if(last) last.ai=false; } renderFreePastePreview(); });
+  $('#freePasteAi')?.addEventListener('click',async e=>{ const btn=e.currentTarget; btn.disabled=true; btn.textContent='IA en cours…';
+    try{ const pr=freePastePrompt(fp.unmatched); const added=applyFreePasteAi(fp,parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:1500},{invokeFunction:invokeLlmCloudFunction}))); toast(added?`${added} ligne(s) rangée(s) par l’IA : vérifiez les colonnes.`:'L’IA n’a trouvé aucune colonne adaptée.',added?'success':'warn'); learn('free_paste_ai',{lines:pr.user.split('\n').length,added},activeProject()); }
+    catch(err){ toast(`IA indisponible : ${err?.message||err}`,'error'); }
+    renderFreePastePreview(); });
+}
+function applyFreePaste(){
+  const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
+  if(!vals.length){ toast('Aucune valeur rangée dans une colonne.','warn'); return; }
+  // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
+  const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
+  recomputeProject('');
+  const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
+  const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
+  let n=0; for(const v of vals){ const b=target(v.building); for(const [field,value] of Object.entries(v.values)){ const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre',page:'',excerpt:v.sources[field]||'',method:'manual:free-paste',provenanceNote:'Données collées : prioritaires sur les documents'}; n++; } }
+  applyManualValues(); $('#manualDataDialog')?.close(); freePaste=null; renderAll(); scheduleWorkspaceCheckpoint('collage libre',80);
+  learn('manual_paste',{mode:'free',buildings:vals.length,values:n},p); toast(`${n} valeur(s) appliquée(s) sur ${vals.length} bâtiment(s) — prioritaires sur les documents.`,'success');
+}
 function applyManualPaste(){
+  if(freePaste){ applyFreePaste(); return; }
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
   if(importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:'copier-coller'})){ $('#manualDataDialog')?.close(); return; }
@@ -684,7 +721,7 @@ function applyManualPaste(){
   recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
-  state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
+  state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; activeProject().freePasteRows=[]; freePaste=null; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
 }
 function uncertainKey(o){ return [o.building,o.field,String(o.value),o.docId,o.page].join('|'); }
 function visibleUncertain(){ const rejected=new Set(state.uncertainRejectedKeys||[]); return (state.result?.uncertain||[]).filter(o=>!rejected.has(uncertainKey(o))&&!Object.prototype.hasOwnProperty.call(state.manualValues||{},`${o.building}|${o.field}`)); }
@@ -1733,7 +1770,7 @@ function applyManualValuesToProject(project){
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
-  if(!valid.length&&!(project.manualPasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
+  if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
   applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
@@ -1862,6 +1899,30 @@ function renderSearches(wrap=$('#summaryView')){
   wrap.querySelectorAll('[data-srch-del]').forEach(b=>b.onclick=()=>{ const n=collectGridFromEditor(wrap,g); n.criteria.splice(Number(b.dataset.srchDel),1); storeGrid(n); renderSearches(wrap); });
   const ed=wrap.querySelector('.srch-editor'); if(ed) ed.addEventListener('change',e=>{ if(e.target.id==='srchAiDesc') return; storeGrid(collectGridFromEditor(wrap,g)); renderSearches(wrap); });
   $('#srchImport').onchange=async e=>{ const f=e.target.files?.[0]; if(!f) return; try{ if(f.size>2*1024*1024) throw new Error('fichier trop volumineux'); const o=JSON.parse(await f.text()); const gg=normalizeGrid(o); if(!gg.criteria.length) throw new Error('aucun critère'); if(gs.some(x=>x.id===gg.id)) gg.id=`g${Date.now().toString(36)}`; storeGrid(gg); toast(`Grille « ${gg.name} » importée.`,'success'); }catch(err){ toast(`Grille illisible : ${err?.message||err}`,'error'); } renderSearches(wrap); };
+}
+
+// v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
+// le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function sessionSnapshot({details=true}={}){
+  const grids=loadGrids();
+  return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
+    operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
+      const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
+        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{})]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
+      if(!details) return base;
+      return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+}
+function exportSessionJson(){
+  const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
+  downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
+  toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
+}
+// Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
+function openSearchObservatory(){
+  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
+  window.open('observatoire.html','extracterre-observatoire');
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
@@ -2090,7 +2151,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
@@ -2105,7 +2166,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog;
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};

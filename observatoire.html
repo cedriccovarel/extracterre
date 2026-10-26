@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Observatoire des recherches — ExtracTerre</title>
+<link rel="icon" href="assets/favicon.ico">
+<style>
+:root{--forest:#173e31;--green:#1d7a4a;--mid:#7da38f;--amber:#b4561b;--line:#dde4df;--muted:#5f6e67;--bg:#f4f7f5;--card:#fff;--ink:#16211c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+header{background:var(--forest);color:#fff;padding:18px 24px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+header h1{margin:0;font-size:1.3rem}header p{margin:2px 0 0;opacity:.85;font-size:.85rem}
+header a{color:#fff;font-size:.85rem}
+main{max-width:1280px;margin:0 auto;padding:18px 16px 40px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px}
+.bar label{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--muted)}
+select,input[type=search]{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:inherit;min-width:200px}
+button,.btn{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:.85rem;cursor:pointer;color:var(--forest)}
+button.primary{background:var(--forest);color:#fff;border-color:var(--forest)}button.danger{color:#a3361f}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.kpi b{display:block;font-size:1.6rem;color:var(--forest)}.kpi span{font-size:.8rem;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.card h2{margin:0 0 4px;font-size:1.02rem;color:var(--forest)}.card .sub{font-size:.8rem;color:var(--muted);margin:0 0 10px}
+.crit{display:grid;grid-template-columns:minmax(200px,2fr) 3fr 90px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #eef2ef;font-size:.85rem}
+.track{height:14px;background:#e9eeea;border-radius:99px;overflow:hidden;display:flex}
+.track .ok{background:var(--green)}.track .ko{background:var(--amber)}
+.pct{font-variant-numeric:tabular-nums;text-align:right;font-size:.82rem}.pct small{display:block;color:var(--muted)}
+.legend{display:flex;gap:14px;font-size:.78rem;color:var(--muted);margin:6px 0}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.nums{font-size:.78rem;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{border-bottom:1px solid #eef2ef;padding:6px 8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#f7faf8;font-weight:600}
+.scroll{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:10px}
+.t-ok{color:var(--green);font-weight:700}.t-ko{color:var(--amber);font-weight:700}.t-na{color:#9aa6a0}
+.empty{text-align:center;padding:40px 16px;color:var(--muted)}
+@media (max-width:720px){.crit{grid-template-columns:1fr;gap:4px}.pct{text-align:left}}
+</style>
+</head>
+<body>
+<header><div><h1>Observatoire des recherches</h1><p>Compilation des résultats de l’onglet Recherches d’ExtracTerre, opération par opération (indices relevés dans les documents, à valeur d’étude de l’existant).</p></div><a href="index.html">← Retour à ExtracTerre</a></header>
+<main>
+  <div class="bar">
+    <label>Grille<select id="grid"></select></label>
+    <label>Maître d’ouvrage<select id="owner"></select></label>
+    <label>Rechercher une opération<input id="q" type="search" placeholder="contrat, nom, code…"></label>
+    <span style="flex:1"></span>
+    <label class="btn" for="imp" style="flex-direction:row;color:var(--forest)">Importer une session (.json)</label><input id="imp" type="file" accept=".json,application/json" hidden>
+    <button id="csv">Exporter le tableau (.csv)</button>
+    <button id="clear" class="danger">Vider l’observatoire</button>
+  </div>
+  <div id="app"></div>
+</main>
+<script>
+'use strict';
+// Données compilées sur ce poste (localStorage) : fusion par opération (contrat > code interne > nom), la plus récente l'emporte.
+const KEY='extracterre.observatoire.data.v1', FEED='extracterre.observatoire.feed';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={ load(){ try{ const d=JSON.parse(localStorage.getItem(KEY)||'null'); if(d&&d.operations&&d.grids) return d; }catch{} return {grids:{},operations:{}}; },
+  save(d){ try{ localStorage.setItem(KEY,JSON.stringify(d)); return true; }catch{ alert('Stockage local plein : exportez le tableau puis videz l’observatoire.'); return false; } } };
+let data=store.load();
+const opKey=o=>String(o?.identity?.contract||o?.identity?.code||o?.identity?.name||o?.title||'').trim();
+function merge(snap){
+  if(!snap||snap.format!=='extracterre-session'||!Array.isArray(snap.operations)) throw new Error('fichier non reconnu (export de session ExtracTerre attendu)');
+  for(const g of Array.isArray(snap.grids)?snap.grids:[]) if(g&&g.id&&Array.isArray(g.criteria)) data.grids[String(g.id)]=g;
+  let n=0; for(const o of snap.operations){ const k=opKey(o); if(!k) continue;
+    data.operations[k]={key:k,identity:{contract:String(o.identity?.contract||''),code:String(o.identity?.code||''),name:String(o.identity?.name||o.title||''),owner:String(o.identity?.owner||'')},completion:Number(o.completion)||0,updatedAt:snap.exportedAt||new Date().toISOString(),searches:Object.assign({},data.operations[k]?.searches||{},o.searches||{})}; n++; }
+  return n;
+}
+// Flux transmis par ExtracTerre à l'ouverture.
+try{ const f=localStorage.getItem(FEED); if(f){ merge(JSON.parse(f)); localStorage.removeItem(FEED); store.save(data); } }catch(e){ console.warn('Flux ExtracTerre illisible',e); }
+
+const $=s=>document.querySelector(s);
+const ui={grid:'',owner:'',q:''};
+const pct=(a,b)=>b?Math.round(a/b*1000)/10:0;
+const nums=v=>(Array.isArray(v)?v:[]).map(Number).filter(Number.isFinite);
+function ops(){ const q=ui.q.toLowerCase(); return Object.values(data.operations).filter(o=>(!ui.owner||(o.identity.owner||'Non renseigné')===ui.owner)&&(!q||`${o.identity.contract} ${o.identity.code} ${o.identity.name} ${o.identity.owner}`.toLowerCase().includes(q))); }
+function render(){
+  const grids=Object.values(data.grids); const app=$('#app');
+  if(!grids.length||!Object.keys(data.operations).length){ app.innerHTML='<div class="card empty"><h2>Aucune donnée compilée</h2><p>Dans ExtracTerre, cliquez sur « Observatoire des recherches » dans la barre de gauche, ou importez ici un export de session (.json).</p></div>'; $('#grid').innerHTML=''; $('#owner').innerHTML=''; return; }
+  if(!data.grids[ui.grid]) ui.grid=grids[0].id; const g=data.grids[ui.grid];
+  $('#grid').innerHTML=grids.map(x=>`<option value="${esc(x.id)}" ${x.id===ui.grid?'selected':''}>${esc(x.name)}</option>`).join('');
+  const owners=[...new Set(Object.values(data.operations).map(o=>o.identity.owner||'Non renseigné'))].sort((a,b)=>a.localeCompare(b,'fr'));
+  $('#owner').innerHTML=`<option value="">Tous (${owners.length})</option>`+owners.map(o=>`<option ${o===ui.owner?'selected':''}>${esc(o)}</option>`).join('');
+  const list=ops(); const withGrid=list.filter(o=>o.searches?.[g.id]); const N=withGrid.length;
+  const themes=(g.themes||[]).map(t=>{ const app=withGrid.filter(o=>o.searches[g.id].themes?.[t.name]?.applicable!==false); const ok=app.filter(o=>o.searches[g.id].themes?.[t.name]?.ok).length; return {t,applicable:app.length,ok}; });
+  app.innerHTML=`<div class="kpis"><div class="kpi"><b>${N}</b><span>opération(s) analysée(s) avec « ${esc(g.name)} »</span></div><div class="kpi"><b>${new Set(withGrid.map(o=>o.identity.owner||'—')).size}</b><span>maître(s) d’ouvrage</span></div>
+    ${themes.map(x=>`<div class="kpi"><b>${pct(x.ok,x.applicable)} %</b><span>${esc(x.t.name)} : indices suffisants (${x.ok} / ${x.applicable})</span></div>`).join('')}</div>
+  ${N?'':'<div class="card empty">Aucune opération de cette sélection n’a été analysée avec cette grille.</div>'}
+  ${N?(g.themes||[]).map(t=>{ const crits=(g.criteria||[]).filter(c=>c.theme===t.name); const pool=withGrid.filter(o=>o.searches[g.id].themes?.[t.name]?.applicable!==false);
+    return `<section class="card"><h2>${esc(t.name)}</h2><p class="sub">${pool.length} opération(s) concernée(s) · minimum ${Number(t.min)||0} critère(s)</p><div class="legend"><span><i style="background:var(--green)"></i>Indice trouvé</span><span><i style="background:var(--amber)"></i>Indice contraire / hors seuil</span></div>
+      ${crits.map(c=>{ const rs=pool.map(o=>o.searches[g.id].criteria?.[c.id]).filter(Boolean); const ok=rs.filter(r=>r.found).length, ko=rs.filter(r=>!r.found&&r.contrary).length; const vals=rs.flatMap(r=>nums(r.values)).sort((a,b)=>a-b);
+        const st=vals.length?`<div class="nums">valeurs lues : min ${vals[0]} · médiane ${vals[Math.floor(vals.length/2)]} · max ${vals[vals.length-1]}${c.unit?' '+esc(c.unit):''}</div>`:'';
+        return `<div class="crit"><div>${esc(c.label)}${st}</div><div class="track" role="img" aria-label="${pct(ok,pool.length)} % trouvés, ${pct(ko,pool.length)} % contraires"><span class="ok" style="width:${pct(ok,pool.length)}%"></span><span class="ko" style="width:${pct(ko,pool.length)}%"></span></div><div class="pct">${pct(ok,pool.length)} %<small>${ok} / ${pool.length}${ko?` · ${ko} contraire(s)`:''}</small></div></div>`; }).join('')}</section>`; }).join(''):''}
+  ${N?`<section class="card"><h2>Opérations</h2><p class="sub">✓ indices suffisants · ✗ insuffisants · – non applicable</p><div class="scroll"><table><thead><tr><th>Contrat</th><th>Opération</th><th>Maître d’ouvrage</th>${(g.themes||[]).map(t=>`<th>${esc(t.name)}</th>`).join('')}<th>Mise à jour</th></tr></thead><tbody>
+    ${withGrid.map(o=>{ const s=o.searches[g.id]; return `<tr><td>${esc(o.identity.contract||'—')}</td><td>${esc(o.identity.name||o.identity.code)}</td><td>${esc(o.identity.owner||'—')}</td>${(g.themes||[]).map(t=>{ const th=s.themes?.[t.name]; return th?.applicable===false?'<td class="t-na">–</td>':th?.ok?`<td class="t-ok">✓ ${th.found}</td>`:`<td class="t-ko">✗ ${th?.found??0}</td>`; }).join('')}<td>${esc(String(o.updatedAt).slice(0,10))}</td></tr>`; }).join('')}</tbody></table></div></section>`:''}`;
+}
+function csv(){
+  const g=data.grids[ui.grid]; if(!g) return; const list=ops().filter(o=>o.searches?.[g.id]);
+  const head=['Contrat','Code interne','Opération','Maître d’ouvrage',...(g.themes||[]).map(t=>`${t.name} — suffisant`),...(g.criteria||[]).map(c=>`${c.theme} — ${c.label}`)];
+  const rows=list.map(o=>{ const s=o.searches[g.id]; return [o.identity.contract,o.identity.code,o.identity.name,o.identity.owner,...(g.themes||[]).map(t=>{ const th=s.themes?.[t.name]; return th?.applicable===false?'Non applicable':th?.ok?'Oui':'Non'; }),...(g.criteria||[]).map(c=>s.criteria?.[c.id]?.value||'')]; });
+  const cell=v=>{ const t=String(v??''); return /[";\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t; };
+  const blob=new Blob(['﻿'+[head,...rows].map(r=>r.map(cell).join(';')).join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`Observatoire_${g.name.replace(/[^\w-]+/g,'_')}.csv`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000);
+}
+$('#grid').onchange=e=>{ ui.grid=e.target.value; render(); };
+$('#owner').onchange=e=>{ ui.owner=e.target.value; render(); };
+$('#q').oninput=e=>{ ui.q=e.target.value.trim(); render(); };
+$('#csv').onclick=csv;
+$('#clear').onclick=()=>{ if(!confirm('Vider toutes les données compilées sur ce poste ?')) return; data={grids:{},operations:{}}; store.save(data); render(); };
+$('#imp').onchange=async e=>{ const f=e.target.files?.[0]; e.target.value=''; if(!f) return; try{ if(f.size>50*1024*1024) throw new Error('fichier trop volumineux'); const n=merge(JSON.parse(await f.text())); store.save(data); render(); alert(`${n} opération(s) importée(s).`); }catch(err){ alert(`Import impossible : ${err.message||err}`); } };
+render();
+</script>
+</body>
+</html>

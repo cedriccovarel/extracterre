@@ -12,13 +12,13 @@ import {isGarbledTextLayer,pdfTextQuality,shouldOcrPdfPage} from './js/readers.j
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.6.2','version');
+eq(APP_VERSION, '2.7.0','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 
 // --- 1. Schéma : 5 colonnes IC ajoutées à la fin, dans l'ordre demandé ------------------------------
-eq(FIELD_DEFS.length,192,'192 champs');
+eq(FIELD_DEFS.length,193,'193 champs');
 eq(FIELD_DEFS.slice(168,173).map(f=>f.key),['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028'],'nouvelles colonnes en fin de schéma');
 ok(DEFAULT_SOURCE_RULES.ic_energy_max.main.includes('RSET RE2020'),'Ic énergie max publié aussi par les RSET');
 
@@ -103,7 +103,7 @@ const {exportProjectsExcel}=await import('./js/exporter.js');
 const res=analyzeDocuments([sortie],DEFAULT_SOURCE_RULES,'Projet test');
 exportProjectsExcel([{result:res,projectTags:[{label:'Géothermie'},{label:'BEPOS'}],operationName:'Projet test'}],DEFAULT_SOURCE_RULES);
 const main=sheets['Données par bâtiment'];
-eq(main[0].length,193,'192 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-9),['Eges total Max','Ventilation avant travaux','Ubat Ref','Gain Ubat','GES après travaux (kgCO2/m²)','GES avant travaux (kgCO2/m²)','GES Ref','Gain GES','Tags']);
+eq(main[0].length,194,'193 colonnes + Tags'); eq(main[0].slice(168,173),['IC construction','IC construction Max','IC construction Max 2028','IC énergie Max','IC énergie Max 2028']); eq(main[0].slice(-10),['Eges total Max','Ventilation avant travaux','Ubat Ref','Gain Ubat','GES après travaux (kgCO2/m²)','GES avant travaux (kgCO2/m²)','GES Ref','Gain GES','Q4Pa-surf (m³/h.m²)','Tags']);
 eq(main[1].at(-1),'Géothermie ; BEPOS','tags du projet sur chaque ligne');
 eq(main[1][main[0].indexOf('IC énergie Max')],500.2,'Ic énergie max exporté');
 console.log(`v2.3.5 — ${n} vérifications OK (documents fictifs)`);

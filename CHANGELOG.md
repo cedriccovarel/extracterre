@@ -1,3 +1,18 @@
+# v2.7.0 — Collage libre prioritaire, colonne Q4Pa-surf, export JSON de session, observatoire des recherches
+- **Collage libre** dans « Coller » : texte « libellé = valeur » (ou « : », tabulation), regroupé par bâtiment
+  (« Bâtiment G : », « Bat H »). Chaque ligne est rangée dans une colonne (libellés courts : Sref (ou Srt), Bbiomax,
+  Cepnrmax, Gain Cep…), modifiable dans l'aperçu ; les lignes non reconnues peuvent être rangées par l'IA (Ollama en
+  local) : elle ne choisit que la colonne, la valeur est relue dans la ligne collée. Les valeurs appliquées **priment sur
+  toutes les données des documents** (corrections manuelles, source « Collage libre » tracée) et créent les bâtiments
+  manquants. DH par type de zone : la zone la plus défavorable est retenue, zones traversantes / non traversantes notées.
+- **Nouvelle colonne « Q4Pa-surf (m³/h.m²) »** en fin d'export (193 colonnes).
+- **Export de la session (.json)** (barre de gauche) : opérations, identité, complétion, valeurs retenues avec leur source
+  (document, page, extrait), saisies manuelles et collages, économie, résultats des recherches ; pas le contenu des documents.
+- **Observatoire des recherches** (`observatoire.html`, ouvert depuis la barre de gauche) : compile les résultats de
+  l'onglet Recherches par opération (fusion par contrat / code interne, sur ce poste) ; filtres grille / maître d'ouvrage /
+  opération ; part d'opérations aux indices suffisants par thème ; taux d'indices trouvés / contraires par critère ;
+  min / médiane / max des valeurs chiffrées ; tableau des opérations ; export CSV ; import d'une session JSON.
+
 # v2.6.2 — fiche d'analyse pleine largeur
 - La colonne « Projets » à gauche des résultats est retirée : les résultats occupent toute la largeur. On change
   d'opération par l'accueil (tuiles) ou le sélecteur ‹ › de la barre ; « ＋ Fichiers » reste dans la barre.

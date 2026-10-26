@@ -1,7 +1,7 @@
 {
   "version": "2.4.0",
   "generatedAt": "2026-10-19T08:30:35.319Z",
-  "count": 192,
+  "count": 193,
   "fields": [
     {
       "position": 1,
@@ -5025,6 +5025,51 @@
           "RT2012",
           "RSEE RE2020",
           "RSET RE2020",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 193,
+      "key": "q4pa_surf",
+      "label": "Q4Pa-surf (m³/h.m²)",
+      "family": "Performance énergétique",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Q4Pa-surf (m³/h.m²)",
+        "Q4Pa-surf",
+        "Q4 Pa-surf",
+        "Q4Pa surf",
+        "Q4 Pa surf"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "RT2012",
+          "RT Existant",
+          "Étude thermique",
+          "Contrat",
+          "Livret d'opération",
+          "CR de conception",
+          "CR environnemental",
+          "Choix des exigences",
+          "Descriptif du projet",
+          "CCTP",
+          "DPGF",
+          "Questionnaire financier",
+          "Plan architectural",
+          "Tableau de surfaces",
+          "Notice architecturale / pièce écrite architecte",
+          "Permis / pièce administrative",
+          "Diagnostic",
+          "Rapport d'imperméabilité",
+          "DPE",
+          "Étude carbone / ACV",
           "Entrée manuelle"
         ],
         "secondary": [],

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.6.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.7.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.6.2';
+const APP_VERSION='2.7.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -240,7 +240,9 @@ const FIELD_DEFS = [
   {key:"ges",label:"GES après travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES après travaux (kgCO2/m²)", "GES projet", "émissions de CO2 projet", "kgCO2/m² projet", "émissions GES projet"] ,presence:false},
   {key:"ges_before",label:"GES avant travaux (kgCO2/m²)",family:"Performance énergétique",type:"number",tags:["GES avant travaux (kgCO2/m²)", "GES initial", "émissions de CO2 état initial", "émissions GES état initial"] ,presence:false},
   {key:"ges_ref",label:"GES Ref",family:"Performance énergétique",type:"number",tags:["GES Ref", "GES référence", "émissions de CO2 de référence"] ,presence:false},
-  {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false}
+  {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false},
+  // v2.7.0 — perméabilité à l'air (notes de BE collées) ; ajoutée en fin d'export.
+  {key:"q4pa_surf",label:"Q4Pa-surf (m³/h.m²)",family:"Performance énergétique",type:"number",tags:["Q4Pa-surf (m³/h.m²)", "Q4Pa-surf", "Q4 Pa-surf", "Q4Pa surf", "Q4 Pa surf"] ,presence:false}
 ];
 const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -257,6 +259,8 @@ for(const f of FIELD_DEFS) for(const tag of f.tags){ const n=normalizeFieldHeade
 // de colonnes CRM / OPERATIONS sans créer de nouveaux champs ExtracTerre.
 const HEADER_ALIASES={
   'numero du contrat':'contract_number',
+  // v2.7.0 — collage libre (libellés courts des notes de BE)
+  'sref ou srt':'shab','srt ou sref':'shab','sref':'shab','srt':'shab','cepnrmax':'cepnr_max','cep nr max':'cepnr_max','cepnr max':'cepnr_max','bbio max':'bbio_max','cep max':'cep_max',
   // v2.6.1 — tableaux d'opérations (import / collage) : en-têtes courts usuels.
   'numero de contrat':'contract_number','n de contrat':'contract_number','n contrat':'contract_number','numero contrat':'contract_number','contrat':'contract_number','no contrat':'contract_number',
   'n operation':'internal_code','numero d operation':'internal_code','n d operation':'internal_code','code operation':'internal_code',
@@ -5301,7 +5305,7 @@ const EXTRACTION_RANGES=Object.freeze({
   ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
   bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100],
   // v2.6.0 — pack du 26/10/2026 : « Ubat Ref 83 » (0,83 mal lu), émissions de GES par m².
-  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500]
+  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500], q4pa_surf:[0,10]
 });
 const sn_NUM_FIELDS=new Set([...Object.keys(EXTRACTION_RANGES),...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`)]);
 const sn_YEAR_LIKE=/^(?:19|20)\d\d$/;
@@ -8551,7 +8555,8 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  assert('Schéma métier = 192 colonnes',FIELD_DEFS.length===192,String(FIELD_DEFS.length));
+  // v2.7.0 : + Q4Pa-surf (193), ajoutée en fin.
+  assert('Schéma métier = 193 colonnes',FIELD_DEFS.length===193,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));
@@ -8703,6 +8708,86 @@ Groupe Refroidissement Categorie Tic Tic Ref.
 
 
   return {tests,passed:tests.filter(t=>t.ok).length,total:tests.length,ok:tests.every(t=>t.ok)};
+}
+
+/* ---- collage-libre.js ---- */
+// v2.7.0 — collage libre : texte « libellé = valeur » (ou « : », tabulation), regroupé par bâtiment (« Bâtiment G : »).
+// Chaque libellé est rapproché d'une colonne ExtracTerre ; les libellés inconnus peuvent être rangés par l'IA, qui ne
+// choisit qu'une colonne : la valeur reste celle écrite dans le texte collé (jamais inventée).
+
+
+const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
+const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
+// Libellé sans unité finale : « DH des zones traversantes (en °C.h) » → « DH des zones traversantes ».
+const fp_clean=l=>String(l||'').replace(/\((?:en|unit[eé])\s[^)]*\)\s*$/i,'').replace(/\s*\[[^\]]*\]\s*$/,'').trim();
+function fp_value(field,raw){
+  const def=FIELD_MAP[field]; const s=String(raw||'').trim();
+  if(def?.type!=='number') return s||null;
+  const m=s.replace(/ /g,' ').match(/[-+]?\d+(?:[ .]\d{3})*(?:[.,]\d+)?/); if(!m) return null;
+  return parseFrNumber(m[0]);
+}
+// DH par type de zone : la colonne DH garde la plus défavorable (comme la lecture des RSET) ; le type de zone est noté.
+function fp_dhZone(label){ const l=normLower(label); if(!/\bdh\b|degres?[- ]heures?/.test(l)||!/travers/.test(l)) return null; return /non\s+travers/.test(l)?'non':'oui'; }
+
+function matchFreeLabel(label){
+  const clean=fp_clean(label); const r=matchFieldByHeaderDetailed(clean)||matchFieldByHeaderDetailed(label);
+  return r?.def?.key&&r.def.key!=='building'?r.def.key:null;
+}
+// → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}]}
+function parseFreePaste(text){
+  const out=[]; let cur=null; const unmatched=[];
+  const ensure=name=>{ cur=out.find(b=>b.name===name)||{name,items:[]}; if(!out.includes(cur)) out.push(cur); return cur; };
+  for(const line of String(text||'').replace(/\r/g,'').split('\n')){
+    if(!line.trim()) continue;
+    const b=line.match(fp_BUILDING); if(b&&!fp_PAIR.test(line.replace(/:\s*$/,''))){ { const n=b[1].replace(/\s+/g,' ').trim(); const k=n.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); ensure(k?`Bâtiment ${k[1]}`:n); } continue; }
+    const m=line.match(fp_PAIR); if(!m) { unmatched.push({building:cur?.name||'',line:line.trim(),label:'',raw:''}); continue; }
+    const label=m[1].trim(), raw=m[2].trim(); const bld=cur||ensure('');
+    const dz=fp_dhZone(label);
+    if(dz){ const v=fp_value('dh',raw); if(v!==null){ bld.items.push({line:line.trim(),label,raw,field:'dh',value:v,auto:true,dhZone:dz}); continue; } }
+    const field=matchFreeLabel(label);
+    if(field){ const v=fp_value(field,raw); if(v!==null){ bld.items.push({line:line.trim(),label,raw,field,value:v,auto:true}); continue; } }
+    unmatched.push({building:bld.name,line:line.trim(),label,raw});
+  }
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched};
+}
+// Valeurs finales par bâtiment : une valeur par colonne ; DH = zone la plus défavorable, types de zones « Oui ».
+function freePasteValues(parsed){
+  const res=[];
+  for(const b of parsed.buildings||[]){
+    const vals={}, src={};
+    for(const it of b.items){
+      if(!it.field||it.value===null||it.value===undefined||it.value==='') continue;
+      if(it.dhZone){ if(vals.dh===undefined||it.value>vals.dh){ vals.dh=it.value; src.dh=it.line; } const k=it.dhZone==='oui'?'cross_ventilated':'non_cross_ventilated'; vals[k]='Oui'; src[k]=it.line; continue; }
+      vals[it.field]=it.value; src[it.field]=it.line;
+    }
+    res.push({building:b.name,values:vals,sources:src});
+  }
+  return res;
+}
+// —— IA : rangement des lignes non reconnues. Elle renvoie {line, field} ; la valeur est relue dans la ligne elle-même.
+function freePastePrompt(unmatched){
+  const fields=FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`${f.key} : ${f.label}${f.unit?` [${f.unit}]`:''}`).join('\n');
+  return {system:`Tu ranges des lignes de données du bâtiment (France : RE2020, RT2012, RT existant, DPE, ACV) dans les colonnes d'un tableau. Pour chaque ligne fournie, choisis la clé de colonne qui correspond EXACTEMENT au libellé, ou null si aucune ne convient (ne force jamais). Réponds UNIQUEMENT par un objet JSON : {"lines":[{"n":<numéro de ligne>,"field":"<clé ou null>","value":"<la valeur telle qu'écrite dans la ligne>"}]}.\nColonnes disponibles (clé : libellé) :\n${fields}`,
+    user:unmatched.map((u,i)=>`${i+1}. ${u.line}`).join('\n')};
+}
+function applyFreePasteAi(parsed,answer){
+  const lines=Array.isArray(answer?.lines)?answer.lines:[]; let added=0;
+  for(const a of lines){
+    const u=parsed.unmatched[Number(a?.n)-1]; const field=String(a?.field||''); if(!u||!FIELD_MAP[field]||field==='building') continue;
+    // La valeur doit figurer dans la ligne collée ; sinon on prend la partie après le séparateur.
+    const said=String(a?.value??'').trim(); const raw=said&&normLower(u.line).includes(normLower(said))?said:(u.raw||u.line);
+    const v=fp_value(field,raw); if(v===null) continue;
+    let b=parsed.buildings.find(x=>x.name===u.building); if(!b){ b={name:u.building,items:[]}; parsed.buildings.push(b); }
+    b.items.push({line:u.line,label:u.label||u.line,raw,field,value:v,auto:false,ai:true}); u.done=true; added++;
+  }
+  parsed.unmatched=parsed.unmatched.filter(u=>!u.done);
+  return added;
+}
+// Un tableau collé (tabulations / points-virgules sur plusieurs colonnes) relève du collage Excel, pas du collage libre.
+function looksLikeFreeText(text){
+  const lines=String(text||'').split('\n').filter(l=>l.trim());
+  const tabular=lines.filter(l=>(l.match(/\t/g)||[]).length>=2||(l.match(/;/g)||[]).length>=2).length;
+  return lines.length>0&&tabular<lines.length/2;
 }
 
 /* ---- economics.js ---- */
@@ -9382,6 +9467,7 @@ function serializeProject(project={}){
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
     searchOverrides:safeJsonClone(project.searchOverrides,{}),
+    freePasteRows:safeJsonClone(project.freePasteRows,[]),
     ownerName:project.ownerName||'',
     expanded:project.expanded!==false
   };
@@ -10430,7 +10516,7 @@ function projectCompletion(p){
   return Math.round(ratios.reduce((a,b)=>a+b,0)/ratios.length*100);
 }
 const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
-const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length;
+const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length&&!(p.freePasteRows||[]).length;
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
   const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
@@ -10850,6 +10936,7 @@ function retainRemovedDocument(project,doc){
 }
 function manualPasteOccurrences(project=activeProject()){
   const out=[...retainedOccurrences(project)]; let n=0;
+  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
@@ -10868,7 +10955,7 @@ function recomputeProject(message='Consolidation recalculée.'){
 }
 function openManualDataDialog(){
   const dlg=$('#manualDataDialog'); if(!dlg) return;
-  $('#manualDataPaste').value=state.manualPasteRaw||''; renderManualPastePreview(parseManualClipboard(state.manualPasteRaw||'')); dlg.showModal();
+  $('#manualDataPaste').value=state.manualPasteRaw||''; onManualPasteInput(); dlg.showModal();
 }
 function renderManualPastePreview(parsed){
   const box=$('#manualDataPreview'); if(!box) return;
@@ -10877,7 +10964,41 @@ function renderManualPastePreview(parsed){
   const flexible=recognized.filter(x=>x.mode!=='exact').length;
   box.innerHTML=`<div class="manual-preview-stats"><span><b>${parsed.recognized}</b> colonne(s) reconnue(s)</span>${flexible?`<span><b>${flexible}</b> rapprochement(s) souple(s)</span>`:''}<span><b>${parsed.rows.length}</b> ligne(s) de données</span>${parsed.unrecognized.length?`<span class="warn"><b>${parsed.unrecognized.length}</b> en-tête(s) non reconnu(s)</span>`:''}</div><div class="manual-chip-wrap">${recognized.slice(0,28).map(x=>`<span title="${x.mode==='exact'?'Intitulé exact':'Intitulé rapproché automatiquement'}">${escapeHtml(x.label)}${x.mode==='exact'?'':' ≈'}</span>`).join('')}${recognized.length>28?`<span>+${recognized.length-28}</span>`:''}</div>${parsed.unrecognized.length?`<small>Non reconnus (aucun équivalent existant suffisamment fiable) : ${escapeHtml(parsed.unrecognized.join(' · '))}</small>`:''}`;
 }
+// v2.7.0 — collage libre (« Bâtiment G : / Cep = 37,7 … ») : chaque ligne est rangée dans une colonne ; les valeurs
+// appliquées priment sur toutes les données extraites des documents (comme une correction manuelle).
+let freePaste=null;
+function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||''; if(raw.trim()&&looksLikeFreeText(raw)){ freePaste=parseFreePaste(raw); renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
+function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">— ignorer</option>${FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`<option value="${f.key}" ${f.key===cur?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}</select>`; }
+function renderFreePastePreview(){
+  const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;
+  const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
+  box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length).length}</b> bâtiment(s)</span><span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
+  <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
+  <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
+  ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
+  ${fp.unmatched.map((u,ui)=>`<tr class="unmatched"><td>${escapeHtml(u.building||'—')}</td><td>${escapeHtml(u.line)}</td><td>${freeFieldSelect('',`data-fp-u="${ui}"`)}</td><td><small>non reconnue</small></td></tr>`).join('')}
+  </tbody></table></div>${fp.unmatched.length?`<button type="button" class="btn secondary" id="freePasteAi">✨ Ranger les ${fp.unmatched.length} ligne(s) non reconnue(s) avec l’IA</button><small class="llm-hint"> Seules les lignes collées sont envoyées (Ollama en local si activé dans 🤖 IA) ; la valeur reste celle de la ligne.</small>`:''}`;
+  box.querySelectorAll('[data-fp-b]').forEach(sel=>sel.onchange=()=>{ const it=fp.buildings[Number(sel.dataset.fpB)].items[Number(sel.dataset.fpI)]; it.field=sel.value||null; it.dhZone=null; if(it.field){ const tmp={buildings:[],unmatched:[{building:'_',line:it.line,label:it.label,raw:it.raw}]}; applyFreePasteAi(tmp,{lines:[{n:1,field:it.field,value:it.raw}]}); const v=tmp.buildings[0]?.items[0]?.value; if(v===undefined){ toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); it.field=null; } else it.value=v; } renderFreePastePreview(); });
+  box.querySelectorAll('[data-fp-u]').forEach(sel=>sel.onchange=()=>{ if(!sel.value) return; const u=fp.unmatched[Number(sel.dataset.fpU)]; const tmp={buildings:fp.buildings,unmatched:[u]}; if(!applyFreePasteAi(tmp,{lines:[{n:1,field:sel.value,value:u.raw||u.line}]})) toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); else { fp.unmatched=fp.unmatched.filter(x=>x!==u); const last=fp.buildings.find(x=>x.name===u.building)?.items.slice(-1)[0]; if(last) last.ai=false; } renderFreePastePreview(); });
+  $('#freePasteAi')?.addEventListener('click',async e=>{ const btn=e.currentTarget; btn.disabled=true; btn.textContent='IA en cours…';
+    try{ const pr=freePastePrompt(fp.unmatched); const added=applyFreePasteAi(fp,parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:1500},{invokeFunction:invokeLlmCloudFunction}))); toast(added?`${added} ligne(s) rangée(s) par l’IA : vérifiez les colonnes.`:'L’IA n’a trouvé aucune colonne adaptée.',added?'success':'warn'); learn('free_paste_ai',{lines:pr.user.split('\n').length,added},activeProject()); }
+    catch(err){ toast(`IA indisponible : ${err?.message||err}`,'error'); }
+    renderFreePastePreview(); });
+}
+function applyFreePaste(){
+  const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
+  if(!vals.length){ toast('Aucune valeur rangée dans une colonne.','warn'); return; }
+  // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
+  const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
+  recomputeProject('');
+  const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
+  const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
+  let n=0; for(const v of vals){ const b=target(v.building); for(const [field,value] of Object.entries(v.values)){ const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre',page:'',excerpt:v.sources[field]||'',method:'manual:free-paste',provenanceNote:'Données collées : prioritaires sur les documents'}; n++; } }
+  applyManualValues(); $('#manualDataDialog')?.close(); freePaste=null; renderAll(); scheduleWorkspaceCheckpoint('collage libre',80);
+  learn('manual_paste',{mode:'free',buildings:vals.length,values:n},p); toast(`${n} valeur(s) appliquée(s) sur ${vals.length} bâtiment(s) — prioritaires sur les documents.`,'success');
+}
 function applyManualPaste(){
+  if(freePaste){ applyFreePaste(); return; }
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
   if(importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:'copier-coller'})){ $('#manualDataDialog')?.close(); return; }
@@ -10889,7 +11010,7 @@ function applyManualPaste(){
   recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
-  state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
+  state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; activeProject().freePasteRows=[]; freePaste=null; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
 }
 function uncertainKey(o){ return [o.building,o.field,String(o.value),o.docId,o.page].join('|'); }
 function visibleUncertain(){ const rejected=new Set(state.uncertainRejectedKeys||[]); return (state.result?.uncertain||[]).filter(o=>!rejected.has(uncertainKey(o))&&!Object.prototype.hasOwnProperty.call(state.manualValues||{},`${o.building}|${o.field}`)); }
@@ -11938,7 +12059,7 @@ function applyManualValuesToProject(project){
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
-  if(!valid.length&&!(project.manualPasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
+  if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
   applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
@@ -12067,6 +12188,30 @@ function renderSearches(wrap=$('#summaryView')){
   wrap.querySelectorAll('[data-srch-del]').forEach(b=>b.onclick=()=>{ const n=collectGridFromEditor(wrap,g); n.criteria.splice(Number(b.dataset.srchDel),1); storeGrid(n); renderSearches(wrap); });
   const ed=wrap.querySelector('.srch-editor'); if(ed) ed.addEventListener('change',e=>{ if(e.target.id==='srchAiDesc') return; storeGrid(collectGridFromEditor(wrap,g)); renderSearches(wrap); });
   $('#srchImport').onchange=async e=>{ const f=e.target.files?.[0]; if(!f) return; try{ if(f.size>2*1024*1024) throw new Error('fichier trop volumineux'); const o=JSON.parse(await f.text()); const gg=normalizeGrid(o); if(!gg.criteria.length) throw new Error('aucun critère'); if(gs.some(x=>x.id===gg.id)) gg.id=`g${Date.now().toString(36)}`; storeGrid(gg); toast(`Grille « ${gg.name} » importée.`,'success'); }catch(err){ toast(`Grille illisible : ${err?.message||err}`,'error'); } renderSearches(wrap); };
+}
+
+// v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
+// le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function sessionSnapshot({details=true}={}){
+  const grids=loadGrids();
+  return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
+    operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
+      const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
+        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{})]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
+      if(!details) return base;
+      return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+}
+function exportSessionJson(){
+  const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
+  downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
+  toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
+}
+// Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
+function openSearchObservatory(){
+  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
+  window.open('observatoire.html','extracterre-observatoire');
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
@@ -12295,7 +12440,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=()=>renderManualPastePreview(parseManualClipboard(manualPaste.value)); const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
@@ -12310,7 +12455,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog;
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};

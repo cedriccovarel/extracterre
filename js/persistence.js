@@ -138,6 +138,7 @@ function serializeProject(project={}){
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
     searchOverrides:safeJsonClone(project.searchOverrides,{}),
+    freePasteRows:safeJsonClone(project.freePasteRows,[]),
     ownerName:project.ownerName||'',
     expanded:project.expanded!==false
   };

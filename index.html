@@ -11,16 +11,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=2.6.2">
-  <script defer src="js/journal-config.js?v=2.6.2"></script>
-  <script defer src="js/security.js?v=2.6.2"></script>
+  <link rel="stylesheet" href="styles.css?v=2.7.0">
+  <script defer src="js/journal-config.js?v=2.7.0"></script>
+  <script defer src="js/security.js?v=2.7.0"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.6.2"></script>
-  <script defer src="js/app.bundle.js?v=2.6.2"></script>
+  <script defer src="js/cloud-config.js?v=2.7.0"></script>
+  <script defer src="js/app.bundle.js?v=2.7.0"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -41,7 +41,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v2.6.2</span>
+      <span class="ux-version-chip" id="version">v2.7.0</span>
     </div>
   </header>
 
@@ -55,6 +55,8 @@
         <button class="tab ux-nav-item" data-tab="rules" type="button"><span class="nav-ico">◫</span><span>Modèles de données</span></button>
         <button class="tab ux-nav-item" data-tab="diag" type="button"><span class="nav-ico">⌁</span><span>Diagnostics</span></button>
         <button class="ux-nav-item" id="exportBtn" type="button" disabled><span class="nav-ico">⇩</span><span>Exporter Excel</span></button>
+        <button class="ux-nav-item" id="exportSessionBtn" type="button"><span class="nav-ico">{ }</span><span>Exporter la session (.json)</span></button>
+        <button class="ux-nav-item" id="observatoryBtn" type="button"><span class="nav-ico">◔</span><span>Observatoire des recherches</span></button>
         <button class="ux-nav-item danger-nav" id="clearBtn" type="button"><span class="nav-ico">×</span><span>Effacer la session</span></button>
         <button class="ux-nav-item" id="lockBtn" type="button"><span class="nav-ico">⌑</span><span>Verrouiller</span></button>
         <button class="ux-nav-item" id="helpBtn" type="button" onclick="document.getElementById('helpDialog').showModal()"><span class="nav-ico">?</span><span>Aide / FAQ</span></button>
@@ -291,12 +293,12 @@
 <dialog id="manualDataDialog" class="targeted-dialog manual-data-dialog">
   <div class="targeted-dialog-shell manual-data-shell">
     <div class="targeted-dialog-head">
-      <div><h3>Données manuelles — copier-coller Excel</h3><p>Copiez les en-têtes et les valeurs directement depuis Excel ou Google Sheets. Les intitulés exacts restent prioritaires ; ExtracTerre rapproche aussi automatiquement les variantes d'exports (préfixes Opération / Opportunité / Nom de la société, anciens intitulés et synonymes) quand l'équivalence est suffisamment fiable.</p></div>
+      <div><h3>Données manuelles — copier-coller Excel ou texte libre</h3><p>Copiez les en-têtes et les valeurs directement depuis Excel ou Google Sheets. Les intitulés exacts restent prioritaires ; ExtracTerre rapproche aussi automatiquement les variantes d'exports (préfixes Opération / Opportunité / Nom de la société, anciens intitulés et synonymes) quand l'équivalence est suffisamment fiable.</p></div>
       <button id="manualDataClose" class="icon-btn targeted-close" type="button" aria-label="Fermer">×</button>
     </div>
     <div class="manual-data-body">
-      <div class="manual-data-info"><strong>Principe</strong><span>1 ligne = 1 bâtiment/opération. Les données manuelles complètent les documents selon la hiérarchie de sources définie. Une correction faite directement dans une cellule reste, elle, prioritaire.</span></div>
-      <label class="manual-paste-label">Zone copiée depuis Excel
+      <div class="manual-data-info"><strong>Principe</strong><span>Tableau Excel (en-têtes + lignes) : 1 ligne = 1 bâtiment ou 1 opération ; plusieurs opérations créent une tuile chacune ; les valeurs complètent les documents selon la hiérarchie de sources. Texte libre « libellé = valeur » (sections « Bâtiment G : ») : chaque ligne est rangée dans une colonne et <b>prime sur les documents</b>.</span></div>
+      <label class="manual-paste-label">Zone copiée depuis Excel, ou texte « libellé = valeur » par bâtiment (ex. « Bâtiment G : » puis « Cep = 37,7 »)
         <textarea id="manualDataPaste" spellcheck="false" placeholder="Code interne&#9;Nom opération&#9;Bâtiment&#9;Nombre de logements&#10;OPE-000123&#9;Résidence Exemple&#9;Bâtiment A&#9;24"></textarea>
       </label>
       <div id="manualDataPreview" class="manual-data-preview"><div class="empty-small">Collez au minimum une ligne d’en-têtes puis une ligne de données.</div></div>
@@ -472,7 +474,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.6.2</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.7.0</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>
