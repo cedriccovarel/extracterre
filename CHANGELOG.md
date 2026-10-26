@@ -1,3 +1,11 @@
+# v2.7.6 — données manuelles définitives
+- Une donnée saisie, validée ou collée (texte libre ou tableau Excel) est définitive : aucune analyse ni fusion de
+  documents ne la remplace (y compris les règles DH le plus défavorable et RSET direct).
+- Bâtiment fusionné : la donnée manuelle suit le bâtiment cible ; bâtiment absent de l'analyse : il est recréé
+  (sauf s'il a été supprimé manuellement).
+- Revue : bouton « Supprimer » sur chaque donnée manuelle pour rendre le champ à l'analyse documentaire ;
+  « Vider » le collage efface aussi les valeurs du collage libre.
+
 # v2.7.5 — collage libre : bâtiments toujours créés
 - Les bâtiments d'un collage libre sont créés tels quels : jamais rattachés automatiquement à un bâtiment « maître »
   d'un RSET ni à un nom voisin (une fusion manuelle reste possible) ; un bâtiment supprimé lors d'un essai précédent

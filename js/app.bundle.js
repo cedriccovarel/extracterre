@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.7.5 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.7.6 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.7.5';
+const APP_VERSION='2.7.6';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -7792,7 +7792,7 @@ function routeAndDeduplicate(raw,rules){
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
   const learnedRaw=applyLearningBoosts(raw);
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
-  let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
+  let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building].join('|'); if(!agreement.has(k)) agreement.set(k,new Set()); agreement.get(k).add(o.docId); }
   routed=routed.map(o=>{ const n=agreement.get([o.field,valueKey(o.value),o.building].join('|'))?.size||1; const boost=n>=3?0.05:n>=2?0.03:0; return {...o,confidence:Math.max(0,Math.min(1,o.confidence+boost)),agreementSources:n}; });
@@ -7917,6 +7917,8 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
       // Elle reste disponible dans la file « À vérifier » pour éviter les faux positifs.
       let pool=main.length?main:secondary;
       if(!pool.length) continue;
+      // v2.7.6 — donnée saisie/collée manuellement : définitive, aucune source documentaire ni règle (DH, RSET direct) ne la remplace.
+      { const definitive=pool.filter(o=>o.manualDefinitive); if(definitive.length) pool=definitive; }
       const insulationField=/^(?:wall|floor|roof)_insulation(?:_|$)/.test(f.key);
       const directRset=insulationField?pool.filter(o=>!o.libraryDerived&&[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020].includes(o.docType)):[];
       if(directRset.length) pool=directRset;
@@ -11019,7 +11021,7 @@ function manualPasteOccurrences(project=activeProject()){
     for(const [field,value] of Object.entries(row.values||{})){
       if(field==='building'||value===null||value===undefined||value==='') continue;
       const def=FIELD_MAP[field]; if(!def) continue;
-      out.push({field,value,building,docId:`manual-paste-${project.id}`,fileName:'Données manuelles — copier-coller Excel',docType:DOC_TYPES.MANUAL,page:row.sourceRow||++n,excerpt:`${def.label} = ${String(value)}`.slice(0,420),confidence:.995,method:'manual:excel-paste',unit:'',origin:'Entrée manuelle — copier-coller Excel',provenanceNote:'Valeur fournie dans l’encart Données manuelles. Elle complète les sources documentaires selon l’ordre de priorité défini.'});
+      out.push({field,value,building,docId:`manual-paste-${project.id}`,fileName:'Données manuelles — copier-coller Excel',docType:DOC_TYPES.MANUAL,userValidated:true,manualDefinitive:true,page:row.sourceRow||++n,excerpt:`${def.label} = ${String(value)}`.slice(0,420),confidence:.995,method:'manual:excel-paste',unit:'',origin:'Entrée manuelle — copier-coller Excel',provenanceNote:'Valeur fournie dans l’encart Données manuelles : définitive, prioritaire sur les documents.'});
     }
   }
   return out;
@@ -11113,7 +11115,7 @@ function applyManualPaste(){
   recomputeProject(`${parsed.rows.length} ligne(s) manuelle(s) intégrée(s) · ${parsed.recognized} colonne(s) reconnue(s).`);
 }
 function clearManualPaste(){
-  state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; activeProject().freePasteRows=[]; freePaste=null; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
+  state.manualPasteRaw=''; state.manualPasteRows=[]; state.manualPasteColumns=[]; activeProject().freePasteRows=[]; for(const [k,m] of Object.entries(state.manualSources||{})) if(m?.method==='manual:free-paste'){ delete state.manualValues[k]; delete state.manualSources[k]; } freePaste=null; const ta=$('#manualDataPaste'); if(ta) ta.value=''; renderManualPastePreview({rows:[],columns:[],unrecognized:[],recognized:0}); if(state.result) recomputeProject('Données manuelles copiées-collées supprimées.');
 }
 function uncertainKey(o){ return [o.building,o.field,String(o.value),o.docId,o.page].join('|'); }
 function visibleUncertain(){ const rejected=new Set(state.uncertainRejectedKeys||[]); return (state.result?.uncertain||[]).filter(o=>!rejected.has(uncertainKey(o))&&!Object.prototype.hasOwnProperty.call(state.manualValues||{},`${o.building}|${o.field}`)); }
@@ -11646,7 +11648,7 @@ function reviewFields(group,profile){ const keys=[...(group.keys||[]),...(group.
 function reviewEntry(building,def){
   const r=state.result, row=r?.rows?.find(x=>x.building===building); const v=row?.[def.key];
   const src=r?.finals?.find(o=>o.field===def.key&&o.building===building)||r?.finals?.find(o=>o.field===def.key&&o.building==='Bâtiment unique');
-  const manual=Object.prototype.hasOwnProperty.call(state.manualValues||{},`${building}|${def.key}`);
+  const manual=Object.prototype.hasOwnProperty.call(state.manualValues||{},`${building}|${def.key}`)||!!src?.manualDefinitive;
   const cands=visibleUncertain().filter(o=>o.field===def.key&&(o.building===building||o.building==='Bâtiment unique')).sort((a,b)=>b.confidence-a.confidence);
   if(isBlank(v)&&!(reviewState.dismissed||[]).includes(`${building}|${def.key}`)){ const d=derivedProposal(row,def.key); if(d) cands.unshift({...d,building}); }
   const status=!isBlank(v)?(manual?'manual':'ok'):cands.length?'review':'missing';
@@ -11673,6 +11675,14 @@ function setManualValue(building,field,raw,meta=null){
   learn('manual_override',{building,field,label:def.label,previousValue:previous??null,newValue:value,source:meta?.method||'review_inline_edit'},activeProject());
   applyManualValues(); return true;
 }
+// v2.7.6 — seule une suppression manuelle libère un champ saisi/collé : l'analyse documentaire reprend alors la main.
+function removeManualValue(building,field){
+  const p=activeProject(), key=`${building}|${field}`, same=b=>b===building||canonicalBuilding(b)===building||(b==='Bâtiment unique'&&(p.result?.rows||[]).length<=1);
+  delete p.manualValues[key]; delete p.manualSources[key];
+  for(const r of p.freePasteRows||[]) if(r.building&&same(r.building)&&r.values) delete r.values[field];
+  for(const r of p.manualPasteRows||[]) if(same(String(r.values?.building||'Bâtiment unique').trim()||'Bâtiment unique')&&r.values) delete r.values[field];
+  learn('manual_override',{building,field,label:FIELD_MAP[field]?.label||field,newValue:null,source:'manual_removed'},p);
+}
 function acceptCandidate(c){ if(c.synthetic){ setManualValue(c.building==='Bâtiment unique'?reviewState.building:(c.building||reviewState.building),c.field,c.value,{docId:'',fileName:'Valeur déduite',page:'',excerpt:c.excerpt,method:'manual:derived-validated',provenanceNote:c.excerpt}); return; } const key=`${c.building==='Bâtiment unique'?reviewState.building:c.building}|${c.field}`; state.manualValues[key]=c.value;
   state.manualSources[key]={docId:c.docId,fileName:c.fileName,page:c.page,excerpt:c.excerpt,method:'manual:uncertain-candidate-validated',provenanceNote:`Candidat ${Math.round(c.confidence*100)} % validé dans la revue.`};
   learn('uncertain_decision',{decision:'accept',building:c.building,field:c.field,label:FIELD_MAP[c.field]?.label||c.field,value:c.value,confidence:c.confidence,source:{fileName:c.fileName,page:c.page,method:c.method||'',excerpt:c.excerpt||''}},activeProject());
@@ -11693,14 +11703,14 @@ function renderReview(){
   const all=groups.filter(g=>!g.admin&&g.optional!==profile).flatMap(g=>g.entries); const count=s=>all.filter(e=>s.includes(e.status)).length;
   const pass=e=>(reviewState.filter==='all'||(reviewState.filter==='todo'&&['missing','review'].includes(e.status))||(reviewState.filter==='review'&&e.status==='review')||(reviewState.filter==='done'&&['ok','manual'].includes(e.status)))&&(!q||normLower(e.def.label).includes(q)||normLower(formatValue(e.v)).includes(q));
   const pill={ok:'Retenu',manual:'Saisi',review:'À vérifier',missing:'À compléter'};
-  const srcText=e=>e.manual?(state.manualSources?.[`${B}|${e.def.key}`]?.fileName||'Saisie manuelle'):e.src?`${e.src.fileName}${e.src.page?` · p. ${e.src.page}`:''}`:'';
+  const srcText=e=>e.manual?(state.manualSources?.[`${B}|${e.def.key}`]?.fileName||e.src?.fileName||'Saisie manuelle'):e.src?`${e.src.fileName}${e.src.page?` · p. ${e.src.page}`:''}`:'';
   const conf=e=>e.src&&!e.manual&&Number.isFinite(e.src.confidence)?`<span class="rv-conf ${e.src.confidence>=.9?'high':'mid'}" title="Confiance">${Math.round(e.src.confidence*100)} %</span>`:'';
   const unit=d=>d.unit||(/thickness/.test(d.key)?'mm':/_r$/.test(d.key)?'m².K/W':/^ubat/.test(d.key)?'W/m².K':/^cep(?!_gain)/.test(d.key)?'kWhEP/m².an':/gain/.test(d.key)?'%':/^tic/.test(d.key)?'°C':d.key==='shab'?'m²':'');
   const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
     const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}`);
     const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
     return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value">${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
-      <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
+      <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${e.manual?`<button type="button" class="rv-btn rv-ghost" data-rv-unset="${k}" title="Supprimer la donnée manuelle : l’analyse des documents reprend ce champ">Supprimer</button>`:''}${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
   const tabs=buildings.map(b=>{ const c=reviewCompletion(b,profile); return `<button type="button" class="rv-bld ${b===B?'active':''}" data-rv-building="${escapeHtml(b)}"><span>${escapeHtml(b.replace(/^Bâtiment\s+/,''))}</span><span class="rv-bld-bar" style="--p:${c.pct}%"></span><small>${c.filled}/${c.total}</small></button>`; }).join('');
   const comp=reviewCompletion(B,profile);
   const groupHtml=groups.map(g=>{ const shown=g.entries.filter(pass); if(!shown.length) return ''; const filled=g.entries.filter(e=>['ok','manual'].includes(e.status)).length;
@@ -11729,6 +11739,7 @@ function renderReview(){
   $$('#summaryView [data-rv-save]').forEach(b=>b.onclick=()=>save(b.dataset.rvSave));
   $$('#summaryView [data-rv-input]').forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(i.dataset.rvInput); } else if(e.key==='Escape'){ e.preventDefault(); reviewState.editing=''; renderReview(); focusReviewRow(i.dataset.rvInput,0); } });
   $$('#summaryView [data-rv-doc]').forEach(b=>b.onclick=()=>{ const e=find(b.dataset.rvDoc); openManualAnalysisFor(B,b.dataset.rvDoc,e?.src?.docId||e?.cands?.[0]?.docId||'',e?.src?.page||e?.cands?.[0]?.page||null); });
+  $$('#summaryView [data-rv-unset]').forEach(b=>b.onclick=()=>{ const k=b.dataset.rvUnset; removeManualValue(B,k); recomputeProject(''); reviewAfterChange(`${FIELD_MAP[k].label} : donnée manuelle supprimée, valeur reprise de l’analyse.`); focusReviewRow(k,0); });
   $$('#summaryView [data-rv-copy]').forEach(b=>b.onclick=()=>{ const n=copyToOtherBuildings(B,b.dataset.rvCopy); if(n) reviewAfterChange(`${FIELD_MAP[b.dataset.rvCopy].label} recopié dans ${n} bâtiment${n>1?'s':''}.`); else toast('Les autres bâtiments ont déjà une valeur pour ce champ.','info'); });
   $$('#summaryView [data-rv-accept]').forEach(b=>b.onclick=()=>{ const k=b.dataset.rvAccept; const c=find(k)?.cands?.[Number(b.dataset.i)];
     if(!c){ toast('Proposition introuvable : rechargez la revue.','warn'); renderReview(); return; }
@@ -12157,13 +12168,24 @@ function manualOverride(building,field){
 
 function applyManualValuesToProject(project){
   const result=project?.result; if(!result) return;
+  const deleted=new Set(project.deletedBuildings||[]), alias=Object.fromEntries((result.buildingAliases||[]).map(a=>[a.source,a.target]));
   for(const [key,value] of Object.entries(project.manualValues||{})){
-    const sep=key.indexOf('|'); if(sep<0) continue; const building=key.slice(0,sep), field=key.slice(sep+1); const row=result.rows.find(r=>r.building===building); if(!row) continue;
+    const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1); const row=manualRow(result,raw,deleted,alias); if(!row) continue; const building=row.building;
+    if(building!==raw&&Object.prototype.hasOwnProperty.call(project.manualValues,`${building}|${field}`)) continue;
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; result.finals.push(manual); result.detailed.push(manual);
   }
   applyComparisonBases(result);
+}
+// v2.7.6 — une donnée manuelle est définitive : bâtiment fusionné → elle suit sa cible ; bâtiment absent de l'analyse → il est recréé (sauf suppression manuelle).
+function manualRow(result,building,deleted,alias){
+  const rows=result.rows; let row=rows.find(r=>r.building===building)||rows.find(r=>r.building===alias[building]);
+  if(row) return row;
+  if(building==='Bâtiment unique') return rows.length===1?rows[0]:null;
+  if(deleted.has(building)) return null;
+  if(rows.length===1&&rows[0].building==='Bâtiment unique'&&!Object.keys(rows[0]).some(k=>k!=='building'&&k!=='operation'&&k!=='operation_name'&&!isBlank(rows[0][k]))) rows.splice(0,1);
+  row={building,operation:result.operation}; rows.push(row); if(Array.isArray(result.buildings)&&!result.buildings.includes(building)) result.buildings.push(building); return row;
 }
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
 function rebuildProjectFromCheckpoints(project){
