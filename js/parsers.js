@@ -2034,7 +2034,42 @@ export function parseDocument(doc){
     const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
     out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
   }
+  // v2.6.0 — libellés d'études relevés à la main dans le pack du 26/10/2026 (Tic / Tic réf., étiquettes DPE).
+  if(!doc.__skipDedicated&&!doc?.read?.re2020&&STUDY_LABEL_TYPES.has(doc.type)){
+    const have=new Set(out.map(o=>`${o.building}|${o.field}`));
+    out=[...out,...parseStudyLabelPatterns(doc).filter(o=>!have.has(`${o.building}|${o.field}`))];
+  }
   return sanitizeOccurrences(out);
+}
+const STUDY_LABEL_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.CCTP,DOC_TYPES.SURFACE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
+const STUDY_BEFORE=/\b(?:etat\s+(?:initial|existant|actuel)|avant\s+travaux|existant|initial(?:e)?|actuel(?:le)?)\b/, STUDY_AFTER=/\b(?:etat\s+(?:projet|final|renove)|apres\s+travaux|projet|renove|final(?:e)?)\b/;
+// « Tic | 26.19 °C | 28.98 °C | Conforme » ; « Groupe 1 26.14 °C 28.57 °C » sous l'en-tête « Projet Référence » ;
+// « Lettre étiquette D » ; « Etat existant 185.7 0.82 D F » / « Etat projet 86.1 0.567 C D ». Rien n'est déduit :
+// chaque valeur est écrite telle quelle dans la ligne citée.
+export function parseStudyLabelPatterns(doc){
+  const out=[]; const num=x=>parseFrNumber(x);
+  for(const page of doc.read?.pages||[]){
+    const L=page.lines||[]; const low=L.map(l=>normLower(l.text||''));
+    let bestTic=null;
+    for(let i=0;i<L.length;i++){
+      const t=low[i]; let m;
+      if((m=t.match(/^tic\s*\|?\s*(\d{2}[.,]\d{1,2})\s*°?\s*c\s*\|?\s*(\d{2}[.,]\d{1,2})\s*°?\s*c\b/))){ push(out,occ(doc,page,L[i],'tic',num(m[1]),'study:tic-row',0.92,'°C')); push(out,occ(doc,page,L[i],'tic_ref',num(m[2]),'study:tic-row',0.92,'°C')); }
+      else if((m=t.match(/^groupe\s+\S{1,12}\s+(\d{2}[.,]\d{1,2})\s*°\s*c\s+(\d{2}[.,]\d{1,2})\s*°\s*c\s*$/))&&low.slice(Math.max(0,i-3),i).some(x=>/projet\s+r[eé]f[eé]rence|projet\s*\|?\s*ref/.test(x))){
+        const tic=num(m[1]); if(!bestTic||tic>bestTic.tic) bestTic={tic,ref:num(m[2]),line:L[i]}; }
+      if((m=t.match(/lettre\s+(?:d.)?etiquette\s*:?\s*([a-g])\b/))){
+        const prev=low.slice(Math.max(0,i-2),i+1).join(' '); const kind=/emission|\bges\b|co2|climat/.test(prev)?'ges':/consommation|kwh|energ/.test(prev)?'energy':null;
+        const ctx=low.slice(Math.max(0,i-12),i+1).reverse().find(x=>STUDY_BEFORE.test(x)||STUDY_AFTER.test(x))||'';
+        const phase=STUDY_BEFORE.test(ctx)?'before':STUDY_AFTER.test(ctx)?'after':null;
+        if(kind&&phase) push(out,occ(doc,page,L[i],`dpe_${kind}_${phase}`,m[1].toUpperCase(),'study:lettre-etiquette',0.88));
+      }
+      if((m=t.match(/^etat\s+(existant|initial|actuel|projet|renove|final)\s+(\d+(?:[.,]\d+)?)\s+(\d[.,]\d+)\s+([a-g])\s+([a-g])\s*$/))&&low.slice(Math.max(0,i-4),i).some(x=>/kwh|etiquette|classe|ges|ubat/.test(x))){
+        const phase=/existant|initial|actuel/.test(m[1])?'before':'after';
+        push(out,occ(doc,page,L[i],`dpe_energy_${phase}`,m[4].toUpperCase(),'study:etat-row',0.86)); push(out,occ(doc,page,L[i],`dpe_ges_${phase}`,m[5].toUpperCase(),'study:etat-row',0.86));
+      }
+    }
+    if(bestTic){ push(out,occ(doc,page,bestTic.line,'tic',bestTic.tic,'study:tic-groupe',0.9,'°C')); push(out,occ(doc,page,bestTic.line,'tic_ref',bestTic.ref,'study:tic-groupe',0.9,'°C')); }
+  }
+  return out;
 }
 const THERMAL_PATTERN_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
 function parseFinancialIdentity(doc){

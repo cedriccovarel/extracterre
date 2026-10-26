@@ -322,6 +322,11 @@ export function applyComparisonBases(result){
       result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[ref]?.label||ref} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (réf − valeur) / réf = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
       row[gain]=calc;
     }
+    // v2.6.0 — période de construction déduite de l'année lue (proposition validée 46 fois sur 46 dans le pack du 26/10/2026).
+    const y=numOrNull(row.construction_year), ys=fin('construction_year');
+    if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
+      if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
+      result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
   }
   return result;
 }

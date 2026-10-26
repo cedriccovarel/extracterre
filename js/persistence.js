@@ -137,6 +137,8 @@ function serializeProject(project={}){
     uncertainRejectedKeys:safeJsonClone(project.uncertainRejectedKeys,[]),
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
+    searchOverrides:safeJsonClone(project.searchOverrides,{}),
+    ownerName:project.ownerName||'',
     expanded:project.expanded!==false
   };
 }

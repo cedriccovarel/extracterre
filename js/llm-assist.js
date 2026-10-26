@@ -93,7 +93,14 @@ export function parseLlmJson(text){
   const clean=String(text||'').replace(/```json|```/g,'').trim();
   const start=clean.indexOf('{'), end=clean.lastIndexOf('}');
   if(start<0||end<=start) throw new Error('Réponse IA non JSON.');
-  const obj=JSON.parse(clean.slice(start,end+1));
+  let obj;
+  try{ obj=JSON.parse(clean.slice(start,end+1)); }
+  catch(err){
+    // v2.6.0 — réponse coupée par la limite de jetons (2 erreurs « Expected ',' or ']' » dans le pack) : on garde les
+    // propositions complètes, chacune restant vérifiée mot pour mot ensuite.
+    const cut=clean.slice(start).lastIndexOf('}');
+    try{ obj=JSON.parse(clean.slice(start,start+cut+1).replace(/,\s*$/,'')+']}'); }catch{ throw err; }
+  }
   return Array.isArray(obj?.proposals)?obj.proposals:[];
 }
 
@@ -192,6 +199,12 @@ export async function checkOllama(model=LLM_PROVIDERS.ollama.defaultModel,fetchI
   }catch{ return {ok:false,models:[],hasModel:false,error:OLLAMA_UNREACHABLE}; }
 }
 
+// v2.6.0 — appel libre (paramétrage des recherches) : même transport que l'assistance, sans document ni vérification.
+export async function llmComplete({system,user,maxTokens=1500},{config=null,fetchImpl=null,invokeFunction=null}={}){
+  const cfg=config||getLlmConfig();
+  if(cfg.mode==='off') throw new Error('Assistance IA désactivée : activez « IA locale (Ollama) » dans 🤖 IA.');
+  return (await llmTransport({provider:cfg.provider,model:cfg.model,max_tokens:maxTokens,system,messages:[{role:'user',content:user}]},cfg,{fetchImpl,invokeFunction})).text;
+}
 // Point d'entrée : renvoie les occurrences vérifiées (pour la fenêtre ✓ / ✕) et les rejets motivés.
 export async function runLlmAssist(doc,{missingFields=null,config=null,fetchImpl=null,invokeFunction=null}={}){
   const cfg=config||getLlmConfig();

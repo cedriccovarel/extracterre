@@ -1,16 +1,17 @@
 import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
 import {classifyDocument} from './classifier.js';
-import {readFile,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
+import {readFile,readSpreadsheet,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
 import {analyzeDocuments,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
-import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType} from './utils.js';
+import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
-import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
+import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
+import {normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
@@ -176,6 +177,7 @@ const RESULT_VIEWS = Object.freeze({
     {title:'IC énergie — postes',keys:['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   economics:{label:'Économie',groups:[]},
+  searches:{label:'Recherches',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
@@ -207,6 +209,76 @@ function renderResultWorkspaceControls(){
   const i=Math.max(0,state.projects.findIndex(p=>p.id===state.activeProjectId)); const prev=$('#stickyPrevProject'),next=$('#stickyNextProject'); if(prev) prev.disabled=i<=0; if(next) next.disabled=i>=state.projects.length-1;
   const sticky=$('#resultStickyBar'); if(sticky) sticky.hidden=!state.projects.some(p=>(p.docs||[]).length||p.result);
   syncStickyResultTabs(); renderResultNavigator();
+}
+// v2.6.0 — page principale en tuiles : une tuile par opération (n° de contrat a minima), regroupées en macro-tuiles par
+// maître d'ouvrage dès qu'un maître d'ouvrage est connu (import Excel / copier-coller, contrat, livret…).
+const NO_OWNER='Maître d’ouvrage non renseigné';
+function projectIdentity(p){
+  const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
+  const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
+  return {contract:pick('contract_number')||ev.fin_contract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
+}
+function projectCompletion(p){
+  const rows=p?.result?.rows||[]; if(!rows.length) return 0; const prof=projectProfile(p);
+  const defs=REVIEW_GROUPS.filter(g=>!g.admin&&g.optional!==prof).flatMap(g=>reviewFields(g,prof)); if(!defs.length) return 0;
+  const ratios=rows.map(r=>defs.filter(d=>!isBlank(r[d.key])).length/defs.length);
+  return Math.round(ratios.reduce((a,b)=>a+b,0)/ratios.length*100);
+}
+const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
+function renderTiles(wrap){
+  const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+  const grouped=items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
+  if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
+  const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
+  let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`;
+  if(grouped&&!state.overviewOwner){
+    const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+    sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
+    body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
+      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
+  } else {
+    const xs=grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items;
+    if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; }
+    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
+      <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
+      <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
+      <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
+  }
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(title)}</h3><p>${escapeHtml(sub)} · une tuile par opération ; cliquez pour ouvrir la fiche.</p></div><span class="badge doc">${items.length} opération(s)</span></div><div class="op-tiles">${body}</div></div>`;
+  wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; renderSummary(); });
+  wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; renderSummary(); });
+  wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
+  wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
+}
+// Tableau d'opérations (Excel importé ou collé) : une opération par n° de contrat / code interne / nom d'opération.
+function operationKey(v={}){ return String(v.contract_number||v.internal_code||v.operation_name||'').trim(); }
+function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status==='ready'); p.result=analyzeDocuments(valid,state.rules,p.operationName||'',p.buildingOverrides||{},manualPasteOccurrences(p)); applyDeletedBuildings(p); p.result.documentsCount=valid.length; applyManualValuesToProject(p); }
+function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
+  const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
+  if(groups.size<2) return false;
+  let created=0,updated=0;
+  for(const [k,rs] of groups){
+    let p=state.projects.find(x=>{ const id=projectIdentity(x); return id.contract===k||id.code===k||(!id.contract&&!id.code&&id.name===k); });
+    if(p) updated++; else { p=state.projects.find(x=>!(x.docs||[]).length&&!x.result&&!(x.manualPasteRows||[]).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; }
+    const v=rs[0].values||{}; p.manualPasteRows=rs; p.manualPasteColumns=columns; p.manualPasteRaw='';
+    if(!p.operationName) p.operationName=String(v.operation_name||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
+    computeProjectResult(p);
+  }
+  state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
+  learn('manual_paste',{rows:rows.length,operations:groups.size,created,updated,source,split:true},activeProject());
+  toast(`${groups.size} opérations importées (${source}) : ${created} créée(s), ${updated} mise(s) à jour.`,'success'); return true;
+}
+// Classeur Excel : s'il liste plusieurs opérations (contrat / code interne), il est réparti en opérations au lieu d'être lu comme un document.
+async function addSpreadsheetOrOperations(file,specializedFamily,opts){
+  try{
+    const read=await readSpreadsheet(file);
+    for(const page of read.pages||[]){
+      const tsv=(page.lines||[]).map(l=>(Array.isArray(l.cells)?l.cells:[l.text]).map(c=>String(c??'').replace(/[\t\r\n]+/g,' ')).join('\t')).join('\n');
+      const parsed=parseManualClipboard(tsv); const keys=new Set(parsed.rows.map(r=>operationKey(r.values)).filter(Boolean));
+      if(keys.size>=2&&parsed.columns.some(c=>['contract_number','internal_code'].includes(c.def?.key))&&importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:file.name})) return;
+    }
+  }catch{}
+  addFiles([file],specializedFamily,{...opts,skipOperationCheck:true});
 }
 function showProjectsOverview(){ state.resultWorkspaceMode='overview'; switchTab('summary'); renderSummary(); renderResultWorkspaceControls(); scheduleWorkspaceCheckpoint('vue synthèse'); }
 function moveProject(delta){ const i=state.projects.findIndex(p=>p.id===state.activeProjectId),p=state.projects[i+delta]; if(p) activateProject(p.id); }
@@ -450,6 +522,7 @@ function addFiles(fileList,specializedFamily=null,opts={}){
   const allowed=/\.(pdf|xml|xlsx?|xls|json)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(/\.zip$/i.test(file.name)){ addQuestionnaireZip(file,specializedFamily,opts); continue; }
+    if(/\.xlsx?$/i.test(file.name)&&!opts.skipOperationCheck){ addSpreadsheetOrOperations(file,specializedFamily,opts); continue; }
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
     const rel=file._relativePath||file.webkitRelativePath||file.name;
     const existing=state.docs.find(d=>(d.relativePath||d.name)===rel&&d.size===file.size);
@@ -591,6 +664,7 @@ function renderManualPastePreview(parsed){
 function applyManualPaste(){
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
+  if(importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:'copier-coller'})){ $('#manualDataDialog')?.close(); return; }
   state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
@@ -1058,9 +1132,10 @@ function decorateProjectSections(wrap,fields){
 
 function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs(); syncStickyResultTabs();
-  if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td class="overview-actions"><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button><button class="overview-delete" data-overview-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">Supprimer</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); $$('#summaryView [data-overview-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.overviewDelete)); renderResultWorkspaceControls(); return; }
+  if(state.resultWorkspaceMode==='overview'){ renderTiles(wrap); renderResultWorkspaceControls(); return; }
   if(r&&normalizedResultViewKey(activeProject().resultView)==='review'){ renderProfileSwitch(); renderReview(); return; }
   if(normalizedResultViewKey(activeProject().resultView)==='economics'){ renderEconomic(wrap); renderResultWorkspaceControls(); return; }
+  if(normalizedResultViewKey(activeProject().resultView)==='searches'){ renderSearches(wrap); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
@@ -1686,6 +1761,117 @@ function renderEconomic(wrap=$('#summaryView')){
     renderEconomic(wrap); scheduleWorkspaceCheckpoint('donnée économique'); });
 }
 
+// v2.6.0 — onglet Recherches : grilles de critères modifiables (stockées sur ce poste), appliquées au projet actif.
+const GRIDS_KEY='extracterre.searchGrids.v1', GRID_ACTIVE_KEY='extracterre.searchGrid.active';
+let searchUi={editing:false,busy:''};
+function loadGrids(){ let g=[]; try{ g=JSON.parse(localStorage.getItem(GRIDS_KEY)||'[]'); }catch{} g=Array.isArray(g)?g.map(normalizeGrid):[]; return g.length?g:[normalizeGrid(SECURITY_GRID)]; }
+function saveGrids(gs){ try{ localStorage.setItem(GRIDS_KEY,JSON.stringify(gs)); }catch{ toast('Grilles non enregistrées : stockage local plein.','warn'); } }
+function activeGrid(gs=loadGrids()){ let id=''; try{ id=localStorage.getItem(GRID_ACTIVE_KEY)||''; }catch{} return gs.find(g=>g.id===id)||gs[0]; }
+function setActiveGrid(id){ try{ localStorage.setItem(GRID_ACTIVE_KEY,id); }catch{} }
+function storeGrid(grid){ const gs=loadGrids(); const g=normalizeGrid(grid); const i=gs.findIndex(x=>x.id===g.id); if(i>=0) gs[i]=g; else gs.push(g); saveGrids(gs); setActiveGrid(g.id); return g; }
+const searchCell=searchCellValue;
+function renderSearchEditor(g){
+  const crits=g.criteria, themes=g.themes, opt=(v,cur)=>`<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>`;
+  return `<section class="eco-group srch-editor"><h4>Paramétrage de la grille</h4>
+  <div class="srch-grid-meta"><label>Nom<input data-g="name" value="${escapeHtml(g.name)}"></label><label>Limiter aux documents dont le nom ou le type contient <small>(virgules ; vide = tous)</small><input data-g="docFilter" value="${escapeHtml(g.docFilter)}" placeholder="ex. CCTP, menuiserie"></label>
+  <label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
+  <h5>Thèmes</h5><div class="table-scroll"><table class="srch-table"><thead><tr><th>Thème</th><th>Critères à trouver (minimum)</th><th>Applicable seulement si</th></tr></thead><tbody>${themes.map((t,i)=>`<tr data-theme-row="${i}"><td><input data-t="name" value="${escapeHtml(t.name)}"></td><td><input data-t="min" type="number" min="0" value="${t.min}"></td><td><select data-t="applicableIf">${opt('',t.applicableIf)}toujours</option>${crits.map(c=>`${opt(c.id,t.applicableIf)}${escapeHtml(c.label.slice(0,70))}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
+  <h5>Critères <small>mots-clés séparés par des virgules ; sans accents ni majuscules obligatoires ; « re: » = expression régulière</small></h5>
+  <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
+    <button type="button" class="btn light" data-srch-ai="${i}" title="Proposer des mots-clés, du contexte et des exclusions avec l’IA">${searchUi.busy===`c${i}`?'…':'✨ Mots-clés IA'}</button><button type="button" class="icon-btn" data-srch-del="${i}" title="Supprimer le critère" aria-label="Supprimer le critère">×</button></div>
+    <div class="srch-crit-body"><label>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
+    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
+    <label>Précisions pour l’IA<input data-c="description" value="${escapeHtml(c.description)}" placeholder="ce que le critère doit couvrir, ce qu’il ne doit pas confondre"></label></div></div>`).join('')}</div>
+  <datalist id="srchThemes">${themes.map(t=>`<option value="${escapeHtml(t.name)}">`).join('')}</datalist>
+  <div class="srch-actions"><button type="button" class="btn secondary" data-srch="add-crit">+ Critère</button></div>
+  <h5>Créer une nouvelle grille avec l’IA</h5><div class="srch-ai-grid"><textarea id="srchAiDesc" rows="3" placeholder="Décrivez la recherche, ex. « surface habitable de chaque logement dans les tableaux de surfaces, en m², avec le type T1 à T5 »"></textarea><button type="button" class="btn primary" data-srch="ai-grid">${searchUi.busy==='grid'?'Création…':'✨ Créer la grille'}</button></div>
+  <small class="llm-hint">L’IA (Ollama en local si activé dans 🤖 IA) ne reçoit que la description des critères, jamais le contenu des documents. Vérifiez toujours les mots-clés proposés.</small></section>`;
+}
+function collectGridFromEditor(root,g){
+  const val=(el,k)=>el.querySelector(`[data-${k}]`);
+  const next={...g,name:root.querySelector('[data-g="name"]').value,docFilter:root.querySelector('[data-g="docFilter"]').value,description:root.querySelector('[data-g="description"]').value};
+  const themes=[...root.querySelectorAll('[data-theme-row]')].map(r=>({name:r.querySelector('[data-t="name"]').value.trim(),min:r.querySelector('[data-t="min"]').value,applicableIf:r.querySelector('[data-t="applicableIf"]').value,required:[]}));
+  // Renommage d'un thème : les critères suivent.
+  g.themes.forEach((t,i)=>{ if(themes[i]&&themes[i].name&&themes[i].name!==t.name) for(const c of g.criteria) if(c.theme===t.name) c.theme=themes[i].name; });
+  const crits=[...root.querySelectorAll('[data-crit-row]')].map(r=>{ const i=Number(r.dataset.critRow), c=g.criteria[i], f=k=>r.querySelector(`[data-c="${k}"]`);
+    return {...c,theme:f('theme').value.trim()||c.theme,label:f('label').value,kind:f('kind').value,keywords:f('keywords').value,context:f('context').value,exclude:f('exclude').value,window:f('window').value,unit:f('unit')?.value??c.unit,min:f('min')?f('min').value:c.min,max:f('max')?f('max').value:c.max,inverse:f('inverse').checked,description:f('description').value,_req:f('required').checked}; });
+  for(const t of themes) t.required=crits.filter(c=>c._req&&c.theme===t.name).map(c=>c.id);
+  return normalizeGrid({...next,themes,criteria:crits});
+}
+async function searchAiKeywords(i,wrap){
+  const g=activeGrid(); const c=g.criteria[i]; if(!c) return; searchUi.busy=`c${i}`; renderSearches(wrap);
+  try{ const pr=keywordPrompt(c,g); const o=parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:800},{invokeFunction:invokeLlmCloudFunction}));
+    const merge=(a,b)=>[...new Set([...a,...(Array.isArray(b)?b:[]).map(x=>String(x).trim()).filter(Boolean)])];
+    const before=c.keywords.length+c.context.length+c.exclude.length;
+    c.keywords=merge(c.keywords,o.keywords); c.context=merge(c.context,o.context); c.exclude=merge(c.exclude,o.exclude); storeGrid(g);
+    toast(`${c.keywords.length+c.context.length+c.exclude.length-before} terme(s) proposé(s) pour « ${c.label} » : vérifiez-les avant d’analyser.`,'success'); learn('search_grid_ai',{grid:g.name,criterion:c.label},activeProject());
+  }catch(err){ toast(`IA indisponible : ${err?.message||err}`,'error'); }
+  finally{ searchUi.busy=''; renderSearches(wrap); }
+}
+async function searchAiGrid(desc,wrap){
+  if(!desc.trim()){ toast('Décrivez d’abord la recherche à créer.','warn'); return; }
+  searchUi.busy='grid'; renderSearches(wrap);
+  try{ const pr=gridPrompt(desc.trim()); const o=parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:2500},{invokeFunction:invokeLlmCloudFunction}));
+    const g=storeGrid({...o,id:`g${Date.now().toString(36)}`,description:desc.trim()}); if(!g.criteria.length) throw new Error('aucun critère proposé');
+    searchUi.editing=true; toast(`Grille « ${g.name} » créée (${g.criteria.length} critère(s)) : relisez les mots-clés.`,'success'); learn('search_grid_ai',{grid:g.name,criteria:g.criteria.length},activeProject());
+  }catch(err){ toast(`Création impossible : ${err?.message||err}`,'error'); }
+  finally{ searchUi.busy=''; renderSearches(wrap); }
+}
+function renderSearches(wrap=$('#summaryView')){
+  if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
+  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov);
+  const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
+    const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
+    return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
+    ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
+      return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
+      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
+      <select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></div>`; }).join('')}</section>`; };
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+  <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>
+    <button type="button" class="btn ${searchUi.editing?'primary':'secondary'}" data-srch="edit">${searchUi.editing?'Fermer le paramétrage':'⚙ Paramétrer'}</button><button type="button" class="btn light" data-srch="new">+ Nouvelle</button><button type="button" class="btn light" data-srch="dup">Dupliquer</button>
+    <button type="button" class="btn light" data-srch="export">Exporter (.json)</button><label class="btn light" for="srchImport">Importer</label><input id="srchImport" type="file" accept=".json,application/json" hidden><button type="button" class="btn light danger" data-srch="delete">Supprimer</button></section>
+  ${g.description?`<p class="srch-desc">${escapeHtml(g.description)}</p>`:''}
+  ${searchUi.editing?renderSearchEditor(g):''}
+  ${!r.documents.length?`<div class="empty-state"><h3>Aucun document à lire</h3><p>Ajoutez et analysez des documents (CCTP, tableaux de surfaces…) dans ce projet${g.docFilter?`, dont le nom ou le type contient « ${escapeHtml(g.docFilter)} »`:''}.</p></div>`:''}
+  ${g.themes.map(themeHtml).join('')}
+  <small class="llm-hint">Chaque résultat cite le document, la page et la ligne. Les indices relevés ne valent pas conformité : vérifiez les citations ; « Auto » peut être remplacé par votre décision.</small>`;
+  $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
+  $('#srchGrid').onchange=e=>{ setActiveGrid(e.target.value); renderSearches(wrap); };
+  wrap.querySelectorAll('[data-srch-ov]').forEach(sel=>sel.onchange=()=>{ p.searchOverrides=p.searchOverrides||{}; const o=p.searchOverrides[g.id]=p.searchOverrides[g.id]||{}; if(sel.value) o[sel.dataset.srchOv]=sel.value; else delete o[sel.dataset.srchOv]; renderSearches(wrap); scheduleWorkspaceCheckpoint('décision recherche'); });
+  const act={edit:()=>{ searchUi.editing=!searchUi.editing; },
+    new:()=>{ storeGrid({id:`g${Date.now().toString(36)}`,name:'Nouvelle recherche',themes:[{name:'Critères',min:1}],criteria:[{theme:'Critères',label:'Nouveau critère',keywords:[]}]}); searchUi.editing=true; },
+    dup:()=>{ storeGrid({...g,id:`g${Date.now().toString(36)}`,name:`${g.name} (copie)`}); },
+    export:()=>{ downloadBlob(new Blob([JSON.stringify(g,null,2)],{type:'application/json'}),`ExtracTerre_recherche_${g.name.replace(/[^\w-]+/g,'_')}.json`); },
+    delete:()=>{ if(!confirm(`Supprimer la grille « ${g.name} » de ce poste ?`)) return; saveGrids(gs.filter(x=>x.id!==g.id)); },
+    'add-crit':()=>{ const n=collectGridFromEditor(wrap,g); n.criteria.push({id:`c${Date.now().toString(36)}`,theme:n.themes[0]?.name||'Critères',label:'Nouveau critère',kind:'presence',keywords:[],context:[],exclude:[],window:4}); storeGrid(n); },
+    'ai-grid':()=>{ searchAiGrid($('#srchAiDesc')?.value||'',wrap); return 'async'; }};
+  wrap.querySelectorAll('[data-srch]').forEach(b=>b.onclick=()=>{ if(act[b.dataset.srch]?.()!=='async') renderSearches(wrap); });
+  wrap.querySelectorAll('[data-srch-ai]').forEach(b=>b.onclick=()=>{ storeGrid(collectGridFromEditor(wrap,g)); searchAiKeywords(Number(b.dataset.srchAi),wrap); });
+  wrap.querySelectorAll('[data-srch-del]').forEach(b=>b.onclick=()=>{ const n=collectGridFromEditor(wrap,g); n.criteria.splice(Number(b.dataset.srchDel),1); storeGrid(n); renderSearches(wrap); });
+  const ed=wrap.querySelector('.srch-editor'); if(ed) ed.addEventListener('change',e=>{ if(e.target.id==='srchAiDesc') return; storeGrid(collectGridFromEditor(wrap,g)); renderSearches(wrap); });
+  $('#srchImport').onchange=async e=>{ const f=e.target.files?.[0]; if(!f) return; try{ if(f.size>2*1024*1024) throw new Error('fichier trop volumineux'); const o=JSON.parse(await f.text()); const gg=normalizeGrid(o); if(!gg.criteria.length) throw new Error('aucun critère'); if(gs.some(x=>x.id===gg.id)) gg.id=`g${Date.now().toString(36)}`; storeGrid(gg); toast(`Grille « ${gg.name} » importée.`,'success'); }catch(err){ toast(`Grille illisible : ${err?.message||err}`,'error'); } renderSearches(wrap); };
+}
+
+// v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
+function openExportDialog(){
+  let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
+  const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
+  const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+  dlg.innerHTML=`<form method="dialog" class="llm-form"><header class="llm-head"><h2>⇩ Exporter vers Excel</h2><button value="cancel" class="icon-btn" type="submit" aria-label="Fermer">×</button></header>
+  <div class="llm-body"><label class="exp-all"><input type="checkbox" id="expAll"> <strong>Tout ExtracTerre</strong> <small>${items.length} opération(s)</small></label>
+  ${owners.map((o,gi)=>`<fieldset class="exp-group"><legend><label><input type="checkbox" data-exp-owner="${gi}"> ${escapeHtml(o)}</label></legend>${items.filter(x=>ownerOf(x)===o).map(x=>`<label class="exp-op ${x.p.result?'':'off'}"><input type="checkbox" data-exp-p="${x.p.id}" data-exp-g="${gi}" ${x.p.result?'':'disabled'} ${x.p.id===state.activeProjectId&&x.p.result?'checked':''}> <span><b>${escapeHtml(x.id.contract||'Contrat non renseigné')}</b> · ${escapeHtml(x.id.name||projectTitle(x.p))}</span><small>${x.p.result?`${x.pct} %`:'non analysée'}</small></label>`).join('')}</fieldset>`).join('')}</div>
+  <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="expGo" class="btn primary" type="button">Exporter</button></footer></form>`;
+  const boxes=()=>[...dlg.querySelectorAll('[data-exp-p]:not(:disabled)')];
+  const sync=()=>{ const sel=boxes().filter(b=>b.checked); dlg.querySelectorAll('[data-exp-owner]').forEach(g=>{ const bs=boxes().filter(b=>b.dataset.expG===g.dataset.expOwner); g.checked=bs.length>0&&bs.every(b=>b.checked); g.indeterminate=!g.checked&&bs.some(b=>b.checked); });
+    const all=$('#expAll'); all.checked=boxes().length>0&&sel.length===boxes().length; all.indeterminate=!all.checked&&sel.length>0; $('#expGo').textContent=`Exporter ${sel.length} opération(s)`; $('#expGo').disabled=!sel.length; };
+  $('#expAll').onchange=e=>{ boxes().forEach(b=>b.checked=e.target.checked); sync(); };
+  dlg.querySelectorAll('[data-exp-owner]').forEach(g=>g.onchange=()=>{ boxes().filter(b=>b.dataset.expG===g.dataset.expOwner).forEach(b=>b.checked=g.checked); sync(); });
+  boxes().forEach(b=>b.onchange=sync);
+  $('#expGo').onclick=()=>{ const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.expP)); try{ exportProjectsExcel(state.projects.filter(p=>ids.has(p.id)),state.rules,{grids:loadGrids(),identity:projectIdentity}); dlg.close(); }catch(e){ toast(e.message,'error'); } };
+  sync(); dlg.showModal();
+}
+
 function renderOccurrences(){
   const r=state.result, wrap=$('#occView'); if(!r){wrap.innerHTML='<div class="empty-state">Aucune analyse.</div>';return;} const q=($('#occSearch').value||'').toLowerCase(), status=$('#occStatus').value;
   const rows=r.detailed.filter(o=>(!q||`${FIELD_MAP[o.field]?.label} ${o.value} ${o.fileName} ${o.excerpt}`.toLowerCase().includes(q))&&(!status||o.status===status));
@@ -1908,7 +2094,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
+  $('#exportBtn').onclick=openExportDialog;
   $$('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab)); $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});

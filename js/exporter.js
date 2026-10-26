@@ -1,5 +1,6 @@
 import {APP_VERSION,FIELD_DEFS,FIELD_MAP,MIN_RETAINED_CONFIDENCE} from './config.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,COST_CATEGORIES} from './economics.js';
+import {runSearchGrid,searchCellValue} from './recherches.js';
 import {INSULATION_LIBRARY_VERSION,INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 
 function aoaSheet(rows){ return XLSX.utils.aoa_to_sheet(rows); }
@@ -7,7 +8,7 @@ function autoWidth(ws,max=42){ const range=XLSX.utils.decode_range(ws['!ref']||'
 function projectTagsText(p){ return (p?.projectTags||[]).map(t=>t?.label).filter(Boolean).join(' ; '); }
 function projectName(p,index){ return (p?.customTitle||p?.operationName||p?.result?.operation||p?.label||`Projet ${index+1}`).trim(); }
 
-export function exportProjectsExcel(projects,rules){
+export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   if(!globalThis.XLSX) throw new Error('SheetJS non chargé.');
   const usable=(projects||[]).filter(p=>p?.result);
   if(!usable.length) throw new Error('Aucun projet analysé à exporter.');
@@ -44,6 +45,19 @@ export function exportProjectsExcel(projects,rules){
   const bg=[['Projet','Nom détecté','Bâtiment consolidé','Mode de regroupement']];
   usable.forEach((p,idx)=>{ const pname=projectName(p,idx); for(const a of p.result.buildingAliases||[]) bg.push([pname,a.source,a.target,a.mode]); });
   const wsBg=aoaSheet(bg); autoWidth(wsBg); XLSX.utils.book_append_sheet(wb,wsBg,'Regroupement bâtiments');
+
+  // v2.6.0 — recherches personnalisées : une feuille par grille ayant au moins un résultat, puis les citations.
+  const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
+  for(const grid of grids||[]){
+    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{})}));
+    if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
+    const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
+    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.map(c=>`${c.theme} — ${c.label}`)];
+    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.map(c=>searchCellValue(c,r.criteria[c.id]))])];
+    const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,`Rech. ${g.name}`.replace(/[\\/?*[\]:]/g,' ').slice(0,31));
+    for(const {x,r} of res) for(const c of g.criteria) for(const ev of r.criteria[c.id].evidence) cites.push([x.code,x.name,contract(x),g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]);
+  }
+  if(cites.length>1){ const ws=aoaSheet(cites); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,'Recherches — citations'); }
 
   const rr=[['Donnée','Sources principales','Sources secondaires','Sources interdites']];
   for(const f of FIELD_DEFS){ const r=rules[f.key]; rr.push([f.label,(r?.main||[]).join(' ; '),(r?.secondary||[]).join(' ; '),(r?.forbidden||[]).join(' ; ')]); }

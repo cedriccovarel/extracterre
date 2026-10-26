@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.5.0','version');
+eq(APP_VERSION, '2.6.0','version');
 const P=ls=>ls.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12}));
 const mk=(name,pages)=>{ const ps=pages.map((ls,k)=>{ const lines=P(ls); return {page:k+1,text:lines.map(l=>l.text).join('\n'),lines}; });
   const read={kind:'pdf',pages:ps,text:ps.map(p=>p.text).join('\n\f\n'),pageCount:ps.length};
@@ -92,7 +92,7 @@ eq(row.ventilation,'VMC Hygro B','valeur compatible plus précise retenue');
 // ---------- 4. Interface : suppression de projet et bandeau compact ----------
 const app=fs.readFileSync('./js/app.js','utf8'), css=fs.readFileSync('./styles.css','utf8');
 ok(/async function deleteProject\(id\)/.test(app)&&/deleteDocumentCheckpoint\(d\.id\)/.test(app),'suppression de projet (checkpoints compris)');
-ok(/data-result-project-delete/.test(app)&&/data-overview-delete/.test(app)&&/data-project-delete/.test(app),'boutons Supprimer : liste, synthèse, en-tête');
+ok(/data-result-project-delete/.test(app)&&/data-overview-delete|data-tile-delete/.test(app)&&/data-project-delete/.test(app),'boutons Supprimer : liste, synthèse, en-tête');
 ok(/\.ux-header,\.ux-header-clean\{height:60px/.test(css),'bandeau de 60 px');
 
 console.log(`v2.3.16 — ${n} vérifications OK (documents fictifs)`);

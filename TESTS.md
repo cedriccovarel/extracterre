@@ -1,3 +1,12 @@
+## v2.6.0 — tuiles, export à la carte, recherches personnalisées, pack du 26/10/2026
+- `test_v2_6_0.mjs` (38 vérifications, documents fictifs) : grille Sécurité (vrais / faux positifs observés dans des CCTP :
+  crémone de fenêtre ≠ serrure de porte, « SAS CABINET », barreaudage de clôture, 30 mm ≠ 30 m, porte basculante = indice
+  contraire), décision manuelle, filtre, grille utilisateur (surfaces en m², pluriels, entrée normalisée), prompts et appel
+  IA (Ollama simulé), motifs Tic / étiquettes / lignes d'état, garde-fous DPE / refroidissement / Ubat Ref, déduction 1948,
+  JSON IA coupé, présence des tuiles, de l'import multi-opérations et de la fenêtre d'export.
+- Vérifié hors dépôt : grille Sécurité sur 12 CCTP réels (378 pages) ; parcours Chrome (collage de 3 opérations / 2
+  maîtres d'ouvrage, macro-tuiles, 3 CCTP analysés, onglet Recherches, export à la carte).
+
 ## v2.5.0 — questionnaire financier et onglet Économie
 - `test_v2_5_0.mjs` (35 vérifications, questionnaire FICTIF à la mise en page V0.56, puis export JSON fictif : priorité sur le
   PDF, décimales, JSON refusé ou illisible, texte transmis échappé à l'affichage, données absentes du PDF) : classement, cellules reconstruites

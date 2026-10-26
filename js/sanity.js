@@ -18,7 +18,9 @@ export const EXTRACTION_RANGES=Object.freeze({
   wall_insulation_r:[0.2,20], roof_insulation_r:[0.2,25], floor_insulation_r:[0.2,20],
   ic_components:[20,4000], ic_site:[0,400], ic_energy:[5,3000], ic_construction:[20,5000], stock_c_per_m2:[0,400],
   ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
-  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100]
+  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100],
+  // v2.6.0 — pack du 26/10/2026 : « Ubat Ref 83 » (0,83 mal lu), émissions de GES par m².
+  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500]
 });
 const sn_NUM_FIELDS=new Set([...Object.keys(EXTRACTION_RANGES),...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`)]);
 const sn_YEAR_LIKE=/^(?:19|20)\d\d$/;
@@ -76,6 +78,11 @@ export function sanitizeOccurrence(o){
   if(/^envelope:structure-context/.test(m)&&/^(?:wall_structure|floor_structure|roof_structure)$/.test(f)&&dt==='RT Existant') return {...o,confidence:Math.min(o.confidence||0,0.72),reviewCap:0.72};
   // Gain Cep recalculé depuis une ligne de synthèse RSET (0/4) : à vérifier.
   if(/^rset:cep-summary-row/.test(m)&&f==='cep_gain') return {...o,confidence:Math.min(o.confidence||0,0.8),reviewCap:0.8};
+  // v2.6.0 — classes DPE : une lettre A à G, jamais une consommation (« 707 », « 312 ») ni un libellé
+  // (« CO2 initial : 21,00 kgeqCO2/m² ») — 9 corrections manuelles dans le pack du 26/10/2026.
+  if(/^dpe_(?:energy|ges)_(?:before|after)$/.test(f)){ const c=normalizeText(String(v??'')).trim().match(/^(?:(?:classe|etiquette|lettre)\s*(?:energie|ges)?\s*:?\s*)?([A-G])$/i); if(!c) return null; if(c[1].toUpperCase()!==v) return {...o,value:c[1].toUpperCase()}; }
+  // Refroidissement : un réseau de chaleur ou une chaudière n'est pas un système de froid (2 corrections « Réseau de chaleur → aucun »).
+  if(f==='cooling'&&/reseau\s+de\s+chaleur|chaudiere|fioul|fuel|bois|granule/i.test(normalizeText(String(v??'')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))) return null;
   if(!sn_NUM_FIELDS.has(f)) return o;
   const n=typeof v==='number'?v:Number(String(v).replace(',','.'));
   if(!Number.isFinite(n)) return o;

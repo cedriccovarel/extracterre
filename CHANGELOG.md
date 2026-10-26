@@ -1,3 +1,27 @@
+# v2.6.0 — Tuiles d'opérations, export à la carte, recherches personnalisées, pack du 26/10/2026
+- **Page principale en tuiles** : une tuile par opération (n° de contrat a minima, nom, code interne, taux de complétion,
+  documents / bâtiments / valeurs / alertes). Dès qu'un maître d'ouvrage est connu, les opérations sont rangées dans des
+  **macro-tuiles par maître d'ouvrage** (nombre d'opérations, dossiers complets, complétion moyenne) ; un clic ouvre ses
+  opérations. Complétion = part des champs de la revue renseignés (profil neuf / rénovation), moyenne des bâtiments.
+- **Tableau d'opérations importé ou collé** (Excel) : une opération par n° de contrat / code interne / nom d'opération,
+  avec son maître d'ouvrage (colonne « Maître d'ouvrage » / « société ») ; une opération existante est mise à jour.
+  Un classeur d'une seule opération reste lu comme avant.
+- **Export Excel** : fenêtre à cases à cocher — opérations une à une, par maître d'ouvrage, ou tout ExtracTerre.
+- **Onglet « Recherches »** : grilles de critères modifiables (thèmes et minimum de critères, critère obligatoire ou
+  conditionnel, mots-clés / synonymes, contexte à proximité, exclusions, type Présence / Nombre (unité, bornes) / Texte,
+  critère « indice contraire »), filtre sur les documents, import / export de grille (.json). Chaque résultat cite le
+  document, la page et la ligne ; décision manuelle possible (Oui / Non / Sans objet). L'IA (Ollama en local) propose les
+  mots-clés d'un critère ou crée une grille depuis une description, sans recevoir le contenu des documents.
+  Grille fournie : **Sécurité des logements** (fenêtres de RDC, portes d'entrée, abords, halls, parkings, étages).
+  Export : une feuille par grille utilisée + « Recherches — citations ».
+- **Pack d'amélioration du 26/10/2026** (1 225 événements depuis la v2.4.0) :
+  - classes DPE : une lettre A à G seulement (« 707 », « CO2 initial : 21,00 kgeqCO2/m² » rejetés) ;
+  - refroidissement : un réseau de chaleur ou une chaudière n'est plus proposé ; Ubat Ref borné (83 au lieu de 0,83) ;
+  - nouveaux motifs d'études : « Tic | 26.19 °C | 28.98 °C », « Groupe 1 26.14 °C 28.57 °C » (en-tête Projet / Référence),
+    « Lettre étiquette D » (énergie / GES, avant / après selon le contexte), « Etat existant / projet … D F » ;
+  - période de construction (avant / après 1948) déduite de l'année lue — proposition validée 46 fois sur 46 ;
+  - réponse IA coupée par la limite de jetons : les propositions complètes sont gardées (toujours vérifiées).
+
 # v2.5.0 — Données économiques : questionnaire financier Prestaterre, onglet Économie, 2e feuille Excel
 - **Onglet « Économie »** à la suite de Général / Thermique / Carbone / Enveloppe (l'entrée « Données économiques » de la
   barre latérale est retirée). Il présente la nomenclature économique complète (321 colonnes), groupée : questionnaire &

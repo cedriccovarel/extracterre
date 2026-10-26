@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.5.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.6.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.5.0';
+const APP_VERSION='2.6.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -5295,7 +5295,9 @@ const EXTRACTION_RANGES=Object.freeze({
   wall_insulation_r:[0.2,20], roof_insulation_r:[0.2,25], floor_insulation_r:[0.2,20],
   ic_components:[20,4000], ic_site:[0,400], ic_energy:[5,3000], ic_construction:[20,5000], stock_c_per_m2:[0,400],
   ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
-  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100]
+  bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100],
+  // v2.6.0 — pack du 26/10/2026 : « Ubat Ref 83 » (0,83 mal lu), émissions de GES par m².
+  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500]
 });
 const sn_NUM_FIELDS=new Set([...Object.keys(EXTRACTION_RANGES),...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`)]);
 const sn_YEAR_LIKE=/^(?:19|20)\d\d$/;
@@ -5353,6 +5355,11 @@ function sanitizeOccurrence(o){
   if(/^envelope:structure-context/.test(m)&&/^(?:wall_structure|floor_structure|roof_structure)$/.test(f)&&dt==='RT Existant') return {...o,confidence:Math.min(o.confidence||0,0.72),reviewCap:0.72};
   // Gain Cep recalculé depuis une ligne de synthèse RSET (0/4) : à vérifier.
   if(/^rset:cep-summary-row/.test(m)&&f==='cep_gain') return {...o,confidence:Math.min(o.confidence||0,0.8),reviewCap:0.8};
+  // v2.6.0 — classes DPE : une lettre A à G, jamais une consommation (« 707 », « 312 ») ni un libellé
+  // (« CO2 initial : 21,00 kgeqCO2/m² ») — 9 corrections manuelles dans le pack du 26/10/2026.
+  if(/^dpe_(?:energy|ges)_(?:before|after)$/.test(f)){ const c=normalizeText(String(v??'')).trim().match(/^(?:(?:classe|etiquette|lettre)\s*(?:energie|ges)?\s*:?\s*)?([A-G])$/i); if(!c) return null; if(c[1].toUpperCase()!==v) return {...o,value:c[1].toUpperCase()}; }
+  // Refroidissement : un réseau de chaleur ou une chaudière n'est pas un système de froid (2 corrections « Réseau de chaleur → aucun »).
+  if(f==='cooling'&&/reseau\s+de\s+chaleur|chaudiere|fioul|fuel|bois|granule/i.test(normalizeText(String(v??'')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))) return null;
   if(!sn_NUM_FIELDS.has(f)) return o;
   const n=typeof v==='number'?v:Number(String(v).replace(',','.'));
   if(!Number.isFinite(n)) return o;
@@ -7383,7 +7390,42 @@ function parseDocument(doc){
     const have=new Set(out.map(o=>`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`));
     out=[...out,...extra.filter(o=>!have.has(`${o.building}|${o.field}|${typeof o.value==='number'?o.value.toFixed(4):o.value}`))];
   }
+  // v2.6.0 — libellés d'études relevés à la main dans le pack du 26/10/2026 (Tic / Tic réf., étiquettes DPE).
+  if(!doc.__skipDedicated&&!doc?.read?.re2020&&STUDY_LABEL_TYPES.has(doc.type)){
+    const have=new Set(out.map(o=>`${o.building}|${o.field}`));
+    out=[...out,...parseStudyLabelPatterns(doc).filter(o=>!have.has(`${o.building}|${o.field}`))];
+  }
   return sanitizeOccurrences(out);
+}
+const STUDY_LABEL_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.CCTP,DOC_TYPES.SURFACE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
+const STUDY_BEFORE=/\b(?:etat\s+(?:initial|existant|actuel)|avant\s+travaux|existant|initial(?:e)?|actuel(?:le)?)\b/, STUDY_AFTER=/\b(?:etat\s+(?:projet|final|renove)|apres\s+travaux|projet|renove|final(?:e)?)\b/;
+// « Tic | 26.19 °C | 28.98 °C | Conforme » ; « Groupe 1 26.14 °C 28.57 °C » sous l'en-tête « Projet Référence » ;
+// « Lettre étiquette D » ; « Etat existant 185.7 0.82 D F » / « Etat projet 86.1 0.567 C D ». Rien n'est déduit :
+// chaque valeur est écrite telle quelle dans la ligne citée.
+function parseStudyLabelPatterns(doc){
+  const out=[]; const num=x=>parseFrNumber(x);
+  for(const page of doc.read?.pages||[]){
+    const L=page.lines||[]; const low=L.map(l=>normLower(l.text||''));
+    let bestTic=null;
+    for(let i=0;i<L.length;i++){
+      const t=low[i]; let m;
+      if((m=t.match(/^tic\s*\|?\s*(\d{2}[.,]\d{1,2})\s*°?\s*c\s*\|?\s*(\d{2}[.,]\d{1,2})\s*°?\s*c\b/))){ push(out,occ(doc,page,L[i],'tic',num(m[1]),'study:tic-row',0.92,'°C')); push(out,occ(doc,page,L[i],'tic_ref',num(m[2]),'study:tic-row',0.92,'°C')); }
+      else if((m=t.match(/^groupe\s+\S{1,12}\s+(\d{2}[.,]\d{1,2})\s*°\s*c\s+(\d{2}[.,]\d{1,2})\s*°\s*c\s*$/))&&low.slice(Math.max(0,i-3),i).some(x=>/projet\s+r[eé]f[eé]rence|projet\s*\|?\s*ref/.test(x))){
+        const tic=num(m[1]); if(!bestTic||tic>bestTic.tic) bestTic={tic,ref:num(m[2]),line:L[i]}; }
+      if((m=t.match(/lettre\s+(?:d.)?etiquette\s*:?\s*([a-g])\b/))){
+        const prev=low.slice(Math.max(0,i-2),i+1).join(' '); const kind=/emission|\bges\b|co2|climat/.test(prev)?'ges':/consommation|kwh|energ/.test(prev)?'energy':null;
+        const ctx=low.slice(Math.max(0,i-12),i+1).reverse().find(x=>STUDY_BEFORE.test(x)||STUDY_AFTER.test(x))||'';
+        const phase=STUDY_BEFORE.test(ctx)?'before':STUDY_AFTER.test(ctx)?'after':null;
+        if(kind&&phase) push(out,occ(doc,page,L[i],`dpe_${kind}_${phase}`,m[1].toUpperCase(),'study:lettre-etiquette',0.88));
+      }
+      if((m=t.match(/^etat\s+(existant|initial|actuel|projet|renove|final)\s+(\d+(?:[.,]\d+)?)\s+(\d[.,]\d+)\s+([a-g])\s+([a-g])\s*$/))&&low.slice(Math.max(0,i-4),i).some(x=>/kwh|etiquette|classe|ges|ubat/.test(x))){
+        const phase=/existant|initial|actuel/.test(m[1])?'before':'after';
+        push(out,occ(doc,page,L[i],`dpe_energy_${phase}`,m[4].toUpperCase(),'study:etat-row',0.86)); push(out,occ(doc,page,L[i],`dpe_ges_${phase}`,m[5].toUpperCase(),'study:etat-row',0.86));
+      }
+    }
+    if(bestTic){ push(out,occ(doc,page,bestTic.line,'tic',bestTic.tic,'study:tic-groupe',0.9,'°C')); push(out,occ(doc,page,bestTic.line,'tic_ref',bestTic.ref,'study:tic-groupe',0.9,'°C')); }
+  }
+  return out;
 }
 const THERMAL_PATTERN_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
 function parseFinancialIdentity(doc){
@@ -8038,6 +8080,11 @@ function applyComparisonBases(result){
       result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[ref]?.label||ref} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (réf − valeur) / réf = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
       row[gain]=calc;
     }
+    // v2.6.0 — période de construction déduite de l'année lue (proposition validée 46 fois sur 46 dans le pack du 26/10/2026).
+    const y=numOrNull(row.construction_year), ys=fin('construction_year');
+    if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
+      if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
+      result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
   }
   return result;
 }
@@ -8987,13 +9034,149 @@ function analyzeEconomicData(docs,operation='',manual={}){
   return {operation,values,manualKeys,costs,aids,source:qDoc?`Questionnaire financier (${qDoc.name})`:costs.length?'DPGF':'',documents:qDoc?[qDoc.name]:ready.filter(d=>d.type===DOC_TYPES.DPGF).map(d=>d.name),total:values.cost_total??0};
 }
 
+/* ---- recherches.js ---- */
+// v2.6.0 — Recherches personnalisées : grilles de critères modifiables par l'utilisateur (mots-clés, synonymes, contexte,
+// exclusions, type de réponse), appliquées au texte des documents d'un projet. Chaque résultat cite le document, la page et
+// la ligne : une recherche ne produit jamais de valeur absente des documents. Les mots-clés peuvent être proposés par l'IA
+// (Ollama en local), seule la description du critère lui est envoyée.
+
+const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte'};
+const srch_uidS=()=>`c${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
+const srch_list=v=>(Array.isArray(v)?v:String(v??'').split(/[,;\n]/)).map(s=>String(s??'').trim()).filter(Boolean).slice(0,60);
+const srch_normS=s=>normLower(s).replace(/[’'`]/g,' ');
+const srch_numOrNull=v=>{ const n=typeof v==='number'?v:parseFrNumber(String(v??'')); return Number.isFinite(n)?n:null; };
+
+// Grille reçue d'un fichier, de l'IA ou du stockage local : champs attendus seulement, typés un par un.
+function normalizeGrid(g={}){
+  const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
+  const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
+    description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
+    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+  for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
+  return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
+    docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria};
+}
+
+// Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
+const srch_termCache=new Map();
+function termRegex(term){
+  if(srch_termCache.has(term)) return srch_termCache.get(term);
+  let re=null;
+  try{
+    if(/^re:/i.test(term)) re=new RegExp(term.slice(3),'i');
+    else { const t=srch_normS(term).replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/[\s-]+/g,'[\\s-]*'); re=t?new RegExp(`(?:^|[^a-z0-9])${t}(?:s|x)?(?![a-z0-9])`,'i'):null; /* pluriel accepté : « volet » trouve « volets » */ }
+  }catch{ re=null; }
+  srch_termCache.set(term,re); return re;
+}
+const srch_anyTerm=(terms,text)=>terms.some(t=>termRegex(t)?.test(text));
+const srch_NUM_RE=/(?:^|[^\d,.])(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*([a-z²³%€]{0,4}\d?)/gi;
+function srch_numbersInLine(line,unit){
+  const out=[]; const u=normLower(unit).replace(/\s+/g,''); const units=u==='m2'||u==='m²'?['m2','m²','m']:u?[u]:null;
+  // Unité exacte : « 30 mm » n'est pas « 30 m ».
+  for(const m of line.matchAll(srch_NUM_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
+  return out;
+}
+function srch_docLines(doc){
+  return (doc.read?.pages||[]).flatMap(p=>{ const lines=Array.isArray(p.lines)&&p.lines.length?p.lines.map(l=>String(l.text||'')):String(p.text||'').split(/\r?\n/); return lines.map((t,i)=>({page:p.page,i,t:srch_normS(t),raw:t})).filter(x=>x.t.trim()); });
+}
+
+// Applique une grille aux documents prêts d'un projet : {criteria:{id:{found,values,evidence}}, themes:{name:{found,min,ok,applicable}}}.
+function runSearchGrid(grid,docs,overrides={}){
+  const g=normalizeGrid(grid); const filter=g.docFilter?srch_list(g.docFilter):[];
+  const pool=(docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length&&!d.read?.financialQuestionnaire&&(!filter.length||filter.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))));
+  const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
+  const criteria={};
+  for(const c of g.criteria){
+    const ev=[]; const values=[];
+    if(c.keywords.length) for(const {d,lines} of corpus){ let perDoc=0;
+      for(let k=0;k<lines.length&&perDoc<5;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
+        const near=lines.slice(Math.max(0,k-c.window),k+c.window+1).filter(x=>x.page===L.page);
+        if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
+        let nums=[],ok=true;
+        if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
+          if(!nums.length) continue; values.push(...nums); ok=nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
+        ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
+    const manual=overrides?.[c.id];
+    // Critère « inverse » : un résultat est un indice contraire (critère non rempli), jamais une preuve de conformité.
+    const found=manual==='Oui'?true:manual==='Non'||manual==='Sans objet'?false:c.inverse?false:ev.some(e=>e.ok);
+    criteria[c.id]={found,contrary:!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)),manual:manual||'',values:[...new Set(values)],evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
+  }
+  const themes={};
+  for(const t of g.themes){
+    const own=g.criteria.filter(c=>c.theme===t.name&&c.id!==t.applicableIf);
+    const applicable=!t.applicableIf||!!criteria[t.applicableIf]?.found;
+    const req=own.filter(c=>t.required.includes(c.id)), opt=own.filter(c=>!t.required.includes(c.id));
+    const found=opt.filter(c=>criteria[c.id]?.found).length, reqOk=req.every(c=>criteria[c.id]?.found);
+    themes[t.name]={applicable,found,min:t.min,required:req.length,requiredOk:reqOk,ok:applicable?(reqOk&&found>=t.min):null};
+  }
+  return {grid:g,criteria,themes,documents:pool.map(d=>d.name)};
+}
+
+// Valeur d'un critère dans le tableau / l'export.
+function searchCellValue(c,x){
+  if(!x) return '';
+  if(x.manual) return x.manual;
+  if(x.contrary) return c.inverse?'Indice contraire':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
+  if(c.kind==='text') return x.text;
+  return x.found?'Oui':'';
+}
+
+// —— IA : formulation des mots-clés (critère) ou de toute une grille (description). Le texte des documents n'est pas envoyé.
+function keywordPrompt(crit,grid={}){
+  return {system:`Tu aides à paramétrer un moteur de recherche plein texte sur des documents techniques du bâtiment en France (CCTP, DPGF, notices, tableaux de surfaces, études thermiques). Tu proposes des mots-clés et synonymes tels qu'ils sont réellement écrits dans ces documents (vocabulaire de CCTP, abréviations, marques génériques, normes). Réponds UNIQUEMENT par un objet JSON : {"keywords":[...],"context":[...],"exclude":[...]} — keywords : 4 à 15 expressions courtes (1 à 4 mots) qui signalent le critère ; context : 0 à 8 mots qui doivent apparaître à proximité pour éviter les faux positifs (ex. l'ouvrage concerné) ; exclude : 0 à 6 expressions qui signalent un faux positif. Pas d'expressions régulières, pas de phrases.`,
+    user:`Recherche : ${grid.name||''}\nThème : ${crit.theme||''}\nCritère : ${crit.label}\n${crit.description?`Précisions : ${crit.description}\n`:''}Type de réponse : ${SEARCH_KINDS[crit.kind]||'Présence'}${crit.unit?` (unité ${crit.unit})`:''}\nMots-clés actuels : ${(crit.keywords||[]).join(', ')||'aucun'}`};
+}
+function gridPrompt(description){
+  return {system:`Tu transformes une demande de recherche documentaire (bâtiment, France) en grille de critères pour un moteur plein texte. Réponds UNIQUEMENT par un objet JSON : {"name":"…","themes":[{"name":"…","min":<nombre de critères à trouver>}],"criteria":[{"theme":"…","label":"…","kind":"presence"|"number"|"text","unit":"","min":null,"max":null,"keywords":[...],"context":[...],"exclude":[...]}]}. kind = number quand on cherche une valeur chiffrée (surface, hauteur, épaisseur…), avec son unité et ses bornes si la demande en donne. Les mots-clés sont des expressions courtes telles qu'écrites dans les CCTP / tableaux, sans expressions régulières.`,
+    user:description};
+}
+function parseLlmObject(text){ const s=String(text||'').replace(/```json|```/g,''); const a=s.indexOf('{'), b=s.lastIndexOf('}'); if(a<0||b<=a) throw new Error('Réponse IA non JSON.'); return JSON.parse(s.slice(a,b+1)); }
+
+// —— Grille fournie : sécurisation des logements (étude de l'existant du marché). Termes « re: » pour les écritures variables.
+const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des logements',docFilter:'',
+  description:'Sécurisation des logements contre les intrusions, des abords, des halls, des parkings en sous-sol et des accès aux étages : indices relevés dans les CCTP (étude de l’existant).',
+  themes:[{name:'Fenêtres en rez-de-chaussée',min:1},{name:'Portes d’entrée des logements',min:1},{name:'Abords extérieurs',min:5,required:['abords_portails']},
+    {name:'Halls d’entrée',min:2},{name:'Parkings en sous-sol',min:3,required:['parking_portail'],applicableIf:'parking_present'},{name:'Accès aux étages',min:2}],
+  criteria:[
+    {id:'fen_volets',theme:'Fenêtres en rez-de-chaussée',label:'Volets roulants avec système anti-soulèvement',keywords:['anti soulevement','anti-relevage','re:verrou\\w*\\s+(?:automatique|anti)','blocage du tablier'],context:['volet','tablier']},
+    {id:'fen_442',theme:'Fenêtres en rez-de-chaussée',label:'Vitrages 44.2 (retardateur d’effraction)',keywords:['re:\\b44[./ ]?2\\b','re:\\bsp\\s?10\\b','retardateur d effraction','retardateur d\'effraction'],context:['vitrage','fenetre','menuiserie','stadip','feuillete','baie']},
+    {id:'fen_barreaux',theme:'Fenêtres en rez-de-chaussée',label:'Fenêtres protégées par des barreaux',keywords:['barreaux','barreaudage','grille de defense','grilles de defense','grille anti effraction'],context:['fenetre','baie','rez de chaussee','rdc','en tableau','tableau'],exclude:['cloture','portail','portillon','garde corps','garde-corps','main courante','tablier','lisse'],window:2},
+    {id:'porte_3pts',theme:'Portes d’entrée des logements',label:'Porte pleine, serrure 3 points (hors 3 points de compression)',keywords:['re:serrure[^\\n]{0,40}3\\s*points','re:3\\s*points[^\\n]{0,20}(?:a|à)?\\s*p[eê]ne','re:cr[eé]mone[^\\n]{0,15}3\\s*points[^\\n]{0,40}a2p'],context:['porte palier','porte paliere','portes palieres','bloc porte palier','porte d entree','porte de logement','porte d\'entree'],exclude:['compression','fenetre','porte fenetre','porte-fenetre'],window:8},
+    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)','re:\\bbp\\s?[123]\\b','re:\\ba2p\\b'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
+    {id:'abords_portails',theme:'Abords extérieurs',label:'Portails véhicules et piétons à accès sécurisé (obligatoire)',keywords:['portail','portillon'],context:['vigik','badge','digicode','controle d acces','telecommande','platine','interphone','visiophone','ventouse','gache electrique']},
+    {id:'abords_cloture',theme:'Abords extérieurs',label:'Clôture d’au moins 1,80 m (ou règle du PLU)',kind:'number',unit:'m',min:1.8,keywords:['cloture','clotures'],context:['hauteur','ht','h ='],window:3},
+    {id:'abords_acces_unique',theme:'Abords extérieurs',label:'Un seul point d’accès véhicules et piétons',keywords:['seul acces','acces unique','seul point d acces','unique point d acces']},
+    {id:'abords_observables',theme:'Abords extérieurs',label:'Au moins 60 % des accès observables depuis un logement',keywords:['observable','surveillance naturelle','vue depuis les logements']},
+    {id:'abords_separation',theme:'Abords extérieurs',label:'Pas de communication entre bâtiments',keywords:['separation des batiments','aucune communication entre','pas de communication entre']},
+    {id:'abords_ombre',theme:'Abords extérieurs',label:'Suppression des zones d’ombre',keywords:['zone d ombre','zones d ombre']},
+    {id:'abords_renfoncement',theme:'Abords extérieurs',label:'Renfoncements de 1,20 m maximum',kind:'number',unit:'m',max:1.2,keywords:['renfoncement','renfoncements','recoin']},
+    {id:'abords_cheminement',theme:'Abords extérieurs',label:'Cheminements d’au moins 1,40 m de large',kind:'number',unit:'m',min:1.4,keywords:['cheminement','cheminements','allee pietonne','allees pietonnes'],context:['largeur','large']},
+    {id:'abords_escaliers',theme:'Abords extérieurs',label:'Escaliers extérieurs sans dessous exploitable',keywords:['dessous d escalier','sous face d escalier','dessous des escaliers'],context:['ferme','condamne','obture','grille']},
+    {id:'abords_aveugles',theme:'Abords extérieurs',label:'Absence de locaux aveugles non surveillés',keywords:['local aveugle','locaux aveugles']},
+    {id:'hall_traversant',theme:'Halls d’entrée',label:'Hall non traversant (un seul point d’entrée et de sortie)',keywords:['non traversant','hall traversant','halls traversants'],context:['hall']},
+    {id:'hall_vitrage',theme:'Halls d’entrée',label:'Hall vitré (> 30 % de la surface au sol) en 44.2',keywords:['re:\\b44[./ ]?2\\b','stadip','retardateur d effraction'],context:['hall','sas','porte d entree d immeuble','entree principale','ensemble vitre']},
+    {id:'hall_sas',theme:'Halls d’entrée',label:'Sas sécurisé : badge + visiophone (platine IK08) puis serrure électronique à badge',keywords:['sas'],context:['badge','vigik','visiophone','interphone','platine','controle d acces','ventouse','gache electrique'],exclude:['cabinet','capital','siret','etabli par','sarl','societe'],window:6},
+    {id:'hall_ik08',theme:'Halls d’entrée',label:'Platine de rue anti-vandale IK08 ou plus',keywords:['re:\\bik\\s?(?:0?8|09|10)\\b'],context:['platine','visiophone','interphone','portier']},
+    {id:'hall_eclairage',theme:'Halls d’entrée',label:'Éclairage du hall par détecteur, plus de 150 lux',kind:'number',unit:'lux',min:150,keywords:['lux'],context:['hall','detecteur','detection']},
+    {id:'parking_present',theme:'Parkings en sous-sol',label:'Présence d’un parking en sous-sol (condition)',keywords:['parking en sous sol','parc de stationnement','sous sol','sous-sol'],context:['parking','stationnement','garage','vehicule']},
+    {id:'parking_portail',theme:'Parkings en sous-sol',label:'Portail automatique verrouillé (obligatoire)',keywords:['re:porte (?:collective )?(?:basculante|sectionnelle|de garage)[^\\n]{0,30}(?:motoris|automat|electri)','re:portail[^\\n]{0,40}(?:parking|sous[- ]sol|garage)'],context:['telecommande','emetteur','badge','vigik','controle d acces','cle']},
+    {id:'parking_pieton',theme:'Parkings en sous-sol',label:'Porte piétonne du parking avec contrôle d’accès',keywords:['porte pietonne','portillon'],context:['parking','sous sol','garage','stationnement'],exclude:['jardin','cloture','clotures'],window:1},
+    {id:'parking_libre',theme:'Parkings en sous-sol',label:'Places en accès libre, sans porte basculante',inverse:true,keywords:['re:porte (?:individuelle )?basculante (?:manuelle|individuelle)','box ferme','boxes fermes'],description:'Un résultat signale des portes basculantes individuelles : critère NON rempli (à confirmer).'},
+    {id:'parking_hall_badge',theme:'Parkings en sous-sol',label:'Accès parking depuis le hall par porte à badge',keywords:['re:(?:porte|sas)[^\\n]{0,60}(?:parking|sous[- ]sol)'],context:['badge','vigik','controle d acces','gache','ventouse']},
+    {id:'parking_ascenseur',theme:'Parkings en sous-sol',label:'Accès au parking par l’ascenseur sécurisé',keywords:['ascenseur'],context:['badge','vigik','cle','controle d acces'],window:3},
+    {id:'parking_eclairage',theme:'Parkings en sous-sol',label:'Éclairage du parking d’au moins 50 lux',kind:'number',unit:'lux',min:50,keywords:['lux'],context:['parking','sous sol','stationnement'],exclude:['cheminement','voirie','exterieur','espaces verts'],window:3},
+    {id:'etage_escaliers',theme:'Accès aux étages',label:'Portes d’escaliers sécurisées (badge ou autre)',keywords:['escalier'],context:['badge','vigik','controle d acces','gache electrique','ventouse'],window:3},
+    {id:'etage_ascenseur',theme:'Accès aux étages',label:'Accès aux ascenseurs sécurisé',keywords:['ascenseur'],context:['badge','vigik','controle d acces','lecteur'],window:3}
+  ]});
+
 /* ---- exporter.js ---- */
 function aoaSheet(rows){ return XLSX.utils.aoa_to_sheet(rows); }
 function autoWidth(ws,max=42){ const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1'); const widths=[]; for(let c=range.s.c;c<=range.e.c;c++){ let m=10; for(let r=range.s.r;r<=Math.min(range.e.r,250);r++){ const cell=ws[XLSX.utils.encode_cell({r,c})]; if(cell?.v!=null) m=Math.max(m,String(cell.v).length+2); } widths.push({wch:Math.min(max,m)}); } ws['!cols']=widths; }
 function projectTagsText(p){ return (p?.projectTags||[]).map(t=>t?.label).filter(Boolean).join(' ; '); }
 function projectName(p,index){ return (p?.customTitle||p?.operationName||p?.result?.operation||p?.label||`Projet ${index+1}`).trim(); }
 
-function exportProjectsExcel(projects,rules){
+function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   if(!globalThis.XLSX) throw new Error('SheetJS non chargé.');
   const usable=(projects||[]).filter(p=>p?.result);
   if(!usable.length) throw new Error('Aucun projet analysé à exporter.');
@@ -9030,6 +9213,19 @@ function exportProjectsExcel(projects,rules){
   const bg=[['Projet','Nom détecté','Bâtiment consolidé','Mode de regroupement']];
   usable.forEach((p,idx)=>{ const pname=projectName(p,idx); for(const a of p.result.buildingAliases||[]) bg.push([pname,a.source,a.target,a.mode]); });
   const wsBg=aoaSheet(bg); autoWidth(wsBg); XLSX.utils.book_append_sheet(wb,wsBg,'Regroupement bâtiments');
+
+  // v2.6.0 — recherches personnalisées : une feuille par grille ayant au moins un résultat, puis les citations.
+  const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
+  for(const grid of grids||[]){
+    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{})}));
+    if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
+    const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
+    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.map(c=>`${c.theme} — ${c.label}`)];
+    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.map(c=>searchCellValue(c,r.criteria[c.id]))])];
+    const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,`Rech. ${g.name}`.replace(/[\\/?*[\]:]/g,' ').slice(0,31));
+    for(const {x,r} of res) for(const c of g.criteria) for(const ev of r.criteria[c.id].evidence) cites.push([x.code,x.name,contract(x),g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]);
+  }
+  if(cites.length>1){ const ws=aoaSheet(cites); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,'Recherches — citations'); }
 
   const rr=[['Donnée','Sources principales','Sources secondaires','Sources interdites']];
   for(const f of FIELD_DEFS){ const r=rules[f.key]; rr.push([f.label,(r?.main||[]).join(' ; '),(r?.secondary||[]).join(' ; '),(r?.forbidden||[]).join(' ; ')]); }
@@ -9181,6 +9377,8 @@ function serializeProject(project={}){
     uncertainRejectedKeys:safeJsonClone(project.uncertainRejectedKeys,[]),
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
+    searchOverrides:safeJsonClone(project.searchOverrides,{}),
+    ownerName:project.ownerName||'',
     expanded:project.expanded!==false
   };
 }
@@ -9887,7 +10085,14 @@ function parseLlmJson(text){
   const clean=String(text||'').replace(/```json|```/g,'').trim();
   const start=clean.indexOf('{'), end=clean.lastIndexOf('}');
   if(start<0||end<=start) throw new Error('Réponse IA non JSON.');
-  const obj=JSON.parse(clean.slice(start,end+1));
+  let obj;
+  try{ obj=JSON.parse(clean.slice(start,end+1)); }
+  catch(err){
+    // v2.6.0 — réponse coupée par la limite de jetons (2 erreurs « Expected ',' or ']' » dans le pack) : on garde les
+    // propositions complètes, chacune restant vérifiée mot pour mot ensuite.
+    const cut=clean.slice(start).lastIndexOf('}');
+    try{ obj=JSON.parse(clean.slice(start,start+cut+1).replace(/,\s*$/,'')+']}'); }catch{ throw err; }
+  }
   return Array.isArray(obj?.proposals)?obj.proposals:[];
 }
 
@@ -9986,6 +10191,12 @@ async function checkOllama(model=LLM_PROVIDERS.ollama.defaultModel,fetchImpl=nul
   }catch{ return {ok:false,models:[],hasModel:false,error:OLLAMA_UNREACHABLE}; }
 }
 
+// v2.6.0 — appel libre (paramétrage des recherches) : même transport que l'assistance, sans document ni vérification.
+async function llmComplete({system,user,maxTokens=1500},{config=null,fetchImpl=null,invokeFunction=null}={}){
+  const cfg=config||getLlmConfig();
+  if(cfg.mode==='off') throw new Error('Assistance IA désactivée : activez « IA locale (Ollama) » dans 🤖 IA.');
+  return (await llmTransport({provider:cfg.provider,model:cfg.model,max_tokens:maxTokens,system,messages:[{role:'user',content:user}]},cfg,{fetchImpl,invokeFunction})).text;
+}
 // Point d'entrée : renvoie les occurrences vérifiées (pour la fenêtre ✓ / ✕) et les rejets motivés.
 async function runLlmAssist(doc,{missingFields=null,config=null,fetchImpl=null,invokeFunction=null}={}){
   const cfg=config||getLlmConfig();
@@ -10167,6 +10378,7 @@ const RESULT_VIEWS = Object.freeze({
     {title:'IC énergie — postes',keys:['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility']}
   ]},
   economics:{label:'Économie',groups:[]},
+  searches:{label:'Recherches',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
@@ -10198,6 +10410,76 @@ function renderResultWorkspaceControls(){
   const i=Math.max(0,state.projects.findIndex(p=>p.id===state.activeProjectId)); const prev=$('#stickyPrevProject'),next=$('#stickyNextProject'); if(prev) prev.disabled=i<=0; if(next) next.disabled=i>=state.projects.length-1;
   const sticky=$('#resultStickyBar'); if(sticky) sticky.hidden=!state.projects.some(p=>(p.docs||[]).length||p.result);
   syncStickyResultTabs(); renderResultNavigator();
+}
+// v2.6.0 — page principale en tuiles : une tuile par opération (n° de contrat a minima), regroupées en macro-tuiles par
+// maître d'ouvrage dès qu'un maître d'ouvrage est connu (import Excel / copier-coller, contrat, livret…).
+const NO_OWNER='Maître d’ouvrage non renseigné';
+function projectIdentity(p){
+  const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
+  const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
+  return {contract:pick('contract_number')||ev.fin_contract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
+}
+function projectCompletion(p){
+  const rows=p?.result?.rows||[]; if(!rows.length) return 0; const prof=projectProfile(p);
+  const defs=REVIEW_GROUPS.filter(g=>!g.admin&&g.optional!==prof).flatMap(g=>reviewFields(g,prof)); if(!defs.length) return 0;
+  const ratios=rows.map(r=>defs.filter(d=>!isBlank(r[d.key])).length/defs.length);
+  return Math.round(ratios.reduce((a,b)=>a+b,0)/ratios.length*100);
+}
+const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
+function renderTiles(wrap){
+  const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+  const grouped=items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
+  if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
+  const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
+  let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`;
+  if(grouped&&!state.overviewOwner){
+    const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+    sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
+    body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
+      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
+  } else {
+    const xs=grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items;
+    if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; }
+    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
+      <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
+      <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
+      <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
+  }
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(title)}</h3><p>${escapeHtml(sub)} · une tuile par opération ; cliquez pour ouvrir la fiche.</p></div><span class="badge doc">${items.length} opération(s)</span></div><div class="op-tiles">${body}</div></div>`;
+  wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; renderSummary(); });
+  wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; renderSummary(); });
+  wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
+  wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
+}
+// Tableau d'opérations (Excel importé ou collé) : une opération par n° de contrat / code interne / nom d'opération.
+function operationKey(v={}){ return String(v.contract_number||v.internal_code||v.operation_name||'').trim(); }
+function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status==='ready'); p.result=analyzeDocuments(valid,state.rules,p.operationName||'',p.buildingOverrides||{},manualPasteOccurrences(p)); applyDeletedBuildings(p); p.result.documentsCount=valid.length; applyManualValuesToProject(p); }
+function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
+  const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
+  if(groups.size<2) return false;
+  let created=0,updated=0;
+  for(const [k,rs] of groups){
+    let p=state.projects.find(x=>{ const id=projectIdentity(x); return id.contract===k||id.code===k||(!id.contract&&!id.code&&id.name===k); });
+    if(p) updated++; else { p=state.projects.find(x=>!(x.docs||[]).length&&!x.result&&!(x.manualPasteRows||[]).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; }
+    const v=rs[0].values||{}; p.manualPasteRows=rs; p.manualPasteColumns=columns; p.manualPasteRaw='';
+    if(!p.operationName) p.operationName=String(v.operation_name||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
+    computeProjectResult(p);
+  }
+  state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
+  learn('manual_paste',{rows:rows.length,operations:groups.size,created,updated,source,split:true},activeProject());
+  toast(`${groups.size} opérations importées (${source}) : ${created} créée(s), ${updated} mise(s) à jour.`,'success'); return true;
+}
+// Classeur Excel : s'il liste plusieurs opérations (contrat / code interne), il est réparti en opérations au lieu d'être lu comme un document.
+async function addSpreadsheetOrOperations(file,specializedFamily,opts){
+  try{
+    const read=await readSpreadsheet(file);
+    for(const page of read.pages||[]){
+      const tsv=(page.lines||[]).map(l=>(Array.isArray(l.cells)?l.cells:[l.text]).map(c=>String(c??'').replace(/[\t\r\n]+/g,' ')).join('\t')).join('\n');
+      const parsed=parseManualClipboard(tsv); const keys=new Set(parsed.rows.map(r=>operationKey(r.values)).filter(Boolean));
+      if(keys.size>=2&&parsed.columns.some(c=>['contract_number','internal_code'].includes(c.def?.key))&&importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:file.name})) return;
+    }
+  }catch{}
+  addFiles([file],specializedFamily,{...opts,skipOperationCheck:true});
 }
 function showProjectsOverview(){ state.resultWorkspaceMode='overview'; switchTab('summary'); renderSummary(); renderResultWorkspaceControls(); scheduleWorkspaceCheckpoint('vue synthèse'); }
 function moveProject(delta){ const i=state.projects.findIndex(p=>p.id===state.activeProjectId),p=state.projects[i+delta]; if(p) activateProject(p.id); }
@@ -10441,6 +10723,7 @@ function addFiles(fileList,specializedFamily=null,opts={}){
   const allowed=/\.(pdf|xml|xlsx?|xls|json)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(/\.zip$/i.test(file.name)){ addQuestionnaireZip(file,specializedFamily,opts); continue; }
+    if(/\.xlsx?$/i.test(file.name)&&!opts.skipOperationCheck){ addSpreadsheetOrOperations(file,specializedFamily,opts); continue; }
     if(!allowed.test(file.name)){ toast(`Format ignoré : ${file.name}`,'warn'); continue; }
     const rel=file._relativePath||file.webkitRelativePath||file.name;
     const existing=state.docs.find(d=>(d.relativePath||d.name)===rel&&d.size===file.size);
@@ -10582,6 +10865,7 @@ function renderManualPastePreview(parsed){
 function applyManualPaste(){
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
+  if(importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:'copier-coller'})){ $('#manualDataDialog')?.close(); return; }
   state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
@@ -11049,9 +11333,10 @@ function decorateProjectSections(wrap,fields){
 
 function renderSummary(){
   const r=state.result; const wrap=$('#summaryView'); const view=currentResultView(); const groups=view.groups.map(g=>({...g,fields:fieldsForResultGroup(g)})).filter(g=>g.fields.length); const fields=fieldsForCurrentResultView(); syncResultTabs(); syncStickyResultTabs();
-  if(state.resultWorkspaceMode==='overview'){ const rows=state.projects.map(p=>({p,st:projectResultStats(p)})); wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div><h3>Synthèse des projets</h3><p>Un projet à la fois en détail ; toutes les informations restent disponibles dans sa fiche.</p></div><span class="badge doc">${rows.length} projet(s)</span></div><div class="table-scroll result-overview-table"><table><thead><tr><th>Projet</th><th>Documents</th><th>Bâtiments</th><th>Valeurs retenues</th><th>Candidats</th><th>Alertes</th><th></th></tr></thead><tbody>${rows.map(({p,st})=>`<tr><td class="result-overview-title">${escapeHtml(projectTitle(p))}</td><td>${st.docs}</td><td>${st.buildings}</td><td class="overview-metric-ok">${st.values}</td><td class="${st.candidates?'overview-metric-warn':''}">${st.candidates}</td><td class="${st.alerts?'overview-metric-warn':'overview-metric-ok'}">${st.alerts||'✓'}</td><td class="overview-actions"><button class="overview-open" data-overview-open="${p.id}">Ouvrir</button><button class="overview-delete" data-overview-delete="${p.id}" title="Supprimer le projet" aria-label="Supprimer le projet">Supprimer</button></td></tr>`).join('')}</tbody></table></div></div>`; $$('#summaryView [data-overview-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.overviewOpen)); $$('#summaryView [data-overview-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.overviewDelete)); renderResultWorkspaceControls(); return; }
+  if(state.resultWorkspaceMode==='overview'){ renderTiles(wrap); renderResultWorkspaceControls(); return; }
   if(r&&normalizedResultViewKey(activeProject().resultView)==='review'){ renderProfileSwitch(); renderReview(); return; }
   if(normalizedResultViewKey(activeProject().resultView)==='economics'){ renderEconomic(wrap); renderResultWorkspaceControls(); return; }
+  if(normalizedResultViewKey(activeProject().resultView)==='searches'){ renderSearches(wrap); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
@@ -11677,6 +11962,117 @@ function renderEconomic(wrap=$('#summaryView')){
     renderEconomic(wrap); scheduleWorkspaceCheckpoint('donnée économique'); });
 }
 
+// v2.6.0 — onglet Recherches : grilles de critères modifiables (stockées sur ce poste), appliquées au projet actif.
+const GRIDS_KEY='extracterre.searchGrids.v1', GRID_ACTIVE_KEY='extracterre.searchGrid.active';
+let searchUi={editing:false,busy:''};
+function loadGrids(){ let g=[]; try{ g=JSON.parse(localStorage.getItem(GRIDS_KEY)||'[]'); }catch{} g=Array.isArray(g)?g.map(normalizeGrid):[]; return g.length?g:[normalizeGrid(SECURITY_GRID)]; }
+function saveGrids(gs){ try{ localStorage.setItem(GRIDS_KEY,JSON.stringify(gs)); }catch{ toast('Grilles non enregistrées : stockage local plein.','warn'); } }
+function activeGrid(gs=loadGrids()){ let id=''; try{ id=localStorage.getItem(GRID_ACTIVE_KEY)||''; }catch{} return gs.find(g=>g.id===id)||gs[0]; }
+function setActiveGrid(id){ try{ localStorage.setItem(GRID_ACTIVE_KEY,id); }catch{} }
+function storeGrid(grid){ const gs=loadGrids(); const g=normalizeGrid(grid); const i=gs.findIndex(x=>x.id===g.id); if(i>=0) gs[i]=g; else gs.push(g); saveGrids(gs); setActiveGrid(g.id); return g; }
+const searchCell=searchCellValue;
+function renderSearchEditor(g){
+  const crits=g.criteria, themes=g.themes, opt=(v,cur)=>`<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>`;
+  return `<section class="eco-group srch-editor"><h4>Paramétrage de la grille</h4>
+  <div class="srch-grid-meta"><label>Nom<input data-g="name" value="${escapeHtml(g.name)}"></label><label>Limiter aux documents dont le nom ou le type contient <small>(virgules ; vide = tous)</small><input data-g="docFilter" value="${escapeHtml(g.docFilter)}" placeholder="ex. CCTP, menuiserie"></label>
+  <label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
+  <h5>Thèmes</h5><div class="table-scroll"><table class="srch-table"><thead><tr><th>Thème</th><th>Critères à trouver (minimum)</th><th>Applicable seulement si</th></tr></thead><tbody>${themes.map((t,i)=>`<tr data-theme-row="${i}"><td><input data-t="name" value="${escapeHtml(t.name)}"></td><td><input data-t="min" type="number" min="0" value="${t.min}"></td><td><select data-t="applicableIf">${opt('',t.applicableIf)}toujours</option>${crits.map(c=>`${opt(c.id,t.applicableIf)}${escapeHtml(c.label.slice(0,70))}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
+  <h5>Critères <small>mots-clés séparés par des virgules ; sans accents ni majuscules obligatoires ; « re: » = expression régulière</small></h5>
+  <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
+    <button type="button" class="btn light" data-srch-ai="${i}" title="Proposer des mots-clés, du contexte et des exclusions avec l’IA">${searchUi.busy===`c${i}`?'…':'✨ Mots-clés IA'}</button><button type="button" class="icon-btn" data-srch-del="${i}" title="Supprimer le critère" aria-label="Supprimer le critère">×</button></div>
+    <div class="srch-crit-body"><label>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
+    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
+    <label>Précisions pour l’IA<input data-c="description" value="${escapeHtml(c.description)}" placeholder="ce que le critère doit couvrir, ce qu’il ne doit pas confondre"></label></div></div>`).join('')}</div>
+  <datalist id="srchThemes">${themes.map(t=>`<option value="${escapeHtml(t.name)}">`).join('')}</datalist>
+  <div class="srch-actions"><button type="button" class="btn secondary" data-srch="add-crit">+ Critère</button></div>
+  <h5>Créer une nouvelle grille avec l’IA</h5><div class="srch-ai-grid"><textarea id="srchAiDesc" rows="3" placeholder="Décrivez la recherche, ex. « surface habitable de chaque logement dans les tableaux de surfaces, en m², avec le type T1 à T5 »"></textarea><button type="button" class="btn primary" data-srch="ai-grid">${searchUi.busy==='grid'?'Création…':'✨ Créer la grille'}</button></div>
+  <small class="llm-hint">L’IA (Ollama en local si activé dans 🤖 IA) ne reçoit que la description des critères, jamais le contenu des documents. Vérifiez toujours les mots-clés proposés.</small></section>`;
+}
+function collectGridFromEditor(root,g){
+  const val=(el,k)=>el.querySelector(`[data-${k}]`);
+  const next={...g,name:root.querySelector('[data-g="name"]').value,docFilter:root.querySelector('[data-g="docFilter"]').value,description:root.querySelector('[data-g="description"]').value};
+  const themes=[...root.querySelectorAll('[data-theme-row]')].map(r=>({name:r.querySelector('[data-t="name"]').value.trim(),min:r.querySelector('[data-t="min"]').value,applicableIf:r.querySelector('[data-t="applicableIf"]').value,required:[]}));
+  // Renommage d'un thème : les critères suivent.
+  g.themes.forEach((t,i)=>{ if(themes[i]&&themes[i].name&&themes[i].name!==t.name) for(const c of g.criteria) if(c.theme===t.name) c.theme=themes[i].name; });
+  const crits=[...root.querySelectorAll('[data-crit-row]')].map(r=>{ const i=Number(r.dataset.critRow), c=g.criteria[i], f=k=>r.querySelector(`[data-c="${k}"]`);
+    return {...c,theme:f('theme').value.trim()||c.theme,label:f('label').value,kind:f('kind').value,keywords:f('keywords').value,context:f('context').value,exclude:f('exclude').value,window:f('window').value,unit:f('unit')?.value??c.unit,min:f('min')?f('min').value:c.min,max:f('max')?f('max').value:c.max,inverse:f('inverse').checked,description:f('description').value,_req:f('required').checked}; });
+  for(const t of themes) t.required=crits.filter(c=>c._req&&c.theme===t.name).map(c=>c.id);
+  return normalizeGrid({...next,themes,criteria:crits});
+}
+async function searchAiKeywords(i,wrap){
+  const g=activeGrid(); const c=g.criteria[i]; if(!c) return; searchUi.busy=`c${i}`; renderSearches(wrap);
+  try{ const pr=keywordPrompt(c,g); const o=parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:800},{invokeFunction:invokeLlmCloudFunction}));
+    const merge=(a,b)=>[...new Set([...a,...(Array.isArray(b)?b:[]).map(x=>String(x).trim()).filter(Boolean)])];
+    const before=c.keywords.length+c.context.length+c.exclude.length;
+    c.keywords=merge(c.keywords,o.keywords); c.context=merge(c.context,o.context); c.exclude=merge(c.exclude,o.exclude); storeGrid(g);
+    toast(`${c.keywords.length+c.context.length+c.exclude.length-before} terme(s) proposé(s) pour « ${c.label} » : vérifiez-les avant d’analyser.`,'success'); learn('search_grid_ai',{grid:g.name,criterion:c.label},activeProject());
+  }catch(err){ toast(`IA indisponible : ${err?.message||err}`,'error'); }
+  finally{ searchUi.busy=''; renderSearches(wrap); }
+}
+async function searchAiGrid(desc,wrap){
+  if(!desc.trim()){ toast('Décrivez d’abord la recherche à créer.','warn'); return; }
+  searchUi.busy='grid'; renderSearches(wrap);
+  try{ const pr=gridPrompt(desc.trim()); const o=parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:2500},{invokeFunction:invokeLlmCloudFunction}));
+    const g=storeGrid({...o,id:`g${Date.now().toString(36)}`,description:desc.trim()}); if(!g.criteria.length) throw new Error('aucun critère proposé');
+    searchUi.editing=true; toast(`Grille « ${g.name} » créée (${g.criteria.length} critère(s)) : relisez les mots-clés.`,'success'); learn('search_grid_ai',{grid:g.name,criteria:g.criteria.length},activeProject());
+  }catch(err){ toast(`Création impossible : ${err?.message||err}`,'error'); }
+  finally{ searchUi.busy=''; renderSearches(wrap); }
+}
+function renderSearches(wrap=$('#summaryView')){
+  if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
+  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov);
+  const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
+    const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
+    return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
+    ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
+      return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
+      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
+      <select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></div>`; }).join('')}</section>`; };
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+  <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>
+    <button type="button" class="btn ${searchUi.editing?'primary':'secondary'}" data-srch="edit">${searchUi.editing?'Fermer le paramétrage':'⚙ Paramétrer'}</button><button type="button" class="btn light" data-srch="new">+ Nouvelle</button><button type="button" class="btn light" data-srch="dup">Dupliquer</button>
+    <button type="button" class="btn light" data-srch="export">Exporter (.json)</button><label class="btn light" for="srchImport">Importer</label><input id="srchImport" type="file" accept=".json,application/json" hidden><button type="button" class="btn light danger" data-srch="delete">Supprimer</button></section>
+  ${g.description?`<p class="srch-desc">${escapeHtml(g.description)}</p>`:''}
+  ${searchUi.editing?renderSearchEditor(g):''}
+  ${!r.documents.length?`<div class="empty-state"><h3>Aucun document à lire</h3><p>Ajoutez et analysez des documents (CCTP, tableaux de surfaces…) dans ce projet${g.docFilter?`, dont le nom ou le type contient « ${escapeHtml(g.docFilter)} »`:''}.</p></div>`:''}
+  ${g.themes.map(themeHtml).join('')}
+  <small class="llm-hint">Chaque résultat cite le document, la page et la ligne. Les indices relevés ne valent pas conformité : vérifiez les citations ; « Auto » peut être remplacé par votre décision.</small>`;
+  $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
+  $('#srchGrid').onchange=e=>{ setActiveGrid(e.target.value); renderSearches(wrap); };
+  wrap.querySelectorAll('[data-srch-ov]').forEach(sel=>sel.onchange=()=>{ p.searchOverrides=p.searchOverrides||{}; const o=p.searchOverrides[g.id]=p.searchOverrides[g.id]||{}; if(sel.value) o[sel.dataset.srchOv]=sel.value; else delete o[sel.dataset.srchOv]; renderSearches(wrap); scheduleWorkspaceCheckpoint('décision recherche'); });
+  const act={edit:()=>{ searchUi.editing=!searchUi.editing; },
+    new:()=>{ storeGrid({id:`g${Date.now().toString(36)}`,name:'Nouvelle recherche',themes:[{name:'Critères',min:1}],criteria:[{theme:'Critères',label:'Nouveau critère',keywords:[]}]}); searchUi.editing=true; },
+    dup:()=>{ storeGrid({...g,id:`g${Date.now().toString(36)}`,name:`${g.name} (copie)`}); },
+    export:()=>{ downloadBlob(new Blob([JSON.stringify(g,null,2)],{type:'application/json'}),`ExtracTerre_recherche_${g.name.replace(/[^\w-]+/g,'_')}.json`); },
+    delete:()=>{ if(!confirm(`Supprimer la grille « ${g.name} » de ce poste ?`)) return; saveGrids(gs.filter(x=>x.id!==g.id)); },
+    'add-crit':()=>{ const n=collectGridFromEditor(wrap,g); n.criteria.push({id:`c${Date.now().toString(36)}`,theme:n.themes[0]?.name||'Critères',label:'Nouveau critère',kind:'presence',keywords:[],context:[],exclude:[],window:4}); storeGrid(n); },
+    'ai-grid':()=>{ searchAiGrid($('#srchAiDesc')?.value||'',wrap); return 'async'; }};
+  wrap.querySelectorAll('[data-srch]').forEach(b=>b.onclick=()=>{ if(act[b.dataset.srch]?.()!=='async') renderSearches(wrap); });
+  wrap.querySelectorAll('[data-srch-ai]').forEach(b=>b.onclick=()=>{ storeGrid(collectGridFromEditor(wrap,g)); searchAiKeywords(Number(b.dataset.srchAi),wrap); });
+  wrap.querySelectorAll('[data-srch-del]').forEach(b=>b.onclick=()=>{ const n=collectGridFromEditor(wrap,g); n.criteria.splice(Number(b.dataset.srchDel),1); storeGrid(n); renderSearches(wrap); });
+  const ed=wrap.querySelector('.srch-editor'); if(ed) ed.addEventListener('change',e=>{ if(e.target.id==='srchAiDesc') return; storeGrid(collectGridFromEditor(wrap,g)); renderSearches(wrap); });
+  $('#srchImport').onchange=async e=>{ const f=e.target.files?.[0]; if(!f) return; try{ if(f.size>2*1024*1024) throw new Error('fichier trop volumineux'); const o=JSON.parse(await f.text()); const gg=normalizeGrid(o); if(!gg.criteria.length) throw new Error('aucun critère'); if(gs.some(x=>x.id===gg.id)) gg.id=`g${Date.now().toString(36)}`; storeGrid(gg); toast(`Grille « ${gg.name} » importée.`,'success'); }catch(err){ toast(`Grille illisible : ${err?.message||err}`,'error'); } renderSearches(wrap); };
+}
+
+// v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
+function openExportDialog(){
+  let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
+  const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
+  const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+  dlg.innerHTML=`<form method="dialog" class="llm-form"><header class="llm-head"><h2>⇩ Exporter vers Excel</h2><button value="cancel" class="icon-btn" type="submit" aria-label="Fermer">×</button></header>
+  <div class="llm-body"><label class="exp-all"><input type="checkbox" id="expAll"> <strong>Tout ExtracTerre</strong> <small>${items.length} opération(s)</small></label>
+  ${owners.map((o,gi)=>`<fieldset class="exp-group"><legend><label><input type="checkbox" data-exp-owner="${gi}"> ${escapeHtml(o)}</label></legend>${items.filter(x=>ownerOf(x)===o).map(x=>`<label class="exp-op ${x.p.result?'':'off'}"><input type="checkbox" data-exp-p="${x.p.id}" data-exp-g="${gi}" ${x.p.result?'':'disabled'} ${x.p.id===state.activeProjectId&&x.p.result?'checked':''}> <span><b>${escapeHtml(x.id.contract||'Contrat non renseigné')}</b> · ${escapeHtml(x.id.name||projectTitle(x.p))}</span><small>${x.p.result?`${x.pct} %`:'non analysée'}</small></label>`).join('')}</fieldset>`).join('')}</div>
+  <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="expGo" class="btn primary" type="button">Exporter</button></footer></form>`;
+  const boxes=()=>[...dlg.querySelectorAll('[data-exp-p]:not(:disabled)')];
+  const sync=()=>{ const sel=boxes().filter(b=>b.checked); dlg.querySelectorAll('[data-exp-owner]').forEach(g=>{ const bs=boxes().filter(b=>b.dataset.expG===g.dataset.expOwner); g.checked=bs.length>0&&bs.every(b=>b.checked); g.indeterminate=!g.checked&&bs.some(b=>b.checked); });
+    const all=$('#expAll'); all.checked=boxes().length>0&&sel.length===boxes().length; all.indeterminate=!all.checked&&sel.length>0; $('#expGo').textContent=`Exporter ${sel.length} opération(s)`; $('#expGo').disabled=!sel.length; };
+  $('#expAll').onchange=e=>{ boxes().forEach(b=>b.checked=e.target.checked); sync(); };
+  dlg.querySelectorAll('[data-exp-owner]').forEach(g=>g.onchange=()=>{ boxes().filter(b=>b.dataset.expG===g.dataset.expOwner).forEach(b=>b.checked=g.checked); sync(); });
+  boxes().forEach(b=>b.onchange=sync);
+  $('#expGo').onclick=()=>{ const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.expP)); try{ exportProjectsExcel(state.projects.filter(p=>ids.has(p.id)),state.rules,{grids:loadGrids(),identity:projectIdentity}); dlg.close(); }catch(e){ toast(e.message,'error'); } };
+  sync(); dlg.showModal();
+}
+
 function renderOccurrences(){
   const r=state.result, wrap=$('#occView'); if(!r){wrap.innerHTML='<div class="empty-state">Aucune analyse.</div>';return;} const q=($('#occSearch').value||'').toLowerCase(), status=$('#occStatus').value;
   const rows=r.detailed.filter(o=>(!q||`${FIELD_MAP[o.field]?.label} ${o.value} ${o.fileName} ${o.excerpt}`.toLowerCase().includes(q))&&(!status||o.status===status));
@@ -11899,7 +12295,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=()=>{try{exportProjectsExcel(state.projects,state.rules);}catch(e){toast(e.message,'error');}};
+  $('#exportBtn').onclick=openExportDialog;
   $$('.tab').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab)); $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});
