@@ -1,3 +1,10 @@
+# v2.7.5 — collage libre : bâtiments toujours créés
+- Les bâtiments d'un collage libre sont créés tels quels : jamais rattachés automatiquement à un bâtiment « maître »
+  d'un RSET ni à un nom voisin (une fusion manuelle reste possible) ; un bâtiment supprimé lors d'un essai précédent
+  est recréé s'il est collé de nouveau.
+- Texte libre collé depuis l'accueil : refusé avec un message (il faut ouvrir l'opération concernée), pour ne pas
+  l'appliquer à une autre opération.
+
 # v2.7.4 — collage libre : bâtiments créés visibles
 - Après « Intégrer au projet », le message liste les bâtiments créés et la Revue s'ouvre sur le premier bâtiment collé,
   filtre « Renseignés » (le filtre « À compléter » masquait les valeurs collées, qui semblaient absentes).

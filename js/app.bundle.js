@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.7.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.7.5 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.7.4';
+const APP_VERSION='2.7.5';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -7819,6 +7819,8 @@ function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={}){
   const names=unique([...docNames,...occNames]).filter(b=>b!=='Bâtiment unique');
   const authoritative=unique(docs.filter(d=>[DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV].includes(d.type)).flatMap(d=>d.buildings?.names||[])).filter(b=>b&&b!=='Bâtiment unique');
   const aliasMap={}; const modes={};
+  // v2.7.5 — bâtiments d'un collage libre : créés tels quels, jamais rattachés automatiquement à un autre bâtiment.
+  const pinned=new Set(rawOccurrences.filter(o=>o?.pinnedBuilding&&o.building).map(o=>o.building));
 
   const authByCore=new Map();
   for(const a of authoritative){ const c=buildingCoreId(a); if(!c) continue; const list=authByCore.get(c)||[]; list.push(a); authByCore.set(c,list); }
@@ -7826,6 +7828,7 @@ function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={}){
   for(const n of names){ const k=buildingMergeKey(n); if(!k) continue; const list=allByKey.get(k)||[]; list.push(n); allByKey.set(k,list); }
 
   for(const n of names){
+    if(pinned.has(n)&&!manualOverrides?.[n]){ aliasMap[n]=n; modes[n]='collage'; continue; }
     let target=n, mode='distinct';
     const core=buildingCoreId(n), key=buildingMergeKey(n);
     const auth=core?authByCore.get(core)||[]:[];
@@ -7851,7 +7854,7 @@ function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={}){
   for(const [n,t0] of Object.entries(aliasMap)){
     let t=resolveManualBuilding(t0,manualOverrides);
     const core=buildingCoreId(t), auth=core?authByCore.get(core)||[]:[];
-    if(modes[n]!=='manual'&&auth.length===1) t=auth[0];
+    if(modes[n]!=='manual'&&modes[n]!=='collage'&&auth.length===1) t=auth[0];
     aliasMap[n]=t;
   }
 
@@ -11010,7 +11013,7 @@ function retainRemovedDocument(project,doc){
 }
 function manualPasteOccurrences(project=activeProject()){
   const out=[...retainedOccurrences(project)]; let n=0;
-  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
+  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',pinnedBuilding:!!r.building,excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
@@ -11070,6 +11073,7 @@ function freePasteTargetsHtml(fp){
     return `<label><span>${escapeHtml(b.name||'Texte sans bâtiment')} →</span><select data-fp-target="${escapeHtml(b.name)}">${rows.map(r=>`<option value="${escapeHtml(r)}" ${r===auto?'selected':''}>${escapeHtml(r)}</option>`).join('')}<option value="" ${auto?'':'selected'}>Nouveau bâtiment « ${escapeHtml(b.name?canonicalBuilding(b.name):'Bâtiment unique')} »</option></select></label>`; }).join('')}</div>`;
 }
 function applyFreePaste(){
+  if(state.homeView){ toast('Texte libre : ouvrez d’abord la tuile de l’opération concernée, puis Compléments → Données manuelles → Coller.','warn'); return; }
   const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
   // Valeurs « Toute l'opération » (texte descriptif) : reportées sur tous les bâtiments de l'analyse, documents compris.
   const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; const allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
@@ -11079,6 +11083,8 @@ function applyFreePaste(){
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
   const before=new Set((p.result?.rows||[]).map(r=>r.building));
+  // Un bâtiment collé explicitement est recréé même s'il avait été supprimé lors d'un essai précédent.
+  const pastedNames=new Set(vals.flatMap(v=>v.building?[v.building,canonicalBuilding(v.building)]:[])); if((p.deletedBuildings||[]).some(b=>pastedNames.has(b))) p.deletedBuildings=p.deletedBuildings.filter(b=>!pastedNames.has(b));
   recomputeProject('');
   const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
   const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };

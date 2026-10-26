@@ -647,7 +647,7 @@ function retainRemovedDocument(project,doc){
 }
 function manualPasteOccurrences(project=activeProject()){
   const out=[...retainedOccurrences(project)]; let n=0;
-  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
+  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',pinnedBuilding:!!r.building,excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
@@ -707,6 +707,7 @@ function freePasteTargetsHtml(fp){
     return `<label><span>${escapeHtml(b.name||'Texte sans bâtiment')} →</span><select data-fp-target="${escapeHtml(b.name)}">${rows.map(r=>`<option value="${escapeHtml(r)}" ${r===auto?'selected':''}>${escapeHtml(r)}</option>`).join('')}<option value="" ${auto?'':'selected'}>Nouveau bâtiment « ${escapeHtml(b.name?canonicalBuilding(b.name):'Bâtiment unique')} »</option></select></label>`; }).join('')}</div>`;
 }
 function applyFreePaste(){
+  if(state.homeView){ toast('Texte libre : ouvrez d’abord la tuile de l’opération concernée, puis Compléments → Données manuelles → Coller.','warn'); return; }
   const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
   // Valeurs « Toute l'opération » (texte descriptif) : reportées sur tous les bâtiments de l'analyse, documents compris.
   const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; const allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
@@ -716,6 +717,8 @@ function applyFreePaste(){
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
   const before=new Set((p.result?.rows||[]).map(r=>r.building));
+  // Un bâtiment collé explicitement est recréé même s'il avait été supprimé lors d'un essai précédent.
+  const pastedNames=new Set(vals.flatMap(v=>v.building?[v.building,canonicalBuilding(v.building)]:[])); if((p.deletedBuildings||[]).some(b=>pastedNames.has(b))) p.deletedBuildings=p.deletedBuildings.filter(b=>!pastedNames.has(b));
   recomputeProject('');
   const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
   const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
