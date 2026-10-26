@@ -686,7 +686,7 @@ function renderFreePastePreview(){
   box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1}</b> bâtiment(s)</span>${fp.buildings.some(b=>b.name==='*')?`<span><b>${fp.buildings.find(b=>b.name==='*').items.length}</b> valeur(s) pour toute l’opération</span>`:''}<span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
   <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
   <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
-  ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?'<i>Toute l’opération</i>':escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
+  ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?`<i>Toute l’opération</i><small> → tous les bâtiments${state.result?.rows?.length?` (${state.result.rows.length})`:''}</small>`:escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
   ${fp.unmatched.map((u,ui)=>`<tr class="unmatched"><td>${escapeHtml(u.building||'—')}</td><td>${escapeHtml(u.line)}</td><td>${freeFieldSelect('',`data-fp-u="${ui}"`)}</td><td><small>non reconnue</small></td></tr>`).join('')}
   </tbody></table></div>${freePasteTargetsHtml(fp)}${fp.unmatched.length?`<button type="button" class="btn secondary" id="freePasteAi">✨ Ranger les ${fp.unmatched.length} ligne(s) non reconnue(s) avec l’IA</button><small class="llm-hint"> Seules les lignes collées sont envoyées (Ollama en local si activé dans 🤖 IA) ; la valeur reste celle de la ligne.</small>`:''}`;
   box.querySelectorAll('[data-fp-b]').forEach(sel=>sel.onchange=()=>{ const it=fp.buildings[Number(sel.dataset.fpB)].items[Number(sel.dataset.fpI)]; it.field=sel.value||null; it.dhZone=null; if(it.field){ const tmp={buildings:[],unmatched:[{building:'_',line:it.line,label:it.label,raw:it.raw}]}; applyFreePasteAi(tmp,{lines:[{n:1,field:it.field,value:it.raw}]}); const v=tmp.buildings[0]?.items[0]?.value; if(v===undefined){ toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); it.field=null; } else it.value=v; } renderFreePastePreview(); });
@@ -708,6 +708,9 @@ function freePasteTargetsHtml(fp){
 }
 function applyFreePaste(){
   const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
+  // Valeurs « Toute l'opération » (texte descriptif) : reportées sur tous les bâtiments de l'analyse, documents compris.
+  const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; const allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
+  const ownFields=Object.fromEntries((freePaste.buildings||[]).filter(b=>b.name!=='*').map(b=>[b.name,new Set(b.items.map(i=>i.field).filter(Boolean))]));
   if(!vals.length){ toast('Aucune valeur rangée dans une colonne.','warn'); return; }
   // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
@@ -715,9 +718,13 @@ function applyFreePaste(){
   recomputeProject('');
   const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
   const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
-  let n=0; for(const v of vals){ const b=target(v.building); for(const [field,value] of Object.entries(v.values)){ const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre',page:'',excerpt:v.sources[field]||'',method:'manual:free-paste',provenanceNote:'Données collées : prioritaires sur les documents'}; n++; } }
+  let n=0; const ownByTarget={}; for(const v of vals){ const own=ownFields[v.building]; if(own) ownByTarget[target(v.building)]=own; }
+  for(const v of vals){ const b=target(v.building); for(const [field,value] of Object.entries(v.values)){ const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre',page:'',excerpt:v.sources[field]||'',method:'manual:free-paste',provenanceNote:'Données collées : prioritaires sur les documents'}; n++; } }
+  let nAll=0; const allRows=allVals?(state.result?.rows||[]).map(r=>r.building):[];
+  for(const b of allRows) for(const [field,value] of Object.entries(allVals.values)){ if(ownByTarget[b]?.has(field)) continue; const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre — toute l’opération',page:'',excerpt:allVals.sources[field]||'',method:'manual:free-paste',provenanceNote:'Donnée collée pour toute l’opération : prioritaire sur les documents'}; nAll++; }
   applyManualValues(); $('#manualDataDialog')?.close(); freePaste=null; renderAll(); scheduleWorkspaceCheckpoint('collage libre',80);
-  learn('manual_paste',{mode:'free',buildings:vals.length,values:n},p); toast(`${n} valeur(s) appliquée(s) sur ${vals.length} bâtiment(s) — prioritaires sur les documents.`,'success');
+  const nb=new Set([...vals.map(v=>target(v.building)),...allRows]).size;
+  learn('manual_paste',{mode:'free',buildings:nb,values:n+nAll},p); toast(`${n+nAll} valeur(s) appliquée(s) sur ${nb} bâtiment(s)${allRows.length?` (dont « toute l’opération » sur les ${allRows.length} bâtiments)`:''} — prioritaires sur les documents.`,'success');
 }
 function applyManualPaste(){
   if(freePaste){ applyFreePaste(); return; }

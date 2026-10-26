@@ -1,3 +1,8 @@
+# v2.7.2 — collage libre : « toute l'opération » sur tous les bâtiments
+- Les valeurs du texte descriptif (« Toute l'opération » dans l'aperçu) sont reportées sur **tous les bâtiments de
+  l'analyse**, y compris ceux issus des documents ; une valeur collée dans la section d'un bâtiment reste prioritaire
+  pour ce bâtiment.
+
 # v2.7.1 — collage libre : fiches de synthèse (maisons, texte descriptif)
 - En-têtes de section libres : « Maison 1-01 : », « Maisons 1-03 1-04 1-05 1-06 : », « Villa A : »… (ligne terminée par « : »
   avec un mot de bâtiment ou suivie de lignes « libellé = valeur ») ; une section répétée est fusionnée.
