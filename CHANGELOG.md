@@ -1,3 +1,12 @@
+# v2.7.1 — collage libre : fiches de synthèse (maisons, texte descriptif)
+- En-têtes de section libres : « Maison 1-01 : », « Maisons 1-03 1-04 1-05 1-06 : », « Villa A : »… (ligne terminée par « : »
+  avec un mot de bâtiment ou suivie de lignes « libellé = valeur ») ; une section répétée est fusionnée.
+- Partie descriptive d'une fiche (Planchers hauts / Parois verticales / Planchers bas / Menuiseries / Chauffage / ECS /
+  Renouvellement d'air / Énergies renouvelables) : lue par les parseurs CCTP d'ExtracTerre et par des règles de section
+  (isolant, épaisseur et R de la ligne de l'isolant, structure, vitrage, occultations, VMC hygro B, ENR « sans objet »),
+  appliquée à toutes les maisons collées (« Toute l'opération » dans l'aperçu). « libellé = » sans valeur est ignoré.
+- Aperçu : choix du bâtiment de l'analyse qui reçoit chaque section (correspondance automatique ou nouveau bâtiment).
+
 # v2.7.0 — Collage libre prioritaire, colonne Q4Pa-surf, export JSON de session, observatoire des recherches
 - **Collage libre** dans « Coller » : texte « libellé = valeur » (ou « : », tabulation), regroupé par bâtiment
   (« Bâtiment G : », « Bat H »). Chaque ligne est rangée dans une colonne (libellés courts : Sref (ou Srt), Bbiomax,

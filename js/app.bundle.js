@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.7.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.7.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.7.0';
+const APP_VERSION='2.7.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -8716,6 +8716,7 @@ Groupe Refroidissement Categorie Tic Tic Ref.
 // choisit qu'une colonne : la valeur reste celle écrite dans le texte collé (jamais inventée).
 
 
+
 const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
 // Libellé sans unité finale : « DH des zones traversantes (en °C.h) » → « DH des zones traversantes ».
@@ -8723,7 +8724,8 @@ const fp_clean=l=>String(l||'').replace(/\((?:en|unit[eé])\s[^)]*\)\s*$/i,'').r
 function fp_value(field,raw){
   const def=FIELD_MAP[field]; const s=String(raw||'').trim();
   if(def?.type!=='number') return s||null;
-  const m=s.replace(/ /g,' ').match(/[-+]?\d+(?:[ .]\d{3})*(?:[.,]\d+)?/); if(!m) return null;
+  // nombre isolé : le « 4 » de « Q4 » ou de « R+4 » n'est pas une valeur
+  const m=s.replace(/\u00a0/g,' ').match(/(?<![A-Za-z\d.,+])[-+]?\d+(?:[ .]\d{3})*(?:[.,]\d+)?/); if(!m) return null;
   return parseFrNumber(m[0]);
 }
 // DH par type de zone : la colonne DH garde la plus défavorable (comme la lecture des RSET) ; le type de zone est noté.
@@ -8733,14 +8735,26 @@ function matchFreeLabel(label){
   const clean=fp_clean(label); const r=matchFieldByHeaderDetailed(clean)||matchFieldByHeaderDetailed(label);
   return r?.def?.key&&r.def.key!=='building'?r.def.key:null;
 }
-// → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}]}
+// En-tête de section : « Bâtiment G : », « Maison 1-01 : », « Maisons 1-03 1-04 : » — ligne terminée par « : » sans valeur,
+// avec un mot de bâtiment ou suivie de lignes « libellé = valeur ».
+const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
+const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
+function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
+// → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}],descriptive:[lignes de texte]}
 function parseFreePaste(text){
-  const out=[]; let cur=null; const unmatched=[];
+  const out=[]; let cur=null; const unmatched=[], descriptive=[], descBld=[];
   const ensure=name=>{ cur=out.find(b=>b.name===name)||{name,items:[]}; if(!out.includes(cur)) out.push(cur); return cur; };
-  for(const line of String(text||'').replace(/\r/g,'').split('\n')){
-    if(!line.trim()) continue;
-    const b=line.match(fp_BUILDING); if(b&&!fp_PAIR.test(line.replace(/:\s*$/,''))){ { const n=b[1].replace(/\s+/g,' ').trim(); const k=n.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); ensure(k?`Bâtiment ${k[1]}`:n); } continue; }
-    const m=line.match(fp_PAIR); if(!m) { unmatched.push({building:cur?.name||'',line:line.trim(),label:'',raw:''}); continue; }
+  const lines=String(text||'').replace(/\r/g,'').split('\n');
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i]; if(!line.trim()) continue;
+    const h=line.match(fp_HEADER);
+    if(h){ const next=lines.slice(i+1).find(l=>l.trim())||''; if(fp_BUILDING.test(line)||fp_BUILDING_WORD.test(h[1])||/=/.test(next)){ ensure(fp_buildingName(h[1])); continue; } }
+    const m=line.match(fp_PAIR);
+    // « libellé = » sans valeur : rien à reporter.
+    if(/=\s*$/.test(line)) continue;
+    // Ligne de fiche (« Laine de verre … - Épaisseur : 380 mm - Performances : R= 10,85 », « - Uf = 1,80 ») : texte descriptif.
+    const descLine=!m||/^\s*[-–>*]/.test(line)||/\s[-–]\s/.test(m[1])||/[ée]paisseur|performances/i.test(m[1]);
+    if(descLine||!/=/.test(line)&&!/\t/.test(line)&&!fp_shortPair(line)){ descriptive.push(line.trim()); descBld.push(cur?.name||''); continue; }
     const label=m[1].trim(), raw=m[2].trim(); const bld=cur||ensure('');
     const dz=fp_dhZone(label);
     if(dz){ const v=fp_value('dh',raw); if(v!==null){ bld.items.push({line:line.trim(),label,raw,field:'dh',value:v,auto:true,dhZone:dz}); continue; } }
@@ -8748,14 +8762,74 @@ function parseFreePaste(text){
     if(field){ const v=fp_value(field,raw); if(v!==null){ bld.items.push({line:line.trim(),label,raw,field,value:v,auto:true}); continue; } }
     unmatched.push({building:bld.name,line:line.trim(),label,raw});
   }
-  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched};
+  // Ligne isolée hors des sections d'une fiche, avec un chiffre (« Perméabilité mesurée Q4 0,6 ») : proposée à l'IA.
+  let sec=null; descriptive.forEach((l,i)=>{ const low=normLower(l).replace(/[’']/g,' '); if(fp_SECTIONS.some(([,re])=>re.test(low))){ sec=true; return; } if(/-\s*notes$/.test(low)){ sec=null; return; }
+    if(!sec&&/\d/.test(l)&&!/^\s*[>*-]|\bpage\s+\d/i.test(l)) unmatched.push({building:descBld[i],line:l,label:'',raw:l}); });
+  const desc=descriptiveItems(descriptive);
+  if(desc.length) out.push({name:'*',items:desc});
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive};
+}
+// « Cep : 35,2 » (libellé court reconnu) est une paire ; « PRODUCTION : Pompe à chaleur… » reste du texte descriptif.
+function fp_shortPair(line){ const m=line.match(fp_PAIR); return !!m&&!!matchFreeLabel(m[1]); }
+
+// —— Texte descriptif (fiche de synthèse type CCTP : « Planchers hauts », « Parois verticales », « Chauffage »…) :
+// lu par les parseurs documentaires d'ExtracTerre, complétés par des règles de section. Valeurs de toute l'opération.
+const fp_SECTIONS=[['roof',/^planchers?\s+hauts?$|^toitures?$|^combles$/],['wall',/^parois?\s+verticales?$|^murs?(?:\s+exterieurs?)?$/],['floor',/^planchers?\s+bas$/],
+  ['win',/^menuiseries?\s+exterieures?$/],['vent',/^renouvellement\s+d.air$|^ventilation$/],['enr',/^energies?\s+renouvelables?$/],['heat',/^chauffage$/],['ecs',/^eau\s+chaude\s+sanitaire$/],['other',/^ponts?\s+thermiques?$|^regulation/]];
+const fp_ENTRY=/^(.+?)\s+-\s+[ÉE]paisseur\s*:\s*(\d+(?:[.,]\d+)?)\s*mm(?:.*?\bR\s*=\s*(\d+(?:[.,]\d+)?))?/i;
+function sectionItems(lines){
+  const out=[]; const put=(field,value,line)=>{ if(value!==null&&value!==undefined&&value!==''&&!out.some(x=>x.field===field)) out.push({field,value,line,label:'texte descriptif',raw:String(value),auto:true,descr:true}); };
+  let sec=null;
+  for(const line of lines){
+    const low=normLower(line).replace(/[’']/g,' ');
+    const hit=fp_SECTIONS.find(([,re])=>re.test(low)); if(hit){ sec=hit[0]; continue; }
+    if(/-\s*notes$/.test(low)){ sec=null; continue; }
+    if(!sec) continue;
+    if(['roof','wall','floor'].includes(sec)){
+      const e=line.match(fp_ENTRY); if(!e) continue; const name=e[1].replace(/^[-–\s]+/,'').trim(), th=parseFrNumber(e[2]), r=e[3]?parseFrNumber(e[3]):null;
+      const pre={roof:'roof',wall:'wall',floor:'floor'}[sec];
+      if(r!==null&&r>=0.5){ put(`${pre}_insulation`,name,line); put(`${pre}_insulation_thickness`,th,line); put(`${pre}_insulation_r`,r,line); }
+      else put(`${pre}_structure`,findFirstMatch(normalizeText(name),STRUCTURES)||name,line);
+    } else if(sec==='win'){
+      const g=line.match(/\b(\d{1,2}\s*[+/]\s*\d{1,2}\s*[+/]\s*\d{1,2})\b/); if(g) put('window_glazing',normalizeGlazingType(`${/vir|faible\s+[eé]missivit/i.test(line)?'double vitrage VIR ':''}${g[1].replace(/\+/g,'/')}`)||g[1],line);
+      const sh=findFirstMatch(normalizeText(line),SHADINGS); if(sh) put('window_shading',sh,line);
+    } else if(sec==='vent'){
+      if(/hygro/i.test(low)&&/\bbc\b|hygro[\s-]*b\b|type\s*b\b/.test(low)) put('ventilation','VMC Hygro B',line);
+      else if(/hygro/i.test(low)&&/hygro[\s-]*a\b|type\s*a\b/.test(low)) put('ventilation','VMC Hygro A',line);
+      else if(/double\s+flux/.test(low)) put('ventilation','VMC double flux',line);
+      else if(/simple\s+flux|autoreglable/.test(low)) put('ventilation','VMC simple flux autoréglable',line);
+    } else if(sec==='enr'){ if(/^(?:sans\s+objet|aucune?|neant|non)\.?$/.test(low.trim())) put('enr','Non',line); }
+  }
+  return out;
+}
+function descriptiveItems(lines){
+  if(!lines.length) return [];
+  const own=sectionItems(lines);
+  // Parseurs documentaires (ceux des CCTP) sur le texte collé, présenté comme une pièce écrite d'une page.
+  const L=lines.map((t,index)=>({index,text:normalizeText(t),items:[]}));
+  const doc={id:'free-paste',name:'Collage libre',type:DOC_TYPES.CCTP,classification:{type:DOC_TYPES.CCTP,automaticType:DOC_TYPES.CCTP},familyMode:'auto',status:'ready',buildings:{names:['Bâtiment unique']},
+    read:{kind:'text',pages:[{page:1,lines:L,text:L.map(l=>l.text).join('\n')}],text:L.map(l=>l.text).join('\n')}};
+  let occ=[]; try{ occ=parseDocument(doc)||[]; }catch{ occ=[]; }
+  const best={}; for(const o of occ){ if(!FIELD_MAP[o.field]||o.confidence<0.85) continue; if(!best[o.field]||o.confidence>best[o.field].confidence) best[o.field]=o; }
+  const items=[...own];
+  for(const o of Object.values(best)){
+    // Les règles de section priment pour l'épaisseur / le R (ligne de l'isolant) ; le nom normalisé du parseur prime.
+    const i=items.findIndex(x=>x.field===o.field);
+    if(i>=0){ if(/_insulation$|_structure$|^structure$/.test(o.field)) items[i]={...items[i],value:o.value}; continue; }
+    if(/_structure$/.test(o.field)&&items.some(x=>x.field===o.field.replace('_structure','_insulation'))&&/combles/i.test(String(o.value))) continue;
+    // « Structure » (porteuse) n'est pas déduite d'un plancher bas en hourdis.
+    if(o.field==='structure'&&items.some(x=>x.field==='floor_structure'&&x.value===o.value)) continue;
+    items.push({field:o.field,value:o.value,line:String(o.excerpt||'').split(' | ').pop(),label:'texte descriptif',raw:String(o.value),auto:true,descr:true});
+  }
+  return items;
 }
 // Valeurs finales par bâtiment : une valeur par colonne ; DH = zone la plus défavorable, types de zones « Oui ».
 function freePasteValues(parsed){
-  const res=[];
-  for(const b of parsed.buildings||[]){
+  const res=[]; const all=(parsed.buildings||[]).find(b=>b.name==='*'); const named=(parsed.buildings||[]).filter(b=>b.name!=='*');
+  for(const b of named.length?named:[{name:'',items:[]}]){
+    const items=[...b.items,...(all?all.items.filter(it=>!b.items.some(x=>x.field===it.field)):[])];
     const vals={}, src={};
-    for(const it of b.items){
+    for(const it of items){
       if(!it.field||it.value===null||it.value===undefined||it.value==='') continue;
       if(it.dhZone){ if(vals.dh===undefined||it.value>vals.dh){ vals.dh=it.value; src.dh=it.line; } const k=it.dhZone==='oui'?'cross_ventilated':'non_cross_ventilated'; vals[k]='Oui'; src[k]=it.line; continue; }
       vals[it.field]=it.value; src[it.field]=it.line;
@@ -10972,23 +11046,34 @@ function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">�
 function renderFreePastePreview(){
   const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;
   const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
-  box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length).length}</b> bâtiment(s)</span><span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
+  box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1}</b> bâtiment(s)</span>${fp.buildings.some(b=>b.name==='*')?`<span><b>${fp.buildings.find(b=>b.name==='*').items.length}</b> valeur(s) pour toute l’opération</span>`:''}<span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
   <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
   <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
-  ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
+  ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?'<i>Toute l’opération</i>':escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
   ${fp.unmatched.map((u,ui)=>`<tr class="unmatched"><td>${escapeHtml(u.building||'—')}</td><td>${escapeHtml(u.line)}</td><td>${freeFieldSelect('',`data-fp-u="${ui}"`)}</td><td><small>non reconnue</small></td></tr>`).join('')}
-  </tbody></table></div>${fp.unmatched.length?`<button type="button" class="btn secondary" id="freePasteAi">✨ Ranger les ${fp.unmatched.length} ligne(s) non reconnue(s) avec l’IA</button><small class="llm-hint"> Seules les lignes collées sont envoyées (Ollama en local si activé dans 🤖 IA) ; la valeur reste celle de la ligne.</small>`:''}`;
+  </tbody></table></div>${freePasteTargetsHtml(fp)}${fp.unmatched.length?`<button type="button" class="btn secondary" id="freePasteAi">✨ Ranger les ${fp.unmatched.length} ligne(s) non reconnue(s) avec l’IA</button><small class="llm-hint"> Seules les lignes collées sont envoyées (Ollama en local si activé dans 🤖 IA) ; la valeur reste celle de la ligne.</small>`:''}`;
   box.querySelectorAll('[data-fp-b]').forEach(sel=>sel.onchange=()=>{ const it=fp.buildings[Number(sel.dataset.fpB)].items[Number(sel.dataset.fpI)]; it.field=sel.value||null; it.dhZone=null; if(it.field){ const tmp={buildings:[],unmatched:[{building:'_',line:it.line,label:it.label,raw:it.raw}]}; applyFreePasteAi(tmp,{lines:[{n:1,field:it.field,value:it.raw}]}); const v=tmp.buildings[0]?.items[0]?.value; if(v===undefined){ toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); it.field=null; } else it.value=v; } renderFreePastePreview(); });
   box.querySelectorAll('[data-fp-u]').forEach(sel=>sel.onchange=()=>{ if(!sel.value) return; const u=fp.unmatched[Number(sel.dataset.fpU)]; const tmp={buildings:fp.buildings,unmatched:[u]}; if(!applyFreePasteAi(tmp,{lines:[{n:1,field:sel.value,value:u.raw||u.line}]})) toast('Aucune valeur exploitable dans cette ligne pour cette colonne.','warn'); else { fp.unmatched=fp.unmatched.filter(x=>x!==u); const last=fp.buildings.find(x=>x.name===u.building)?.items.slice(-1)[0]; if(last) last.ai=false; } renderFreePastePreview(); });
+  box.querySelectorAll('[data-fp-target]').forEach(sel=>sel.onchange=()=>{ fp.targets=fp.targets||{}; fp.targets[sel.dataset.fpTarget]=sel.value; });
   $('#freePasteAi')?.addEventListener('click',async e=>{ const btn=e.currentTarget; btn.disabled=true; btn.textContent='IA en cours…';
     try{ const pr=freePastePrompt(fp.unmatched); const added=applyFreePasteAi(fp,parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:1500},{invokeFunction:invokeLlmCloudFunction}))); toast(added?`${added} ligne(s) rangée(s) par l’IA : vérifiez les colonnes.`:'L’IA n’a trouvé aucune colonne adaptée.',added?'success':'warn'); learn('free_paste_ai',{lines:pr.user.split('\n').length,added},activeProject()); }
     catch(err){ toast(`IA indisponible : ${err?.message||err}`,'error'); }
     renderFreePastePreview(); });
 }
+// Bâtiment de l'analyse qui reçoit chaque section collée : correspondance automatique, modifiable dans l'aperçu.
+function freePasteAutoTarget(name){ const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[]; if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name);
+  return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||''; }
+function freePasteTargetsHtml(fp){
+  const named=fp.buildings.filter(b=>b.name!=='*'); const rows=(state.result?.rows||[]).map(r=>r.building); if(!named.length&&!rows.length) return '';
+  fp.targets=fp.targets||{};
+  return `<div class="free-paste-targets"><strong>Bâtiments de l’analyse</strong>${(named.length?named:[{name:''}]).map(b=>{ const auto=fp.targets[b.name]??freePasteAutoTarget(b.name); fp.targets[b.name]=auto;
+    return `<label><span>${escapeHtml(b.name||'Texte sans bâtiment')} →</span><select data-fp-target="${escapeHtml(b.name)}">${rows.map(r=>`<option value="${escapeHtml(r)}" ${r===auto?'selected':''}>${escapeHtml(r)}</option>`).join('')}<option value="" ${auto?'':'selected'}>Nouveau bâtiment « ${escapeHtml(b.name?canonicalBuilding(b.name):'Bâtiment unique')} »</option></select></label>`; }).join('')}</div>`;
+}
 function applyFreePaste(){
   const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
   if(!vals.length){ toast('Aucune valeur rangée dans une colonne.','warn'); return; }
   // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
+  const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
   recomputeProject('');
   const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
@@ -12288,7 +12373,7 @@ function renderSearchResults(){
 }
 
 
-function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount) manualCount.textContent=String(state.manualPasteRows.length); const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; }
+function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount){ const free=(activeProject().freePasteRows||[]).length; manualCount.textContent=`${state.manualPasteRows.length} ligne(s) de tableau${free?` · ${free} bâtiment(s) en collage libre`:''}`; } const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; }
 function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
 function switchTab(name){ state.activeTab=name; if(name!=='summary'&&state.homeView) setHomeMode(false); $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 

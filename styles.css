@@ -1264,3 +1264,4 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .manual-free-note{font-size:.82rem;margin:6px 0;color:var(--muted,#6c7b74)}.manual-free-note b{color:#a3361f}
 .free-paste-table{font-size:.82rem}.free-paste-table td{vertical-align:middle;padding:4px 8px}.free-paste-table select{max-width:260px;font:inherit;font-size:.8rem;padding:3px 5px;border:1px solid var(--line,#cbd5d1);border-radius:6px}
 .free-paste-table tr.unmatched td{background:#fff7ec}.free-paste-table tr.ai td{background:#f3f0fb}
+.free-paste-targets{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin:10px 0;font-size:.82rem}.free-paste-targets label{display:flex;gap:6px;align-items:center}.free-paste-targets select{font:inherit;font-size:.8rem;padding:3px 5px;border:1px solid var(--line,#cbd5d1);border-radius:6px;max-width:260px}
