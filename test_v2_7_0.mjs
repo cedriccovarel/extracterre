@@ -8,7 +8,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {buildBuildingGrouping,analyzeDocuments} from './js/engine.js';
 import {DEFAULT_SOURCE_RULES,DOC_TYPES} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.8.0','version');
+eq(APP_VERSION, '2.8.1','version');
 const TXT=`Bâtiment X :
 Nombre de logements = 30
 Sref (ou Srt) = 2000,5
@@ -104,17 +104,20 @@ ok(/créé\(s\) : /.test(app)&&/reviewState\.filter='done'/.test(app),'collage :
 const grp=buildBuildingGrouping([{type:'RSET RE2020',buildings:{names:['Bâtiment MAISON 1']}}],[{building:'Bâtiment MAISON 1-01',pinnedBuilding:true},{building:'Bâtiment MAISON 1-02',pinnedBuilding:true}],{});
 eq(grp.aliases.filter(a=>a.mode==='collage').map(a=>a.target),['Bâtiment MAISON 1-01','Bâtiment MAISON 1-02'],'bâtiments collés créés tels quels, jamais fusionnés automatiquement');
 ok(/pinnedBuilding:!!r\.building/.test(app)&&/p\.deletedBuildings=p\.deletedBuildings\.filter/.test(app)&&/if\(state\.homeView\)\{ toast\('Texte libre/.test(app),'collage : bâtiments épinglés, suppression levée, refus depuis l’accueil');
-// v2.8.0 — donnée manuelle définitive : un RSET (DH le plus défavorable, rang 1) ne la remplace pas.
+// v2.8.1 — donnée manuelle définitive : un RSET (DH le plus défavorable, rang 1) ne la remplace pas.
 const rsetDoc={id:'r',name:'RSET.xml',type:DOC_TYPES.RSET_RE2020,status:'ready',buildings:{names:['Bâtiment A']},cachedOccurrences:[]};
 const occ=(value,extra)=>({field:'dh',value,building:'Bâtiment A',docId:'r',fileName:'RSET.xml',docType:DOC_TYPES.RSET_RE2020,page:1,excerpt:'DH',confidence:.99,method:'rset:dh-row',...extra});
 const res=analyzeDocuments([{...rsetDoc,cachedOccurrences:[occ(900)]}],DEFAULT_SOURCE_RULES,'Op',{},[occ(300,{docId:'m',fileName:'Excel',docType:DOC_TYPES.MANUAL,method:'manual:excel-paste',userValidated:true,manualDefinitive:true})]);
 eq(res.rows.find(r=>r.building==='Bâtiment A')?.dh,300,'collage Excel définitif : prime sur le DH RSET plus défavorable');
 ok(/function manualRow\(/.test(app)&&/data-rv-unset/.test(app)&&/function removeManualValue\(/.test(app),'donnée manuelle suivie après fusion, bâtiment recréé, suppression manuelle depuis la revue');
-// v2.8.0 — fiche Salesforce (libellé / valeur sur deux lignes), données FICTIVES.
+// v2.8.1 — fiche Salesforce (libellé / valeur sur deux lignes), données FICTIVES.
 const SF=`Détails\nCode interne\nModifier Code interne\nOPE-009999\nContrat: Numéro du contrat\nC-2026-0042\nNombre de logements\n24\nPropriétaire\nJean Test\nChauffage collectif au gaz`;
 const sf=freePasteValues(parseFreePaste(SF))[0]?.values||{};
 eq([sf.internal_code,sf.contract_number,sf.housing_count,Object.keys(sf).length],['OPE-009999','C-2026-0042',24,3],'Salesforce : paires libellé/valeur, aide « Modifier » ignorée, rien deviné dans le reste de la page');
 eq(unstackLabels(TXT).pairs,0,'texte « libellé = valeur » inchangé');
 ok(/function confirmManualChange\(/.test(app)&&(app.match(/confirmManualChange\(/g)||[]).length>=7&&/const keepOld=conflicts\.length>0&&!confirm/.test(app),'modification d’une donnée manuelle : validation demandée partout');
 ok(/getDisplayMedia/.test(app)&&/#sf=/.test(app)&&/history\.replaceState/.test(app),'capture OCR et bouton de favoris, texte effacé de l’adresse');
-console.log(`v2.8.0 — ${n} vérifications OK (données fictives)`);
+const relay=fs.readFileSync(new URL('./relay.html',import.meta.url),'utf8');
+ok(/'relay\.html'/.test(app)&&/new BroadcastChannel\('extracterre-import'\)/.test(app)&&/BroadcastChannel\('extracterre-import'\)/.test(relay)&&/type:'ack'/.test(app),'favori : relais vers l’onglet ExtracTerre déjà ouvert');
+ok(/function pickOcrZone\(/.test(app)&&/displaySurface:'browser'/.test(app),'capture OCR : choix de l’onglet puis de la zone');
+console.log(`v2.8.1 — ${n} vérifications OK (données fictives)`);

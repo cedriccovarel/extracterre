@@ -691,22 +691,52 @@ function receiveBookmarkletText(){
   try{ t=decodeURIComponent(h.slice(4)); }catch{ toast('Texte Salesforce reçu illisible.','error'); }
   history.replaceState(null,'',location.pathname+location.search); if(t) openExternalText(t,'Salesforce');
 }
-function bookmarkletHref(){ const app=location.origin+location.pathname; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${app}#sf='+encodeURIComponent(t),'extracterre');})()`; }
+// v2.8.1 — le favori ouvre un petit relais (même site qu'ExtracTerre) qui transmet le texte à l'onglet ExtracTerre déjà ouvert.
+function bookmarkletHref(){ const relay=location.origin+location.pathname.replace(/[^/]*$/,'')+'relay.html'; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${relay}#sf='+encodeURIComponent(t),'extracterre_relay','popup,width=480,height=230');})()`; }
+let importTitle='';
+function listenImportRelay(){
+  if(typeof BroadcastChannel!=='function') return; const bc=new BroadcastChannel('extracterre-import');
+  bc.onmessage=e=>{ const m=e.data; if(m?.type!=='import'||!m.text) return; bc.postMessage({type:'ack',id:m.id});
+    if(!importTitle){ importTitle=document.title; document.title=`● ${m.source||'Salesforce'} reçu — ${importTitle}`; document.addEventListener('visibilitychange',function back(){ if(document.visibilityState==='visible'){ document.title=importTitle; importTitle=''; document.removeEventListener('visibilitychange',back); } }); }
+    openExternalText(m.text,m.source||'Salesforce'); };
+}
+// Image → canvas agrandi en niveaux de gris : Tesseract lit mieux un texte d'écran grossi.
+async function ocrCanvas(image){
+  const src=image instanceof HTMLCanvasElement?image:await createImageBitmap(image); const k=Math.min(3,Math.max(1,2400/Math.max(1,src.width)));
+  const c=document.createElement('canvas'); c.width=Math.round(src.width*k); c.height=Math.round(src.height*k); const g=c.getContext('2d'); g.filter='grayscale(1) contrast(1.25)'; g.imageSmoothingQuality='high'; g.drawImage(src,0,0,c.width,c.height); return c;
+}
 async function ocrToFreePaste(image,source='Capture d’écran (OCR)'){
   if(!globalThis.Tesseract?.createWorker){ toast('Le moteur OCR n’est pas chargé (connexion internet requise).','error'); return; }
-  const btn=$('#captureOcrBtn'); if(btn) btn.disabled=true; toast('Lecture OCR de la capture…','info'); let worker;
-  try{ worker=await globalThis.Tesseract.createWorker('fra+eng',1); const {data}=await worker.recognize(image); openExternalText(String(data?.text||'').trim(),source); }
+  const btn=$('#captureOcrBtn'); if(btn) btn.disabled=true; toast('Lecture OCR de la zone…','info'); let worker;
+  try{ const c=await ocrCanvas(image); worker=await globalThis.Tesseract.createWorker('fra+eng',1); const {data}=await worker.recognize(c); openExternalText(String(data?.text||'').trim(),source); }
   catch(err){ toast(`OCR impossible : ${err?.message||err}`,'error'); }
   finally{ try{ await worker?.terminate(); }catch{} if(btn) btn.disabled=false; }
 }
-// L'image reste en mémoire : jamais enregistrée sur l'ordinateur.
+// Choix de la zone à lire sur l'image capturée (rectangle tracé à la souris) → canvas recadré, ou null si annulé.
+function pickOcrZone(canvas){ return new Promise(resolve=>{
+  const dlg=document.createElement('dialog'); dlg.className='ocr-zone-dialog';
+  dlg.innerHTML=`<div class="ocr-zone-head"><div><b>Tracez la zone à lire</b><span>Encadrez les champs utiles, idéalement une seule colonne de libellés et valeurs.</span></div><div><button type="button" class="btn light" data-z="cancel">Annuler</button><button type="button" class="btn light" data-z="all">Toute l’image</button><button type="button" class="btn primary" data-z="ok" disabled>Lire la zone</button></div></div><div class="ocr-zone-wrap"><div class="ocr-zone-rect" hidden></div></div>`;
+  const wrap=dlg.querySelector('.ocr-zone-wrap'), rectEl=dlg.querySelector('.ocr-zone-rect'), ok=dlg.querySelector('[data-z="ok"]'); canvas.className='ocr-zone-img'; wrap.prepend(canvas);
+  let a=null, r=null; const pt=e=>{ const b=canvas.getBoundingClientRect(); return {x:Math.max(0,Math.min(b.width,e.clientX-b.left)),y:Math.max(0,Math.min(b.height,e.clientY-b.top))}; };
+  const draw=()=>{ rectEl.hidden=!r; if(r) Object.assign(rectEl.style,{left:`${canvas.offsetLeft+r.x}px`,top:`${canvas.offsetTop+r.y}px`,width:`${r.w}px`,height:`${r.h}px`}); ok.disabled=!(r&&r.w>8&&r.h>8); };
+  canvas.onpointerdown=e=>{ e.preventDefault(); canvas.setPointerCapture(e.pointerId); a=pt(e); r={x:a.x,y:a.y,w:0,h:0}; draw(); };
+  canvas.onpointermove=e=>{ if(!a) return; const p=pt(e); r={x:Math.min(a.x,p.x),y:Math.min(a.y,p.y),w:Math.abs(p.x-a.x),h:Math.abs(p.y-a.y)}; draw(); };
+  canvas.onpointerup=()=>{ a=null; };
+  const finish=v=>{ dlg.close(); dlg.remove(); resolve(v); };
+  dlg.addEventListener('cancel',e=>{ e.preventDefault(); finish(null); });
+  dlg.querySelector('[data-z="cancel"]').onclick=()=>finish(null);
+  dlg.querySelector('[data-z="all"]').onclick=()=>finish(canvas);
+  ok.onclick=()=>{ const k=canvas.width/canvas.getBoundingClientRect().width, c=document.createElement('canvas'); c.width=Math.round(r.w*k); c.height=Math.round(r.h*k); c.getContext('2d').drawImage(canvas,r.x*k,r.y*k,c.width,c.height,0,0,c.width,c.height); finish(c); };
+  document.body.append(dlg); dlg.showModal();
+}); }
+// L'image reste en mémoire : jamais enregistrée sur l'ordinateur. Le sélecteur de Chrome s'ouvre sur les onglets.
 async function captureTabOcr(){
   if(!navigator.mediaDevices?.getDisplayMedia){ toast('Capture d’écran non disponible dans ce navigateur.','error'); return; }
-  let stream; try{ stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false}); }catch{ return; }
+  let stream; try{ stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'browser'},audio:false,selfBrowserSurface:'exclude',surfaceSwitching:'include',preferCurrentTab:false}); }catch{ return; }
   const c=document.createElement('canvas');
   try{ const v=document.createElement('video'); v.muted=true; v.srcObject=stream; await v.play(); await new Promise(r=>setTimeout(r,400)); c.width=v.videoWidth; c.height=v.videoHeight; c.getContext('2d').drawImage(v,0,0); }
   finally{ stream.getTracks().forEach(t=>t.stop()); }
-  if(c.width) await ocrToFreePaste(c);
+  if(!c.width) return; const zone=await pickOcrZone(c); if(zone) await ocrToFreePaste(zone);
 }
 function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||'', keep=freePaste?.sourceLabel; if(raw.trim()&&(keep||looksLikeFreeText(raw))){ freePaste=parseFreePaste(raw); if(keep) freePaste.sourceLabel=keep; renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
 function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">— ignorer</option>${FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`<option value="${f.key}" ${f.key===cur?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}</select>`; }
@@ -2252,7 +2282,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ExtracTerre — envoi</title>
+<style>body{margin:0;padding:18px;font:14px/1.45 system-ui,-apple-system,sans-serif;background:#f5faf7;color:#173e31}b{color:#0c6748}a,button{font:inherit;font-weight:700;color:#0c6748;background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}p{margin:0 0 10px}</style></head>
+<body><p id="m">Envoi à ExtracTerre…</p>
+<script>
+// v2.8.1 — relais du favori « → ExtracTerre » : transmet le texte à l'onglet ExtracTerre déjà ouvert (même site), sans fichier.
+(()=>{ const m=document.getElementById('m'); let text=''; try{ if(location.hash.startsWith('#sf=')) text=decodeURIComponent(location.hash.slice(4)); }catch{}
+  history.replaceState(null,'',location.pathname);
+  if(!text){ m.textContent='Aucun texte reçu.'; return; }
+  const ch=typeof BroadcastChannel==='function'?new BroadcastChannel('extracterre-import'):null; let id='', done=false;
+  const send=()=>{ id=Math.random().toString(36).slice(2); m.textContent='Envoi à ExtracTerre…'; ch?.postMessage({type:'import',id,text,source:'Salesforce'});
+    setTimeout(()=>{ if(done) return; m.innerHTML='<p>Aucun onglet ExtracTerre <b>ouvert et déverrouillé</b> n’a répondu.</p>'; const retry=document.createElement('button'); retry.textContent='Réessayer'; retry.onclick=send; const open=document.createElement('a'); open.href='index.html#sf='+encodeURIComponent(text); open.textContent='Ouvrir ExtracTerre dans un nouvel onglet'; open.onclick=e=>{ e.preventDefault(); window.open(open.href,'_blank'); window.close(); }; m.append(retry,document.createTextNode(' · '),open); },1500); };
+  if(ch) ch.onmessage=e=>{ if(e.data?.type==='ack'&&e.data.id===id&&!done){ done=true; text=''; m.innerHTML='<b>✓ Envoyé</b> à l’onglet ExtracTerre déjà ouvert : revenez-y pour vérifier puis intégrer.'; setTimeout(()=>window.close(),1500); } };
+  send();
+})();
+</script></body></html>

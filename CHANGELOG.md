@@ -1,3 +1,10 @@
+# v2.8.1 — favori Salesforce vers l'onglet déjà ouvert, zone OCR au choix
+- Le favori « → ExtracTerre » ouvre un petit relais (relay.html) qui transmet le texte à l'onglet ExtracTerre déjà
+  ouvert et déverrouillé (documents conservés), puis se ferme ; l'onglet ExtracTerre signale « ● Salesforce reçu ».
+  Sans onglet ouvert : « Réessayer » ou ouverture d'ExtracTerre avec le texte. L'ancien favori est à remplacer.
+- Capture OCR : le sélecteur de Chrome s'ouvre sur les onglets (ExtracTerre exclu), puis la zone à lire se trace à
+  la souris ; l'image est agrandie et passée en niveaux de gris avant lecture (captures collées comprises).
+
 # v2.8.0 — Salesforce sans fichier, capture OCR, confirmation des données manuelles
 - Bouton de favoris « → ExtracTerre » (à glisser dans la barre de favoris, depuis Données manuelles) : sur une fiche
   Salesforce, il envoie le texte de la page (ou la sélection) à ExtracTerre, qui ouvre l'aperçu du collage libre.

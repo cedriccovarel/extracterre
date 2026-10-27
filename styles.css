@@ -1268,3 +1268,8 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 
 /* v2.8.0 — capture Salesforce / OCR */
 .manual-capture{display:grid;gap:8px;margin:10px 0}.manual-capture>div{display:flex;gap:10px;align-items:center;font-size:11.5px;color:#50685e;line-height:1.4}.manual-capture .btn{white-space:nowrap;flex:none}
+/* v2.8.1 — choix de la zone OCR */
+.ocr-zone-dialog{width:min(96vw,1400px);max-height:94vh;border:0;border-radius:14px;padding:0;background:#fff;color:var(--ink)}.ocr-zone-dialog::backdrop{background:rgba(10,30,22,.55)}
+.ocr-zone-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}.ocr-zone-head span{display:block;font-size:12px;color:var(--muted)}.ocr-zone-head>div:last-child{display:flex;gap:8px}
+.ocr-zone-wrap{position:relative;overflow:auto;max-height:calc(94vh - 70px);padding:10px;background:#eef3f0}.ocr-zone-img{display:block;max-width:100%;height:auto;cursor:crosshair;touch-action:none;user-select:none}
+.ocr-zone-rect{position:absolute;border:2px solid #0c6748;background:rgba(12,103,72,.12);pointer-events:none}
