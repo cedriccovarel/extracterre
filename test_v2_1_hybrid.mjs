@@ -19,16 +19,16 @@ const { APP_VERSION, FIELD_DEFS, DOC_TYPES } = await import('./js/config.js');
 const { shouldUseCloudForFile } = await import('./js/cloud.js');
 const { importImprovementPatchObject, parsePatchOccurrences } = await import('./js/patches.js');
 
-assert.equal(APP_VERSION, '2.8.1', 'La version doit être 2.3.21');
-assert.equal(FIELD_DEFS.length, 193, 'Le catalogue moteur doit garder 193 champs');
+assert.equal(APP_VERSION, '2.9.0', 'La version doit être 2.3.21');
+assert.equal(FIELD_DEFS.length, 200, "Le catalogue moteur doit garder 200 champs");
 
 const catalog = JSON.parse(fs.readFileSync('./data/field-catalog.json', 'utf8'));
-assert.equal(catalog.count, 193, 'Le catalogue JSON doit garder 193 champs');
+assert.equal(catalog.count, 200, "Le catalogue JSON doit garder 200 champs");
 assert.deepEqual(catalog.fields.map(x => x.label), FIELD_DEFS.map(x => x.label), 'Le catalogue JSON doit conserver le même ordre');
 
 const masterColumns = fs.readFileSync('./COLONNES_EXTRACTERRE.txt', 'utf8')
   .split(/\t|\r?\n/).map(x => x.trim()).filter(Boolean);
-assert.equal(masterColumns.length, 193, 'COLONNES_EXTRACTERRE doit garder exactement 193 lignes');
+assert.equal(masterColumns.length, 200, "COLONNES_EXTRACTERRE doit garder exactement 200 lignes");
 assert.deepEqual(masterColumns, FIELD_DEFS.map(x => x.label), 'L’ordre d’export maître ne doit pas changer');
 
 assert.equal(shouldUseCloudForFile({name:'leger.pdf', size:2*1024*1024}, 'auto', 'auto'), false);

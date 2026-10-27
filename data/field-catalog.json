@@ -1,7 +1,7 @@
 {
-  "version": "2.4.0",
-  "generatedAt": "2026-10-19T08:30:35.319Z",
-  "count": 193,
+  "version": "2.9.0",
+  "generatedAt": "2026-10-27T15:48:06.273Z",
+  "count": 200,
   "fields": [
     {
       "position": 1,
@@ -5070,6 +5070,215 @@
           "Rapport d'imperméabilité",
           "DPE",
           "Étude carbone / ACV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 194,
+      "key": "address",
+      "label": "Adresse",
+      "family": "Localisation",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Adresse",
+        "Adresse de l'opération",
+        "Adresse du projet",
+        "Adresse du chantier",
+        "Adresse du terrain",
+        "Adresse opération"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle",
+          "Permis / pièce administrative",
+          "Descriptif du projet"
+        ],
+        "secondary": [
+          "Étude thermique",
+          "RT Existant",
+          "Diagnostic",
+          "DPE",
+          "CCTP",
+          "CR de conception",
+          "CR environnemental",
+          "Étude carbone / ACV",
+          "Rapport d'imperméabilité"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 195,
+      "key": "postcode",
+      "label": "Code postal",
+      "family": "Localisation",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Code postal",
+        "Code postal de l'opération",
+        "Code postal opération"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle",
+          "Permis / pièce administrative",
+          "Descriptif du projet"
+        ],
+        "secondary": [
+          "Étude thermique",
+          "RT Existant",
+          "Diagnostic",
+          "DPE",
+          "CCTP",
+          "CR de conception",
+          "CR environnemental",
+          "Étude carbone / ACV",
+          "Rapport d'imperméabilité"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 196,
+      "key": "city",
+      "label": "Ville",
+      "family": "Localisation",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Ville",
+        "Commune",
+        "Ville de l'opération",
+        "Commune de l'opération"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "RSENV / RSNV",
+          "Plan architectural",
+          "Notice architecturale / pièce écrite architecte",
+          "Entrée manuelle",
+          "Permis / pièce administrative",
+          "Descriptif du projet"
+        ],
+        "secondary": [
+          "Étude thermique",
+          "RT Existant",
+          "Diagnostic",
+          "DPE",
+          "CCTP",
+          "CR de conception",
+          "CR environnemental",
+          "Étude carbone / ACV",
+          "Rapport d'imperméabilité"
+        ],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 197,
+      "key": "insee_code",
+      "label": "Code INSEE",
+      "family": "Localisation",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Code INSEE",
+        "INSEE",
+        "Code commune INSEE"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 198,
+      "key": "latitude",
+      "label": "Latitude",
+      "family": "Localisation",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Latitude",
+        "Latitude WGS84"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 199,
+      "key": "longitude",
+      "label": "Longitude",
+      "family": "Localisation",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Longitude",
+        "Longitude WGS84"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 200,
+      "key": "geocode_precision",
+      "label": "Géolocalisation",
+      "family": "Localisation",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Géolocalisation",
+        "Précision géolocalisation"
+      ],
+      "sources": {
+        "main": [
+          "Contrat",
+          "Livret d'opération",
           "Entrée manuelle"
         ],
         "secondary": [],

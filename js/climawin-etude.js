@@ -6,6 +6,7 @@
 //    résultat réglementaire : seules les compositions et les équipements du projet sont repris.
 // Les parois portent leur état dans le nom (« 1re.Mur ITE » rénovée, « 1ex.PLB » existante, « Mur ext av / ap ») et dans
 // « Paroi renovee Renove / Non renove ». Épaisseurs en mm (convention ExtracTerre), R en m².K/W.
+import {parseFrAddress} from './geocode.js';
 import {normalizeText,parseFrNumber,normalizeGlazingType} from './utils.js';
 import {insulationName} from './donnees-techniques.js';
 
@@ -106,7 +107,8 @@ export function parseClimaWinRenovation(doc,occ,canonical=(s)=>s){
     if(x){ const s=x.t; const v=/double\s+flux/i.test(s)?'VMC double flux':/hygro\w*\s*(?:reglable\s+)?(?:type\s+)?B\b/i.test(s)?'VMC Hygro B':/hygro\w*\s*(?:reglable\s+)?(?:type\s+)?A\b/i.test(s)?'VMC Hygro A':/hybride/i.test(s)?'Ventilation hybride':/simple\s+flux/i.test(s)?'VMC simple flux':/naturelle/i.test(s)?'Ventilation naturelle':null;
       if(v) for(const t of targets) emit(x,t,'ventilation',v,'ventilation',0.88,'',{provenanceNote:`Système de ventilation : ${s}.`}); } }
   { const i=L.findIndex(x=>/^\d\.\d\.\s+Donnees\s+administratives\s+du\s+projet$/i.test(x.t)); const a=i>=0?L.slice(i,i+8).find(x=>/^Adresse\s.*\b\d{5}\b/i.test(x.t)):null;
-    if(a){ const cp=a.t.match(/\b(\d{5})\b/)[1]; const d=/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2); emit(a,'Bâtiment unique','department',d,'departement-cp',0.95,'',{secondarySourceOk:true,provenanceNote:`Code postal de l’opération : ${cp}.`}); } }
+    if(a){ const cp=a.t.match(/\b(\d{5})\b/)[1]; const d=/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2); emit(a,'Bâtiment unique','department',d,'departement-cp',0.95,'',{secondarySourceOk:true,provenanceNote:`Code postal de l’opération : ${cp}.`});
+      const ad=parseFrAddress(a.t.replace(/^Adresse\s*:?\s*/i,'')); for(const f of ['address','postcode','city']) emit(a,'Bâtiment unique',f,ad[f],'adresse',0.9,'',{secondarySourceOk:true}); } }
   if(!study) return out;
   // 5. Résultats par bâtiment.
   const secs=[]; L.forEach((x,i)=>{ const m=x.t.match(/^\d{1,2}\.\s+(.+?)\s+-\s+(Ubat|Deperditions|RT\s+pour\s+l.existant|Thermique)$/i); if(m) secs.push({name:cw_name(m[1]),kind:m[2],i}); });

@@ -1,6 +1,6 @@
 import {APP_VERSION,FIELD_DEFS,FIELD_MAP,MIN_RETAINED_CONFIDENCE} from './config.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,COST_CATEGORIES} from './economics.js';
-import {runSearchGrid,searchCellValue} from './recherches.js';
+import {runSearchGrid,searchCellValue,STAT_KEYS} from './recherches.js';
 import {INSULATION_LIBRARY_VERSION,INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 
 function aoaSheet(rows){ return XLSX.utils.aoa_to_sheet(rows); }
@@ -52,8 +52,8 @@ export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
     const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{})}));
     if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
     const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
-    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.map(c=>`${c.theme} — ${c.label}`)];
-    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.map(c=>searchCellValue(c,r.criteria[c.id]))])];
+    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
+    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([k])=>r.criteria[c.id].stats?.[k]??''):[searchCellValue(c,r.criteria[c.id])])])];
     const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,`Rech. ${g.name}`.replace(/[\\/?*[\]:]/g,' ').slice(0,31));
     for(const {x,r} of res) for(const c of g.criteria) for(const ev of r.criteria[c.id].evidence) cites.push([x.code,x.name,contract(x),g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]);
   }

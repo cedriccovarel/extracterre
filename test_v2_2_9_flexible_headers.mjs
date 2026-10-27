@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {APP_VERSION,matchFieldByHeaderDetailed} from './js/config.js';
-assert.equal(APP_VERSION, '2.8.1');
+assert.equal(APP_VERSION, '2.9.0');
 const expected={
   'Numéro du contrat':'contract_number',
   'Opération: Code interne':'internal_code',
@@ -35,5 +35,6 @@ for(const [header,key] of Object.entries(expected)) assert.equal(matchFieldByHea
 // v2.3.8 — ces colonnes existent désormais : elles doivent être reconnues.
 assert.equal(matchFieldByHeaderDetailed('IC énergie max')?.def?.key,'ic_energy_max');
 assert.equal(matchFieldByHeaderDetailed('IC construction max')?.def?.key,'ic_construction_max');
-for(const header of ['Région de l’opération','Code postal']) assert.equal(matchFieldByHeaderDetailed(header),null,`Ne pas inventer un rapprochement pour ${header}`);
+assert.equal(matchFieldByHeaderDetailed('Code postal')?.def?.key,'postcode'); // v2.9.0
+for(const header of ['Région de l’opération']) assert.equal(matchFieldByHeaderDetailed(header),null,`Ne pas inventer un rapprochement pour ${header}`);
 console.log('OK v2.2.9 flexible headers');

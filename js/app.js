@@ -6,6 +6,7 @@ import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
 import {analyzeDocuments,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
+import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS} from './geocode.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {parseFreePaste,freePasteValues,freePastePrompt,applyFreePasteAi,looksLikeFreeText} from './collage-libre.js';
@@ -161,6 +162,7 @@ const RESULT_VIEWS = Object.freeze({
   generic:{label:'Données générales',groups:[
     {title:'Administration',families:['Administration']},
     {title:'Projet & programme',families:['Programme']},
+    {title:'Localisation (adresse & carte)',families:['Localisation']},
     {title:'Référentiel & contexte',keys:['reference_name','reference_version','mentions','performance','selected_profile','built_before_1948','built_after_1948','renovation','anru_zone','no_mention','environmental_performance','specific_profile']},
     {title:'Mentions, labels & dérogations',keys:['mention_building_performance','mention_bee_plus','mention_tfpb','mention_ec','derogation_ec','mention_bbca','derogation_bbca','mention_neutrality_contribution','mention_effinergie','effinergie_energy_carbon_level','mention_biosourced_building','derogation_biosourced','mention_habitat_quality','mention_charge_assessment','mention_buildability_bonus','mention_air_quality','mention_acoustic','mention_circular_economy','mention_eu_taxonomy','mention_zero_carbon','mention_biodiversity']},
     {title:'Niveaux de certification',keys:['dpe_ges_label','energy_level','passive_level','cep_level','cepnr_level','bbio_level','ic_construction_level','ic_energy_level','enhanced_performance','biosourced_2013']}
@@ -1332,6 +1334,7 @@ function renderProfileSwitch(){ const box=$('#profileSwitch'); if(!box) return; 
 // Groupes de la revue, dans l'ordre d'usage : technique d'abord, données administratives en fin de fiche.
 const REVIEW_GROUPS=Object.freeze([
   {title:'Programme',keys:['housing_count','shab','housing_typologies','construction_year','built_before_1948','built_after_1948','department','structure']},
+  {title:'Localisation',families:['Localisation']},
   {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','ubat_ref','ubat_gain','ges_before','ges','ges_ref','ges_gain','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
   {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
@@ -1353,6 +1356,9 @@ function reviewEntry(building,def){
   const status=!isBlank(v)?(manual?'manual':'ok'):cands.length?'review':'missing';
   return {def,v,src,manual,cands,status};
 }
+// v2.9.0 — contrôle visuel du point géocodé (photo aérienne Géoportail, nouvel onglet).
+function geoLinkHtml(building){ const row=state.result?.rows?.find(r=>r.building===building); const lat=Number(row?.latitude), lon=Number(row?.longitude);
+  return Number.isFinite(lat)&&Number.isFinite(lon)&&row?.latitude!==''?` <a class="rv-maplink" href="${escapeHtml(mapLink(lat,lon))}" target="_blank" rel="noopener">Voir sur la carte ↗</a>`:''; }
 // Propositions calculées depuis d'autres champs du même bâtiment (jamais retenues sans validation).
 function derivedProposal(row,key){
   if(!row) return null; const y=Number(row.construction_year); const mk=(value,why)=>({synthetic:true,field:key,value,fileName:why,page:'',confidence:1,docId:'',excerpt:why});
@@ -1416,7 +1422,7 @@ function renderReview(){
   const conf=e=>e.src&&!e.manual&&Number.isFinite(e.src.confidence)?`<span class="rv-conf ${e.src.confidence>=.9?'high':'mid'}" title="Confiance">${Math.round(e.src.confidence*100)} %</span>`:'';
   const unit=d=>d.unit||(/thickness/.test(d.key)?'mm':/_r$/.test(d.key)?'m².K/W':/^ubat/.test(d.key)?'W/m².K':/^cep(?!_gain)/.test(d.key)?'kWhEP/m².an':/gain/.test(d.key)?'%':/^tic/.test(d.key)?'°C':d.key==='shab'?'m²':'');
   const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
-    const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}`);
+    const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}${k==='geocode_precision'?geoLinkHtml(B):''}`);
     const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
     return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value">${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
       <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${e.manual?`<button type="button" class="rv-btn rv-ghost" data-rv-unset="${k}" title="Supprimer la donnée manuelle : l’analyse des documents reprend ce champ">Supprimer</button>`:''}${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
@@ -1478,7 +1484,7 @@ let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
 
 const MANUAL_ANALYSIS_SECTIONS={
-  general:{label:'Généralités',families:new Set(['Administration','Programme','Certification & exigences'])},
+  general:{label:'Généralités',families:new Set(['Administration','Programme','Localisation','Certification & exigences'])},
   thermal:{label:'Thermique',families:new Set(['Performance énergétique','Confort d’été','Systèmes','DPE','ENR'])},
   carbon:{label:'Carbone',families:new Set(['Carbone'])},
   envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
@@ -1886,7 +1892,44 @@ function applyManualValuesToProject(project){
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; result.finals.push(manual); result.detailed.push(manual);
   }
+  applyGeocodes(project);
   applyComparisonBases(result);
+}
+// v2.9.0 — géolocalisation : réponses IGN mises en cache dans le projet (sauvegardé) et appliquées à chaque consolidation.
+// Une valeur saisie, collée ou lue dans un document pour ces champs n'est jamais remplacée.
+function applyGeocodes(project){
+  const result=project?.result; if(!result) return;
+  const pending=[];
+  for(const row of result.rows||[]){
+    const b=row.building;
+    for(const o of result.finals) if(o.building===b&&o.method==='geocode:ign') delete row[o.field];
+    if(row.geocode_precision?.startsWith?.('Non géolocalisée')) delete row.geocode_precision;
+    result.finals=result.finals.filter(o=>!(o.building===b&&o.method==='geocode:ign'));
+    const q=geocodeQuery(row); if(!q) continue;
+    const g=project.geocodes?.[q]; if(g===undefined){ pending.push(q); continue; }
+    const taken=f=>Object.prototype.hasOwnProperty.call(project.manualValues||{},`${b}|${f}`)||result.finals.some(o=>o.building===b&&o.field===f)||!isBlank(row[f]);
+    if(!g.ok){ if(!taken('geocode_precision')&&!taken('latitude')) row.geocode_precision=`Non géolocalisée : ${g.reason}`; continue; }
+    if(taken('latitude')||taken('longitude')) continue;
+    const vals={latitude:g.lat,longitude:g.lon,insee_code:g.insee,geocode_precision:`${g.precision} — ${g.label} (score ${String(g.score).replace('.',',')})`};
+    for(const field of GEOCODE_FIELDS){ const value=vals[field]; if(value===''||taken(field)) continue;
+      row[field]=value;
+      result.finals.push({field,value,building:b,docId:'geocode',fileName:'Géoplateforme IGN — Base Adresse Nationale',docType:'Géocodage',page:'',excerpt:`${q} → ${g.label} (score ${g.score})`,confidence:g.score,method:'geocode:ign',sourceTier:'main',provenanceNote:`Point adresse BAN, coordonnées WGS84 : ${mapLink(g.lat,g.lon)}`}); }
+  }
+  if(pending.length) geocodePending(project,pending,result.rows);
+}
+const geocodeInflight=new Set();
+async function geocodePending(project,queries,rows){
+  const todo=[...new Set(queries)].filter(q=>!geocodeInflight.has(q)); if(!todo.length||typeof fetch!=='function') return;
+  todo.forEach(q=>geocodeInflight.add(q)); let changed=false;
+  for(const q of todo){
+    try{ (project.geocodes||(project.geocodes={}))[q]=await geocodeAddress(q,rows.find(r=>geocodeQuery(r)===q)||{}); changed=true; }
+    catch(e){ console.warn('Géocodage IGN impossible (nouvel essai à la prochaine consolidation)',e); }
+    finally{ geocodeInflight.delete(q); }
+  }
+  if(!changed||!project.result) return;
+  applyGeocodes(project);
+  if(project===activeProject()){ renderSummary(); renderOccurrences(); updateUxMirrors(); }
+  scheduleWorkspaceCheckpoint('géolocalisation',80);
 }
 // v2.7.6 — une donnée manuelle est définitive : bâtiment fusionné → elle suit sa cible ; bâtiment absent de l'analyse → il est recréé (sauf suppression manuelle).
 function manualRow(result,building,deleted,alias){
@@ -1958,7 +2001,7 @@ function renderSearchEditor(g){
   <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
     <button type="button" class="btn light" data-srch-ai="${i}" title="Proposer des mots-clés, du contexte et des exclusions avec l’IA">${searchUi.busy===`c${i}`?'…':'✨ Mots-clés IA'}</button><button type="button" class="icon-btn" data-srch-del="${i}" title="Supprimer le critère" aria-label="Supprimer le critère">×</button></div>
     <div class="srch-crit-body"><label>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
-    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
+    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'||c.kind==='stats'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
     <label>Précisions pour l’IA<input data-c="description" value="${escapeHtml(c.description)}" placeholder="ce que le critère doit couvrir, ce qu’il ne doit pas confondre"></label></div></div>`).join('')}</div>
   <datalist id="srchThemes">${themes.map(t=>`<option value="${escapeHtml(t.name)}">`).join('')}</datalist>
   <div class="srch-actions"><button type="button" class="btn secondary" data-srch="add-crit">+ Critère</button></div>
@@ -2003,7 +2046,7 @@ function renderSearches(wrap=$('#summaryView')){
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
     ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
       return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
-      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
+      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.slice(0,80).map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
       <select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>

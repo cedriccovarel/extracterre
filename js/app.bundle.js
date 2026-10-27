@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.8.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.9.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.8.1';
+const APP_VERSION='2.9.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -242,7 +242,15 @@ const FIELD_DEFS = [
   {key:"ges_ref",label:"GES Ref",family:"Performance énergétique",type:"number",tags:["GES Ref", "GES référence", "émissions de CO2 de référence"] ,presence:false},
   {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false},
   // v2.7.0 — perméabilité à l'air (notes de BE collées) ; ajoutée en fin d'export.
-  {key:"q4pa_surf",label:"Q4Pa-surf (m³/h.m²)",family:"Performance énergétique",type:"number",tags:["Q4Pa-surf (m³/h.m²)", "Q4Pa-surf", "Q4 Pa-surf", "Q4Pa surf", "Q4 Pa surf"] ,presence:false}
+  {key:"q4pa_surf",label:"Q4Pa-surf (m³/h.m²)",family:"Performance énergétique",type:"number",tags:["Q4Pa-surf (m³/h.m²)", "Q4Pa-surf", "Q4 Pa-surf", "Q4Pa surf", "Q4 Pa surf"] ,presence:false},
+  // v2.9.0 — adresse de l'opération (libellés du tableau Tous contrats) et position WGS84 issue du géocodage IGN (geocode.js).
+  {key:"address",label:"Adresse",family:"Localisation",type:"text",tags:["Adresse", "Adresse de l'opération", "Adresse du projet", "Adresse du chantier", "Adresse du terrain", "Adresse opération"] ,presence:false},
+  {key:"postcode",label:"Code postal",family:"Localisation",type:"text",tags:["Code postal", "Code postal de l'opération", "Code postal opération"] ,presence:false},
+  {key:"city",label:"Ville",family:"Localisation",type:"text",tags:["Ville", "Commune", "Ville de l'opération", "Commune de l'opération"] ,presence:false},
+  {key:"insee_code",label:"Code INSEE",family:"Localisation",type:"text",tags:["Code INSEE", "INSEE", "Code commune INSEE"] ,presence:false},
+  {key:"latitude",label:"Latitude",family:"Localisation",type:"number",tags:["Latitude", "Latitude WGS84"] ,presence:false},
+  {key:"longitude",label:"Longitude",family:"Localisation",type:"number",tags:["Longitude", "Longitude WGS84"] ,presence:false},
+  {key:"geocode_precision",label:"Géolocalisation",family:"Localisation",type:"text",tags:["Géolocalisation", "Précision géolocalisation"] ,presence:false}
 ];
 const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -402,6 +410,9 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "wall_struct
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final", "ubat_ref", "ubat_gain", "ges", "ges_before", "ges_ref", "ges_gain"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
+// v2.9.0 — adresse : sources projet d'abord ; une pièce technique qui cite explicitement « Adresse de l'opération » complète.
+for(const key of ["address", "postcode", "city"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_PROJECT_META,DOC_TYPES.PERMIT,DOC_TYPES.PROJECT_DESCRIPTION],[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.CCTP,DOC_TYPES.DESIGN_REPORT,DOC_TYPES.ENV_REPORT,DOC_TYPES.CARBON,DOC_TYPES.AIRTIGHTNESS]);
+for(const key of ["insee_code", "latitude", "longitude", "geocode_precision"]) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.MANUAL]);
 for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
@@ -681,6 +692,45 @@ function tokenize(s=''){ return normLower(s).split(/[^a-z0-9]+/).filter(x=>x.len
 function scoreTokens(query,text){ const q=tokenize(query), t=normLower(text); if(!q.length) return 0; return q.reduce((a,w)=>a+(t.includes(w)?1:0),0)/q.length; }
 function findFirstMatch(text, pairs){ for(const [label,re] of pairs){ if(re.test(normalizeText(text))) return label; } return null; }
 function formatValue(v){ if(v===null||v===undefined||v==='') return 'non précisé'; if(typeof v==='number') return new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(v); return String(v); }
+
+/* ---- geocode.js ---- */
+// v2.9.0 — adresse de l'opération et géolocalisation (Géoplateforme IGN, Base Adresse Nationale).
+// Rien n'est deviné : une coordonnée n'est retenue que si l'IGN trouve le numéro ou la voie, dans le code postal lu.
+const GEOCODE_URL='https://data.geopf.fr/geocodage/search';
+const GEOCODE_FIELDS=['latitude','longitude','insee_code','geocode_precision'];
+const GEO_PRECISION={housenumber:'Adresse exacte (numéro)',street:'Voie (sans numéro)'};
+const GEO_MIN_SCORE=0.5;
+
+const geo_clean=v=>String(v??'').replace(/\s+/g,' ').replace(/^[\s,;:–-]+|[\s,;:–-]+$/g,'').trim();
+// « 12 rue de la Paix 75002 Paris » ou « 12 rue de la Paix, 75002 PARIS CEDEX » → {address, postcode, city}.
+function parseFrAddress(text){
+  const t=geo_clean(text); const m=t.match(/^(.*?)[\s,–-]*\b((?:0[1-9]|[1-8]\d|9[0-8])\d{3})\b\s*(.*)$/);
+  if(!m) return {address:t,postcode:'',city:''};
+  const city=geo_clean(m[3].replace(/\bcedex\b.*$/i,'').replace(/\(.*?\)/g,''));
+  return {address:geo_clean(m[1]),postcode:m[2],city};
+}
+// Requête envoyée à l'IGN : il faut une voie et un code postal ou une commune.
+function geocodeQuery(row){
+  const a=geo_clean(row?.address), cp=geo_clean(row?.postcode), c=geo_clean(row?.city);
+  if(!a||!/[a-zà-ÿ]{3}/i.test(a)||!(cp||c)) return '';
+  return [a,cp,c].filter(Boolean).join(' ');
+}
+// Réponse GeoJSON de l'IGN → résultat retenu {ok:true,…} ou motif de refus {ok:false,reason}.
+function geocodeVerdict(json,row={}){
+  const f=json?.features?.[0], p=f?.properties||{}, [lon,lat]=f?.geometry?.coordinates||[];
+  if(!f||!Number.isFinite(lat)||!Number.isFinite(lon)) return {ok:false,reason:'adresse introuvable'};
+  if(!GEO_PRECISION[p.type]) return {ok:false,reason:`seule la commune est trouvée (${p.label||p.city||''})`};
+  if(!(p.score>=GEO_MIN_SCORE)) return {ok:false,reason:`correspondance trop faible (score ${Number(p.score||0).toFixed(2)} : ${p.label})`};
+  const cp=geo_clean(row.postcode); if(cp&&p.postcode&&p.postcode!==cp) return {ok:false,reason:`code postal différent (${p.postcode} au lieu de ${cp})`};
+  return {ok:true,lat:Math.round(lat*1e6)/1e6,lon:Math.round(lon*1e6)/1e6,insee:p.citycode||'',precision:GEO_PRECISION[p.type],label:p.label||'',score:Math.round(p.score*100)/100};
+}
+async function geocodeAddress(query,row={},fetchImpl=fetch){
+  const u=new URL(GEOCODE_URL); u.searchParams.set('q',query); u.searchParams.set('limit','1'); u.searchParams.set('index','address');
+  const cp=geo_clean(row.postcode); if(/^\d{5}$/.test(cp)) u.searchParams.set('postcode',cp);
+  const r=await fetchImpl(u.toString()); if(!r.ok) throw new Error(`Géoplateforme IGN : HTTP ${r.status}`);
+  return geocodeVerdict(await r.json(),row);
+}
+const mapLink=(lat,lon)=>`https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;
 
 /* ---- insulation-library.js ---- */
 /*
@@ -2750,6 +2800,7 @@ function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
 // « Paroi renovee Renove / Non renove ». Épaisseurs en mm (convention ExtracTerre), R en m².K/W.
 
 
+
 const cw_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function cw_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:cw_t(line)})); return out; }
 const cw_nums=s=>(String(s||'').match(/-?\d+(?:[.,]\d+)?/g)||[]).map(parseFrNumber).filter(v=>v!==null);
@@ -2847,7 +2898,8 @@ function parseClimaWinRenovation(doc,occ,canonical=(s)=>s){
     if(x){ const s=x.t; const v=/double\s+flux/i.test(s)?'VMC double flux':/hygro\w*\s*(?:reglable\s+)?(?:type\s+)?B\b/i.test(s)?'VMC Hygro B':/hygro\w*\s*(?:reglable\s+)?(?:type\s+)?A\b/i.test(s)?'VMC Hygro A':/hybride/i.test(s)?'Ventilation hybride':/simple\s+flux/i.test(s)?'VMC simple flux':/naturelle/i.test(s)?'Ventilation naturelle':null;
       if(v) for(const t of targets) emit(x,t,'ventilation',v,'ventilation',0.88,'',{provenanceNote:`Système de ventilation : ${s}.`}); } }
   { const i=L.findIndex(x=>/^\d\.\d\.\s+Donnees\s+administratives\s+du\s+projet$/i.test(x.t)); const a=i>=0?L.slice(i,i+8).find(x=>/^Adresse\s.*\b\d{5}\b/i.test(x.t)):null;
-    if(a){ const cp=a.t.match(/\b(\d{5})\b/)[1]; const d=/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2); emit(a,'Bâtiment unique','department',d,'departement-cp',0.95,'',{secondarySourceOk:true,provenanceNote:`Code postal de l’opération : ${cp}.`}); } }
+    if(a){ const cp=a.t.match(/\b(\d{5})\b/)[1]; const d=/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2); emit(a,'Bâtiment unique','department',d,'departement-cp',0.95,'',{secondarySourceOk:true,provenanceNote:`Code postal de l’opération : ${cp}.`});
+      const ad=parseFrAddress(a.t.replace(/^Adresse\s*:?\s*/i,'')); for(const f of ['address','postcode','city']) emit(a,'Bâtiment unique',f,ad[f],'adresse',0.9,'',{secondarySourceOk:true}); } }
   if(!study) return out;
   // 5. Résultats par bâtiment.
   const secs=[]; L.forEach((x,i)=>{ const m=x.t.match(/^\d{1,2}\.\s+(.+?)\s+-\s+(Ubat|Deperditions|RT\s+pour\s+l.existant|Thermique)$/i); if(m) secs.push({name:cw_name(m[1]),kind:m[2],i}); });
@@ -3372,6 +3424,7 @@ function parseDpeRecapTable(doc,occ,canonical=(s)=>s){
 //  06/03/2023 », « MENTION(S) : Label BBC Effinergie Renovation (…) », « PROFIL SPECIFIQUE : Aucun ».
 // Les remarques d'évaluation des pages suivantes (« Il est prévu au CCTP… ») ne décrivent pas le projet : elles ne sont pas lues.
 
+
 const lv_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function isPrestaterreBooklet(doc){
   const p1=(doc?.read?.pages?.[0]?.lines||[]).map(lv_t).join('\n');
@@ -3385,7 +3438,8 @@ function parsePrestaterreBooklet(doc,occ){
   if((z=val(/^N°\s+DE\s+CONTRAT\s*\/\s*OPERATION\b/i))){ const [c,o]=z.v.split(/\s*\/\s*/); if(c) emit(z.x,'contract_number',c,'contrat'); if(o) emit(z.x,'internal_code',o,'operation'); }
   if((z=val(/^NOM\s+DE\s+L.OPERATION\b/i))) emit(z.x,'operation_name',z.v,'nom');
   if((z=val(/^MAITRE\s+D.OUVRAGE\b/i))) emit(z.x,'owner_company',z.v,'moa');
-  if((z=val(/^ADRESSE\s+DE\s+L.OPERATION\b/i))){ const i=L.indexOf(L.find(y=>y===z.x)); const cpL=[z.x,L[i+1]].find(y=>/\b\d{5}\b/.test(y?.t||'')); if(cpL){ const cp=cpL.t.match(/\b(\d{5})\b/)[1]; emit(cpL,'department',/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2),'departement',0.93,'',{provenanceNote:`Code postal de l’opération : ${cp}.`}); } }
+  if((z=val(/^ADRESSE\s+DE\s+L.OPERATION\b/i))){ const i=L.indexOf(L.find(y=>y===z.x)); const cpL=[z.x,L[i+1]].find(y=>/\b\d{5}\b/.test(y?.t||'')); if(cpL){ const cp=cpL.t.match(/\b(\d{5})\b/)[1]; emit(cpL,'department',/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2),'departement',0.93,'',{provenanceNote:`Code postal de l’opération : ${cp}.`});
+      const a=parseFrAddress(cpL===z.x?z.v:`${z.v} ${cpL.t}`); emit(z.x,'address',a.address,'adresse',0.93); emit(cpL,'postcode',a.postcode,'code-postal',0.93); emit(cpL,'city',a.city,'ville',0.93); } }
   if((z=val(/^OUVRAGE\b/i))){ const m=z.v.match(/^(.+?)\s*:\s*(\d+)\s*logement\(?s?\)?\s*-\s*(\d+)\s*batiment/i);
     if(m){ const kind=m[1].trim(), n=Number(m[2]), b=Number(m[3]); emit(z.x,'work_type',kind,'ouvrage'); emit(z.x,'housing_total',n,'logements'); emit(z.x,'building_total',b,'batiments'); emit(z.x,'housing_count',n,'logements',0.9);
       const pre=/collectif/i.test(kind)?'housing_collective':/group/i.test(kind)?'housing_grouped':null; if(pre){ emit(z.x,`${pre}_units`,n,'logements-type'); emit(z.x,`${pre}_buildings`,b,'batiments-type'); }
@@ -4117,6 +4171,7 @@ function parseHeatLossReport(doc,occ){
 // aucune expression régulière sur du texte linéarisé, aucun décalage de colonne possible.
 
 
+
 // ---------------------------------------------------------------------------
 // Parseur XML minimal (secours hors navigateur / tests Node). Dans le navigateur,
 // DOMParser est utilisé ; les deux exposent la même mini-API : tagName, children,
@@ -4403,6 +4458,8 @@ function re2020Occurrences(doc,makeOcc){
   add(null,'operation',g.operation,'general-operation','',/Opération/);
   add(null,'project',g.operation,'general-operation','',/Opération/);
   add(null,'department',g.department,'general-department','',/Département/);
+  { const a=g.postcode?{address:g.address,postcode:g.postcode,city:g.city}:parseFrAddress(g.address);
+    for(const f of ['address','postcode','city']) add(null,f,a[f],'general-address','',/Adresse/,{secondarySourceOk:true}); }
   add(null,'owner_company',g.owner,'general-owner','',/Maître/);
   // v2.3.15 — nom d'opération : source secondaire ciblée (le XML ne remplace pas le contrat, mais le complète).
   add(null,'operation_name',g.operation,'general-operation','',/Opération/,{confidence:0.95,secondarySourceOk:true});
@@ -5305,7 +5362,7 @@ const EXTRACTION_RANGES=Object.freeze({
   ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
   bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100],
   // v2.6.0 — pack du 26/10/2026 : « Ubat Ref 83 » (0,83 mal lu), émissions de GES par m².
-  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500], q4pa_surf:[0,10]
+  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500], q4pa_surf:[0,10], latitude:[-90,90], longitude:[-180,180]
 });
 const sn_NUM_FIELDS=new Set([...Object.keys(EXTRACTION_RANGES),...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`)]);
 const sn_YEAR_LIKE=/^(?:19|20)\d\d$/;
@@ -6889,7 +6946,8 @@ function parseTaggedFields(doc){
       if(!raw) continue;
       const normalized=normalizeFieldHeader(raw), matched=new Set();
       for(const def of taggedCandidateDefs(normalized)){
-        if(def.key==='building'||!taggedFieldAllowedForDocument(doc,def)) continue;
+        // v2.9.0 — l'adresse est lue par parseAddressLabels (libellé de l'opération + code postal obligatoires).
+        if(def.key==='building'||def.family==='Localisation'||!taggedFieldAllowedForDocument(doc,def)) continue;
         const hit=taggedLineMatch(raw,def,normalized);
         if(!hit) continue;
         matched.add(def.key);
@@ -7403,7 +7461,24 @@ function parseDocument(doc){
     const have=new Set(out.map(o=>`${o.building}|${o.field}`));
     out=[...out,...parseStudyLabelPatterns(doc).filter(o=>!have.has(`${o.building}|${o.field}`))];
   }
+  // v2.9.0 — adresse de l'opération citée sous un libellé explicite (jamais l'adresse d'un intervenant).
+  if(!doc?.read?.re2020&&!out.some(o=>o.field==='postcode')) out=[...out,...parseAddressLabels(doc)];
   return sanitizeOccurrences(out);
+}
+const ADDRESS_LABEL=/^\s*(?:adresse|lieu|localisation|situation|implantation)\s+(?:de\s+l[’']?\s*op[eé]ration|du\s+(?:projet|chantier|terrain|site|programme|b[aâ]timent)|des\s+travaux|de\s+la\s+construction)\s*[:–-]?\s*(.*)$/i;
+function parseAddressLabels(doc){
+  for(const page of doc.read?.pages||[]){
+    const L=page.lines||[];
+    for(let i=0;i<L.length;i++){
+      const m=String(L[i].text||'').match(ADDRESS_LABEL); if(!m) continue;
+      // Le libellé peut être seul sur sa ligne : l'adresse suit sur une ou deux lignes, jusqu'au code postal.
+      let txt=m[1], j=i; while(!/\b\d{5}\b/.test(txt)&&j<i+2&&L[j+1]){ j++; txt=`${txt} ${L[j].text||''}`; }
+      const a=parseFrAddress(txt); if(!a.postcode||!/[a-zà-ÿ]{3}/i.test(a.address)) continue;
+      const x={building:'Bâtiment unique',secondarySourceOk:true,excerpt:normalizeText(L.slice(i,j+1).map(l=>l.text).join(' | ')).slice(0,420)};
+      return ['address','postcode','city'].map(f=>occ(doc,page,L[i],f,a[f],'address:label',0.85,'',x)).filter(Boolean);
+    }
+  }
+  return [];
 }
 const STUDY_LABEL_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.CCTP,DOC_TYPES.SURFACE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
 const STUDY_BEFORE=/\b(?:etat\s+(?:initial|existant|actuel)|avant\s+travaux|existant|initial(?:e)?|actuel(?:le)?)\b/, STUDY_AFTER=/\b(?:etat\s+(?:projet|final|renove)|apres\s+travaux|projet|renove|final(?:e)?)\b/;
@@ -8560,8 +8635,8 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193), ajoutée en fin.
-  assert('Schéma métier = 193 colonnes',FIELD_DEFS.length===193,String(FIELD_DEFS.length));
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200), ajoutées en fin.
+  assert('Schéma métier = 200 colonnes',FIELD_DEFS.length===200,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));
@@ -9226,7 +9301,21 @@ function analyzeEconomicData(docs,operation='',manual={}){
 // la ligne : une recherche ne produit jamais de valeur absente des documents. Les mots-clés peuvent être proposés par l'IA
 // (Ollama en local), seule la description du critère lui est envoyée.
 
-const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte'};
+const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques'};
+// v2.8.2 — critère « Statistiques » (tableaux de surfaces) : une valeur par ligne trouvée, puis effectif, min, moyenne, max et centiles.
+const STAT_KEYS=[['n','Nombre'],['min','Min'],['mean','Moyenne'],['max','Max'],['p10','P10'],['p25','P25'],['p50','Médiane'],['p75','P75'],['p90','P90']];
+const srch_pct=(sorted,q)=>{ const h=(sorted.length-1)*q, lo=Math.floor(h); return sorted[lo]+(sorted[Math.min(lo+1,sorted.length-1)]-sorted[lo])*(h-lo); }; /* interpolation linéaire, comme CENTILE.INCLURE d'Excel */
+function srchStats(values){
+  const v=values.filter(Number.isFinite).sort((a,b)=>a-b); if(!v.length) return null; const r=x=>Math.round(x*100)/100;
+  return {n:v.length,min:v[0],mean:r(v.reduce((a,b)=>a+b,0)/v.length),max:v[v.length-1],p10:r(srch_pct(v,.1)),p25:r(srch_pct(v,.25)),p50:r(srch_pct(v,.5)),p75:r(srch_pct(v,.75)),p90:r(srch_pct(v,.9))};
+}
+// Nombre isolé d'une ligne de tableau : « A101 » (n° de logement) ou « R+2 » ne sont pas des surfaces.
+const srch_CELL_RE=/(?<![\w.,+\/-])(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(?![\d])\s*([a-z²³%]{0,3}\d?)/gi;
+function srch_cellNumbers(line,unit){
+  const u=normLower(unit).replace(/\s+/g,''), units=u==='m2'||u==='m²'?['m2','m²','']:u?[u,'']:null; const out=[];
+  for(const m of line.matchAll(srch_CELL_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
+  return out;
+}
 const srch_uidS=()=>`c${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
 const srch_list=v=>(Array.isArray(v)?v:String(v??'').split(/[,;\n]/)).map(s=>String(s??'').trim()).filter(Boolean).slice(0,60);
 const srch_normS=s=>normLower(s).replace(/[’'`]/g,' ');
@@ -9273,19 +9362,20 @@ function runSearchGrid(grid,docs,overrides={}){
   const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
   const criteria={};
   for(const c of g.criteria){
-    const ev=[]; const values=[];
+    const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
     if(c.keywords.length) for(const {d,lines} of corpus){ let perDoc=0;
-      for(let k=0;k<lines.length&&perDoc<5;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
+      for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
         const near=lines.slice(Math.max(0,k-c.window),k+c.window+1).filter(x=>x.page===L.page);
         if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
         let nums=[],ok=true;
+        if(c.kind==='stats'){ const n=srch_cellNumbers(L.t,c.unit).find(x=>(c.min===null||x>=c.min)&&(c.max===null||x<=c.max)); if(n===undefined) continue; nums=[n]; values.push(n); }
         if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
           if(!nums.length) continue; values.push(...nums); ok=nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
         ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
     const manual=overrides?.[c.id];
     // Critère « inverse » : un résultat est un indice contraire (critère non rempli), jamais une preuve de conformité.
     const found=manual==='Oui'?true:manual==='Non'||manual==='Sans objet'?false:c.inverse?false:ev.some(e=>e.ok);
-    criteria[c.id]={found,contrary:!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)),manual:manual||'',values:[...new Set(values)],evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
+    criteria[c.id]={found,contrary:!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)),manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
   }
   const themes={};
   for(const t of g.themes){
@@ -9303,6 +9393,7 @@ function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
   if(x.contrary) return c.inverse?'Indice contraire':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
   if(c.kind==='text') return x.text;
   return x.found?'Oui':'';
@@ -9406,8 +9497,8 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
     const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{})}));
     if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
     const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
-    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.map(c=>`${c.theme} — ${c.label}`)];
-    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.map(c=>searchCellValue(c,r.criteria[c.id]))])];
+    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
+    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([k])=>r.criteria[c.id].stats?.[k]??''):[searchCellValue(c,r.criteria[c.id])])])];
     const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,`Rech. ${g.name}`.replace(/[\\/?*[\]:]/g,' ').slice(0,31));
     for(const {x,r} of res) for(const c of g.criteria) for(const ev of r.criteria[c.id].evidence) cites.push([x.code,x.name,contract(x),g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]);
   }
@@ -9564,6 +9655,7 @@ function serializeProject(project={}){
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
     searchOverrides:safeJsonClone(project.searchOverrides,{}),
+    geocodes:safeJsonClone(project.geocodes,{}),
     freePasteRows:safeJsonClone(project.freePasteRows,[]),
     ownerName:project.ownerName||'',
     expanded:project.expanded!==false
@@ -10547,6 +10639,7 @@ const RESULT_VIEWS = Object.freeze({
   generic:{label:'Données générales',groups:[
     {title:'Administration',families:['Administration']},
     {title:'Projet & programme',families:['Programme']},
+    {title:'Localisation (adresse & carte)',families:['Localisation']},
     {title:'Référentiel & contexte',keys:['reference_name','reference_version','mentions','performance','selected_profile','built_before_1948','built_after_1948','renovation','anru_zone','no_mention','environmental_performance','specific_profile']},
     {title:'Mentions, labels & dérogations',keys:['mention_building_performance','mention_bee_plus','mention_tfpb','mention_ec','derogation_ec','mention_bbca','derogation_bbca','mention_neutrality_contribution','mention_effinergie','effinergie_energy_carbon_level','mention_biosourced_building','derogation_biosourced','mention_habitat_quality','mention_charge_assessment','mention_buildability_bonus','mention_air_quality','mention_acoustic','mention_circular_economy','mention_eu_taxonomy','mention_zero_carbon','mention_biodiversity']},
     {title:'Niveaux de certification',keys:['dpe_ges_label','energy_level','passive_level','cep_level','cepnr_level','bbio_level','ic_construction_level','ic_energy_level','enhanced_performance','biosourced_2013']}
@@ -11718,6 +11811,7 @@ function renderProfileSwitch(){ const box=$('#profileSwitch'); if(!box) return; 
 // Groupes de la revue, dans l'ordre d'usage : technique d'abord, données administratives en fin de fiche.
 const REVIEW_GROUPS=Object.freeze([
   {title:'Programme',keys:['housing_count','shab','housing_typologies','construction_year','built_before_1948','built_after_1948','department','structure']},
+  {title:'Localisation',families:['Localisation']},
   {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','ubat_ref','ubat_gain','ges_before','ges','ges_ref','ges_gain','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
   {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
@@ -11739,6 +11833,9 @@ function reviewEntry(building,def){
   const status=!isBlank(v)?(manual?'manual':'ok'):cands.length?'review':'missing';
   return {def,v,src,manual,cands,status};
 }
+// v2.9.0 — contrôle visuel du point géocodé (photo aérienne Géoportail, nouvel onglet).
+function geoLinkHtml(building){ const row=state.result?.rows?.find(r=>r.building===building); const lat=Number(row?.latitude), lon=Number(row?.longitude);
+  return Number.isFinite(lat)&&Number.isFinite(lon)&&row?.latitude!==''?` <a class="rv-maplink" href="${escapeHtml(mapLink(lat,lon))}" target="_blank" rel="noopener">Voir sur la carte ↗</a>`:''; }
 // Propositions calculées depuis d'autres champs du même bâtiment (jamais retenues sans validation).
 function derivedProposal(row,key){
   if(!row) return null; const y=Number(row.construction_year); const mk=(value,why)=>({synthetic:true,field:key,value,fileName:why,page:'',confidence:1,docId:'',excerpt:why});
@@ -11802,7 +11899,7 @@ function renderReview(){
   const conf=e=>e.src&&!e.manual&&Number.isFinite(e.src.confidence)?`<span class="rv-conf ${e.src.confidence>=.9?'high':'mid'}" title="Confiance">${Math.round(e.src.confidence*100)} %</span>`:'';
   const unit=d=>d.unit||(/thickness/.test(d.key)?'mm':/_r$/.test(d.key)?'m².K/W':/^ubat/.test(d.key)?'W/m².K':/^cep(?!_gain)/.test(d.key)?'kWhEP/m².an':/gain/.test(d.key)?'%':/^tic/.test(d.key)?'°C':d.key==='shab'?'m²':'');
   const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
-    const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}`);
+    const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}${k==='geocode_precision'?geoLinkHtml(B):''}`);
     const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
     return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value">${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
       <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${e.manual?`<button type="button" class="rv-btn rv-ghost" data-rv-unset="${k}" title="Supprimer la donnée manuelle : l’analyse des documents reprend ce champ">Supprimer</button>`:''}${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
@@ -11864,7 +11961,7 @@ let betaLearningSelection=null;
 const betaPdfPreviewState={docId:'',pdf:null,loadingTask:null,renderTask:null,pageNo:1,mode:'native',renderToken:0,ocrWorker:null,ocrWords:[],viewport:null};
 
 const MANUAL_ANALYSIS_SECTIONS={
-  general:{label:'Généralités',families:new Set(['Administration','Programme','Certification & exigences'])},
+  general:{label:'Généralités',families:new Set(['Administration','Programme','Localisation','Certification & exigences'])},
   thermal:{label:'Thermique',families:new Set(['Performance énergétique','Confort d’été','Systèmes','DPE','ENR'])},
   carbon:{label:'Carbone',families:new Set(['Carbone'])},
   envelope:{label:'Enveloppe',families:new Set(['Enveloppe'])}
@@ -12272,7 +12369,44 @@ function applyManualValuesToProject(project){
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; result.finals.push(manual); result.detailed.push(manual);
   }
+  applyGeocodes(project);
   applyComparisonBases(result);
+}
+// v2.9.0 — géolocalisation : réponses IGN mises en cache dans le projet (sauvegardé) et appliquées à chaque consolidation.
+// Une valeur saisie, collée ou lue dans un document pour ces champs n'est jamais remplacée.
+function applyGeocodes(project){
+  const result=project?.result; if(!result) return;
+  const pending=[];
+  for(const row of result.rows||[]){
+    const b=row.building;
+    for(const o of result.finals) if(o.building===b&&o.method==='geocode:ign') delete row[o.field];
+    if(row.geocode_precision?.startsWith?.('Non géolocalisée')) delete row.geocode_precision;
+    result.finals=result.finals.filter(o=>!(o.building===b&&o.method==='geocode:ign'));
+    const q=geocodeQuery(row); if(!q) continue;
+    const g=project.geocodes?.[q]; if(g===undefined){ pending.push(q); continue; }
+    const taken=f=>Object.prototype.hasOwnProperty.call(project.manualValues||{},`${b}|${f}`)||result.finals.some(o=>o.building===b&&o.field===f)||!isBlank(row[f]);
+    if(!g.ok){ if(!taken('geocode_precision')&&!taken('latitude')) row.geocode_precision=`Non géolocalisée : ${g.reason}`; continue; }
+    if(taken('latitude')||taken('longitude')) continue;
+    const vals={latitude:g.lat,longitude:g.lon,insee_code:g.insee,geocode_precision:`${g.precision} — ${g.label} (score ${String(g.score).replace('.',',')})`};
+    for(const field of GEOCODE_FIELDS){ const value=vals[field]; if(value===''||taken(field)) continue;
+      row[field]=value;
+      result.finals.push({field,value,building:b,docId:'geocode',fileName:'Géoplateforme IGN — Base Adresse Nationale',docType:'Géocodage',page:'',excerpt:`${q} → ${g.label} (score ${g.score})`,confidence:g.score,method:'geocode:ign',sourceTier:'main',provenanceNote:`Point adresse BAN, coordonnées WGS84 : ${mapLink(g.lat,g.lon)}`}); }
+  }
+  if(pending.length) geocodePending(project,pending,result.rows);
+}
+const geocodeInflight=new Set();
+async function geocodePending(project,queries,rows){
+  const todo=[...new Set(queries)].filter(q=>!geocodeInflight.has(q)); if(!todo.length||typeof fetch!=='function') return;
+  todo.forEach(q=>geocodeInflight.add(q)); let changed=false;
+  for(const q of todo){
+    try{ (project.geocodes||(project.geocodes={}))[q]=await geocodeAddress(q,rows.find(r=>geocodeQuery(r)===q)||{}); changed=true; }
+    catch(e){ console.warn('Géocodage IGN impossible (nouvel essai à la prochaine consolidation)',e); }
+    finally{ geocodeInflight.delete(q); }
+  }
+  if(!changed||!project.result) return;
+  applyGeocodes(project);
+  if(project===activeProject()){ renderSummary(); renderOccurrences(); updateUxMirrors(); }
+  scheduleWorkspaceCheckpoint('géolocalisation',80);
 }
 // v2.7.6 — une donnée manuelle est définitive : bâtiment fusionné → elle suit sa cible ; bâtiment absent de l'analyse → il est recréé (sauf suppression manuelle).
 function manualRow(result,building,deleted,alias){
@@ -12344,7 +12478,7 @@ function renderSearchEditor(g){
   <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
     <button type="button" class="btn light" data-srch-ai="${i}" title="Proposer des mots-clés, du contexte et des exclusions avec l’IA">${searchUi.busy===`c${i}`?'…':'✨ Mots-clés IA'}</button><button type="button" class="icon-btn" data-srch-del="${i}" title="Supprimer le critère" aria-label="Supprimer le critère">×</button></div>
     <div class="srch-crit-body"><label>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
-    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
+    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'||c.kind==='stats'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
     <label>Précisions pour l’IA<input data-c="description" value="${escapeHtml(c.description)}" placeholder="ce que le critère doit couvrir, ce qu’il ne doit pas confondre"></label></div></div>`).join('')}</div>
   <datalist id="srchThemes">${themes.map(t=>`<option value="${escapeHtml(t.name)}">`).join('')}</datalist>
   <div class="srch-actions"><button type="button" class="btn secondary" data-srch="add-crit">+ Critère</button></div>
@@ -12389,7 +12523,7 @@ function renderSearches(wrap=$('#summaryView')){
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
     ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
       return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
-      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
+      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.slice(0,80).map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
       <select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>

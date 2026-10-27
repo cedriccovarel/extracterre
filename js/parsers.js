@@ -9,6 +9,7 @@ import {isEcAcvNotice,parseEcAcvNotice} from './acv-ec.js';
 import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sortie.js';
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
 import {sanitizeOccurrences} from './sanity.js';
+import {parseFrAddress} from './geocode.js';
 import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns,isU48WinThcexReport} from './logiciels-thermiques.js';
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
@@ -1525,7 +1526,8 @@ function parseTaggedFields(doc){
       if(!raw) continue;
       const normalized=normalizeFieldHeader(raw), matched=new Set();
       for(const def of taggedCandidateDefs(normalized)){
-        if(def.key==='building'||!taggedFieldAllowedForDocument(doc,def)) continue;
+        // v2.9.0 — l'adresse est lue par parseAddressLabels (libellé de l'opération + code postal obligatoires).
+        if(def.key==='building'||def.family==='Localisation'||!taggedFieldAllowedForDocument(doc,def)) continue;
         const hit=taggedLineMatch(raw,def,normalized);
         if(!hit) continue;
         matched.add(def.key);
@@ -2039,7 +2041,24 @@ export function parseDocument(doc){
     const have=new Set(out.map(o=>`${o.building}|${o.field}`));
     out=[...out,...parseStudyLabelPatterns(doc).filter(o=>!have.has(`${o.building}|${o.field}`))];
   }
+  // v2.9.0 — adresse de l'opération citée sous un libellé explicite (jamais l'adresse d'un intervenant).
+  if(!doc?.read?.re2020&&!out.some(o=>o.field==='postcode')) out=[...out,...parseAddressLabels(doc)];
   return sanitizeOccurrences(out);
+}
+const ADDRESS_LABEL=/^\s*(?:adresse|lieu|localisation|situation|implantation)\s+(?:de\s+l[’']?\s*op[eé]ration|du\s+(?:projet|chantier|terrain|site|programme|b[aâ]timent)|des\s+travaux|de\s+la\s+construction)\s*[:–-]?\s*(.*)$/i;
+export function parseAddressLabels(doc){
+  for(const page of doc.read?.pages||[]){
+    const L=page.lines||[];
+    for(let i=0;i<L.length;i++){
+      const m=String(L[i].text||'').match(ADDRESS_LABEL); if(!m) continue;
+      // Le libellé peut être seul sur sa ligne : l'adresse suit sur une ou deux lignes, jusqu'au code postal.
+      let txt=m[1], j=i; while(!/\b\d{5}\b/.test(txt)&&j<i+2&&L[j+1]){ j++; txt=`${txt} ${L[j].text||''}`; }
+      const a=parseFrAddress(txt); if(!a.postcode||!/[a-zà-ÿ]{3}/i.test(a.address)) continue;
+      const x={building:'Bâtiment unique',secondarySourceOk:true,excerpt:normalizeText(L.slice(i,j+1).map(l=>l.text).join(' | ')).slice(0,420)};
+      return ['address','postcode','city'].map(f=>occ(doc,page,L[i],f,a[f],'address:label',0.85,'',x)).filter(Boolean);
+    }
+  }
+  return [];
 }
 const STUDY_LABEL_TYPES=new Set([DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.RT2012,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.CCTP,DOC_TYPES.SURFACE,DOC_TYPES.UNKNOWN,DOC_TYPES.PROJECT_DESCRIPTION]);
 const STUDY_BEFORE=/\b(?:etat\s+(?:initial|existant|actuel)|avant\s+travaux|existant|initial(?:e)?|actuel(?:le)?)\b/, STUDY_AFTER=/\b(?:etat\s+(?:projet|final|renove)|apres\s+travaux|projet|renove|final(?:e)?)\b/;

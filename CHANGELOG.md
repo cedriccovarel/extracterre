@@ -1,3 +1,19 @@
+# v2.9.0 — adresse de l'opération et géolocalisation
+- 7 colonnes ajoutées en fin d'export (groupe « Localisation ») : Adresse, Code postal, Ville, Code INSEE, Latitude,
+  Longitude (WGS84, degrés décimaux), Géolocalisation (précision). Libellés identiques au tableau Tous contrats.
+- Adresse lue dans le livret d'opération, le XML RE2020, les études ClimaWin et toute pièce qui cite explicitement
+  « Adresse de l'opération / du projet / du chantier / du terrain… » suivie d'un code postal (jamais l'adresse d'un
+  intervenant) ; aussi par collage Salesforce ou saisie.
+- Géocodage automatique par la Géoplateforme IGN (Base Adresse Nationale) dès qu'une voie et un code postal ou une
+  commune sont connus : position retenue seulement au numéro ou à la voie, dans le code postal lu (sinon « Non
+  géolocalisée : motif ») ; réponse mise en cache dans le projet. Une latitude/longitude saisie n'est jamais remplacée.
+- Revue : groupe « Localisation » et lien « Voir sur la carte » (photo aérienne Géoportail).
+
+# v2.8.2 — critère « Statistiques » dans les Recherches
+- Nouveau type de critère « Statistiques » (tableaux de surfaces) : une valeur par ligne trouvée (premier nombre
+  isolé entre Min et Max ; n° de logement « A101 » et niveaux « R+2 » ignorés), puis nombre, min, moyenne, max,
+  P10, P25, médiane, P75, P90 ; une colonne Excel par statistique.
+
 # v2.8.1 — favori Salesforce vers l'onglet déjà ouvert, zone OCR au choix
 - Le favori « → ExtracTerre » ouvre un petit relais (relay.html) qui transmet le texte à l'onglet ExtracTerre déjà
   ouvert et déverrouillé (documents conservés), puis se ferme ; l'onglet ExtracTerre signale « ● Salesforce reçu ».

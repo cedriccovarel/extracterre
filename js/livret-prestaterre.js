@@ -3,6 +3,7 @@
 //  « OUVRAGE : Logement collectif : 50 logement(s) - 1 batiment(s) », « REFERENTIEL : BEE Logement Renovation – Version du
 //  06/03/2023 », « MENTION(S) : Label BBC Effinergie Renovation (…) », « PROFIL SPECIFIQUE : Aucun ».
 // Les remarques d'évaluation des pages suivantes (« Il est prévu au CCTP… ») ne décrivent pas le projet : elles ne sont pas lues.
+import {parseFrAddress} from './geocode.js';
 import {normalizeText} from './utils.js';
 
 const lv_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
@@ -18,7 +19,8 @@ export function parsePrestaterreBooklet(doc,occ){
   if((z=val(/^N°\s+DE\s+CONTRAT\s*\/\s*OPERATION\b/i))){ const [c,o]=z.v.split(/\s*\/\s*/); if(c) emit(z.x,'contract_number',c,'contrat'); if(o) emit(z.x,'internal_code',o,'operation'); }
   if((z=val(/^NOM\s+DE\s+L.OPERATION\b/i))) emit(z.x,'operation_name',z.v,'nom');
   if((z=val(/^MAITRE\s+D.OUVRAGE\b/i))) emit(z.x,'owner_company',z.v,'moa');
-  if((z=val(/^ADRESSE\s+DE\s+L.OPERATION\b/i))){ const i=L.indexOf(L.find(y=>y===z.x)); const cpL=[z.x,L[i+1]].find(y=>/\b\d{5}\b/.test(y?.t||'')); if(cpL){ const cp=cpL.t.match(/\b(\d{5})\b/)[1]; emit(cpL,'department',/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2),'departement',0.93,'',{provenanceNote:`Code postal de l’opération : ${cp}.`}); } }
+  if((z=val(/^ADRESSE\s+DE\s+L.OPERATION\b/i))){ const i=L.indexOf(L.find(y=>y===z.x)); const cpL=[z.x,L[i+1]].find(y=>/\b\d{5}\b/.test(y?.t||'')); if(cpL){ const cp=cpL.t.match(/\b(\d{5})\b/)[1]; emit(cpL,'department',/^97/.test(cp)?cp.slice(0,3):/^20/.test(cp)?(Number(cp)<20200?'2A':'2B'):cp.slice(0,2),'departement',0.93,'',{provenanceNote:`Code postal de l’opération : ${cp}.`});
+      const a=parseFrAddress(cpL===z.x?z.v:`${z.v} ${cpL.t}`); emit(z.x,'address',a.address,'adresse',0.93); emit(cpL,'postcode',a.postcode,'code-postal',0.93); emit(cpL,'city',a.city,'ville',0.93); } }
   if((z=val(/^OUVRAGE\b/i))){ const m=z.v.match(/^(.+?)\s*:\s*(\d+)\s*logement\(?s?\)?\s*-\s*(\d+)\s*batiment/i);
     if(m){ const kind=m[1].trim(), n=Number(m[2]), b=Number(m[3]); emit(z.x,'work_type',kind,'ouvrage'); emit(z.x,'housing_total',n,'logements'); emit(z.x,'building_total',b,'batiments'); emit(z.x,'housing_count',n,'logements',0.9);
       const pre=/collectif/i.test(kind)?'housing_collective':/group/i.test(kind)?'housing_grouped':null; if(pre){ emit(z.x,`${pre}_units`,n,'logements-type'); emit(z.x,`${pre}_buildings`,b,'batiments-type'); }

@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {APP_VERSION,DOC_TYPES,matchFieldByHeader} from './js/config.js';
 import {normalizeText} from './js/utils.js';
-import {normalizeGrid,runSearchGrid,searchCellValue,termRegex,SECURITY_GRID,keywordPrompt,gridPrompt,parseLlmObject} from './js/recherches.js';
+import {normalizeGrid,runSearchGrid,searchCellValue,termRegex,srchStats,SECURITY_GRID,keywordPrompt,gridPrompt,parseLlmObject} from './js/recherches.js';
 import {parseStudyLabelPatterns} from './js/parsers.js';
 import {sanitizeOccurrence} from './js/sanity.js';
 import {applyComparisonBases} from './js/engine.js';
 import {parseLlmJson,llmComplete} from './js/llm-assist.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.8.1','version');
+eq(APP_VERSION, '2.9.0','version');
 const page=(no,ls)=>({page:no,lines:ls.map((t,index)=>({index,text:normalizeText(t),items:[]}))});
 const D=(name,pages,type='CCTP')=>({id:name,name,type,status:'ready',read:{pages}});
 
@@ -72,4 +72,9 @@ for(const re of [/function setHomeMode\(/,/id="homeView"|homeView/,/data-home-ac
 ok(/data-result-view="searches"/.test(html)&&/data-sticky-result-view="searches"/.test(html),'onglet Recherches');
 // v2.6.1 — en-têtes usuels d'un tableau d'opérations
 eq(['Numéro de contrat','Contrat','N° opération','Société','Bailleur','Contrat: Statut'].map(h=>matchFieldByHeader(h)?.key),['contract_number','contract_number','internal_code','owner_company','owner_company','contract_status'],'en-têtes contrat / opération / société');
+// v2.9.0 — critère « Statistiques » (tableau de surfaces FICTIF).
+{ const tds={id:'t',name:'Tableau des surfaces.xlsx',status:'ready',read:{pages:[{page:1,text:'A101 | T2 | R+1 | 45,30 | 6,20\nA202 | T2 | R+2 | 47,80 | 5\nA102 | T3 | R+1 | 64,52\nTotal T2 : 2 logements 93,10 m²'}]}};
+  const st=runSearchGrid({name:'S',criteria:[{id:'t2',label:'T2',kind:'stats',unit:'m²',min:28,max:70,keywords:['re:\\b[tf]\\s?2\\b'],exclude:['total']}]},[tds]).criteria.t2;
+  assert.deepEqual([st.stats.n,st.stats.min,st.stats.mean,st.stats.max,st.stats.p50],[2,45.3,46.55,47.8,46.55],'stats T2 : A101 et R+1 ignorés, total exclu');
+  assert.deepEqual([srchStats([1,2,3,4,5]).p10,srchStats([1,2,3,4,5]).p90],[1.4,4.6],'centiles interpolés (CENTILE.INCLURE)'); }
 console.log(`v2.6.1 — ${n} vérifications OK (documents fictifs)`);

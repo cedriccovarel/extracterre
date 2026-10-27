@@ -1,4 +1,4 @@
-export const APP_VERSION='2.8.1';
+export const APP_VERSION='2.9.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -237,7 +237,15 @@ export const FIELD_DEFS = [
   {key:"ges_ref",label:"GES Ref",family:"Performance énergétique",type:"number",tags:["GES Ref", "GES référence", "émissions de CO2 de référence"] ,presence:false},
   {key:"ges_gain",label:"Gain GES",family:"Performance énergétique",type:"number",tags:["Gain GES", "gain émissions de CO2", "réduction GES"] ,presence:false},
   // v2.7.0 — perméabilité à l'air (notes de BE collées) ; ajoutée en fin d'export.
-  {key:"q4pa_surf",label:"Q4Pa-surf (m³/h.m²)",family:"Performance énergétique",type:"number",tags:["Q4Pa-surf (m³/h.m²)", "Q4Pa-surf", "Q4 Pa-surf", "Q4Pa surf", "Q4 Pa surf"] ,presence:false}
+  {key:"q4pa_surf",label:"Q4Pa-surf (m³/h.m²)",family:"Performance énergétique",type:"number",tags:["Q4Pa-surf (m³/h.m²)", "Q4Pa-surf", "Q4 Pa-surf", "Q4Pa surf", "Q4 Pa surf"] ,presence:false},
+  // v2.9.0 — adresse de l'opération (libellés du tableau Tous contrats) et position WGS84 issue du géocodage IGN (geocode.js).
+  {key:"address",label:"Adresse",family:"Localisation",type:"text",tags:["Adresse", "Adresse de l'opération", "Adresse du projet", "Adresse du chantier", "Adresse du terrain", "Adresse opération"] ,presence:false},
+  {key:"postcode",label:"Code postal",family:"Localisation",type:"text",tags:["Code postal", "Code postal de l'opération", "Code postal opération"] ,presence:false},
+  {key:"city",label:"Ville",family:"Localisation",type:"text",tags:["Ville", "Commune", "Ville de l'opération", "Commune de l'opération"] ,presence:false},
+  {key:"insee_code",label:"Code INSEE",family:"Localisation",type:"text",tags:["Code INSEE", "INSEE", "Code commune INSEE"] ,presence:false},
+  {key:"latitude",label:"Latitude",family:"Localisation",type:"number",tags:["Latitude", "Latitude WGS84"] ,presence:false},
+  {key:"longitude",label:"Longitude",family:"Localisation",type:"number",tags:["Longitude", "Longitude WGS84"] ,presence:false},
+  {key:"geocode_precision",label:"Géolocalisation",family:"Localisation",type:"text",tags:["Géolocalisation", "Précision géolocalisation"] ,presence:false}
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -397,6 +405,9 @@ for(const key of ["structure", "roof_structure", "roof_insulation", "wall_struct
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final", "ubat_ref", "ubat_gain", "ges", "ges_before", "ges_ref", "ges_gain"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
+// v2.9.0 — adresse : sources projet d'abord ; une pièce technique qui cite explicitement « Adresse de l'opération » complète.
+for(const key of ["address", "postcode", "city"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_PROJECT_META,DOC_TYPES.PERMIT,DOC_TYPES.PROJECT_DESCRIPTION],[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.DPE,DOC_TYPES.CCTP,DOC_TYPES.DESIGN_REPORT,DOC_TYPES.ENV_REPORT,DOC_TYPES.CARBON,DOC_TYPES.AIRTIGHTNESS]);
+for(const key of ["insee_code", "latitude", "longitude", "geocode_precision"]) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.MANUAL]);
 for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROGRAM,[DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);

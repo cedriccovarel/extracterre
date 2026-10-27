@@ -20,7 +20,7 @@ export const EXTRACTION_RANGES=Object.freeze({
   ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
   bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100],
   // v2.6.0 — pack du 26/10/2026 : « Ubat Ref 83 » (0,83 mal lu), émissions de GES par m².
-  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500], q4pa_surf:[0,10]
+  ubat_ref:[0.05,5], ges:[0,300], ges_before:[0,500], ges_ref:[0,500], q4pa_surf:[0,10], latitude:[-90,90], longitude:[-180,180]
 });
 const sn_NUM_FIELDS=new Set([...Object.keys(EXTRACTION_RANGES),...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`)]);
 const sn_YEAR_LIKE=/^(?:19|20)\d\d$/;

@@ -4,7 +4,21 @@
 // (Ollama en local), seule la description du critère lui est envoyée.
 import {normLower,parseFrNumber} from './utils.js';
 
-export const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte'};
+export const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques'};
+// v2.8.2 — critère « Statistiques » (tableaux de surfaces) : une valeur par ligne trouvée, puis effectif, min, moyenne, max et centiles.
+export const STAT_KEYS=[['n','Nombre'],['min','Min'],['mean','Moyenne'],['max','Max'],['p10','P10'],['p25','P25'],['p50','Médiane'],['p75','P75'],['p90','P90']];
+const srch_pct=(sorted,q)=>{ const h=(sorted.length-1)*q, lo=Math.floor(h); return sorted[lo]+(sorted[Math.min(lo+1,sorted.length-1)]-sorted[lo])*(h-lo); }; /* interpolation linéaire, comme CENTILE.INCLURE d'Excel */
+export function srchStats(values){
+  const v=values.filter(Number.isFinite).sort((a,b)=>a-b); if(!v.length) return null; const r=x=>Math.round(x*100)/100;
+  return {n:v.length,min:v[0],mean:r(v.reduce((a,b)=>a+b,0)/v.length),max:v[v.length-1],p10:r(srch_pct(v,.1)),p25:r(srch_pct(v,.25)),p50:r(srch_pct(v,.5)),p75:r(srch_pct(v,.75)),p90:r(srch_pct(v,.9))};
+}
+// Nombre isolé d'une ligne de tableau : « A101 » (n° de logement) ou « R+2 » ne sont pas des surfaces.
+const srch_CELL_RE=/(?<![\w.,+\/-])(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(?![\d])\s*([a-z²³%]{0,3}\d?)/gi;
+function srch_cellNumbers(line,unit){
+  const u=normLower(unit).replace(/\s+/g,''), units=u==='m2'||u==='m²'?['m2','m²','']:u?[u,'']:null; const out=[];
+  for(const m of line.matchAll(srch_CELL_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
+  return out;
+}
 const srch_uidS=()=>`c${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
 const srch_list=v=>(Array.isArray(v)?v:String(v??'').split(/[,;\n]/)).map(s=>String(s??'').trim()).filter(Boolean).slice(0,60);
 const srch_normS=s=>normLower(s).replace(/[’'`]/g,' ');
@@ -51,19 +65,20 @@ export function runSearchGrid(grid,docs,overrides={}){
   const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
   const criteria={};
   for(const c of g.criteria){
-    const ev=[]; const values=[];
+    const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
     if(c.keywords.length) for(const {d,lines} of corpus){ let perDoc=0;
-      for(let k=0;k<lines.length&&perDoc<5;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
+      for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
         const near=lines.slice(Math.max(0,k-c.window),k+c.window+1).filter(x=>x.page===L.page);
         if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
         let nums=[],ok=true;
+        if(c.kind==='stats'){ const n=srch_cellNumbers(L.t,c.unit).find(x=>(c.min===null||x>=c.min)&&(c.max===null||x<=c.max)); if(n===undefined) continue; nums=[n]; values.push(n); }
         if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
           if(!nums.length) continue; values.push(...nums); ok=nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
         ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
     const manual=overrides?.[c.id];
     // Critère « inverse » : un résultat est un indice contraire (critère non rempli), jamais une preuve de conformité.
     const found=manual==='Oui'?true:manual==='Non'||manual==='Sans objet'?false:c.inverse?false:ev.some(e=>e.ok);
-    criteria[c.id]={found,contrary:!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)),manual:manual||'',values:[...new Set(values)],evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
+    criteria[c.id]={found,contrary:!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)),manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
   }
   const themes={};
   for(const t of g.themes){
@@ -81,6 +96,7 @@ export function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
   if(x.contrary) return c.inverse?'Indice contraire':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
   if(c.kind==='text') return x.text;
   return x.found?'Oui':'';

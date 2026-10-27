@@ -3,6 +3,7 @@
 // aucune expression régulière sur du texte linéarisé, aucun décalage de colonne possible.
 import {canonicalBuilding} from './buildings.js';
 import {normalizeGlazingType} from './utils.js';
+import {parseFrAddress} from './geocode.js';
 
 // ---------------------------------------------------------------------------
 // Parseur XML minimal (secours hors navigateur / tests Node). Dans le navigateur,
@@ -290,6 +291,8 @@ export function re2020Occurrences(doc,makeOcc){
   add(null,'operation',g.operation,'general-operation','',/Opération/);
   add(null,'project',g.operation,'general-operation','',/Opération/);
   add(null,'department',g.department,'general-department','',/Département/);
+  { const a=g.postcode?{address:g.address,postcode:g.postcode,city:g.city}:parseFrAddress(g.address);
+    for(const f of ['address','postcode','city']) add(null,f,a[f],'general-address','',/Adresse/,{secondarySourceOk:true}); }
   add(null,'owner_company',g.owner,'general-owner','',/Maître/);
   // v2.3.15 — nom d'opération : source secondaire ciblée (le XML ne remplace pas le contrat, mais le complète).
   add(null,'operation_name',g.operation,'general-operation','',/Opération/,{confidence:0.95,secondarySourceOk:true});
