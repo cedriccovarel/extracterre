@@ -1,3 +1,14 @@
+# v2.8.0 — Salesforce sans fichier, capture OCR, confirmation des données manuelles
+- Bouton de favoris « → ExtracTerre » (à glisser dans la barre de favoris, depuis Données manuelles) : sur une fiche
+  Salesforce, il envoie le texte de la page (ou la sélection) à ExtracTerre, qui ouvre l'aperçu du collage libre.
+  Le texte passe par l'adresse de la page (fragment #, jamais envoyé au serveur) et en est effacé aussitôt.
+- Collage libre : format Salesforce « libellé » puis « valeur » sur la ligne suivante (libellés reconnus exactement
+  ou par alias uniquement ; textes d'aide « Modifier … » ignorés ; le reste de la page n'est pas lu comme un CCTP).
+- « 📷 Capturer un onglet (OCR) » et collage direct d'une capture d'écran : lecture OCR en mémoire, sans fichier ;
+  la provenance « Capture d'écran (OCR) » reste affichée dans la revue.
+- Sécurité : toute modification ou suppression d'une valeur issue d'une donnée manuelle (revue, correction du tableau,
+  correction par sélection, recherche libre, nouveau collage libre ou Excel) demande d'abord une validation.
+
 # v2.7.6 — données manuelles définitives
 - Une donnée saisie, validée ou collée (texte libre ou tableau Excel) est définitive : aucune analyse ni fusion de
   documents ne la remplace (y compris les règles DH le plus défavorable et RSET direct).

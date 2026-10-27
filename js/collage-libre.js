@@ -28,8 +28,26 @@ export function matchFreeLabel(label){
 const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
 const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
 function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
+// v2.8.0 — fiche Salesforce (libellé sur une ligne, valeur sur la suivante) → « libellé = valeur ».
+// Seuls les libellés reconnus exactement (ou par alias) ouvrent une paire : un rapprochement approximatif ne suffit pas.
+function fp_strictLabel(l){ const t=String(l||'').replace(/^\*\s*/,'').replace(/\s*:\s*$/,'').trim(); if(!t||t.length>80||/[=\t]/.test(t)) return null;
+  const r=matchFieldByHeaderDetailed(fp_clean(t)); return r&&r.mode!=='fuzzy'&&r.def.key!=='building'?r.def.key:null; }
+// Textes d'aide de Salesforce (« Modifier Numéro de contrat », « Aide Société ») : sans valeur.
+const fp_ASSIST=/^(?:modifier|aide|edit|help)\s+(.+)$/i;
+export function unstackLabels(text){
+  const all=String(text||'').replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
+  if(all.filter(l=>/=/.test(l)).length>all.length*.2) return {text:String(text||''),pairs:0};
+  const lines=all.filter(l=>{ const m=l.match(fp_ASSIST); return !(m&&fp_strictLabel(m[1])); });
+  const out=[]; let pairs=0;
+  for(let i=0;i<lines.length;i++){ const next=lines[i+1];
+    if(fp_strictLabel(lines[i])&&next!==undefined&&!fp_strictLabel(next)&&next.length<=200&&!/=/.test(next)){ out.push(`${lines[i].replace(/^\*\s*/,'').replace(/\s*:\s*$/,'').replace(/\s*:\s*/g,' ')} = ${next}`); pairs++; i++; }
+    else out.push(lines[i]); }
+  return pairs?{text:out.join('\n'),pairs}:{text:String(text||''),pairs:0};
+}
 // → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}],descriptive:[lignes de texte]}
 export function parseFreePaste(text){
+  // Fiche Salesforce : le reste de la page (menus, listes associées) n'est pas lu comme un CCTP.
+  const st=unstackLabels(text); text=st.text; const stacked=st.pairs>0;
   const out=[]; let cur=null; const unmatched=[], descriptive=[], descBld=[];
   const ensure=name=>{ cur=out.find(b=>b.name===name)||{name,items:[]}; if(!out.includes(cur)) out.push(cur); return cur; };
   const lines=String(text||'').replace(/\r/g,'').split('\n');
@@ -53,9 +71,9 @@ export function parseFreePaste(text){
   // Ligne isolée hors des sections d'une fiche, avec un chiffre (« Perméabilité mesurée Q4 0,6 ») : proposée à l'IA.
   let sec=null; descriptive.forEach((l,i)=>{ const low=normLower(l).replace(/[’']/g,' '); if(fp_SECTIONS.some(([,re])=>re.test(low))){ sec=true; return; } if(/-\s*notes$/.test(low)){ sec=null; return; }
     if(!sec&&/\d/.test(l)&&!/^\s*[>*-]|\bpage\s+\d/i.test(l)) unmatched.push({building:descBld[i],line:l,label:'',raw:l}); });
-  const desc=descriptiveItems(descriptive);
+  const desc=stacked?[]:descriptiveItems(descriptive);
   if(desc.length) out.push({name:'*',items:desc});
-  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive};
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked};
 }
 // « Cep : 35,2 » (libellé court reconnu) est une paire ; « PRODUCTION : Pompe à chaleur… » reste du texte descriptif.
 function fp_shortPair(line){ const m=line.match(fp_PAIR); return !!m&&!!matchFreeLabel(m[1]); }

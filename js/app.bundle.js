@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.7.6 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.8.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.7.6';
+const APP_VERSION='2.8.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -8745,8 +8745,26 @@ function matchFreeLabel(label){
 const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
 const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
 function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
+// v2.8.0 — fiche Salesforce (libellé sur une ligne, valeur sur la suivante) → « libellé = valeur ».
+// Seuls les libellés reconnus exactement (ou par alias) ouvrent une paire : un rapprochement approximatif ne suffit pas.
+function fp_strictLabel(l){ const t=String(l||'').replace(/^\*\s*/,'').replace(/\s*:\s*$/,'').trim(); if(!t||t.length>80||/[=\t]/.test(t)) return null;
+  const r=matchFieldByHeaderDetailed(fp_clean(t)); return r&&r.mode!=='fuzzy'&&r.def.key!=='building'?r.def.key:null; }
+// Textes d'aide de Salesforce (« Modifier Numéro de contrat », « Aide Société ») : sans valeur.
+const fp_ASSIST=/^(?:modifier|aide|edit|help)\s+(.+)$/i;
+function unstackLabels(text){
+  const all=String(text||'').replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
+  if(all.filter(l=>/=/.test(l)).length>all.length*.2) return {text:String(text||''),pairs:0};
+  const lines=all.filter(l=>{ const m=l.match(fp_ASSIST); return !(m&&fp_strictLabel(m[1])); });
+  const out=[]; let pairs=0;
+  for(let i=0;i<lines.length;i++){ const next=lines[i+1];
+    if(fp_strictLabel(lines[i])&&next!==undefined&&!fp_strictLabel(next)&&next.length<=200&&!/=/.test(next)){ out.push(`${lines[i].replace(/^\*\s*/,'').replace(/\s*:\s*$/,'').replace(/\s*:\s*/g,' ')} = ${next}`); pairs++; i++; }
+    else out.push(lines[i]); }
+  return pairs?{text:out.join('\n'),pairs}:{text:String(text||''),pairs:0};
+}
 // → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}],descriptive:[lignes de texte]}
 function parseFreePaste(text){
+  // Fiche Salesforce : le reste de la page (menus, listes associées) n'est pas lu comme un CCTP.
+  const st=unstackLabels(text); text=st.text; const stacked=st.pairs>0;
   const out=[]; let cur=null; const unmatched=[], descriptive=[], descBld=[];
   const ensure=name=>{ cur=out.find(b=>b.name===name)||{name,items:[]}; if(!out.includes(cur)) out.push(cur); return cur; };
   const lines=String(text||'').replace(/\r/g,'').split('\n');
@@ -8770,9 +8788,9 @@ function parseFreePaste(text){
   // Ligne isolée hors des sections d'une fiche, avec un chiffre (« Perméabilité mesurée Q4 0,6 ») : proposée à l'IA.
   let sec=null; descriptive.forEach((l,i)=>{ const low=normLower(l).replace(/[’']/g,' '); if(fp_SECTIONS.some(([,re])=>re.test(low))){ sec=true; return; } if(/-\s*notes$/.test(low)){ sec=null; return; }
     if(!sec&&/\d/.test(l)&&!/^\s*[>*-]|\bpage\s+\d/i.test(l)) unmatched.push({building:descBld[i],line:l,label:'',raw:l}); });
-  const desc=descriptiveItems(descriptive);
+  const desc=stacked?[]:descriptiveItems(descriptive);
   if(desc.length) out.push({name:'*',items:desc});
-  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive};
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked};
 }
 // « Cep : 35,2 » (libellé court reconnu) est une paire ; « PRODUCTION : Pompe à chaleur… » reste du texte descriptif.
 function fp_shortPair(line){ const m=line.match(fp_PAIR); return !!m&&!!matchFreeLabel(m[1]); }
@@ -10629,7 +10647,7 @@ function renderTiles(wrap,{home=false}={}){
   wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
 }
 // v2.6.1 — écran d'accueil : uniquement les tuiles ; une opération ouverte affiche l'espace d'analyse habituel.
-function setHomeMode(on){ state.homeView=!!on; document.body.classList.toggle('home-mode',state.homeView); const h=$('#homeView'); if(h) h.hidden=!state.homeView; $$('.tab').forEach(b=>b.classList.toggle('active',state.homeView?b.dataset.tab==='summary':b.dataset.tab===state.activeTab)); if(state.homeView){ renderHome(); window.scrollTo?.(0,0); } }
+function setHomeMode(on){ state.homeView=!!on; if(!on&&pendingExternalText){ const x=pendingExternalText; setTimeout(()=>openExternalText(x.text,x.source),0); } document.body.classList.toggle('home-mode',state.homeView); const h=$('#homeView'); if(h) h.hidden=!state.homeView; $$('.tab').forEach(b=>b.classList.toggle('active',state.homeView?b.dataset.tab==='summary':b.dataset.tab===state.activeTab)); if(state.homeView){ renderHome(); window.scrollTo?.(0,0); } }
 function renderHome(){ const h=$('#homeView'); if(h&&state.homeView) renderTiles(h,{home:true}); }
 // Tableau d'opérations (Excel importé ou collé) : une opération par n° de contrat / code interne / nom d'opération.
 function operationKey(v={}){ return String(v.contract_number||v.internal_code||v.operation_name||'').trim(); }
@@ -11034,7 +11052,7 @@ function recomputeProject(message='Consolidation recalculée.'){
 }
 function openManualDataDialog(){
   const dlg=$('#manualDataDialog'); if(!dlg) return;
-  $('#manualDataPaste').value=state.manualPasteRaw||''; onManualPasteInput(); dlg.showModal();
+  $('#manualDataPaste').value=state.manualPasteRaw||''; freePaste=null; onManualPasteInput(); dlg.showModal();
 }
 function renderManualPastePreview(parsed){
   const box=$('#manualDataPreview'); if(!box) return;
@@ -11046,7 +11064,37 @@ function renderManualPastePreview(parsed){
 // v2.7.0 — collage libre (« Bâtiment G : / Cep = 37,7 … ») : chaque ligne est rangée dans une colonne ; les valeurs
 // appliquées priment sur toutes les données extraites des documents (comme une correction manuelle).
 let freePaste=null;
-function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||''; if(raw.trim()&&looksLikeFreeText(raw)){ freePaste=parseFreePaste(raw); renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
+// v2.8.0 — texte reçu du bouton de favoris « → ExtracTerre » (page Salesforce) ou lu par OCR : aperçu du collage libre, sans fichier.
+let pendingExternalText=null;
+function openExternalText(text,source){
+  if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
+  if(state.homeView){ pendingExternalText={text,source}; $('#manualDataDialog')?.close(); toast(`${source} reçu : ouvrez la tuile de l’opération concernée, l’aperçu s’ouvrira.`,'info'); return; }
+  pendingExternalText=null; const dlg=$('#manualDataDialog'), ta=$('#manualDataPaste'); if(!dlg||!ta) return;
+  ta.value=text; freePaste=parseFreePaste(text); freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
+}
+function receiveBookmarkletText(){
+  const h=location.hash; if(!h.startsWith('#sf=')) return; let t='';
+  try{ t=decodeURIComponent(h.slice(4)); }catch{ toast('Texte Salesforce reçu illisible.','error'); }
+  history.replaceState(null,'',location.pathname+location.search); if(t) openExternalText(t,'Salesforce');
+}
+function bookmarkletHref(){ const app=location.origin+location.pathname; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${app}#sf='+encodeURIComponent(t),'extracterre');})()`; }
+async function ocrToFreePaste(image,source='Capture d’écran (OCR)'){
+  if(!globalThis.Tesseract?.createWorker){ toast('Le moteur OCR n’est pas chargé (connexion internet requise).','error'); return; }
+  const btn=$('#captureOcrBtn'); if(btn) btn.disabled=true; toast('Lecture OCR de la capture…','info'); let worker;
+  try{ worker=await globalThis.Tesseract.createWorker('fra+eng',1); const {data}=await worker.recognize(image); openExternalText(String(data?.text||'').trim(),source); }
+  catch(err){ toast(`OCR impossible : ${err?.message||err}`,'error'); }
+  finally{ try{ await worker?.terminate(); }catch{} if(btn) btn.disabled=false; }
+}
+// L'image reste en mémoire : jamais enregistrée sur l'ordinateur.
+async function captureTabOcr(){
+  if(!navigator.mediaDevices?.getDisplayMedia){ toast('Capture d’écran non disponible dans ce navigateur.','error'); return; }
+  let stream; try{ stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false}); }catch{ return; }
+  const c=document.createElement('canvas');
+  try{ const v=document.createElement('video'); v.muted=true; v.srcObject=stream; await v.play(); await new Promise(r=>setTimeout(r,400)); c.width=v.videoWidth; c.height=v.videoHeight; c.getContext('2d').drawImage(v,0,0); }
+  finally{ stream.getTracks().forEach(t=>t.stop()); }
+  if(c.width) await ocrToFreePaste(c);
+}
+function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||'', keep=freePaste?.sourceLabel; if(raw.trim()&&(keep||looksLikeFreeText(raw))){ freePaste=parseFreePaste(raw); if(keep) freePaste.sourceLabel=keep; renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
 function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">— ignorer</option>${FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`<option value="${f.key}" ${f.key===cur?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}</select>`; }
 function renderFreePastePreview(){
   const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;
@@ -11076,7 +11124,7 @@ function freePasteTargetsHtml(fp){
 }
 function applyFreePaste(){
   if(state.homeView){ toast('Texte libre : ouvrez d’abord la tuile de l’opération concernée, puis Compléments → Données manuelles → Coller.','warn'); return; }
-  const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length);
+  const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length); const srcName=freePaste.sourceLabel?`Collage libre — ${freePaste.sourceLabel}`:'Collage libre';
   // Valeurs « Toute l'opération » (texte descriptif) : reportées sur tous les bâtiments de l'analyse, documents compris.
   const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; const allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
   const ownFields=Object.fromEntries((freePaste.buildings||[]).filter(b=>b.name!=='*').map(b=>[b.name,new Set(b.items.map(i=>i.field).filter(Boolean))]));
@@ -11091,12 +11139,18 @@ function applyFreePaste(){
   const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[];
   const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
   let n=0; const ownByTarget={}; for(const v of vals){ const own=ownFields[v.building]; if(own) ownByTarget[target(v.building)]=own; }
-  for(const v of vals){ const b=target(v.building); for(const [field,value] of Object.entries(v.values)){ const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre',page:'',excerpt:v.sources[field]||'',method:'manual:free-paste',provenanceNote:'Données collées : prioritaires sur les documents'}; n++; } }
   let nAll=0; const allRows=allVals?(state.result?.rows||[]).map(r=>r.building):[];
-  for(const b of allRows) for(const [field,value] of Object.entries(allVals.values)){ if(ownByTarget[b]?.has(field)) continue; const key=`${b}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:'Collage libre — toute l’opération',page:'',excerpt:allVals.sources[field]||'',method:'manual:free-paste',provenanceNote:'Donnée collée pour toute l’opération : prioritaire sur les documents'}; nAll++; }
+  // Données manuelles déjà présentes et différentes : validation explicite avant remplacement.
+  const conflicts=[], diff=(b,f,val)=>{ const c=manualCurrent(b,f); if(c&&String(c.value)!==String(val)) conflicts.push({key:`${b}|${f}`,text:`${b.replace(/^Bâtiment\s+/,'')} · ${FIELD_MAP[f]?.label||f} : « ${formatValue(c.value)} » → « ${formatValue(val)} »`}); };
+  for(const v of vals){ const b=target(v.building); for(const [f,val] of Object.entries(v.values)) diff(b,f,val); }
+  for(const b of allRows) for(const [f,val] of Object.entries(allVals.values)) if(!ownByTarget[b]?.has(f)) diff(b,f,val);
+  const keepOld=conflicts.length>0&&!confirm(`⚠️ ${conflicts.length} donnée(s) manuelle(s) existante(s) seraient modifiée(s) :\n${conflicts.slice(0,12).map(c=>c.text).join('\n')}${conflicts.length>12?'\n…':''}\n\nOK = remplacer · Annuler = conserver les valeurs manuelles existantes (les autres valeurs collées sont intégrées).`);
+  const skip=new Set(keepOld?conflicts.map(c=>c.key):[]);
+  for(const v of vals){ const b=target(v.building); for(const [field,value] of Object.entries(v.values)){ const key=`${b}|${field}`; if(skip.has(key)) continue; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:srcName,page:'',excerpt:v.sources[field]||'',method:'manual:free-paste',provenanceNote:'Données collées : prioritaires sur les documents'}; n++; } }
+  for(const b of allRows) for(const [field,value] of Object.entries(allVals.values)){ if(ownByTarget[b]?.has(field)) continue; const key=`${b}|${field}`; if(skip.has(key)) continue; state.manualValues[key]=value; state.manualSources[key]={docId:'',fileName:`${srcName} — toute l’opération`,page:'',excerpt:allVals.sources[field]||'',method:'manual:free-paste',provenanceNote:'Donnée collée pour toute l’opération : prioritaire sur les documents'}; nAll++; }
   applyManualValues(); $('#manualDataDialog')?.close(); freePaste=null; renderAll(); scheduleWorkspaceCheckpoint('collage libre',80);
   const nb=new Set([...vals.map(v=>target(v.building)),...allRows]).size;
-  const created=(state.result?.rows||[]).map(r=>r.building).filter(b=>!before.has(b));
+  const created=(state.result?.rows||[]).map(r=>r.building).filter(b=>!before.has(b)&&b!=='Bâtiment unique');
   // Montrer le résultat : revue du premier bâtiment collé, champs renseignés (« À compléter » masque les champs remplis).
   const first=target(vals.find(v=>v.building)?.building||''); if(first){ reviewState.building=first; reviewState.filter='done'; reviewState.editing=''; activeProject().resultView='review'; state.resultWorkspaceMode='detail'; renderSummary(); setTimeout(()=>$('#workspaceSection')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
   learn('manual_paste',{mode:'free',buildings:nb,created:created.length,values:n+nAll},p);
@@ -11107,6 +11161,7 @@ function applyManualPaste(){
   const raw=$('#manualDataPaste')?.value||''; const parsed=parseManualClipboard(raw);
   if(!parsed.recognized||!parsed.rows.length){ toast('Aucune ligne de données exploitable. Vérifiez les en-têtes et collez au moins une ligne de valeurs.','warn'); renderManualPastePreview(parsed); return; }
   if(importOperationRows(parsed.rows,{columns:parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''})),source:'copier-coller'})){ $('#manualDataDialog')?.close(); return; }
+  if((state.manualPasteRows||[]).length&&raw.trim()!==String(state.manualPasteRaw||'').trim()&&!confirm('⚠️ Un tableau de données manuelles est déjà intégré à ce projet.\nLe remplacer par ce nouveau collage ? Les valeurs de l’ancien tableau seront remplacées.\n\nOK = remplacer · Annuler = conserver le tableau actuel.')) return;
   state.manualPasteRaw=raw; state.manualPasteRows=parsed.rows; state.manualPasteColumns=parsed.columns.map(c=>({header:c.header,key:c.def?.key||null,matchMode:c.matchMode||''}));
   // Si le nom de l'opération est fourni manuellement et que le champ Projet actuel est vide, on le reprend comme titre de travail.
   const first=parsed.rows[0]?.values||{}; if(!$('#operationName').value.trim()&&(first.operation_name||first.operation)){ const op=String(first.operation_name||first.operation); $('#operationName').value=op; activeProject().operationName=op; }
@@ -11670,12 +11725,22 @@ function setManualValue(building,field,raw,meta=null){
   if(def.type==='number'){ if(value===''){ return false; } const n=parseFrNumber(value); if(n===null){ toast(`« ${value} » n’est pas un nombre valable pour ${def.label}.`,'error'); return false; } value=n; }
   else if(field==='window_glazing') value=normalizeGlazingType(value)||value;
   if(value==='') return false;
+  if(!confirmManualChange(building,field,value)) return false;
   const key=`${building}|${field}`, previous=state.result?.rows?.find(r=>r.building===building)?.[field];
   state.manualValues[key]=value; if(meta) state.manualSources[key]=meta; else delete state.manualSources[key];
   learn('manual_override',{building,field,label:def.label,previousValue:previous??null,newValue:value,source:meta?.method||'review_inline_edit'},activeProject());
   applyManualValues(); return true;
 }
 // v2.7.6 — seule une suppression manuelle libère un champ saisi/collé : l'analyse documentaire reprend alors la main.
+// v2.8.0 — couche de sécurité : modifier ou supprimer une valeur issue d'une donnée manuelle demande une validation explicite.
+function manualCurrent(building,field){
+  const key=`${building}|${field}`; if(Object.prototype.hasOwnProperty.call(state.manualValues||{},key)) return {value:state.manualValues[key],source:state.manualSources?.[key]?.fileName||'Saisie manuelle'};
+  const f=state.result?.finals?.find(o=>o.field===field&&o.building===building&&o.manualDefinitive); return f?{value:f.value,source:f.fileName||'Données manuelles'}:null;
+}
+function confirmManualChange(building,field,value,remove=false){
+  const cur=manualCurrent(building,field); if(!cur||(!remove&&String(cur.value)===String(value))) return true;
+  return confirm(`⚠️ Donnée manuelle — ${FIELD_MAP[field]?.label||field} (${building})\n\nValeur actuelle : « ${formatValue(cur.value)} » (${cur.source}).\n${remove?'La supprimer ? L’analyse des documents reprendra ce champ.':`La remplacer par « ${formatValue(value)} » ?`}\n\nOK = valider la modification · Annuler = conserver la valeur manuelle.`);
+}
 function removeManualValue(building,field){
   const p=activeProject(), key=`${building}|${field}`, same=b=>b===building||canonicalBuilding(b)===building||(b==='Bâtiment unique'&&(p.result?.rows||[]).length<=1);
   delete p.manualValues[key]; delete p.manualSources[key];
@@ -11683,7 +11748,7 @@ function removeManualValue(building,field){
   for(const r of p.manualPasteRows||[]) if(same(String(r.values?.building||'Bâtiment unique').trim()||'Bâtiment unique')&&r.values) delete r.values[field];
   learn('manual_override',{building,field,label:FIELD_MAP[field]?.label||field,newValue:null,source:'manual_removed'},p);
 }
-function acceptCandidate(c){ if(c.synthetic){ setManualValue(c.building==='Bâtiment unique'?reviewState.building:(c.building||reviewState.building),c.field,c.value,{docId:'',fileName:'Valeur déduite',page:'',excerpt:c.excerpt,method:'manual:derived-validated',provenanceNote:c.excerpt}); return; } const key=`${c.building==='Bâtiment unique'?reviewState.building:c.building}|${c.field}`; state.manualValues[key]=c.value;
+function acceptCandidate(c){ if(c.synthetic){ setManualValue(c.building==='Bâtiment unique'?reviewState.building:(c.building||reviewState.building),c.field,c.value,{docId:'',fileName:'Valeur déduite',page:'',excerpt:c.excerpt,method:'manual:derived-validated',provenanceNote:c.excerpt}); return; } const tb=c.building==='Bâtiment unique'?reviewState.building:c.building; if(!confirmManualChange(tb,c.field,c.value)) return; const key=`${tb}|${c.field}`; state.manualValues[key]=c.value;
   state.manualSources[key]={docId:c.docId,fileName:c.fileName,page:c.page,excerpt:c.excerpt,method:'manual:uncertain-candidate-validated',provenanceNote:`Candidat ${Math.round(c.confidence*100)} % validé dans la revue.`};
   learn('uncertain_decision',{decision:'accept',building:c.building,field:c.field,label:FIELD_MAP[c.field]?.label||c.field,value:c.value,confidence:c.confidence,source:{fileName:c.fileName,page:c.page,method:c.method||'',excerpt:c.excerpt||''}},activeProject());
   applyManualValues(); }
@@ -11739,7 +11804,7 @@ function renderReview(){
   $$('#summaryView [data-rv-save]').forEach(b=>b.onclick=()=>save(b.dataset.rvSave));
   $$('#summaryView [data-rv-input]').forEach(i=>i.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); save(i.dataset.rvInput); } else if(e.key==='Escape'){ e.preventDefault(); reviewState.editing=''; renderReview(); focusReviewRow(i.dataset.rvInput,0); } });
   $$('#summaryView [data-rv-doc]').forEach(b=>b.onclick=()=>{ const e=find(b.dataset.rvDoc); openManualAnalysisFor(B,b.dataset.rvDoc,e?.src?.docId||e?.cands?.[0]?.docId||'',e?.src?.page||e?.cands?.[0]?.page||null); });
-  $$('#summaryView [data-rv-unset]').forEach(b=>b.onclick=()=>{ const k=b.dataset.rvUnset; removeManualValue(B,k); recomputeProject(''); reviewAfterChange(`${FIELD_MAP[k].label} : donnée manuelle supprimée, valeur reprise de l’analyse.`); focusReviewRow(k,0); });
+  $$('#summaryView [data-rv-unset]').forEach(b=>b.onclick=()=>{ const k=b.dataset.rvUnset; if(!confirmManualChange(B,k,null,true)) return; removeManualValue(B,k); recomputeProject(''); reviewAfterChange(`${FIELD_MAP[k].label} : donnée manuelle supprimée, valeur reprise de l’analyse.`); focusReviewRow(k,0); });
   $$('#summaryView [data-rv-copy]').forEach(b=>b.onclick=()=>{ const n=copyToOtherBuildings(B,b.dataset.rvCopy); if(n) reviewAfterChange(`${FIELD_MAP[b.dataset.rvCopy].label} recopié dans ${n} bâtiment${n>1?'s':''}.`); else toast('Les autres bâtiments ont déjà une valeur pour ce champ.','info'); });
   $$('#summaryView [data-rv-accept]').forEach(b=>b.onclick=()=>{ const k=b.dataset.rvAccept; const c=find(k)?.cands?.[Number(b.dataset.i)];
     if(!c){ toast('Proposition introuvable : rechargez la revue.','warn'); renderReview(); return; }
@@ -12126,7 +12191,7 @@ async function submitBetaError(){
     await recordLearningEvent(dlg.dataset.wasMissing==='1'?'beta_missing_data_location':'beta_result_error',payload,activeProject());
     if(loc){const learnPayload={field,fieldLabel:def.label||field,building,docType:loc.docType,document:loc.document,page:loc.page,pageRatio:loc.pageRatio,lineIndex:loc.lineIndex,lineRatio:loc.lineRatio,lineText:loc.lineText,beforeLine:loc.beforeLine,afterLine:loc.afterLine,selectedText:loc.selectedText,selectionMode:loc.selectionMode,normalizedRects:loc.normalizedRects,bboxNormalized:loc.bboxNormalized,correctedValue:hasCorrection?correctedValue:null,operation:payload.operation};const evt=await recordLearningEvent('parser_location_learning',learnPayload,activeProject());await reinforceLearningLocation(learnPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:loc.docType,building});}
     const negativeReasons=new Set(['wrong_source','wrong_building','false_positive']),srcDoc=state.docs.find(d=>d.id===src.docId);if(dlg.dataset.wasMissing!=='1'&&negativeReasons.has(reason)&&src.docId&&srcDoc?.type){const rejectPayload={field,fieldLabel:def.label||field,building,docType:srcDoc.type,document:src.fileName||srcDoc.name,page:src.page||null,lineText:src.excerpt||'',selectedText:String(ctx.value??''),reason,operation:payload.operation};const evt=await recordLearningEvent('parser_location_rejection',rejectPayload,activeProject());await penalizeLearningLocation(rejectPayload,{eventId:evt.id,createdAt:evt.createdAt,field,docType:srcDoc.type,building});}
-    if(hasCorrection&&$('#betaApplyCorrection')?.checked){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par sélection documentaire — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:betaLearningIsSpreadsheet(chosenDoc)?'spreadsheet_selection_learning':'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par sélection documentaire',80);}
+    if(hasCorrection&&$('#betaApplyCorrection')?.checked&&confirmManualChange(building,field,correctedValue)){const key=`${building}|${field}`,previous=ctx.value;state.manualValues[key]=correctedValue;state.manualSources[key]={docId:loc?.docId||chosenDoc?.id||src.docId||'',fileName:loc?.document||chosenDoc?.name||src.fileName||'Correction bêta',page:loc?.page||Number($('#betaLearningPage')?.value)||src.page||1,excerpt:loc?.lineText||loc?.selectedText||src.excerpt||'',method:`manual:${loc?.selectionMode||'highlight-learning'}`,provenanceNote:`Correction propriétaire par sélection documentaire — ${reason}`};applyManualValues();learn('manual_override',{building,field,previousValue:previous,newValue:correctedValue,source:betaLearningIsSpreadsheet(chosenDoc)?'spreadsheet_selection_learning':'pdf_highlight_learning',reason,highlight:loc},activeProject());refreshEconomic();scheduleWorkspaceCheckpoint('correction par sélection documentaire',80);}
     closeBetaErrorDialog();renderSummary();scheduleJournalUiRefresh();renderLearningMemoryUi();toast(dlg.dataset.wasMissing==='1'?'Donnée ajoutée et emplacement mémorisé.':'Correction appliquée et emplacement mémorisé.','success');
   }catch(err){$('#betaErrorFeedback').textContent=`Enregistrement impossible : ${err?.message||err}`;}
 }
@@ -12160,6 +12225,7 @@ function manualOverride(building,field){
   const raw=prompt(`Corriger ${def.label} — ${building}`,String(current)); if(raw===null) return;
   let value=raw.trim(); if(def.type==='number'){ const n=parseFrNumber(value); if(n===null){ toast('Valeur numérique invalide.','error'); return; } value=n; }
   if(field==='window_glazing') value=normalizeGlazingType(value)||value; if(!value&&def.type!=='number') value='non précisé';
+  if(!confirmManualChange(building,field,value)) return;
   state.manualValues[`${building}|${field}`]=value; delete state.manualSources[`${building}|${field}`];
   learn('manual_override',{building,field,label:def.label,previousValue:current,newValue:value,source:prior?{fileName:prior.fileName||'',docType:prior.docType||'',page:prior.page||'',confidence:prior.confidence,method:prior.method||'',excerpt:prior.excerpt||''}:null},activeProject());
   applyManualValues(); state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); toast(`${def.label} corrigé pour ${building}. La correction sera conservée lors des compléments d’analyse.`,'success'); renderSummary(); renderOccurrences(); scheduleWorkspaceCheckpoint('correction manuelle',80);
@@ -12406,6 +12472,7 @@ function applySearchIntegration(){
   let value=raw; const def=FIELD_MAP[field];
   if(def.type==='number'){ const n=parseFrNumber(raw); if(n===null){ toast('La valeur choisie doit être numérique pour ce champ.','error'); return; } value=n; }
   else if(!value) value='non précisé';
+  if(!confirmManualChange(building,field,value)) return;
   const key=`${building}|${field}`; state.manualValues[key]=value; state.manualSources[key]={docId:result.docId||'search',fileName:result.document,page:result.page,excerpt:result.excerpt,method:'manual:free-search-validated',provenanceNote:'Valeur intégrée manuellement depuis Recherche libre après validation utilisateur.'};
   learn('free_search_validation',{decision:'accept',building,field,label:def.label,value,source:{fileName:result.document,page:result.page,confidence:result.confidence,excerpt:result.excerpt||''}},activeProject());
   applyManualValues(); state.projectTags=buildProjectTags(state.docs.filter(d=>d.status==='ready'),state.result,state.manualTags); renderSummary(); renderOccurrences(); updateUxMirrors();
@@ -12571,7 +12638,7 @@ function wire(){
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
   window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
@@ -12644,7 +12711,7 @@ async function initializeApp(){
   }catch(err){
     console.warn('IndexedDB restore failed',err); persistenceReady=false; setLocalSaveUi('Indisponible'); const detail=$('#localSaveDetail'); if(detail) detail.textContent='Le navigateur ne permet pas la restauration locale dans ce contexte.';
   }
-  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); setHomeMode(true); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
+  syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); setHomeMode(true); receiveBookmarkletText(); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
 initializeApp();
 
