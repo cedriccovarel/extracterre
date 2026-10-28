@@ -1,3 +1,10 @@
+# v2.10.7 — fiche Évaluation Salesforce : en-têtes « BAT AB / Nbre logts = 14 / Q4 = 0,72 »
+- Paires « libellé = valeur » sur l'en-tête de bâtiment, séparées par « / » (logements, Q4…).
+- Paires séparées par « - » ; « Gain = … » seul prend le gain de la valeur qui précède.
+- « DH ZT - T3 = … - T2 = … » : DH par zone et typologie, la plus défavorable est retenue.
+- Enveloppe « BAT A & B / Combles : … » : rangée dans les bâtiments nommés ; émojis retirés des descriptions.
+- Vocabulaire : Pregymax = PSE graphité ; « VR alu / PVC » = Volet roulant ; « flocage » = isolant.
+
 # v2.10.6 — fiche Évaluation Salesforce : en-têtes « Bât A / 21 logts - SHAB = … »
 - En-tête de bâtiment avec logements et SHAB sur la même ligne (Bât, Bâtiment, Immeuble, Plot, Cage, Ilot, Lot).
 - Paires séparées par « ; » ; « Bbio max = 71,9 (Gain 20,6 %) » donne aussi le gain.

@@ -8,7 +8,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {buildBuildingGrouping,analyzeDocuments} from './js/engine.js';
 import {DEFAULT_SOURCE_RULES,DOC_TYPES} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.10.6','version');
+eq(APP_VERSION, '2.10.7','version');
 const TXT=`Bâtiment X :
 Nombre de logements = 30
 Sref (ou Srt) = 2000,5

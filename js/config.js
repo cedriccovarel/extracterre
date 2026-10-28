@@ -1,4 +1,4 @@
-export const APP_VERSION='2.10.6';
+export const APP_VERSION='2.10.7';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -458,7 +458,7 @@ function aliasRegex(aliases){ return new RegExp(`\\b(?:${aliases.map(a=>rxEscape
 const pair=(canon,aliases)=>[canon,aliasRegex(aliases)];
 
 export const MATERIALS = [
-  pair('PSE graphité',['pse graphité','pse graphite','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
+  pair('PSE graphité',['pse graphité','pse graphite','pregymax','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
   pair('Laine de roche',['laine de roche','ldr','rockwool','rockfacade','rockmur','rockplus','rocksol','rockfeu','alpharock','mb rock','redair','jetrock','rockair','ecorock']),
   pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit']),
   pair('Laine minérale',['laine minérale','laine minerale','mineral wool','laine minerale semi rigide','fibrexpan']),
@@ -582,7 +582,7 @@ export const GLAZINGS = [
   pair('Simple vitrage',['simple vitrage','simple verre'])
 ];
 export const SHADINGS = [
-  pair('Volet roulant',['volet roulant','volets roulants','vr motorisé','vr motorise','vr manuel','vr manuels','vr électrique','vr electrique','vr elec']),
+  pair('Volet roulant',['volet roulant','volets roulants','vr alu','vr aluminium','vr pvc','vr motorisé','vr motorise','vr manuel','vr manuels','vr électrique','vr electrique','vr elec']),
   pair('Volet battant',['volet battant','volets battants']),
   pair('BSO',['bso','brise-soleil orientable','brise soleil orientable']),
   pair('Store extérieur',['store extérieur','store exterieur','store banne']),
