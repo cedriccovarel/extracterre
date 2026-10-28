@@ -10,7 +10,7 @@ import {normalizeText} from './js/utils.js';
 import {insulationName} from './js/donnees-techniques.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION, '2.10.0','version');
+eq(APP_VERSION, '2.10.1','version');
 eq(insulationName('ECOROCK MONO 134mm pour'),'Laine de roche','marque Rockwool'); eq(insulationName('EFIGREEN DUO+ 100 mm 600x600'),'PUR','marque PIR');
 
 const H='Simulation thermique dynamique -REHABILITATION FICTIVE', V='Pleiades, version 5.23.6.2';

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.10.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.10.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.10.0';
+const APP_VERSION='2.10.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -7469,8 +7469,31 @@ function parseDocument(doc){
     out=[...out,...parseStudyLabelPatterns(doc).filter(o=>!have.has(`${o.building}|${o.field}`))];
   }
   // v2.9.0 — adresse de l'opération citée sous un libellé explicite (jamais l'adresse d'un intervenant).
-  if(!doc?.read?.re2020&&!out.some(o=>o.field==='postcode')) out=[...out,...parseAddressLabels(doc)];
+  // Le bloc « Opération » d'un RSET l'emporte sur toute autre lecture du même document (dont celles plafonnées « à valider »).
+  const rsetAddress=doc?.read?.re2020?[]:parseRsetOperationAddress(doc);
+  if(rsetAddress.length) out=[...out.filter(o=>!['address','postcode','city'].includes(o.field)),...rsetAddress];
+  else if(!doc?.read?.re2020&&!out.some(o=>o.field==='postcode')) out=[...out,...parseAddressLabels(doc)];
   return sanitizeOccurrences(out);
+}
+// v2.10.1 — RSET PDF (RE2020, RSEE, RT2012, cadre CSTB) : l'adresse de l'opération est la ligne « Adresse » du bloc
+// « Opération », suivie de « Département » ; celles du maître d'ouvrage, du maître d'œuvre et des bureaux sont ignorées.
+// En RT2012 la cellule est sur trois lignes (« 61 rue X » / « Adresse » / « 45650 - VILLE »).
+const RSET_OP_PARTY=/^(?:ma[iî]tre d.?(?:ouvrage|oeuvre|œuvre)|bureau\b|informations sur les outils)/i, RSET_OP_LABEL=/^(?:nom|description|stade|date|num[eé]ro|r[eé]f[eé]rences|contact)\b/i;
+function parseRsetOperationAddress(doc){
+  for(const page of doc.read?.pages||[]){
+    const L=(page.lines||[]).map(l=>String(l.text||'').trim());
+    for(let i=0;i<L.length;i++){
+      if(!/^adresse\b/i.test(L[i])) continue;
+      const d=L.slice(i+1,i+4).findIndex(t=>/^d[eé]partement\b/i.test(t)); if(d<0) continue;
+      let k=i-1; while(k>=0&&k>i-25&&!/^op[eé]ration$/i.test(L[k])&&!RSET_OP_PARTY.test(L[k])) k--;
+      if(k<0||!/^op[eé]ration$/i.test(L[k])) continue;
+      const parts=[...(i-1>k&&!RSET_OP_LABEL.test(L[i-1])?[L[i-1]]:[]),L[i].replace(/^adresse\s*/i,''),...L.slice(i+1,i+1+d)];
+      const a=parseFrAddress(parts.join(' ').replace(/\b(\d{5})\s*[-–]\s*/,'$1 ')); if(!a.postcode||!/[a-zà-ÿ]{3}/i.test(a.address)) continue;
+      const x={building:'Bâtiment unique',excerpt:normalizeText(L.slice(Math.max(k,i-1),i+1+d).join(' | ')).slice(0,420)};
+      return ['address','postcode','city'].map(f=>occ(doc,page,page.lines[i],f,a[f],'rset:operation-address',0.97,'',x)).filter(Boolean);
+    }
+  }
+  return [];
 }
 const ADDRESS_LABEL=/^\s*(?:adresse|lieu|localisation|situation|implantation)\s+(?:de\s+l[’']?\s*op[eé]ration|du\s+(?:projet|chantier|terrain|site|programme|b[aâ]timent)|des\s+travaux|de\s+la\s+construction)\s*[:–-]?\s*(.*)$/i;
 function parseAddressLabels(doc){
@@ -8153,6 +8176,8 @@ function familyMismatchAlerts(docs=[]){
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
+    // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
+    if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
   }

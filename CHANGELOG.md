@@ -1,3 +1,13 @@
+# v2.10.1 — adresse de l'opération lue dans les RSET PDF
+- Constat : aucune adresse n'était remplie (0 opération sur 222 dans la session du 28/10) ; seuls les libellés
+  « Adresse de l'opération / du projet… » et le XML RE2020 étaient lus, alors que les RSET PDF portent l'adresse sous
+  un simple « Adresse », dans le bloc « Opération ».
+- Les RSET PDF (RE2020, RSEE, RT2012 — cadre CSTB) donnent désormais l'adresse de la ligne « Adresse » du bloc
+  « Opération » suivie de « Département » (cellule RT2012 sur trois lignes comprise). Les adresses du maître d'ouvrage,
+  du maître d'œuvre et des bureaux sont ignorées. Cette lecture l'emporte sur les autres du même document.
+- Projets déjà analysés : l'adresse est rattrapée à la prochaine analyse depuis le texte sauvegardé, sans recharger les fichiers.
+- Vérifié sur 3 RSET réels (RT2012, RE2020, RSEE multi-bâtiments) ; test : test_v2_10_1.mjs (données fictives).
+
 # v2.10.0 — parois verticales : isolation par l'intérieur (ITI) et par l'extérieur (ITE)
 - 6 colonnes ajoutées en fin d'export (famille Enveloppe) : Parois verticales ITI type d'isolant / épaisseur isolant /
   R isolant, et les mêmes pour ITE. Les colonnes « Parois verticales … » générales sont conservées à l'identique.
