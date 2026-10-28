@@ -1,3 +1,14 @@
+# v2.10.3 — fiche Évaluation Salesforce : autres mises en forme
+- Bâtiments sous tout en-tête « Nom : » / « Nom = » (ILOT_1, Maison 1, Bât A…), remarque entre parenthèses signalée
+  (« ILOT_4 : (ilot 5 sur ACV) ») ; paires « libellé = valeur » comme « libellé : valeur ».
+- Libellés reconnus en plus : Bbiomax, IC Construction max 2025 / 2028, IC Energie max 2025 / 2028, Q4 Pa-surf,
+  DH des zones traversantes / non traversantes (DH le plus défavorable, type de zone noté).
+- Une sélection partielle de la fiche (sans l'en-tête OPE) est convertie dès qu'elle contient « Performance thermique ».
+- Enveloppe : murs de refend / entre logements ignorés, contre-cloison rangée en ITI, R « ≥ » lu, renvois
+  « > Lot 03 — Page 17 » ignorés ; menuiseries hors fenêtres de toit ; chauffage = générateurs seuls (émetteurs exclus) ;
+  « SO » = pas d'ENR ; « Châssis en bois » = Bois.
+- Test : test_v2_10_3.mjs (fiche fictive).
+
 # v2.10.2 — fiche Évaluation Salesforce (favori) convertie par bâtiment
 - Le texte envoyé par le favori « → ExtracTerre » depuis une fiche Évaluation (section « Performance thermique ») est
   réécrit en « libellé = valeur » avant lecture ; la zone de collage montre ce texte converti, modifiable.

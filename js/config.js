@@ -1,4 +1,4 @@
-export const APP_VERSION='2.10.2';
+export const APP_VERSION='2.10.3';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -572,7 +572,7 @@ export const WINDOW_MATERIALS = [
   pair('Bois/aluminium',['bois/aluminium','bois aluminium','bois-alu','bois alu','mixte bois alu']),
   pair('PVC',['pvc','menuiserie pvc','châssis pvc','chassis pvc']),
   pair('Aluminium',['aluminium','alu','menuiserie aluminium','châssis aluminium','chassis aluminium']),
-  pair('Bois',['menuiserie bois','châssis bois','chassis bois','bois massif']),
+  pair('Bois',['menuiserie bois','châssis bois','chassis bois','châssis en bois','chassis en bois','bois massif']),
   pair('Acier',['menuiserie acier','châssis acier','chassis acier'])
 ];
 export const GLAZINGS = [

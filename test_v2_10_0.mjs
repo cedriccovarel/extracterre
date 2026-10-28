@@ -5,7 +5,7 @@ import {wallInsulationSide,withWallSides,analyzeDocuments} from './js/engine.js'
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.10.2','version');
+eq(APP_VERSION,'2.10.3','version');
 
 // 6 colonnes ajoutées en fin, en-têtes reconnus, mêmes sources que les parois verticales.
 const keys=['wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r'];

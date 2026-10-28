@@ -177,9 +177,9 @@ export function looksLikeFreeText(text){
 // section « Performance thermique », sections d'enveloppe et de systèmes. Tout est relu dans le texte : rien n'est déduit,
 // sauf le nombre de logements d'un bloc « Maisons 2/3 » (2) et le signe des gains (convention ExtracTerre : positif si
 // la valeur est sous le maximum). Les sous-sections « - Notes » (écarts RSET / CCTP, « NC ») sont ignorées.
-export function looksLikeSalesforceEvaluation(text){ const t=String(text||''); return /^\s*Performance thermique\s*$/m.test(t)&&/\bOPE-\d{6}\b/.test(t); }
+export function looksLikeSalesforceEvaluation(text){ const t=String(text||''); return /^\s*Performance thermique\s*$/m.test(t)&&(/\bOPE-\d{6}\b/.test(t)||/^\s*(?:Planchers hauts|Parois verticales|Planchers bas|Chauffage|Renouvellement d.air)\b/m.test(t)); }
 const sf_ALIASES={bbio:'bbio',bbiomax:'bbio_max',gainbbio:'bbio_gain',cep:'cep',cepmax:'cep_max',cepref:'cep_max',gaincep:'cep_gain',cepnr:'cepnr',cepnrmax:'cepnr_max',gaincepnr:'cepnr_gain',
-  dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icenergie:'ic_energy',icenergiemax:'ic_energy_max',
+  dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icconstructionmax2025:'ic_construction_max',icconstructionmax2028:'ic_construction_max_2028',icenergie:'ic_energy',icenergiemax:'ic_energy_max',icenergiemax2025:'ic_energy_max',icenergiemax2028:'ic_energy_max_2028',
   tic:'tic',ticref:'tic_ref',nombredelogements:'housing_count',logements:'housing_count'};
 const sf_key=l=>normLower(l).replace(/[^a-z0-9]/g,'');
 const sf_num=raw=>{ const m=String(raw).replace(/ /g,' ').match(/[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0]):null; };
@@ -189,7 +189,7 @@ const sf_SECTIONS=[['roof',/^planchers?\s+hauts?\b/],['wall',/^parois?\s+vertica
 const sf_section=line=>{ const low=normLower(line).replace(/[’']/g,' '); if(/-\s*notes\s*$/.test(low)) return ['notes','']; const h=sf_SECTIONS.find(([,re])=>re.test(low)); if(!h) return null;
   // « Planchers hauts: COMBLES : Laine de verre… » : le contenu suit l'en-tête sur la même ligne.
   const m=line.match(/^[^:]*:\s*(.*)$/); return [h[0],m?m[1].trim():'']; };
-const sf_clean=l=>String(l).replace(/^[\s*+•>–-]+/,'').replace(/\s*§.*$/,'').replace(/\s+/g,' ').trim();
+const sf_clean=l=>/^\s*>\s*lot\b|\bpage\s+\d+\s*(?:;|$)/i.test(l)?'':String(l).replace(/^[\s*+•>–-]+/,'').replace(/\s*§.*$/,'').replace(/\s+/g,' ').trim();
 // Un libellé « Contrat: Numéro du contrat » serait coupé au premier « : » : on écrit sa forme courte, reconnue à l'identique.
 const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); return fp_strictLabel(short)===key?short:{contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]||short; };
 export function salesforceEvaluationToPaste(text){
@@ -213,10 +213,14 @@ export function salesforceEvaluationToPaste(text){
   for(const line of listAfter(/^Performance\s*:\s*$/i)){ const f=levels.find(d=>normLower(line).startsWith(normLower(d.label)+' ')); if(f) put(common,f.key,line.slice(f.label.length).trim()); }
   // Section « Performance thermique » : blocs par bâtiment jusqu'à la première section d'enveloppe.
   let i=L.findIndex(l=>/^Performance thermique$/i.test(l))+1, cur=null;
+  const isField=l=>!!(sf_ALIASES[sf_key(l)]||fp_strictLabel(l)||fp_dhZone(l)||matchFreeLabel(l));
   for(;i>0&&i<L.length&&!sf_section(L[i]);i++){
-    const h=L[i].match(/^(.{2,60}?)\s*[=:]\s*$/); if(h&&!/\d\s*$/.test(h[1])||h&&/^(?:maisons?|b[âa]t|villas?|lots?|logements?)\b/i.test(h[1])){ cur={name:h[1].trim(),items:[],raw:{}}; blocks.push(cur); continue; }
-    const m=L[i].match(/^(.{1,60}?)\s*:\s*(.+)$/); if(!m) continue; const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(!key) continue;
-    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; const b=cur||{items:common,raw:{}}; if(key in b.raw) continue; b.raw[key]=v; if(!cur) put(common,key,v); }
+    const h=L[i].match(/^(.{2,60}?)\s*[=:]\s*(?:\(([^)]*)\))?\s*$/);
+    if(h&&!isField(h[1])){ cur={name:h[1].trim(),items:[],raw:{},extra:[]}; blocks.push(cur); if(h[2]) notes.push(`${cur.name} : ${h[2].trim()} (remarque de la fiche).`); continue; }
+    const m=L[i].match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
+    if(fp_dhZone(m[1])){ if(cur) b.extra.push(`${m[1].trim()} = ${m[2].trim()}`); continue; }
+    const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(!key) continue;
+    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; if(key in b.raw) continue; b.raw[key]=v; if(!cur) put(common,key,v); }
   for(const b of blocks){
     const n=b.name.match(/^(?:maisons?|villas?|pavillons?)\s+(.+)$/i); if(n&&b.raw.housing_count===undefined){ const parts=n[1].split(/\s*(?:[\/,&+]|\bet\b)\s*/).filter(Boolean); if(parts.length&&parts.every(x=>/^\d+[a-z]?$/i.test(x))) b.raw.housing_count=parts.length; }
     for(const [g,v,mx] of [['bbio_gain','bbio','bbio_max'],['cep_gain','cep','cep_max'],['cepnr_gain','cepnr','cepnr_max']]){
@@ -224,24 +228,27 @@ export function salesforceEvaluationToPaste(text){
       const calc=(max-val)/max*100; b.raw[g]=Math.abs(b.raw[g])*(calc<0?-1:1);
       if(Math.abs(Math.abs(calc)-Math.abs(b.raw[g]))>0.6) notes.push(`${b.name} : ${sf_label(g)} ${sf_fmt(b.raw[g])} % ne correspond pas à ${sf_label(v)} ${sf_fmt(val)} et ${sf_label(mx)} ${sf_fmt(max)} (gain calculé ${sf_fmt(Math.round(calc*10)/10)} %) : vérifiez la fiche.`); }
     for(const k of Object.keys(FIELD_MAP)) if(k in b.raw) put(b.items,k,b.raw[k]); }
+  const blockLines=b=>[...b.items.map(x=>`${sf_label(x.key)} = ${x.v}`),...(b.extra||[])];
   // Enveloppe et systèmes : une section par en-tête, les sous-sections « - Notes » sont ignorées.
   const sec={}; let s=null;
   for(let j=Math.max(0,L.findIndex(l=>/^Performance thermique$/i.test(l)));j<L.length;j++){ if(/^Informations syst[eè]me/i.test(L[j])) break;
     const h=sf_section(L[j]); if(h){ s=h[0]==='notes'?null:h[0]; if(s&&h[1]) (sec[s]=sec[s]||[]).push(h[1]); continue; } if(s) (sec[s]=sec[s]||[]).push(L[j]); }
   const thick=l=>{ const m=l.match(/(?:\b[eé]p(?:aisseur)?\.?\s*:?\s*)?(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i); return m?parseFrNumber(m[1])*(m[2].toLowerCase()==='cm'?10:1):null; };
-  const rval=l=>{ const m=l.match(/\bR\s*=\s*(\d+(?:[.,]\d+)?)/i); return m?parseFrNumber(m[1]):null; };
+  const rval=l=>{ const m=l.match(/\bR\s*(?:=|≥|>=)\s*(\d+(?:[.,]\d+)?)/i); return m?parseFrNumber(m[1]):null; };
   const product=l=>{ const m=l.match(/\b(?:[Dd]oublage|[Ii]solant|[Ii]solation)\s+(?:IT[IE]\s+)?([A-Z][A-Z0-9-]{2,}(?:\s+[A-Z0-9][A-Z0-9-]+)?)/); return m?m[1]:null; };
-  for(const part of ['roof','wall','floor']) for(const raw of sec[part]||[]){ const l=sf_clean(raw); if(!l) continue; const r=rval(l);
+  // Sous-titre « Murs de refend entre logements : » : parois intérieures, hors enveloppe.
+  const outer=list=>{ let skip=false; return (list||[]).filter(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ skip=/refend|entre\s+logements|s[ée]parati|mitoyen/i.test(raw); return false; } return !skip; }); };
+  for(const part of ['roof','wall','floor']) for(const raw of outer(sec[part])){ const l=sf_clean(raw); if(!l) continue; const r=rval(l);
     if(r!==null){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
       put(common,keys[0],findFirstMatch(l,MATERIALS)||product(l)); put(common,keys[1],thick(l)); put(common,keys[2],r); }
     else { const st=findFirstMatch(l,STRUCTURES); if(st) put(common,`${part}_structure`,st); } }
-  for(const raw of sec.win||[]){ const l=sf_clean(raw); put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
-    if(/occultation/i.test(l)) put(common,'window_shading',findFirstMatch(l,SHADINGS)||l.replace(/^[^:]*:\s*/,'')); }
-  const joined=k=>(sec[k]||[]).map(sf_clean).filter(x=>x&&!/^(?:ras|nc|aucun\w*)$/i.test(x)).join(' + ');
+  for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
+    put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }
+  const joined=k=>{ const out=[]; for(const raw of sec[k]||[]){ if(/^\s*(?:[ée]metteurs?|radiateurs?|r[ée]gulation)\b/i.test(raw)) break; if(/:\s*$/.test(raw)) continue; const x=sf_clean(raw).replace(/^(?:ecs|chauffage|ventilation)\s*:\s*/i,'').replace(/\s*[,;]\s*$/,''); if(x&&!/^(?:ras|nc|so|aucun\w*)$/i.test(x)) out.push(x); } return out.slice(0,3).join(' + '); };
   put(common,'heating_mode_after',joined('heat')); put(common,'ecs',joined('ecs'));
   const vent=(sec.vent||[]).map(sf_clean).join(' ').toLowerCase();
-  put(common,'ventilation',/double\s+flux/.test(vent)?'VMC double flux':/hygro/.test(vent)&&/hygro\s*-?\s*b\b|classe\s*b\b/.test(vent)?'VMC Hygro B':/hygro/.test(vent)&&/hygro\s*-?\s*a\b|classe\s*a\b/.test(vent)?'VMC Hygro A':/simple\s+flux|autor[ée]glable/.test(vent)?'VMC simple flux autoréglable':null);
-  const enr=(sec.enr||[]).map(sf_clean).join(' '); if(/^(?:aucune?|non|n[ée]ant|sans objet)\.?$/i.test(enr)) put(common,'enr','Non');
+  put(common,'ventilation',/double\s+flux/.test(vent)?'VMC double flux':/hygro/.test(vent)&&/hygro\s*-?\s*b\b|classe\s*b\b|type\s*b\b/.test(vent)?'VMC Hygro B':/hygro/.test(vent)&&/hygro\s*-?\s*a\b|classe\s*a\b|type\s*a\b/.test(vent)?'VMC Hygro A':/simple\s+flux|autor[ée]glable/.test(vent)?'VMC simple flux autoréglable':null);
+  const enr=(sec.enr||[]).map(sf_clean).join(' '); if(/^(?:aucune?|non|n[ée]ant|sans objet|so)\.?$/i.test(enr)) put(common,'enr','Non');
   const line=x=>`${sf_label(x.key)} = ${x.v}`;
-  return {text:[...common.map(line),...blocks.flatMap(b=>['',`${b.name} :`,...b.items.map(line)])].join('\n'),notes};
+  return {text:[...common.map(line),...blocks.flatMap(b=>['',`${b.name} :`,...blockLines(b)])].join('\n'),notes};
 }
