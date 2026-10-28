@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.10.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.10.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.10.1';
+const APP_VERSION='2.10.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -8852,6 +8852,7 @@ Groupe Refroidissement Categorie Tic Tic Ref.
 
 
 
+
 const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
 // Libellé sans unité finale : « DH des zones traversantes (en °C.h) » → « DH des zones traversantes ».
@@ -8893,6 +8894,8 @@ function unstackLabels(text){
 }
 // → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}],descriptive:[lignes de texte]}
 function parseFreePaste(text){
+  // v2.10.2 — fiche Évaluation Salesforce (favori) : d'abord réécrite en « libellé = valeur » par bâtiment.
+  let sfNotes=null; if(looksLikeSalesforceEvaluation(text)){ const c=salesforceEvaluationToPaste(text); text=c.text; sfNotes=c.notes; }
   // Fiche Salesforce : le reste de la page (menus, listes associées) n'est pas lu comme un CCTP.
   const st=unstackLabels(text); text=st.text; const stacked=st.pairs>0;
   const out=[]; let cur=null; const unmatched=[], descriptive=[], descBld=[];
@@ -8906,7 +8909,7 @@ function parseFreePaste(text){
     // « libellé = » sans valeur : rien à reporter.
     if(/=\s*$/.test(line)) continue;
     // Ligne de fiche (« Laine de verre … - Épaisseur : 380 mm - Performances : R= 10,85 », « - Uf = 1,80 ») : texte descriptif.
-    const descLine=!m||/^\s*[-–>*]/.test(line)||/\s[-–]\s/.test(m[1])||/[ée]paisseur|performances/i.test(m[1]);
+    const descLine=!m||/^\s*[-–>*]/.test(line)||/\s[-–]\s/.test(m[1])||/[ée]paisseur|performances/i.test(m[1])&&!fp_strictLabel(m[1]);
     if(descLine||!/=/.test(line)&&!/\t/.test(line)&&!fp_shortPair(line)){ descriptive.push(line.trim()); descBld.push(cur?.name||''); continue; }
     const label=m[1].trim(), raw=m[2].trim(); const bld=cur||ensure('');
     const dz=fp_dhZone(label);
@@ -8920,7 +8923,7 @@ function parseFreePaste(text){
     if(!sec&&/\d/.test(l)&&!/^\s*[>*-]|\bpage\s+\d/i.test(l)) unmatched.push({building:descBld[i],line:l,label:'',raw:l}); });
   const desc=stacked?[]:descriptiveItems(descriptive);
   if(desc.length) out.push({name:'*',items:desc});
-  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked};
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked,...(sfNotes?{salesforce:true,notes:sfNotes,text}:{})};
 }
 // « Cep : 35,2 » (libellé court reconnu) est une paire ; « PRODUCTION : Pompe à chaleur… » reste du texte descriptif.
 function fp_shortPair(line){ const m=line.match(fp_PAIR); return !!m&&!!matchFreeLabel(m[1]); }
@@ -9015,6 +9018,79 @@ function looksLikeFreeText(text){
   const lines=String(text||'').split('\n').filter(l=>l.trim());
   const tabular=lines.filter(l=>(l.match(/\t/g)||[]).length>=2||(l.match(/;/g)||[]).length>=2).length;
   return lines.length>0&&tabular<lines.length/2;
+}
+
+// —— v2.10.2 — fiche Évaluation Salesforce envoyée par le favori : en-tête de l'opération, blocs « Maison 1 = » de la
+// section « Performance thermique », sections d'enveloppe et de systèmes. Tout est relu dans le texte : rien n'est déduit,
+// sauf le nombre de logements d'un bloc « Maisons 2/3 » (2) et le signe des gains (convention ExtracTerre : positif si
+// la valeur est sous le maximum). Les sous-sections « - Notes » (écarts RSET / CCTP, « NC ») sont ignorées.
+function looksLikeSalesforceEvaluation(text){ const t=String(text||''); return /^\s*Performance thermique\s*$/m.test(t)&&/\bOPE-\d{6}\b/.test(t); }
+const sf_ALIASES={bbio:'bbio',bbiomax:'bbio_max',gainbbio:'bbio_gain',cep:'cep',cepmax:'cep_max',cepref:'cep_max',gaincep:'cep_gain',cepnr:'cepnr',cepnrmax:'cepnr_max',gaincepnr:'cepnr_gain',
+  dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icenergie:'ic_energy',icenergiemax:'ic_energy_max',
+  tic:'tic',ticref:'tic_ref',nombredelogements:'housing_count',logements:'housing_count'};
+const sf_key=l=>normLower(l).replace(/[^a-z0-9]/g,'');
+const sf_num=raw=>{ const m=String(raw).replace(/ /g,' ').match(/[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0]):null; };
+const sf_fmt=v=>String(Math.round(v*1000)/1000).replace('.',',');
+const sf_SECTIONS=[['roof',/^planchers?\s+hauts?\b/],['wall',/^parois?\s+verticales?\b/],['floor',/^planchers?\s+bas\b/],['win',/^menuiseries?\s+exterieures?\b/],['bridge',/^ponts?\s+thermiques?\b/],
+  ['heat',/^chauffage\b/],['ecs',/^eau\s+chaude\s+sanitaire\b/],['vent',/^renouvellement\s+d.air\b/],['reg',/^regulation\b/],['enr',/^energies?\s+renouvelables?\b/]];
+const sf_section=line=>{ const low=normLower(line).replace(/[’']/g,' '); if(/-\s*notes\s*$/.test(low)) return ['notes','']; const h=sf_SECTIONS.find(([,re])=>re.test(low)); if(!h) return null;
+  // « Planchers hauts: COMBLES : Laine de verre… » : le contenu suit l'en-tête sur la même ligne.
+  const m=line.match(/^[^:]*:\s*(.*)$/); return [h[0],m?m[1].trim():'']; };
+const sf_clean=l=>String(l).replace(/^[\s*+•>–-]+/,'').replace(/\s*§.*$/,'').replace(/\s+/g,' ').trim();
+// Un libellé « Contrat: Numéro du contrat » serait coupé au premier « : » : on écrit sa forme courte, reconnue à l'identique.
+const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); return fp_strictLabel(short)===key?short:{contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]||short; };
+function salesforceEvaluationToPaste(text){
+  const L=String(text||'').replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
+  const common=[], blocks=[], notes=[]; const put=(arr,key,v)=>{ if(v===null||v===undefined||v==='') return; if(!arr.some(x=>x.key===key)) arr.push({key,v:typeof v==='number'?sf_fmt(v):String(v)}); };
+  // En-tête : « OPE-004588 » / nom / voie / « 59174 LA SENTINELLE » (le premier « OPE-… » de la page est suivi de « Prévisualiser »).
+  const o=L.findIndex((l,i)=>/^OPE-\d{6}$/.test(l)&&!/^pr[ée]visualiser$/i.test(L[i+1]||''));
+  if(o>=0){ put(common,'internal_code',L[o]); if(L[o+1]) put(common,'operation_name',L[o+1]);
+    const c=[o+2,o+3].find(i=>/^\d{5}\s+\S/.test(L[i]||'')); if(c!==undefined){ const [,cp,city]=L[c].match(/^(\d{5})\s+(.+)$/); if(c===o+3) put(common,'address',L[o+2]); put(common,'postcode',cp); put(common,'city',city);
+      if(!cp.startsWith('20')) put(common,'department',cp.startsWith('97')?cp.slice(0,3):cp.slice(0,2)); } }
+  else { const any=String(text).match(/\bOPE-\d{6}\b/); if(any) put(common,'internal_code',any[0]); }
+  const contract=String(text).match(/Statut du contrat\s+(\d{8})\b/); if(contract) put(common,'contract_number',contract[1]);
+  const ref=L.find(l=>/^R[ée]f[ée]rentiel\s+.+\s+-\s+Version\b/i.test(l)); if(ref) put(common,'reference_name',ref.replace(/^R[ée]f[ée]rentiel\s+/i,'').replace(/\s+-\s+Version\b.*$/i,''));
+  const moa=L.find(l=>/^Ma[iî]tre d.ouvrage\s*:\s*\S/i.test(l)); if(moa) put(common,'owner_company',moa.replace(/^[^:]*:\s*/,''));
+  const ouv=[...String(text).matchAll(/(\d+)\s+logement\(s\)\s*-\s*(\d+)\s+b[âa]timent\(s\)/gi)]; if(ouv.length){ put(common,'housing_total',ouv.reduce((a,m)=>a+Number(m[1]),0)); put(common,'building_total',ouv.reduce((a,m)=>a+Number(m[2]),0)); }
+  // Listes « Mentions : » et « Performance : » : une valeur par ligne jusqu'au libellé suivant (« … : »).
+  const listAfter=re=>{ const i=L.findIndex(l=>re.test(l)); if(i<0) return []; const out=[]; for(let j=i+1;j<L.length&&!/:\s*$/.test(L[j])&&!/^\.$/.test(L[j]);j++) out.push(L[j]); return out; };
+  const mentions=listAfter(/^Mentions\s*:\s*$/i).filter(m=>!/^aucune?$/i.test(m));
+  if(mentions.length){ put(common,'mentions',mentions.join(', ')); for(const m of mentions){ const k=fp_strictLabel(`Mention ${m}`); if(k&&k.startsWith('mention_')) put(common,k,'Oui'); } }
+  const levels=FIELD_DEFS.filter(f=>/_level$/.test(f.key)).sort((a,b)=>b.label.length-a.label.length);
+  for(const line of listAfter(/^Performance\s*:\s*$/i)){ const f=levels.find(d=>normLower(line).startsWith(normLower(d.label)+' ')); if(f) put(common,f.key,line.slice(f.label.length).trim()); }
+  // Section « Performance thermique » : blocs par bâtiment jusqu'à la première section d'enveloppe.
+  let i=L.findIndex(l=>/^Performance thermique$/i.test(l))+1, cur=null;
+  for(;i>0&&i<L.length&&!sf_section(L[i]);i++){
+    const h=L[i].match(/^(.{2,60}?)\s*[=:]\s*$/); if(h&&!/\d\s*$/.test(h[1])||h&&/^(?:maisons?|b[âa]t|villas?|lots?|logements?)\b/i.test(h[1])){ cur={name:h[1].trim(),items:[],raw:{}}; blocks.push(cur); continue; }
+    const m=L[i].match(/^(.{1,60}?)\s*:\s*(.+)$/); if(!m) continue; const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(!key) continue;
+    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; const b=cur||{items:common,raw:{}}; if(key in b.raw) continue; b.raw[key]=v; if(!cur) put(common,key,v); }
+  for(const b of blocks){
+    const n=b.name.match(/^(?:maisons?|villas?|pavillons?)\s+(.+)$/i); if(n&&b.raw.housing_count===undefined){ const parts=n[1].split(/\s*(?:[\/,&+]|\bet\b)\s*/).filter(Boolean); if(parts.length&&parts.every(x=>/^\d+[a-z]?$/i.test(x))) b.raw.housing_count=parts.length; }
+    for(const [g,v,mx] of [['bbio_gain','bbio','bbio_max'],['cep_gain','cep','cep_max'],['cepnr_gain','cepnr','cepnr_max']]){
+      const val=b.raw[v], max=b.raw[mx]; if(!(g in b.raw)||val==null||!max) continue;
+      const calc=(max-val)/max*100; b.raw[g]=Math.abs(b.raw[g])*(calc<0?-1:1);
+      if(Math.abs(Math.abs(calc)-Math.abs(b.raw[g]))>0.6) notes.push(`${b.name} : ${sf_label(g)} ${sf_fmt(b.raw[g])} % ne correspond pas à ${sf_label(v)} ${sf_fmt(val)} et ${sf_label(mx)} ${sf_fmt(max)} (gain calculé ${sf_fmt(Math.round(calc*10)/10)} %) : vérifiez la fiche.`); }
+    for(const k of Object.keys(FIELD_MAP)) if(k in b.raw) put(b.items,k,b.raw[k]); }
+  // Enveloppe et systèmes : une section par en-tête, les sous-sections « - Notes » sont ignorées.
+  const sec={}; let s=null;
+  for(let j=Math.max(0,L.findIndex(l=>/^Performance thermique$/i.test(l)));j<L.length;j++){ if(/^Informations syst[eè]me/i.test(L[j])) break;
+    const h=sf_section(L[j]); if(h){ s=h[0]==='notes'?null:h[0]; if(s&&h[1]) (sec[s]=sec[s]||[]).push(h[1]); continue; } if(s) (sec[s]=sec[s]||[]).push(L[j]); }
+  const thick=l=>{ const m=l.match(/(?:\b[eé]p(?:aisseur)?\.?\s*:?\s*)?(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i); return m?parseFrNumber(m[1])*(m[2].toLowerCase()==='cm'?10:1):null; };
+  const rval=l=>{ const m=l.match(/\bR\s*=\s*(\d+(?:[.,]\d+)?)/i); return m?parseFrNumber(m[1]):null; };
+  const product=l=>{ const m=l.match(/\b(?:[Dd]oublage|[Ii]solant|[Ii]solation)\s+(?:IT[IE]\s+)?([A-Z][A-Z0-9-]{2,}(?:\s+[A-Z0-9][A-Z0-9-]+)?)/); return m?m[1]:null; };
+  for(const part of ['roof','wall','floor']) for(const raw of sec[part]||[]){ const l=sf_clean(raw); if(!l) continue; const r=rval(l);
+    if(r!==null){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
+      put(common,keys[0],findFirstMatch(l,MATERIALS)||product(l)); put(common,keys[1],thick(l)); put(common,keys[2],r); }
+    else { const st=findFirstMatch(l,STRUCTURES); if(st) put(common,`${part}_structure`,st); } }
+  for(const raw of sec.win||[]){ const l=sf_clean(raw); put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
+    if(/occultation/i.test(l)) put(common,'window_shading',findFirstMatch(l,SHADINGS)||l.replace(/^[^:]*:\s*/,'')); }
+  const joined=k=>(sec[k]||[]).map(sf_clean).filter(x=>x&&!/^(?:ras|nc|aucun\w*)$/i.test(x)).join(' + ');
+  put(common,'heating_mode_after',joined('heat')); put(common,'ecs',joined('ecs'));
+  const vent=(sec.vent||[]).map(sf_clean).join(' ').toLowerCase();
+  put(common,'ventilation',/double\s+flux/.test(vent)?'VMC double flux':/hygro/.test(vent)&&/hygro\s*-?\s*b\b|classe\s*b\b/.test(vent)?'VMC Hygro B':/hygro/.test(vent)&&/hygro\s*-?\s*a\b|classe\s*a\b/.test(vent)?'VMC Hygro A':/simple\s+flux|autor[ée]glable/.test(vent)?'VMC simple flux autoréglable':null);
+  const enr=(sec.enr||[]).map(sf_clean).join(' '); if(/^(?:aucune?|non|n[ée]ant|sans objet)\.?$/i.test(enr)) put(common,'enr','Non');
+  const line=x=>`${sf_label(x.key)} = ${x.v}`;
+  return {text:[...common.map(line),...blocks.flatMap(b=>['',`${b.name} :`,...b.items.map(line)])].join('\n'),notes};
 }
 
 /* ---- economics.js ---- */
@@ -11218,7 +11294,8 @@ function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
   if(state.homeView){ pendingExternalText={text,source}; $('#manualDataDialog')?.close(); toast(`${source} reçu : ouvrez la tuile de l’opération concernée, l’aperçu s’ouvrira.`,'info'); return; }
   pendingExternalText=null; const dlg=$('#manualDataDialog'), ta=$('#manualDataPaste'); if(!dlg||!ta) return;
-  ta.value=text; freePaste=parseFreePaste(text); freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
+  // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
+  freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
 }
 function receiveBookmarkletText(){
   const h=location.hash; if(!h.startsWith('#sf=')) return; let t='';
@@ -11278,6 +11355,7 @@ function renderFreePastePreview(){
   const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;
   const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
   box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1}</b> bâtiment(s)</span>${fp.buildings.some(b=>b.name==='*')?`<span><b>${fp.buildings.find(b=>b.name==='*').items.length}</b> valeur(s) pour toute l’opération</span>`:''}<span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
+  ${fp.salesforce?`<p class="manual-free-note">Fiche Évaluation Salesforce convertie : une section par bâtiment de « Performance thermique », enveloppe et systèmes pour toute l’opération (sous-sections « Notes » ignorées).</p>`:''}${fp.notes?.length?`<ul class="manual-free-warn">${fp.notes.map(n=>`<li>⚠ ${escapeHtml(n)}</li>`).join('')}</ul>`:''}
   <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
   <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
   ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?`<i>Toute l’opération</i><small> → tous les bâtiments${state.result?.rows?.length?` (${state.result.rows.length})`:''}</small>`:escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}

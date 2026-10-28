@@ -1,3 +1,17 @@
+# v2.10.2 — fiche Évaluation Salesforce (favori) convertie par bâtiment
+- Le texte envoyé par le favori « → ExtracTerre » depuis une fiche Évaluation (section « Performance thermique ») est
+  réécrit en « libellé = valeur » avant lecture ; la zone de collage montre ce texte converti, modifiable.
+- En-tête de l'opération : code OPE, nom, adresse, code postal, ville, département, contrat (« Statut du contrat … »),
+  référentiel, maître d'ouvrage, total logements / bâtiments, mentions (BEE+ → Mention BEE+ = Oui), niveaux visés.
+- Un bâtiment par bloc « Maison 1 = », « Maisons 2/3 = » : libellés Salesforce reconnus (Bbio max, Cepmax, Cepnrmax,
+  ICconstruction, Icenergie, Q4, SHAB…) ; gains écrits en positif (convention ExtracTerre) ; « Maisons 2/3 » = 2 logements.
+  Un gain incohérent avec la valeur et son maximum est signalé dans l'aperçu, jamais corrigé.
+- Enveloppe et systèmes pour toute l'opération : planchers hauts / bas (isolant, épaisseur, R), parois (structure,
+  doublage ITI / ITE dans les colonnes dédiées), menuiseries, chauffage, ECS, ventilation. Sous-sections « - Notes »
+  (écarts RSET / CCTP, « NC ») ignorées ; références « §… p… CCTP » retirées.
+- Collage libre : un libellé exact de colonne contenant « épaisseur » est désormais lu comme une paire.
+- Test : test_v2_10_2.mjs (fiche fictive).
+
 # v2.10.1 — adresse de l'opération lue dans les RSET PDF
 - Constat : aucune adresse n'était remplie (0 opération sur 222 dans la session du 28/10) ; seuls les libellés
   « Adresse de l'opération / du projet… » et le XML RE2020 étaient lus, alors que les RSET PDF portent l'adresse sous

@@ -686,7 +686,8 @@ function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
   if(state.homeView){ pendingExternalText={text,source}; $('#manualDataDialog')?.close(); toast(`${source} reçu : ouvrez la tuile de l’opération concernée, l’aperçu s’ouvrira.`,'info'); return; }
   pendingExternalText=null; const dlg=$('#manualDataDialog'), ta=$('#manualDataPaste'); if(!dlg||!ta) return;
-  ta.value=text; freePaste=parseFreePaste(text); freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
+  // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
+  freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
 }
 function receiveBookmarkletText(){
   const h=location.hash; if(!h.startsWith('#sf=')) return; let t='';
@@ -746,6 +747,7 @@ function renderFreePastePreview(){
   const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;
   const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
   box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1}</b> bâtiment(s)</span>${fp.buildings.some(b=>b.name==='*')?`<span><b>${fp.buildings.find(b=>b.name==='*').items.length}</b> valeur(s) pour toute l’opération</span>`:''}<span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
+  ${fp.salesforce?`<p class="manual-free-note">Fiche Évaluation Salesforce convertie : une section par bâtiment de « Performance thermique », enveloppe et systèmes pour toute l’opération (sous-sections « Notes » ignorées).</p>`:''}${fp.notes?.length?`<ul class="manual-free-warn">${fp.notes.map(n=>`<li>⚠ ${escapeHtml(n)}</li>`).join('')}</ul>`:''}
   <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
   <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
   ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?`<i>Toute l’opération</i><small> → tous les bâtiments${state.result?.rows?.length?` (${state.result.rows.length})`:''}</small>`:escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
