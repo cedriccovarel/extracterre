@@ -1,3 +1,13 @@
+# v2.10.4 — fiche Évaluation Salesforce : en-têtes à puce et valeurs groupées
+- Bâtiments sous « * BEG-1/2 : x2 lgts indiv : » (le nombre de logements est lu dans l'en-tête).
+- « Bbio : 84,4 / 91,8 / -8,1 % » = valeur / maximum / gain (idem Cep, Cepnr) ; « ICconstruction : 767,85 / 780,02 »
+  = valeur / maximum (idem IC énergie) ; « DH : 713,9 et 625 » = zone la plus défavorable.
+- En-tête de l'opération : le bloc « OPE-… » suivi d'un code postal (et non le premier « OPE-… » de la page).
+- Enveloppe : une ligne avec R n'est un isolant que si elle le dit (« Brique … R=1,5 » = structure) ; « 120+10 mm » =
+  120 mm d'isolant ; murs entre logements ignorés aussi en ligne ; chauffage « * PAC … : » retenu, émetteurs écartés.
+- Vocabulaire : « VR manuel / électrique » = Volet roulant ; « Brique BGV » = Brique terre cuite.
+- Vérifié sur trois fiches réelles (6, 5 et 10 bâtiments) ; test : test_v2_10_4.mjs (fiche fictive).
+
 # v2.10.3 — fiche Évaluation Salesforce : autres mises en forme
 - Bâtiments sous tout en-tête « Nom : » / « Nom = » (ILOT_1, Maison 1, Bât A…), remarque entre parenthèses signalée
   (« ILOT_4 : (ilot 5 sur ACV) ») ; paires « libellé = valeur » comme « libellé : valeur ».

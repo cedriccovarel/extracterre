@@ -196,7 +196,7 @@ export function salesforceEvaluationToPaste(text){
   const L=String(text||'').replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
   const common=[], blocks=[], notes=[]; const put=(arr,key,v)=>{ if(v===null||v===undefined||v==='') return; if(!arr.some(x=>x.key===key)) arr.push({key,v:typeof v==='number'?sf_fmt(v):String(v)}); };
   // En-tête : « OPE-004588 » / nom / voie / « 59174 LA SENTINELLE » (le premier « OPE-… » de la page est suivi de « Prévisualiser »).
-  const o=L.findIndex((l,i)=>/^OPE-\d{6}$/.test(l)&&!/^pr[ée]visualiser$/i.test(L[i+1]||''));
+  const o=L.findIndex((l,i)=>/^OPE-\d{6}$/.test(l)&&[i+2,i+3].some(k=>/^\d{5}\s+\S/.test(L[k]||'')));
   if(o>=0){ put(common,'internal_code',L[o]); if(L[o+1]) put(common,'operation_name',L[o+1]);
     const c=[o+2,o+3].find(i=>/^\d{5}\s+\S/.test(L[i]||'')); if(c!==undefined){ const [,cp,city]=L[c].match(/^(\d{5})\s+(.+)$/); if(c===o+3) put(common,'address',L[o+2]); put(common,'postcode',cp); put(common,'city',city);
       if(!cp.startsWith('20')) put(common,'department',cp.startsWith('97')?cp.slice(0,3):cp.slice(0,2)); } }
@@ -214,13 +214,21 @@ export function salesforceEvaluationToPaste(text){
   // Section « Performance thermique » : blocs par bâtiment jusqu'à la première section d'enveloppe.
   let i=L.findIndex(l=>/^Performance thermique$/i.test(l))+1, cur=null;
   const isField=l=>!!(sf_ALIASES[sf_key(l)]||fp_strictLabel(l)||fp_dhZone(l)||matchFreeLabel(l));
+  // « Bbio : 84,4 / 91,8 / -8,1 % » = valeur / maximum / gain ; « ICconstruction : 767,85 / 780,02 » = valeur / maximum.
+  const TRIPLES={bbio:['bbio_max','bbio_gain'],cep:['cep_max','cep_gain'],cepnr:['cepnr_max','cepnr_gain'],ic_construction:['ic_construction_max'],ic_energy:['ic_energy_max']};
   for(;i>0&&i<L.length&&!sf_section(L[i]);i++){
-    const h=L[i].match(/^(.{2,60}?)\s*[=:]\s*(?:\(([^)]*)\))?\s*$/);
-    if(h&&!isField(h[1])){ cur={name:h[1].trim(),items:[],raw:{},extra:[]}; blocks.push(cur); if(h[2]) notes.push(`${cur.name} : ${h[2].trim()} (remarque de la fiche).`); continue; }
+    // En-tête de bâtiment : « ILOT_1 : », « Maison 1 = », « ILOT_4 : (ilot 5 sur ACV) », « * BEG-1/2 : x2 lgts indiv : ».
+    const t=L[i].replace(/^[*•]\s*/,''), h=t.match(/^(.{1,60}?)\s*[=:]\s*(.*?)\s*:?\s*$/);
+    if(h&&!isField(h[1])&&(!h[2]||/^\(.*\)$/.test(h[2])||/^x?\s*\d+\s*(?:lgts?|logements?)\b/i.test(h[2])||/:\s*$/.test(t))){
+      cur={name:h[1].trim(),items:[],raw:{},extra:[]}; blocks.push(cur);
+      const nb=h[2].match(/^x?\s*(\d+)\s*(?:lgts?|logements?)\b/i); if(nb) cur.raw.housing_count=Number(nb[1]); else if(h[2]) notes.push(`${cur.name} : ${h[2].replace(/^\(|\)$/g,'').trim()} (remarque de la fiche).`); continue; }
     const m=L[i].match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
     if(fp_dhZone(m[1])){ if(cur) b.extra.push(`${m[1].trim()} = ${m[2].trim()}`); continue; }
-    const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(!key) continue;
-    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; if(key in b.raw) continue; b.raw[key]=v; if(!cur) put(common,key,v); }
+    const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(!key||key in b.raw) continue;
+    if(TRIPLES[key]&&m[2].includes('/')){ const parts=m[2].split('/').map(sf_num); if(parts[0]===null) continue; b.raw[key]=parts[0]; TRIPLES[key].forEach((k,j)=>{ if(parts[j+1]!=null&&!(k in b.raw)) b.raw[k]=parts[j+1]; }); if(!cur) TRIPLES[key].forEach(k=>k in b.raw&&put(common,k,b.raw[k])); if(!cur) put(common,key,parts[0]); continue; }
+    // « DH : 713,9 et 625 » : deux zones sans type ; on retient la plus défavorable (comme la lecture des RSET).
+    if(key==='dh'&&/\bet\b|\//.test(m[2])){ const vals=m[2].split(/\bet\b|\//).map(sf_num).filter(x=>x!==null); if(vals.length){ b.raw.dh=Math.max(...vals); if(!cur) put(common,'dh',b.raw.dh); } continue; }
+    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; b.raw[key]=v; if(!cur) put(common,key,v); }
   for(const b of blocks){
     const n=b.name.match(/^(?:maisons?|villas?|pavillons?)\s+(.+)$/i); if(n&&b.raw.housing_count===undefined){ const parts=n[1].split(/\s*(?:[\/,&+]|\bet\b)\s*/).filter(Boolean); if(parts.length&&parts.every(x=>/^\d+[a-z]?$/i.test(x))) b.raw.housing_count=parts.length; }
     for(const [g,v,mx] of [['bbio_gain','bbio','bbio_max'],['cep_gain','cep','cep_max'],['cepnr_gain','cepnr','cepnr_max']]){
@@ -233,18 +241,21 @@ export function salesforceEvaluationToPaste(text){
   const sec={}; let s=null;
   for(let j=Math.max(0,L.findIndex(l=>/^Performance thermique$/i.test(l)));j<L.length;j++){ if(/^Informations syst[eè]me/i.test(L[j])) break;
     const h=sf_section(L[j]); if(h){ s=h[0]==='notes'?null:h[0]; if(s&&h[1]) (sec[s]=sec[s]||[]).push(h[1]); continue; } if(s) (sec[s]=sec[s]||[]).push(L[j]); }
-  const thick=l=>{ const m=l.match(/(?:\b[eé]p(?:aisseur)?\.?\s*:?\s*)?(\d+(?:[.,]\d+)?)\s*(mm|cm)\b/i); return m?parseFrNumber(m[1])*(m[2].toLowerCase()==='cm'?10:1):null; };
+  const thick=l=>{ const m=l.match(/(?:\b[eé]p(?:aisseur)?\.?\s*:?\s*)?(\d+(?:[.,]\d+)?)(?:\s*\+\s*\d+(?:[.,]\d+)?)*\s*(mm|cm)\b/i); return m?parseFrNumber(m[1])*(m[2].toLowerCase()==='cm'?10:1):null; };
   const rval=l=>{ const m=l.match(/\bR\s*(?:=|≥|>=)\s*(\d+(?:[.,]\d+)?)/i); return m?parseFrNumber(m[1]):null; };
   const product=l=>{ const m=l.match(/\b(?:[Dd]oublage|[Ii]solant|[Ii]solation)\s+(?:IT[IE]\s+)?([A-Z][A-Z0-9-]{2,}(?:\s+[A-Z0-9][A-Z0-9-]+)?)/); return m?m[1]:null; };
   // Sous-titre « Murs de refend entre logements : » : parois intérieures, hors enveloppe.
-  const outer=list=>{ let skip=false; return (list||[]).filter(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ skip=/refend|entre\s+logements|s[ée]parati|mitoyen/i.test(raw); return false; } return !skip; }); };
+  const INNER=/refend|entre\s+(?:logements|logts)|s[ée]parati|mitoyen/i;
+  const outer=list=>{ let skip=false; return (list||[]).filter(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ skip=INNER.test(raw); return false; } if(INNER.test(String(raw).split(':')[0])) return false; return !skip; }); };
   for(const part of ['roof','wall','floor']) for(const raw of outer(sec[part])){ const l=sf_clean(raw); if(!l) continue; const r=rval(l);
-    if(r!==null){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
-      put(common,keys[0],findFirstMatch(l,MATERIALS)||product(l)); put(common,keys[1],thick(l)); put(common,keys[2],r); }
+    const mat=findFirstMatch(l,MATERIALS)||product(l);
+    // Une ligne avec R n'est un isolant que si elle le dit (matériau reconnu ou mot d'isolation) : « Brique … R=1,5 » est la structure.
+    if(r!==null&&(mat||/isol|doublage|laine|ouate|polystyr|polyur|sous\s+chape|fibre/i.test(l))){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
+      put(common,keys[0],mat); put(common,keys[1],thick(l)); put(common,keys[2],r); }
     else { const st=findFirstMatch(l,STRUCTURES); if(st) put(common,`${part}_structure`,st); } }
   for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
     put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }
-  const joined=k=>{ const out=[]; for(const raw of sec[k]||[]){ if(/^\s*(?:[ée]metteurs?|radiateurs?|r[ée]gulation)\b/i.test(raw)) break; if(/:\s*$/.test(raw)) continue; const x=sf_clean(raw).replace(/^(?:ecs|chauffage|ventilation)\s*:\s*/i,'').replace(/\s*[,;]\s*$/,''); if(x&&!/^(?:ras|nc|so|aucun\w*)$/i.test(x)) out.push(x); } return out.slice(0,3).join(' + '); };
+  const joined=k=>{ const out=[]; for(const raw of sec[k]||[]){ if(/^\s*(?:[ée]metteurs?|radiateurs?|r[ée]gulation)\b/i.test(raw)) break; if(/:\s*$/.test(raw)&&!/^\s*[*•+]/.test(raw)) continue; if(out.length&&/radiateurs?\b|s[eè]che[- ]serviettes?|[ée]metteurs?|plancher\s+chauffant|convecteurs?/i.test(raw)) continue; const x=sf_clean(raw).replace(/^(?:ecs|chauffage|ventilation)\s*:\s*/i,'').replace(/\s*[,;:]\s*$/,''); if(x&&!/^(?:ras|nc|so|aucun\w*)$/i.test(x)) out.push(x); } return out.slice(0,3).join(' + '); };
   put(common,'heating_mode_after',joined('heat')); put(common,'ecs',joined('ecs'));
   const vent=(sec.vent||[]).map(sf_clean).join(' ').toLowerCase();
   put(common,'ventilation',/double\s+flux/.test(vent)?'VMC double flux':/hygro/.test(vent)&&/hygro\s*-?\s*b\b|classe\s*b\b|type\s*b\b/.test(vent)?'VMC Hygro B':/hygro/.test(vent)&&/hygro\s*-?\s*a\b|classe\s*a\b|type\s*a\b/.test(vent)?'VMC Hygro A':/simple\s+flux|autor[ée]glable/.test(vent)?'VMC simple flux autoréglable':null);

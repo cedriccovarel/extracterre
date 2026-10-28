@@ -1,4 +1,4 @@
-export const APP_VERSION='2.10.3';
+export const APP_VERSION='2.10.4';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -488,7 +488,7 @@ export const STRUCTURES = [
   pair('Béton banché',['béton banché','beton banche','voile banché','voile banche','mur banché','mur banche']),
   pair('Béton armé',['béton armé','beton arme','voile béton','voile beton','mur béton','mur beton','dalle béton armé','dalle beton arme']),
   pair('Bloc béton / parpaing',['bloc béton','bloc beton','parpaing','agglo','aggloméré de béton','agglomere de beton','bloc creux béton','bloc creux beton','easytherm','easy therm','air bloc','air’bloc',"air'bloc",'technibloc']),
-  pair('Brique terre cuite',['brique terre cuite','brique creuse','brique alvéolaire','brique alveolaire','porotherm','bio bric','monomur']),
+  pair('Brique terre cuite',['brique terre cuite','brique creuse','brique alvéolaire','brique alveolaire','porotherm','bio bric','monomur','brique bgv','bgv thermo']),
   pair('Brique',['brique pleine','maçonnerie brique','maconnerie brique']),
   pair('Béton cellulaire',['béton cellulaire','beton cellulaire','siporex','ytong']),
   pair('Pierre de taille',['pierre de taille']),
@@ -582,7 +582,7 @@ export const GLAZINGS = [
   pair('Simple vitrage',['simple vitrage','simple verre'])
 ];
 export const SHADINGS = [
-  pair('Volet roulant',['volet roulant','volets roulants','vr motorisé','vr motorise']),
+  pair('Volet roulant',['volet roulant','volets roulants','vr motorisé','vr motorise','vr manuel','vr manuels','vr électrique','vr electrique','vr elec']),
   pair('Volet battant',['volet battant','volets battants']),
   pair('BSO',['bso','brise-soleil orientable','brise soleil orientable']),
   pair('Store extérieur',['store extérieur','store exterieur','store banne']),

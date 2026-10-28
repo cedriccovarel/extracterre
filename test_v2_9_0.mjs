@@ -8,7 +8,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.10.3','version');
+eq(APP_VERSION,'2.10.4','version');
 
 // Découpage d'adresse.
 eq(parseFrAddress('12 rue des Lilas, 69003 LYON CEDEX 03'),{address:'12 rue des Lilas',postcode:'69003',city:'LYON'},'adresse + CEDEX');
