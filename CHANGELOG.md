@@ -1,3 +1,13 @@
+# v2.10.0 — parois verticales : isolation par l'intérieur (ITI) et par l'extérieur (ITE)
+- 6 colonnes ajoutées en fin d'export (famille Enveloppe) : Parois verticales ITI type d'isolant / épaisseur isolant /
+  R isolant, et les mêmes pour ITE. Les colonnes « Parois verticales … » générales sont conservées à l'identique.
+- Chaque valeur d'isolant de mur lue par n'importe quel parseur est recopiée côté ITI ou ITE quand la ligne qui la porte
+  le dit : mention explicite (ITE / ITI, « isolation par l'extérieur / l'intérieur », ETICS, enduit sur isolant, mur
+  manteau) d'abord, indice ensuite (bardage, vêture → ITE ; doublage, contre-cloison → ITI). Ambigu ou muet : rien n'est
+  rempli, jamais deviné.
+- Mêmes sources prioritaires et mêmes bornes de cohérence que les parois verticales. Test : test_v2_10_0.mjs.
+- Catalogue des champs régénéré (206) : il reprend aussi les sources secondaires ajoutées depuis sa dernière génération.
+
 # v2.9.0 — adresse de l'opération et géolocalisation
 - 7 colonnes ajoutées en fin d'export (groupe « Localisation ») : Adresse, Code postal, Ville, Code INSEE, Latitude,
   Longitude (WGS84, degrés décimaux), Géolocalisation (précision). Libellés identiques au tableau Tous contrats.

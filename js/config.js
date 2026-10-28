@@ -1,4 +1,4 @@
-export const APP_VERSION='2.9.0';
+export const APP_VERSION='2.10.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -245,7 +245,14 @@ export const FIELD_DEFS = [
   {key:"insee_code",label:"Code INSEE",family:"Localisation",type:"text",tags:["Code INSEE", "INSEE", "Code commune INSEE"] ,presence:false},
   {key:"latitude",label:"Latitude",family:"Localisation",type:"number",tags:["Latitude", "Latitude WGS84"] ,presence:false},
   {key:"longitude",label:"Longitude",family:"Localisation",type:"number",tags:["Longitude", "Longitude WGS84"] ,presence:false},
-  {key:"geocode_precision",label:"Géolocalisation",family:"Localisation",type:"text",tags:["Géolocalisation", "Précision géolocalisation"] ,presence:false}
+  {key:"geocode_precision",label:"Géolocalisation",family:"Localisation",type:"text",tags:["Géolocalisation", "Précision géolocalisation"] ,presence:false},
+  // v2.10.0 — parois verticales distinguées : isolation par l’intérieur (ITI) et par l’extérieur (ITE), ajoutées en fin.
+  {key:"wall_iti_insulation",label:"Parois verticales ITI type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITI type d’isolant"] ,presence:false},
+  {key:"wall_iti_thickness",label:"Parois verticales ITI épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITI épaisseur isolant"] ,presence:false},
+  {key:"wall_iti_r",label:"Parois verticales ITI R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITI R isolant"] ,presence:false},
+  {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
+  {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
+  {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -398,10 +405,10 @@ for(const key of ["dpe_ges_label", "energy_level", "passive_level", "cep_level",
 for(const key of ["department", "progress_status", "project", "operation", "building"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROJECT_META);
 // Une étude thermique/Bao peut porter un département explicite fiable ; elle reste en secours derrière les sources projet validées.
 DEFAULT_SOURCE_RULES.department=ordered(SOURCE_PROJECT_META,[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
-for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
+for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "wall_iti_insulation", "wall_iti_thickness", "wall_iti_r", "wall_ite_insulation", "wall_ite_thickness", "wall_ite_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
 // v2.3.8 — le tableau « Données techniques » du RSEnv décrit la nature de la structure et des isolants (pas les
 // épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
-for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
+for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "wall_iti_insulation", "wall_ite_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final", "ubat_ref", "ubat_gain", "ges", "ges_before", "ges_ref", "ges_gain"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);

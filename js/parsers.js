@@ -1715,7 +1715,7 @@ function pruneHierarchicalShadowed(doc,out){
 // tag générique, un patch ou un sous-parseur la détecte. Un document peut porter plusieurs familles
 // (ex. RSEE PDF = thermique + carbone) : chaque famille filtre ses propres occurrences, puis on fusionne.
 const ADMIN_FIELDS=['project','operation','building'];
-const ENVELOPE_FIELDS=['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading'];
+const ENVELOPE_FIELDS=['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading'];
 const IC_LOTS=Array.from({length:13},(_,i)=>`ic_lot_${i+1}`);
 const IC_ENERGY_POSTS=['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'];
 const CEP_DETAIL=['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass'];

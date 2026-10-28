@@ -1,7 +1,7 @@
 {
-  "version": "2.9.0",
-  "generatedAt": "2026-10-27T15:48:06.273Z",
-  "count": 200,
+  "version": "2.10.0",
+  "generatedAt": "2026-10-28T07:53:36.181Z",
+  "count": 206,
   "fields": [
     {
       "position": 1,
@@ -24,7 +24,9 @@
           "CR de conception",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Questionnaire financier"
+        ],
         "forbidden": []
       }
     },
@@ -396,7 +398,9 @@
           "CR de conception",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "Questionnaire financier"
+        ],
         "forbidden": []
       }
     },
@@ -1001,7 +1005,9 @@
           "CR environnemental",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -1025,7 +1031,9 @@
           "CR environnemental",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -2097,13 +2105,14 @@
           "Tableau de surfaces",
           "Plan architectural",
           "RSENV / RSNV",
+          "RT Existant",
           "Entrée manuelle"
         ],
         "secondary": [
-          "RT Existant",
           "Notice architecturale / pièce écrite architecte",
           "Permis / pièce administrative",
-          "Étude carbone / ACV"
+          "Étude carbone / ACV",
+          "DPE"
         ],
         "forbidden": []
       }
@@ -2132,7 +2141,9 @@
           "Notice architecturale / pièce écrite architecte",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -2161,7 +2172,9 @@
           "Diagnostic",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -2282,6 +2295,7 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Plan architectural",
           "CCTP",
           "Entrée manuelle"
@@ -2309,6 +2323,7 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Plan architectural",
           "CCTP",
           "Entrée manuelle"
@@ -2338,6 +2353,7 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Plan architectural",
           "CCTP",
           "Entrée manuelle"
@@ -2368,6 +2384,7 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Plan architectural",
           "CCTP",
           "Entrée manuelle"
@@ -2867,7 +2884,8 @@
           "CCTP",
           "DPGF",
           "Diagnostic",
-          "Entrée manuelle"
+          "Entrée manuelle",
+          "DPE"
         ],
         "secondary": [],
         "forbidden": []
@@ -2898,7 +2916,9 @@
           "Diagnostic",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -2929,7 +2949,9 @@
           "Diagnostic",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -2955,7 +2977,8 @@
           "CCTP",
           "DPGF",
           "Diagnostic",
-          "Entrée manuelle"
+          "Entrée manuelle",
+          "DPE"
         ],
         "secondary": [],
         "forbidden": []
@@ -2985,7 +3008,9 @@
           "Diagnostic",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -3016,7 +3041,9 @@
           "Diagnostic",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -3074,7 +3101,9 @@
           "Diagnostic",
           "Entrée manuelle"
         ],
-        "secondary": [],
+        "secondary": [
+          "DPE"
+        ],
         "forbidden": []
       }
     },
@@ -3183,11 +3212,11 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Entrée manuelle"
         ],
         "secondary": [
           "RSENV / RSNV",
-          "RT Existant",
           "Étude carbone / ACV",
           "Diagnostic"
         ],
@@ -3215,11 +3244,11 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Entrée manuelle"
         ],
         "secondary": [
           "RSENV / RSNV",
-          "RT Existant",
           "Étude carbone / ACV",
           "Diagnostic"
         ],
@@ -3244,11 +3273,11 @@
           "RSET RE2020",
           "RT2012",
           "Étude thermique",
+          "RT Existant",
           "Entrée manuelle"
         ],
         "secondary": [
           "RSENV / RSNV",
-          "RT Existant",
           "Étude carbone / ACV",
           "Diagnostic"
         ],
@@ -5279,6 +5308,158 @@
         "main": [
           "Contrat",
           "Livret d'opération",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 201,
+      "key": "wall_iti_insulation",
+      "label": "Parois verticales ITI type d’isolant",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Parois verticales ITI type d’isolant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "RSENV / RSNV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 202,
+      "key": "wall_iti_thickness",
+      "label": "Parois verticales ITI épaisseur isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Parois verticales ITI épaisseur isolant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 203,
+      "key": "wall_iti_r",
+      "label": "Parois verticales ITI R isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Parois verticales ITI R isolant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 204,
+      "key": "wall_ite_insulation",
+      "label": "Parois verticales ITE type d’isolant",
+      "family": "Enveloppe",
+      "type": "text",
+      "presence": false,
+      "tags": [
+        "Parois verticales ITE type d’isolant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "RSENV / RSNV",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 205,
+      "key": "wall_ite_thickness",
+      "label": "Parois verticales ITE épaisseur isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Parois verticales ITE épaisseur isolant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
+          "Entrée manuelle"
+        ],
+        "secondary": [],
+        "forbidden": []
+      }
+    },
+    {
+      "position": 206,
+      "key": "wall_ite_r",
+      "label": "Parois verticales ITE R isolant",
+      "family": "Enveloppe",
+      "type": "number",
+      "presence": false,
+      "tags": [
+        "Parois verticales ITE R isolant"
+      ],
+      "sources": {
+        "main": [
+          "RSET RE2020",
+          "RT2012",
+          "RSEE RE2020",
+          "Étude thermique",
+          "RT Existant",
+          "CCTP",
+          "DPGF",
           "Entrée manuelle"
         ],
         "secondary": [],

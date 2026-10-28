@@ -21,10 +21,33 @@ export function isBuildingScopedField(field){
 function valueKey(v){ return typeof v==='number'?v.toFixed(6):normLower(v); }
 // v2.3.10 — secondarySourceOk : un parseur dédié déclare qu'une valeur précise (ex. « Nom du projet » d'une calculette
 // BBCA) vaut source secondaire, même si ce type de document n'est pas listé pour le champ (jamais s'il y est interdit).
+// v2.10.0 — parois verticales ITI / ITE : chaque valeur d'isolant de mur est recopiée côté intérieur ou extérieur quand son
+// extrait le dit sans ambiguïté (mention explicite ITE/ITI d'abord, indices « doublage » / « bardage » ensuite) ; sinon rien.
+const WALL_SIDE_FIELDS={wall_insulation:'insulation',wall_insulation_thickness:'thickness',wall_insulation_r:'r'};
+const ITE_STRONG=/\bITE\b|isol(?:ation|ant)s?\s+(?:thermique\s+)?(?:(?:par|a|à|de|depuis)\s+l['’]\s*)?ext[ée]rieur|\bETICS\b|enduit\s+sur\s+isolant|mur\s+manteau/i;
+const ITI_STRONG=/\bITI\b|isol(?:ation|ant)s?\s+(?:thermique\s+)?(?:(?:par|a|à|de|depuis)\s+l['’]\s*)?int[ée]rieur/i;
+const ITE_WEAK=/bardage|v[êe]ture|v[êe]tage/i, ITI_WEAK=/doublage|contre[- ]cloison|plaque\s+de\s+pl[âa]tre/i;
+export function wallInsulationSide(text=''){
+  const e=ITE_STRONG.test(text), i=ITI_STRONG.test(text); if(e!==i) return e?'ite':'iti'; if(e&&i) return null;
+  const we=ITE_WEAK.test(text), wi=ITI_WEAK.test(text); return we!==wi?(we?'ite':'iti'):null;
+}
+// L'extrait joint la ligne et ses voisines (« a | b ») : on juge d'abord la seule ligne qui porte la valeur.
+function wallSideOf(o){
+  const ex=String(o.excerpt||''), v=o.value;
+  const has=typeof v==='number'?(seg=>numbersIn(seg).some(x=>Math.abs(x-v)<1e-6||Math.abs(x*10-v)<1e-6)):(seg=>normLower(seg).includes(normLower(v)));
+  const own=ex.split(' | ').filter(has);
+  if(own.length===1) return wallInsulationSide(own[0]);
+  return wallInsulationSide(ex);
+}
+export function withWallSides(raw){
+  const out=[...raw];
+  for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
+  return out;
+}
 export function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
-  const learnedRaw=applyLearningBoosts(raw);
+  const learnedRaw=applyLearningBoosts(withWallSides(raw));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
@@ -794,8 +817,8 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200), ajoutées en fin.
-  assert('Schéma métier = 200 colonnes',FIELD_DEFS.length===200,String(FIELD_DEFS.length));
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin.
+  assert('Schéma métier = 206 colonnes',FIELD_DEFS.length===206,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));

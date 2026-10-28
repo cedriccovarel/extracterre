@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.9.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.10.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.9.0';
+const APP_VERSION='2.10.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -250,7 +250,14 @@ const FIELD_DEFS = [
   {key:"insee_code",label:"Code INSEE",family:"Localisation",type:"text",tags:["Code INSEE", "INSEE", "Code commune INSEE"] ,presence:false},
   {key:"latitude",label:"Latitude",family:"Localisation",type:"number",tags:["Latitude", "Latitude WGS84"] ,presence:false},
   {key:"longitude",label:"Longitude",family:"Localisation",type:"number",tags:["Longitude", "Longitude WGS84"] ,presence:false},
-  {key:"geocode_precision",label:"Géolocalisation",family:"Localisation",type:"text",tags:["Géolocalisation", "Précision géolocalisation"] ,presence:false}
+  {key:"geocode_precision",label:"Géolocalisation",family:"Localisation",type:"text",tags:["Géolocalisation", "Précision géolocalisation"] ,presence:false},
+  // v2.10.0 — parois verticales distinguées : isolation par l’intérieur (ITI) et par l’extérieur (ITE), ajoutées en fin.
+  {key:"wall_iti_insulation",label:"Parois verticales ITI type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITI type d’isolant"] ,presence:false},
+  {key:"wall_iti_thickness",label:"Parois verticales ITI épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITI épaisseur isolant"] ,presence:false},
+  {key:"wall_iti_r",label:"Parois verticales ITI R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITI R isolant"] ,presence:false},
+  {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
+  {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
+  {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
 ];
 const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -403,10 +410,10 @@ for(const key of ["dpe_ges_label", "energy_level", "passive_level", "cep_level",
 for(const key of ["department", "progress_status", "project", "operation", "building"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PROJECT_META);
 // Une étude thermique/Bao peut porter un département explicite fiable ; elle reste en secours derrière les sources projet validées.
 DEFAULT_SOURCE_RULES.department=ordered(SOURCE_PROJECT_META,[DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC]);
-for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
+for(const key of ["structure", "roof_structure", "roof_insulation", "roof_insulation_thickness", "roof_insulation_r", "wall_structure", "wall_insulation", "wall_insulation_thickness", "wall_insulation_r", "wall_iti_insulation", "wall_iti_thickness", "wall_iti_r", "wall_ite_insulation", "wall_ite_thickness", "wall_ite_r", "floor_structure", "floor_insulation", "floor_insulation_thickness", "floor_insulation_r", "window_material", "window_glazing", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENVELOPE);
 // v2.3.8 — le tableau « Données techniques » du RSEnv décrit la nature de la structure et des isolants (pas les
 // épaisseurs ni les R) : il complète l'enveloppe, en dernière position avant la saisie manuelle.
-for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
+for(const key of ["structure", "roof_structure", "roof_insulation", "wall_structure", "wall_insulation", "wall_iti_insulation", "wall_ite_insulation", "floor_structure", "floor_insulation", "window_material", "window_shading"]) DEFAULT_SOURCE_RULES[key]=ordered([...SOURCE_ENVELOPE.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.RSENV,DOC_TYPES.MANUAL]);
 for(const key of ["heating_vector_before", "heating_vector_after", "heating_mode_after", "ecs_vector_before", "ecs_vector_after", "ecs", "cooling", "ventilation", "ventilation_before"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_SYSTEMS);
 for(const key of ["ubat_before", "ubat_after", "cep_before", "cep_after_final", "ubat_ref", "ubat_gain", "ges", "ges_before", "ges_ref", "ges_gain"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_UBAT_CEP);
 for(const key of ["enr", "enr_type"]) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_ENR);
@@ -5356,8 +5363,8 @@ const EXTRACTION_RANGES=Object.freeze({
   cep_cooling:[0,400], cep_lighting:[0,200], cep_aux_vent:[0,200], cep_aux_dist:[0,200], cep_mobility:[0,200],
   cep_electricity:[0,1000], cep_gas:[0,1500], cep_district:[0,1500], cep_biomass:[0,1500],
   shab:[8,500000], housing_count:[1,5000], construction_year:[1000,2100],
-  wall_insulation_thickness:[5,800], roof_insulation_thickness:[5,1000], floor_insulation_thickness:[5,800],
-  wall_insulation_r:[0.2,20], roof_insulation_r:[0.2,25], floor_insulation_r:[0.2,20],
+  wall_insulation_thickness:[5,800], wall_iti_thickness:[5,800], wall_ite_thickness:[5,800], roof_insulation_thickness:[5,1000], floor_insulation_thickness:[5,800],
+  wall_insulation_r:[0.2,20], wall_iti_r:[0.2,20], wall_ite_r:[0.2,20], roof_insulation_r:[0.2,25], floor_insulation_r:[0.2,20],
   ic_components:[20,4000], ic_site:[0,400], ic_energy:[5,3000], ic_construction:[20,5000], stock_c_per_m2:[0,400],
   ic_energy_heating:[0,2000], ic_energy_ecs:[0,2000], ic_energy_cooling:[0,1000], ic_energy_aux_vent:[0,500], ic_energy_aux_dist:[0,500], ic_energy_mobility:[0,500],
   bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100],
@@ -7135,7 +7142,7 @@ function pruneHierarchicalShadowed(doc,out){
 // tag générique, un patch ou un sous-parseur la détecte. Un document peut porter plusieurs familles
 // (ex. RSEE PDF = thermique + carbone) : chaque famille filtre ses propres occurrences, puis on fusionne.
 const ADMIN_FIELDS=['project','operation','building'];
-const ENVELOPE_FIELDS=['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading'];
+const ENVELOPE_FIELDS=['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading'];
 const IC_LOTS=Array.from({length:13},(_,i)=>`ic_lot_${i+1}`);
 const IC_ENERGY_POSTS=['ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility'];
 const CEP_DETAIL=['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass'];
@@ -7862,10 +7869,33 @@ function isBuildingScopedField(field){
 function valueKey(v){ return typeof v==='number'?v.toFixed(6):normLower(v); }
 // v2.3.10 — secondarySourceOk : un parseur dédié déclare qu'une valeur précise (ex. « Nom du projet » d'une calculette
 // BBCA) vaut source secondaire, même si ce type de document n'est pas listé pour le champ (jamais s'il y est interdit).
+// v2.10.0 — parois verticales ITI / ITE : chaque valeur d'isolant de mur est recopiée côté intérieur ou extérieur quand son
+// extrait le dit sans ambiguïté (mention explicite ITE/ITI d'abord, indices « doublage » / « bardage » ensuite) ; sinon rien.
+const WALL_SIDE_FIELDS={wall_insulation:'insulation',wall_insulation_thickness:'thickness',wall_insulation_r:'r'};
+const ITE_STRONG=/\bITE\b|isol(?:ation|ant)s?\s+(?:thermique\s+)?(?:(?:par|a|à|de|depuis)\s+l['’]\s*)?ext[ée]rieur|\bETICS\b|enduit\s+sur\s+isolant|mur\s+manteau/i;
+const ITI_STRONG=/\bITI\b|isol(?:ation|ant)s?\s+(?:thermique\s+)?(?:(?:par|a|à|de|depuis)\s+l['’]\s*)?int[ée]rieur/i;
+const ITE_WEAK=/bardage|v[êe]ture|v[êe]tage/i, ITI_WEAK=/doublage|contre[- ]cloison|plaque\s+de\s+pl[âa]tre/i;
+function wallInsulationSide(text=''){
+  const e=ITE_STRONG.test(text), i=ITI_STRONG.test(text); if(e!==i) return e?'ite':'iti'; if(e&&i) return null;
+  const we=ITE_WEAK.test(text), wi=ITI_WEAK.test(text); return we!==wi?(we?'ite':'iti'):null;
+}
+// L'extrait joint la ligne et ses voisines (« a | b ») : on juge d'abord la seule ligne qui porte la valeur.
+function wallSideOf(o){
+  const ex=String(o.excerpt||''), v=o.value;
+  const has=typeof v==='number'?(seg=>numbersIn(seg).some(x=>Math.abs(x-v)<1e-6||Math.abs(x*10-v)<1e-6)):(seg=>normLower(seg).includes(normLower(v)));
+  const own=ex.split(' | ').filter(has);
+  if(own.length===1) return wallInsulationSide(own[0]);
+  return wallInsulationSide(ex);
+}
+function withWallSides(raw){
+  const out=[...raw];
+  for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
+  return out;
+}
 function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
-  const learnedRaw=applyLearningBoosts(raw);
+  const learnedRaw=applyLearningBoosts(withWallSides(raw));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
@@ -8635,8 +8665,8 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200), ajoutées en fin.
-  assert('Schéma métier = 200 colonnes',FIELD_DEFS.length===200,String(FIELD_DEFS.length));
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin.
+  assert('Schéma métier = 206 colonnes',FIELD_DEFS.length===206,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));
@@ -10660,7 +10690,7 @@ const RESULT_VIEWS = Object.freeze({
   economics:{label:'Économie',groups:[]},
   searches:{label:'Recherches',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
-    {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
+    {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
   ]}
 });
@@ -11816,7 +11846,7 @@ const REVIEW_GROUPS=Object.freeze([
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
   {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
   {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
-  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
+  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
   {title:'Consommations par poste',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']},
   {title:'Carbone',optional:'reno',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy','ic_energy_max','ic_energy_max_2028','ic_components','ic_site','stock_c_per_m2','eges_total','eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total_max']},
   {title:'Données administratives',admin:true,families:['Administration'],keys:['reference_name','reference_version','mentions','performance','selected_profile','specific_profile','renovation','mention_effinergie','mention_bbca','mention_biosourced_building']}
