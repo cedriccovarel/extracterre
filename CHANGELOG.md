@@ -1,3 +1,8 @@
+# v2.10.6 — fiche Évaluation Salesforce : en-têtes « Bât A / 21 logts - SHAB = … »
+- En-tête de bâtiment avec logements et SHAB sur la même ligne (Bât, Bâtiment, Immeuble, Plot, Cage, Ilot, Lot).
+- Paires séparées par « ; » ; « Bbio max = 71,9 (Gain 20,6 %) » donne aussi le gain.
+- Une valeur placée après une ligne vide sous les blocs (« Q4 = 0,8 ») vaut pour toute l'opération.
+
 # v2.10.5 — fiche Évaluation Salesforce : en-têtes sans séparateur, paires groupées
 - Bâtiments sous « Logement 1 à 6 » / « Logement 7 & 8 » (sans « : ») : nombre de logements déduit (6, 2).
 - Plusieurs paires sur une ligne : « Bbio=33 Bbiomax=81,3 », « Cep,nr=65,4 Cep,nrmax=65,4 » ; IC vides ignorés.

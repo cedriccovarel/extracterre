@@ -10,7 +10,7 @@ import {analyzeEconomicData,costPostIndex,ECONOMIC_FIELDS,isFinancialJson} from 
 import {readFile} from './js/readers.js';
 import {exportProjectsExcel} from './js/exporter.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.10.5','version');
+eq(APP_VERSION, '2.10.6','version');
 // Ligne PDF.js : segments [x, texte] ; mots collés (espace = fragment « espace » du PDF), comme l'édition réelle.
 const L=(...segs)=>{ const items=[]; for(const [x,t] of segs){ let cx=x; t.split(' ').forEach((w,i)=>{ items.push({text:w,x:cx,w:w.length*4,sb:i>0}); cx+=w.length*4; }); } return {text:normalizeText(items.map(i=>i.text).join('')),items}; };
 const page=(no,lines)=>{ const text=lines.map(l=>l.text).join('\n'); attachFinancialCells(lines,text); return {page:no,lines,text}; };
