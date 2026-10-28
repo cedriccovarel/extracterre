@@ -177,12 +177,14 @@ export function looksLikeFreeText(text){
 // section « Performance thermique », sections d'enveloppe et de systèmes. Tout est relu dans le texte : rien n'est déduit,
 // sauf le nombre de logements d'un bloc « Maisons 2/3 » (2) et le signe des gains (convention ExtracTerre : positif si
 // la valeur est sous le maximum). Les sous-sections « - Notes » (écarts RSET / CCTP, « NC ») sont ignorées.
-export function looksLikeSalesforceEvaluation(text){ const t=String(text||''); return /^\s*Performance thermique\s*$/m.test(t)&&(/\bOPE-\d{6}\b/.test(t)||/^\s*(?:Planchers hauts|Parois verticales|Planchers bas|Chauffage|Renouvellement d.air)\b/m.test(t)); }
+export function looksLikeSalesforceEvaluation(text){ const t=String(text||''); return /^\s*Performance thermique\s*$/m.test(t)&&(/\bOPE-\d{6}\b/.test(t)||/^\s*(?:Planchers hauts|Parois verticales|Planchers bas|Chauffage|Renouvellement d.air)\b/m.test(t)||/^\s*Bbio\s*max\b|\bBbiomax\s*[=:]/im.test(t)); }
 const sf_ALIASES={bbio:'bbio',bbiomax:'bbio_max',gainbbio:'bbio_gain',cep:'cep',cepmax:'cep_max',cepref:'cep_max',gaincep:'cep_gain',cepnr:'cepnr',cepnrmax:'cepnr_max',gaincepnr:'cepnr_gain',
-  dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icconstructionmax2025:'ic_construction_max',icconstructionmax2028:'ic_construction_max_2028',icenergie:'ic_energy',icenergiemax:'ic_energy_max',icenergiemax2025:'ic_energy_max',icenergiemax2028:'ic_energy_max_2028',
+  dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icconstructionmax2025:'ic_construction_max',icconstructionmax2028:'ic_construction_max_2028',icenergie:'ic_energy',icenergiemax:'ic_energy_max',icenergiemax2025:'ic_energy_max',icenergiemax2028:'ic_energy_max_2028',icconstruction2025:'ic_construction_max',icenergie2025:'ic_energy_max',
   tic:'tic',ticref:'tic_ref',nombredelogements:'housing_count',logements:'housing_count'};
 const sf_key=l=>normLower(l).replace(/[^a-z0-9]/g,'');
 const sf_num=raw=>{ const m=String(raw).replace(/ /g,' ').match(/[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0]):null; };
+// « Bbio=33 Bbiomax=81,3 » : plusieurs paires « libellé=valeur » sur une ligne.
+const sf_pairs=l=>(l.match(/=/g)||[]).length>1?l.split(/\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[l];
 const sf_fmt=v=>String(Math.round(v*1000)/1000).replace('.',',');
 const sf_SECTIONS=[['roof',/^planchers?\s+hauts?\b/],['wall',/^parois?\s+verticales?\b/],['floor',/^planchers?\s+bas\b/],['win',/^menuiseries?\s+exterieures?\b/],['bridge',/^ponts?\s+thermiques?\b/],
   ['heat',/^chauffage\b/],['ecs',/^eau\s+chaude\s+sanitaire\b/],['vent',/^renouvellement\s+d.air\b/],['reg',/^regulation\b/],['enr',/^energies?\s+renouvelables?\b/]];
@@ -222,15 +224,22 @@ export function salesforceEvaluationToPaste(text){
     if(h&&!isField(h[1])&&(!h[2]||/^\(.*\)$/.test(h[2])||/^x?\s*\d+\s*(?:lgts?|logements?)\b/i.test(h[2])||/:\s*$/.test(t))){
       cur={name:h[1].trim(),items:[],raw:{},extra:[]}; blocks.push(cur);
       const nb=h[2].match(/^x?\s*(\d+)\s*(?:lgts?|logements?)\b/i); if(nb) cur.raw.housing_count=Number(nb[1]); else if(h[2]) notes.push(`${cur.name} : ${h[2].replace(/^\(|\)$/g,'').trim()} (remarque de la fiche).`); continue; }
-    const m=L[i].match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
+    // « Logement 1 à 6 » sans séparateur : en-tête si la ligne suivante est une valeur de performance.
+    const nx=(L[i+1]||'').match(/^(.{1,80}?)\s*[=:]/);
+    if(!/[=:]/.test(t)&&t.length<=60&&!isField(t)&&nx&&(sf_ALIASES[sf_key(nx[1])]||fp_strictLabel(nx[1]))){ cur={name:t.trim(),items:[],raw:{},extra:[]}; blocks.push(cur); continue; }
+    for(const piece of sf_pairs(L[i])){
+    const m=piece.match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
     if(fp_dhZone(m[1])){ if(cur) b.extra.push(`${m[1].trim()} = ${m[2].trim()}`); continue; }
     const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(!key||key in b.raw) continue;
     if(TRIPLES[key]&&m[2].includes('/')){ const parts=m[2].split('/').map(sf_num); if(parts[0]===null) continue; b.raw[key]=parts[0]; TRIPLES[key].forEach((k,j)=>{ if(parts[j+1]!=null&&!(k in b.raw)) b.raw[k]=parts[j+1]; }); if(!cur) TRIPLES[key].forEach(k=>k in b.raw&&put(common,k,b.raw[k])); if(!cur) put(common,key,parts[0]); continue; }
     // « DH : 713,9 et 625 » : deux zones sans type ; on retient la plus défavorable (comme la lecture des RSET).
     if(key==='dh'&&/\bet\b|\//.test(m[2])){ const vals=m[2].split(/\bet\b|\//).map(sf_num).filter(x=>x!==null); if(vals.length){ b.raw.dh=Math.max(...vals); if(!cur) put(common,'dh',b.raw.dh); } continue; }
-    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; b.raw[key]=v; if(!cur) put(common,key,v); }
+    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; b.raw[key]=v; if(!cur) put(common,key,v); } }
   for(const b of blocks){
-    const n=b.name.match(/^(?:maisons?|villas?|pavillons?)\s+(.+)$/i); if(n&&b.raw.housing_count===undefined){ const parts=n[1].split(/\s*(?:[\/,&+]|\bet\b)\s*/).filter(Boolean); if(parts.length&&parts.every(x=>/^\d+[a-z]?$/i.test(x))) b.raw.housing_count=parts.length; }
+    const n=b.name.match(/^(?:maisons?|villas?|pavillons?|logements?|lgts?)\s+(.+)$/i); if(n&&b.raw.housing_count===undefined){
+      // « Logement 1 à 6 » : plage de numéros.
+      const rg=n[1].match(/^(\d+)\s*(?:à|a|-)\s*(\d+)$/i); if(rg&&+rg[2]>+rg[1]){ b.raw.housing_count=rg[2]-rg[1]+1; }
+      else { const parts=n[1].split(/\s*(?:[\/,&+]|\bet\b)\s*/).filter(Boolean); if(parts.length&&parts.every(x=>/^\d+[a-z]?$/i.test(x))) b.raw.housing_count=parts.length; } }
     for(const [g,v,mx] of [['bbio_gain','bbio','bbio_max'],['cep_gain','cep','cep_max'],['cepnr_gain','cepnr','cepnr_max']]){
       const val=b.raw[v], max=b.raw[mx]; if(!(g in b.raw)||val==null||!max) continue;
       const calc=(max-val)/max*100; b.raw[g]=Math.abs(b.raw[g])*(calc<0?-1:1);

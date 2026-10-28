@@ -1,3 +1,8 @@
+# v2.10.5 — fiche Évaluation Salesforce : en-têtes sans séparateur, paires groupées
+- Bâtiments sous « Logement 1 à 6 » / « Logement 7 & 8 » (sans « : ») : nombre de logements déduit (6, 2).
+- Plusieurs paires sur une ligne : « Bbio=33 Bbiomax=81,3 », « Cep,nr=65,4 Cep,nrmax=65,4 » ; IC vides ignorés.
+- Fiche reconnue dès qu'elle contient « Performance thermique » et un Bbiomax, même sans code OPE.
+
 # v2.10.4 — fiche Évaluation Salesforce : en-têtes à puce et valeurs groupées
 - Bâtiments sous « * BEG-1/2 : x2 lgts indiv : » (le nombre de logements est lu dans l'en-tête).
 - « Bbio : 84,4 / 91,8 / -8,1 % » = valeur / maximum / gain (idem Cep, Cepnr) ; « ICconstruction : 767,85 / 780,02 »
