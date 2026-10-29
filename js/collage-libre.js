@@ -180,7 +180,7 @@ export function looksLikeFreeText(text){
 export function looksLikeSalesforceEvaluation(text){ const t=String(text||''); return /^\s*Performance thermique\s*$/m.test(t)&&(/\bOPE-\d{6}\b/.test(t)||/^\s*(?:Planchers hauts|Parois verticales|Planchers bas|Chauffage|Renouvellement d.air)\b/m.test(t)||/\bBbio\s*max\s*[=:]/i.test(t)); }
 const sf_ALIASES={bbio:'bbio',bbiomax:'bbio_max',gainbbio:'bbio_gain',cep:'cep',cepmax:'cep_max',cepref:'cep_max',gaincep:'cep_gain',cepnr:'cepnr',cepnrmax:'cepnr_max',gaincepnr:'cepnr_gain',
   dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icconstructionmax2025:'ic_construction_max',icconstructionmax2028:'ic_construction_max_2028',icenergie:'ic_energy',icenergiemax:'ic_energy_max',icenergiemax2025:'ic_energy_max',icenergiemax2028:'ic_energy_max_2028',icconstruction2025:'ic_construction_max',icenergie2025:'ic_energy_max',
-  tic:'tic',ticref:'tic_ref',nombredelogements:'housing_count',logements:'housing_count',nbrelogts:'housing_count',nblogts:'housing_count',nbrelogements:'housing_count',nblogements:'housing_count',nombrelogts:'housing_count',logts:'housing_count'};
+  tic:'tic',ticref:'tic_ref',ubat:'ubat_after',ubatprojet:'ubat_after',ubatbase:'ubat_ref',ubatref:'ubat_ref',ubatinitial:'ubat_before',nombredelogements:'housing_count',logements:'housing_count',nbrelogts:'housing_count',nblogts:'housing_count',nbrelogements:'housing_count',nblogements:'housing_count',nombrelogts:'housing_count',logts:'housing_count'};
 const sf_key=l=>normLower(l).replace(/[^a-z0-9]/g,'');
 // « 1 780,20 » : espace des milliers (normale, insécable ou fine) gardée dans le nombre.
 const sf_num=raw=>{ const m=String(raw).replace(/[\u00a0\u202f]/g,' ').match(/[-+]?\d{1,3}(?: \d{3})+(?:[.,]\d+)?(?![\d.,])|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/ /g,'')):null; };
@@ -190,7 +190,7 @@ const sf_num=raw=>{ const m=String(raw).replace(/[\u00a0\u202f]/g,' ').match(/[-
 // Paires d'une ligne : « ; », « - libellé = », « / libellé = » ; « Bbio=33 Bbiomax=81,3 » (espace après une valeur).
 // Le contenu entre parenthèses (« (Gain BBio = 30,4 %) ») reste attaché à sa paire.
 const sf_pairs=l=>{ const keep=[], back=x=>x.replace(/\u0001(\d+)\u0002/g,(_,k)=>keep[k]); const P=String(l).replace(/\([^()]*\)/g,m=>`\u0001${keep.push(m)-1}\u0002`);
-  return P.split(/\s*;\s*|\s+[-–]\s+(?=[^=]*[A-Za-zÀ-ÿ][^=]*=)|\s+\/\s+(?=[^=\/]*[A-Za-zÀ-ÿ][^=\/]*=)/).flatMap(x=>(x.match(/=/g)||[]).length>1?x.split(/(?<=[\d%\u0002=])\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[x]).map(back); };
+  return P.split(/\s*;\s*|\s*<\s*(?=[^=<]*[A-Za-zÀ-ÿ][^=<]*=)|\s+[-–]\s+(?=[^=]*[A-Za-zÀ-ÿ][^=]*=)|\s+\/\s+(?=[^=\/]*[A-Za-zÀ-ÿ][^=\/]*=)/).flatMap(x=>(x.match(/=/g)||[]).length>1?x.split(/(?<=[\d%\u0002=])\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[x]).map(back); };
 const sf_fmt=v=>String(Math.round(v*1000)/1000).replace('.',',');
 const sf_SECTIONS=[['roof',/^planchers?\s+hauts?\b/],['wall',/^parois?\s+verticales?\b/],['floor',/^planchers?\s+bas\b/],['win',/^menuiseries?\s+exterieures?\b/],['bridge',/^ponts?\s+thermiques?\b/],
   ['heat',/^chauffage\b/],['ecs',/^eau\s+chaude\s+sanitaire\b/],['vent',/^renouvellement\s+d.air\b/],['reg',/^regulation\b/],['enr',/^energies?\s+renouvelables?\b/]];
@@ -222,29 +222,35 @@ export function salesforceEvaluationToPaste(text){
   const levels=FIELD_DEFS.filter(f=>/_level$/.test(f.key)).sort((a,b)=>b.label.length-a.label.length);
   for(const line of listAfter(/^Performance\s*:\s*$/i)){ const f=levels.find(d=>normLower(line).startsWith(normLower(d.label)+' ')); if(f) put(common,f.key,line.slice(f.label.length).trim()); }
   // Section « Performance thermique » : blocs par bâtiment jusqu'à la première section d'enveloppe.
-  let i=L.findIndex(l=>/^Performance thermique$/i.test(l))+1, cur=null; const dhCommon={};
+  let i=0, cur=null; const dhCommon={};
+  // v2.13.1 — « Commentaires pré-analyse » (« BAT B / Cep initial = 119,3 / Tic = 25,03 < Tic réf = 29,85 ») : mêmes blocs,
+  // lus après « Performance thermique » ; ils ne complètent que les valeurs absentes, un même bâtiment n'est pas dédoublé.
+  const openBlock=name=>{ const k=sf_key(String(name).replace(/^b[âa]t(?:iment)?\.?\s*/i,'bat')); let b=blocks.find(x=>sf_key(String(x.name).replace(/^b[âa]t(?:iment)?\.?\s*/i,'bat'))===k); if(!b){ b={name,items:[],raw:{},extra:[]}; blocks.push(b); } return b; };
+  const perf=L.findIndex(l=>/^Performance thermique$/i.test(l)), pre=L.findIndex(l=>/^Commentaires\s+pr[ée][-\s]?analyse$/i.test(l));
+  const RANGES=[...(perf>=0?[[perf+1,l=>!!sf_section(l)]]:[]),...(pre>=0?[[pre+1,l=>/^(?:[ÉE]valuation avec pr[ée]|Date d.import pr[ée]|Observations g[ée]n[ée]rales|Performance thermique)\b/i.test(l)||!!sf_section(l)]]:[])];
   const isField=l=>!!(sf_ALIASES[sf_key(l)]||fp_strictLabel(l)||fp_dhZone(l)||matchFreeLabel(l));
   // « Bbio : 84,4 / 91,8 / -8,1 % » = valeur / maximum / gain ; « ICconstruction : 767,85 / 780,02 » = valeur / maximum.
   const TRIPLES={bbio:['bbio_max','bbio_gain'],cep:['cep_max','cep_gain'],cepnr:['cepnr_max','cepnr_gain'],ic_construction:['ic_construction_max'],ic_energy:['ic_energy_max']};
-  for(;i>0&&i<L.length&&!sf_section(L[i]);i++){
+  for(const [start,stop] of RANGES){ cur=null;
+  for(i=start;i<L.length&&!stop(L[i]);i++){
     // En-tête de bâtiment : « ILOT_1 : », « Maison 1 = », « ILOT_4 : (ilot 5 sur ACV) », « * BEG-1/2 : x2 lgts indiv : ».
     const t=L[i].replace(/^[*•]\s*/,'');
     // « Bât A / 21 logts - SHAB = 1283,6 » : nom, logements et surface sur la ligne d'en-tête.
     const bh=t.match(/^((?:b[âa]t(?:iment)?\.?|immeuble|plot|cage|ilot|lot)\s*[\w-]+)\s*(?:[\/,–-]\s*(\d+)\s*(?:logts?|lgts?|logements?)\b)?(.*)$/i);
     // « BAT AB / Nbre logts = 14 / Q4 = 0,72 » : paires « libellé = valeur » séparées par « / » sur l'en-tête.
     const hp=bh?bh[3].split('/').map(x=>x.match(/^\s*([^=]{1,40}?)\s*=\s*(.+?)\s*$/)).filter(x=>x&&(sf_ALIASES[sf_key(x[1])]||fp_strictLabel(x[1]))):[];
-    if(bh&&(bh[2]||/\b(?:shab|sref|srt|su)\s*[=:]/i.test(bh[3])||hp.length)){ cur={name:bh[1].trim(),items:[],raw:{},extra:[]}; blocks.push(cur);
+    if(bh&&(bh[2]||/\b(?:shab|sref|srt|su)\s*[=:]/i.test(bh[3])||hp.length)){ cur=openBlock(bh[1].trim());
       if(bh[2]) cur.raw.housing_count=Number(bh[2]); const sh=bh[3].match(/\b(?:shab|sref|srt|su)\s*[=:]\s*(\d[\d\s]*(?:[.,]\d+)?)/i); if(sh) cur.raw.shab=parseFrNumber(sh[1].replace(/\s/g,''));
       for(const [,lab,val] of hp){ const k=sf_ALIASES[sf_key(lab)]||fp_strictLabel(lab), v=FIELD_MAP[k]?.type==='number'?sf_num(val):val; if(v!=null&&!(k in cur.raw)) cur.raw[k]=v; } continue; }
     // Après une ligne vide, une valeur hors en-tête (« Q4 = 0,8 » sous les blocs) vaut pour toute l'opération.
     if(cur&&afterBlank.has(i)&&/[=:]/.test(t)&&!/:\s*$/.test(t)) cur=null;
     const h=t.match(/^(.{1,60}?)\s*[=:]\s*(.*?)\s*:?\s*$/);
     if(h&&!isField(h[1])&&(!h[2]||/^\(.*\)$/.test(h[2])||/^x?\s*\d+\s*(?:lgts?|logements?)\b/i.test(h[2])||/:\s*$/.test(t))){
-      cur={name:h[1].trim(),items:[],raw:{},extra:[]}; blocks.push(cur);
+      cur=openBlock(h[1].trim());
       const nb=h[2].match(/^x?\s*(\d+)\s*(?:lgts?|logements?)\b/i); if(nb) cur.raw.housing_count=Number(nb[1]); else if(h[2]) notes.push(`${cur.name} : ${h[2].replace(/^\(|\)$/g,'').trim()} (remarque de la fiche).`); continue; }
     // « Logement 1 à 6 » sans séparateur : en-tête si la ligne suivante est une valeur de performance.
     const nx=(L[i+1]||'').match(/^(.{1,80}?)\s*[=:]/);
-    if(!/[=:]/.test(t)&&t.length<=60&&!isField(t)&&nx&&(sf_ALIASES[sf_key(nx[1])]||fp_strictLabel(nx[1]))){ cur={name:t.trim(),items:[],raw:{},extra:[]}; blocks.push(cur); continue; }
+    if(!/[=:]/.test(t)&&t.length<=60&&!isField(t)&&nx&&(sf_ALIASES[sf_key(nx[1])]||fp_strictLabel(nx[1]))){ cur=openBlock(t.trim()); continue; }
     // « DH ZT - T3 = 634,2 - T2 = 841,7 » : DH par zone et par typologie ; on retient le plus défavorable (comme la lecture des RSET).
     if(/^DH\b/i.test(t)&&/=/.test(t)&&(/\bZN?T\b/i.test(t)||(t.match(/=/g)||[]).length>1)){ const vals=[...t.matchAll(/=\s*([-+]?\d+(?:[.,]\d+)?)/g)].map(x=>parseFrNumber(x[1]));
       if(vals.length){ const raw=cur?cur.raw:dhCommon, z=/\bZNT\b/i.test(t)?'dh_znt':/\bZT\b/i.test(t)?'dh_zt':null;
@@ -265,8 +271,10 @@ export function salesforceEvaluationToPaste(text){
     if(TRIPLES[key]&&m[2].includes('/')){ const parts=m[2].split('/').map(sf_num); if(parts[0]===null) continue; b.raw[key]=parts[0]; TRIPLES[key].forEach((k,j)=>{ if(parts[j+1]!=null&&!(k in b.raw)) b.raw[k]=parts[j+1]; }); if(!cur) TRIPLES[key].forEach(k=>k in b.raw&&put(common,k,b.raw[k])); if(!cur) put(common,key,parts[0]); continue; }
     // « DH : 713,9 et 625 » : deux zones sans type ; on retient la plus défavorable (comme la lecture des RSET).
     if(key==='dh'&&/\bet\b|\//.test(m[2])){ const vals=m[2].split(/\bet\b|\//).map(sf_num).filter(x=>x!==null); if(vals.length){ b.raw.dh=Math.max(...vals); if(!cur) put(common,'dh',b.raw.dh); } continue; }
-    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; b.raw[key]=v; if(!cur) put(common,key,v); } }
+    const v=FIELD_MAP[key].type==='number'?sf_num(m[2]):m[2]; if(v===null) continue; b.raw[key]=v; if(!cur) put(common,key,v); } } }
   for(const b of blocks){
+    // Rénovation (Cep initial connu) : le Cep projet est aussi le « Cep après travaux final », comme dans les notices RT ex.
+    if(b.raw.cep_before!=null&&b.raw.cep!=null&&b.raw.cep_after_final==null) b.raw.cep_after_final=b.raw.cep;
     const n=b.name.match(/^(?:maisons?|villas?|pavillons?|logements?|lgts?)\s+(.+)$/i); if(n&&b.raw.housing_count===undefined){
       // « Logement 1 à 6 » : plage de numéros.
       const rg=n[1].match(/^(\d+)\s*(?:à|a|-)\s*(\d+)$/i); if(rg&&+rg[2]>+rg[1]){ b.raw.housing_count=rg[2]-rg[1]+1; }

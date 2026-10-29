@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {analyzeDocuments} from './js/engine.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.13.0','version');
+eq(APP_VERSION, '2.13.1','version');
 
 // SDP 2000 m² : PCE 600 + énergie 250 + eau 40 + chantier 10 = Eges 900 kg éq. CO2/m² SDP.
 const ind=(ref,nom,v)=>`<indicateurs_performance ref="${ref}"><valeur>${v}</valeur><nom>${nom}</nom><unite>kg éq. CO2</unite></indicateurs_performance>`;

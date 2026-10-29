@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
-assert.equal(APP_VERSION, '2.13.0');
+assert.equal(APP_VERSION, '2.13.1');
 const html=fs.readFileSync(new URL('./index.html',import.meta.url),'utf8');
 assert.match(html,/id="manualFieldSearch"/);
 for(const f of ['./js/app.js','./js/app.bundle.js']){

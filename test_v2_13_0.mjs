@@ -9,7 +9,7 @@ import {readXmlText} from './js/readers.js';
 import {dpePhaseOf,dpeBuildingOf} from './js/dpe-3cl.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.13.0','version');
+eq(APP_VERSION,'2.13.1','version');
 eq([dpePhaseOf('état initial 3CL/Bâtiment Z - EI.pdf'),dpePhaseOf('Bâtiment Z.pdf'),dpePhaseOf('Bâtiment Z - après travaux.pdf'),dpePhaseOf('Projet Les Fictifs.pdf')],['before',null,'after',null],'phase du chemin');
 eq([dpeBuildingOf('état initial 3CL/Bâtiment Z - EI.pdf'),dpeBuildingOf('Bat. 12.pdf'),dpeBuildingOf('Batiments.pdf'),dpeBuildingOf('Bâtiment Z.pdf'.normalize('NFD'))],['Bâtiment Z','Bâtiment 12','','Bâtiment Z'],'bâtiment du nom de fichier (macOS : NFD)');
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
@@ -34,4 +34,4 @@ eq([rx.dpe_energy_before,rx.dpe_ges_before,ax.uncertain.find(u=>u.field==='const
 // En-têtes de tableau et légendes : pas des bâtiments.
 const t=prep(textDoc('t1','Notice thermique FICTIVE.pdf',null,'Notice thermique\nBatiment J L M N O P Q Total\nbatiment de la valeur du batiment\nbatiment Conforme\nBatiment Etiquette DPE\nBatiment J\nUbat projet 0.47'));
 eq(t.buildings.names.filter(b=>/Total|valeur|Conforme|Etiquette/i.test(b)),[],'noms parasites écartés');
-console.log(`v2.13.0 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.13.1 — ${n} vérifications OK (données fictives)`);

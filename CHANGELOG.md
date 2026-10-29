@@ -1,3 +1,8 @@
+# v2.13.1 — favori Salesforce : « Commentaires pré-analyse » lus
+- Blocs « BAT B / Cep initial = … / Cep projet = … / Cep référence = … / Tic = … < Tic réf = … / Ubat = … < Ubat base = … /
+  Q4 = … » : Cep avant travaux, Cep et Cep après travaux final, Cep Ref, Tic, Tic ref, Ubat après travaux, Ubat Ref, Q4Pa-surf.
+  Ils complètent « Performance thermique » (prioritaire) sans dédoubler un bâtiment ; « < » sépare deux valeurs d'une ligne.
+
 # v2.13.0 — DPE 3CL d'immeuble par bâtiment : avant / après lus dans des documents séparés
 - Rapport « 3CL non réglementaire » (Pléiades…) lu comme un DPE 2021 : classes énergie et GES recalculées depuis l'énergie
   totale, les émissions et la surface (seuils DPE 2021, étiquette = la plus défavorable). Bâtiment pris dans le nom du fichier

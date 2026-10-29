@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.13.0','version');
+eq(APP_VERSION,'2.13.1','version');
 const page=`Opération
 OPE-009001
 Prévisualiser
