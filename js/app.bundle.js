@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.11.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.12.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.11.4';
+const APP_VERSION='2.12.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -130,7 +130,7 @@ const FIELD_DEFS = [
   {key:"shab",label:"Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",family:"Programme",type:"number",tags:["Surface bâtiment (SHAB / Sref / SU / SURT / SRT)", "Surface bâtiment", "SHAB", "Sref", "S ref", "surface de référence", "surface habitable", "SU", "SURT", "SRT", "SHONRT"] ,presence:false},
   {key:"housing_typologies",label:"Typologies de logements",family:"Programme",type:"text",tags:["Typologies de logements", "typologie logements", "types de logements", "répartition typologique", "T1 T2 T3"] ,presence:false},
   {key:"construction_year",label:"Année de construction",family:"Programme",type:"number",tags:["Année de construction", "année construction"] ,presence:false},
-  // v2.11.4 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
+  // v2.12.0 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
   {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false,hidden:true},
   {key:"dh_zt",label:"DH Zone traversante (DH ZT)",family:"Confort d’été",type:"number",tags:["DH Zone traversante (DH ZT)", "DH ZT", "DH zone traversante", "DH zones traversantes"] ,presence:false},
   {key:"dh_znt",label:"DH Zone non traversante (DH ZNT)",family:"Confort d’été",type:"number",tags:["DH Zone non traversante (DH ZNT)", "DH ZNT", "DH zone non traversante", "DH zones non traversantes"] ,presence:false},
@@ -261,7 +261,7 @@ const FIELD_DEFS = [
   {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
   {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
   {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
-  // v2.11.4 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
+  // v2.12.0 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
   {key:"wall_ite",label:"ITE",family:"Enveloppe",type:"text",tags:["ITE", "Isolation par l’extérieur (ITE)"] ,presence:false},
   {key:"wall_iti",label:"ITI",family:"Enveloppe",type:"text",tags:["ITI", "Isolation par l’intérieur (ITI)"] ,presence:false},
   {key:"fan_presence",label:"Brasseur d’air",family:"Confort d’été",type:"text",tags:["Brasseur d’air", "brasseur d'air", "brasseurs d’air"] ,presence:false},
@@ -7932,7 +7932,7 @@ function withWallSides(raw){
   for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
   return out;
 }
-// v2.11.4 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
+// v2.12.0 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
 function withDhZones(raw){ return [...raw,...raw.filter(o=>o?.field==='dh'&&(o.dhZone==='zt'||o.dhZone==='znt')).map(o=>({...o,field:`dh_${o.dhZone}`}))]; }
 function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
@@ -8197,7 +8197,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
-    // v2.11.4 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
+    // v2.12.0 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
     if(Array.isArray(d.cachedOccurrences)&&d.read&&!d.dhZonesRead&&d.cachedOccurrences.some(o=>o?.field==='dh')){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')) d.cachedOccurrences=null; }
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
@@ -8249,11 +8249,11 @@ function applyComparisonBases(result){
     if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
       if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
       result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
-    // v2.11.4 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
+    // v2.12.0 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
     const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
     const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
     const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
-    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.11.4).
+    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.0).
     if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
       derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
@@ -8724,7 +8724,7 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.11.4 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.12.0 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
   assert('Schéma métier = 212 champs (211 colonnes + DH interne)',FIELD_DEFS.length===212,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
@@ -9881,7 +9881,7 @@ function serializeProject(project={}){
   };
 }
 
-// v2.11.4 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
+// v2.12.0 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
 // document (comme le checkpoint IndexedDB), afin qu'un import restitue toutes les données sans les fichiers sources.
 function serializeProjectFull(project={}){
   const docs=project.docs||[];
@@ -10730,6 +10730,66 @@ async function runLlmAssist(doc,{missingFields=null,config=null,fetchImpl=null,i
   return {accepted,rejected,fields,pages:pages.map(p=>p.page),usage};
 }
 
+/* ---- box-folder.js ---- */
+// v2.12.0 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
+// son accès est gardé par Chrome (File System Access API) ; pour une opération, le dossier « 0000xxxx - … » de son contrat est
+// retrouvé et ses sous-dossiers d'évaluation CCTP, Étude carbone et Étude thermique sont proposés, les plus récents cochés.
+// Les fichiers sont lus sur le poste : rien n'est envoyé.
+
+const BOX_KINDS=[['cctp','CCTP',/\bcctp\b/],['carbone','Étude carbone',/carbone|\bacv\b/],['thermique','Étude thermique',/thermique/]];
+const BOX_EXTENSIONS=/\.(pdf|xml|xlsx|xls|json|zip)$/i;
+const bx_norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+// « 00005115 - 34 - MARSEILLAN… » (espace initial toléré) ; contrat comparé sur 8 chiffres.
+const boxContractOf=name=>{ const m=String(name||'').match(/^\s*0*([1-9]\d{0,7})\s*-/); return m?m[1].padStart(8,'0'):''; }; // « 00 - Dossier type » n'est pas un contrat
+const boxContractKey=c=>{ const m=String(c||'').match(/^\s*0*([1-9]\d{0,7})\s*$/); return m?m[1].padStart(8,'0'):''; };
+const isEvaluationFolder=name=>/^evaluation/.test(bx_norm(name));
+const boxKindOf=name=>{ const n=bx_norm(name); return BOX_KINDS.find(([,,re])=>re.test(n))?.[0]||null; };
+// Les plus récents : par groupe, les fichiers déposés dans les 45 jours qui précèdent le plus récent (un même envoi).
+// Un sous-dossier daté (« 2026 02 », « 02 2026 », « 2020_12 Etude thermique ») est une version du même groupe ;
+// « Old / Ancien / Archive » n'est jamais coché ; un autre sous-dossier (« Mitigeurs ») forme son propre groupe.
+const BOX_RECENT_DAYS=45;
+const BX_VERSION=/^(?:\d{2,4}[\s._-]*\d{1,2}(?:[\s._-]*\d{2,4})?)(?:\b|_)/, BX_ARCHIVE=/^(?:old|anciens?|archives?|obsoletes?|perimes?)\b/;
+function boxGroupOf(path){ const parts=String(path).split('/').slice(2,-1).map(bx_norm); return {archived:parts.some(x=>BX_ARCHIVE.test(x)),group:parts.filter(x=>!BX_VERSION.test(x)&&!BX_ARCHIVE.test(x)).join('/')}; }
+// CCTP : un fichier par lot, mis à jour lot par lot → la version la plus récente de chaque document (indice / révision mis à part).
+const boxDocKey=name=>bx_norm(name).replace(/\.[a-z0-9]+$/,'').replace(/\b(?:ind(?:ice)?|rev|v|version)\s*\.?\s*\d+\b/g,'').replace(/[\s_.-]+/g,' ').trim();
+function boxPrecheck(items){
+  const key=it=>it.kind==='cctp'?`cctp|${boxGroupOf(it.path||'').group}|${boxDocKey(it.name||it.path||'')}`:`${it.kind}|${boxGroupOf(it.path||'').group}`, newest={};
+  for(const it of items) if(!boxGroupOf(it.path||'').archived) newest[key(it)]=Math.max(newest[key(it)]||0,it.lastModified||0);
+  return items.map(it=>({...it,checked:!boxGroupOf(it.path||'').archived&&(it.lastModified||0)>=newest[key(it)]-(it.kind==='cctp'?0:BOX_RECENT_DAYS*864e5)}));
+}
+
+// --- Accès au dossier (Chrome / Edge) : poignée gardée dans une petite base IndexedDB dédiée.
+const BOX_DB='extracterre-box', BOX_STORE='handles';
+function boxDb(){ return new Promise((res,rej)=>{ const r=indexedDB.open(BOX_DB,1); r.onupgradeneeded=()=>r.result.createObjectStore(BOX_STORE); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function boxStore(mode,fn){ const db=await boxDb(); try{ return await new Promise((res,rej)=>{ const tx=db.transaction(BOX_STORE,mode); const q=fn(tx.objectStore(BOX_STORE)); tx.oncomplete=()=>res(q?.result); tx.onerror=()=>rej(tx.error); }); } finally { db.close(); } }
+const boxSupported=()=>typeof globalThis.showDirectoryPicker==='function';
+async function boxSavedRoot(){ try{ return await boxStore('readonly',s=>s.get('root'))||null; }catch{ return null; } }
+async function boxPickRoot(){ const h=await globalThis.showDirectoryPicker({id:'extracterre-box',mode:'read'}); try{ await boxStore('readwrite',s=>s.put(h,'root')); }catch(err){ console.warn('Dossier Box non mémorisé',err); } return h; }
+// À appeler pendant un clic : Chrome redemande l'accès à chaque session.
+async function boxEnsureAccess(h){ if(!h) return false; if(await h.queryPermission?.({mode:'read'})==='granted') return true; return await h.requestPermission?.({mode:'read'})==='granted'; }
+
+async function boxFindOperation(root,contract){
+  const key=boxContractKey(contract); if(!key) return null;
+  for await (const [name,h] of root.entries()) if(h.kind==='directory'&&boxContractOf(name)===key) return {name,handle:h};
+  return null;
+}
+async function bx_child(dir,test){ for await (const [name,h] of dir.entries()) if(h.kind==='directory'&&test(name)) return {name,handle:h}; return null; }
+async function bx_files(dir,path,kind,out,depth){
+  for await (const [name,h] of dir.entries()){
+    if(name.startsWith('.')) continue;
+    if(h.kind==='directory'){ if(depth<3) await bx_files(h,`${path}/${name}`,kind,out,depth+1); continue; }
+    if(!BOX_EXTENSIONS.test(name)) continue;
+    const f=await h.getFile(); out.push({kind,path:`${path}/${name}`,name,size:f.size,lastModified:f.lastModified,file:f});
+  }
+}
+// Fichiers des sous-dossiers CCTP / Étude carbone / Étude thermique de « Évaluation », plus récents en tête.
+async function boxListEvaluation(opDir){
+  const ev=await bx_child(opDir.handle,isEvaluationFolder); if(!ev) return {evaluation:null,items:[]};
+  const items=[];
+  for await (const [name,h] of ev.handle.entries()){ if(h.kind!=='directory') continue; const kind=boxKindOf(name); if(kind) await bx_files(h,`${ev.name}/${name}`,kind,items,1); }
+  return {evaluation:ev.name,items:boxPrecheck(items).sort((a,b)=>BOX_KINDS.findIndex(k=>k[0]===a.kind)-BOX_KINDS.findIndex(k=>k[0]===b.kind)||b.lastModified-a.lastModified)};
+}
+
 /* ---- app.js ---- */
 function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'review',profile:'',expanded:true}; }
 const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
@@ -10983,7 +11043,7 @@ function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status===
 let lastImported=new Set();
 function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
   const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
-  // v2.11.4 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
+  // v2.12.0 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
   if(groups.size<2&&!(state.homeView&&groups.size===1)) return false;
   let created=0,updated=0; const fresh=new Set();
   for(const [k,rs] of groups){
@@ -11398,7 +11458,7 @@ let freePaste=null;
 let pendingExternalText=null;
 function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
-  // v2.11.4 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
+  // v2.12.0 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
   if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
     if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
@@ -11408,6 +11468,38 @@ function openExternalText(text,source){
 }
 function projectForText(text){ const t=String(text||''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
   return state.projects.find(p=>{ const id=projectIdentity(p); return ope&&String(id.code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`||id.contract&&cs.includes(contractKey(id.contract)); })||null; }
+// v2.12.0 — « Charger depuis Box » : dossier du contrat dans « 1 BEE Contrats » (Box Drive), sous-dossiers d'évaluation
+// CCTP / Étude carbone / Étude thermique ; les plus récents sont cochés, l'utilisateur choisit ce qui est chargé.
+async function openBoxDialog(changeRoot=false){
+  if(!boxSupported()){ toast('Le couplage Box nécessite Chrome ou Edge (accès aux dossiers du poste).','error'); return; }
+  let root=changeRoot?null:await boxSavedRoot();
+  if(!root||!(await boxEnsureAccess(root))){ toast('Choisissez le dossier « 1 BEE Contrats » (Box › 2 PRODUCTION EVALUATION).','info'); try{ root=await boxPickRoot(); }catch{ return; } }
+  let contract=boxContractKey(projectIdentity(activeProject()).contract);
+  if(!contract){ contract=boxContractKey(prompt('Numéro de contrat de l’opération (dossier Box « 0000xxxx - … ») :','')||''); if(!contract){ toast('Numéro de contrat manquant : chargement Box annulé.','warn'); return; } }
+  setStatus(`Box : recherche du dossier ${contract}…`);
+  let op, list;
+  try{ op=await boxFindOperation(root,contract); if(!op){ setStatus('Prêt'); toast(`Aucun dossier « ${contract} - … » dans « ${root.name} ».`,'warn'); return; }
+    setStatus(`Box : lecture de ${op.name}…`); list=await boxListEvaluation(op); }
+  catch(err){ setStatus('Prêt'); toast(`Box illisible : ${err?.message||err}`,'error'); return; }
+  setStatus('Prêt');
+  if(!list.evaluation){ toast(`« ${op.name} » n’a pas de dossier Évaluation.`,'warn'); return; }
+  if(!list.items.length){ toast(`Aucun document dans CCTP, Étude carbone ou Étude thermique de « ${op.name} ».`,'warn'); return; }
+  const loaded=new Set((state.docs||[]).map(d=>`${d.name}|${d.size}`)); const items=list.items.map(it=>loaded.has(`${it.name}|${it.size}`)?{...it,checked:false,loaded:true}:it);
+  const dlg=$('#boxDialog'), box=$('#boxList'), btn=$('#boxLoad');
+  $('#boxInfo').textContent=`${op.name} › ${list.evaluation} — les documents les plus récents de chaque dossier sont cochés.`;
+  const day=t=>t?new Date(t).toLocaleDateString('fr-FR'):'—';
+  box.innerHTML=BOX_KINDS.map(([k,label])=>{ const xs=items.map((it,i)=>({it,i})).filter(x=>x.it.kind===k); if(!xs.length) return `<section><h4>${escapeHtml(label)}</h4><p class="box-empty">Aucun document.</p></section>`;
+    return `<section><h4>${escapeHtml(label)} <small>${xs.length} document(s)</small></h4>${xs.map(({it,i})=>`<label class="box-row${it.loaded?' loaded':''}"><input type="checkbox" data-box-i="${i}" ${it.checked?'checked':''} ${it.loaded?'disabled':''}><span class="box-name">${escapeHtml(it.name)}<small>${escapeHtml(it.path.split('/').slice(2,-1).join(' › '))}</small></span><span class="box-date">${it.loaded?'déjà chargé':day(it.lastModified)}</span><span class="box-size">${formatBytes(it.size)}</span></label>`).join('')}</section>`; }).join('');
+  const count=()=>{ const n=box.querySelectorAll('[data-box-i]:checked').length; btn.textContent=`Charger la sélection (${n})`; btn.disabled=!n; };
+  box.onchange=count; count();
+  $('#boxAll').onclick=()=>{ box.querySelectorAll('[data-box-i]:not(:disabled)').forEach(c=>c.checked=true); count(); };
+  $('#boxNone').onclick=()=>{ box.querySelectorAll('[data-box-i]').forEach(c=>c.checked=false); count(); };
+  $('#boxRoot').onclick=()=>{ dlg.close(); openBoxDialog(true); };
+  $('#boxClose').onclick=()=>dlg.close();
+  btn.onclick=()=>{ const files=[...box.querySelectorAll('[data-box-i]:checked')].map(c=>{ const it=items[Number(c.dataset.boxI)]; return attachRelativePath(it.file,`${op.name}/${it.path}`); });
+    dlg.close(); if(files.length){ addFiles(files); toast(`${files.length} document(s) chargé(s) depuis Box (${op.name}).`,'success'); } };
+  dlg.showModal();
+}
 function receiveBookmarkletText(){
   const h=location.hash; if(!h.startsWith('#sf=')) return; let t='';
   try{ t=decodeURIComponent(h.slice(4)); }catch{ toast('Texte Salesforce reçu illisible.','error'); }
@@ -12810,12 +12902,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.11.4 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.12.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.11.4 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.12.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -12836,7 +12928,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.11.4 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.12.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();
@@ -13066,6 +13158,7 @@ function wire(){
   });
   fi.addEventListener('click',e=>e.stopPropagation());
   folderInput?.addEventListener('click',e=>e.stopPropagation());
+  $('#boxLoadBtn')?.addEventListener('click',()=>openBoxDialog());
   for(const ev of ['dragenter','dragover']) dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';dz.classList.add('drag');});
   dz.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!dz.contains(e.relatedTarget))dz.classList.remove('drag');});
   dz.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
@@ -13076,7 +13169,7 @@ function wire(){
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
-  // v2.11.4 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
+  // v2.12.0 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
   window.addEventListener('drop',async e=>{ if(dz.contains(e.target)||$('#resultQuickDrop')?.contains(e.target)||!e.dataTransfer?.files?.length) return; e.preventDefault();
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }

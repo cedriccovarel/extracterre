@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.11.4','version');
+eq(APP_VERSION,'2.12.0','version');
 const page=`Performance thermique
 Bât A / 12 logts - SHAB = 800,5
 Bbio = 50 ; Bbio max = 70 (Gain 28,6 %)
@@ -23,4 +23,4 @@ eq(v[0].values,{q4pa_surf:0.7},'Q4 après les blocs : commun à l’opération')
 eq(v[1].values,{housing_count:12,shab:800.5,dh:500.1,bbio:50,bbio_max:70,bbio_gain:28.6,cepnr:60,cepnr_max:75,cepnr_gain:20},'bloc A : en-tête, « ; », gain entre parenthèses');
 eq(v[2].values,{housing_count:9,shab:1020,dh:510,bbio:55,bbio_max:71},'bloc B : SHAB avec espace des milliers');
 eq(r.unmatched.length,0,'rien d’ignoré');
-console.log(`v2.11.4 : ${n}/${n} OK`);
+console.log(`v2.12.0 : ${n}/${n} OK`);

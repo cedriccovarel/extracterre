@@ -1,7 +1,7 @@
 from pathlib import Path
 import re
 root=Path(__file__).parent
-order=['config.js','utils.js','geocode.js','insulation-library.js','buildings.js','climawin.js','acv-ec.js','donnees-techniques.js','pleiades-sortie.js','rset-cstb.js','notice-carbone.js','calculette-bbca.js','renovation-thermique.js','pleiades-rtex.js','climawin-etude.js','notice-renovation.js','u48win-rtex.js','dpe-3cl.js','livret-prestaterre.js','logiciels-thermiques.js','rset-rtex.js','recap-carbone.js','notice-thermique.js','pleiades-rapports.js','xml-re2020.js','patches.js','classifier.js','readers.js','routing.js','sanity.js','parsers.js','tags.js','learning-memory.js','coherence.js','engine.js','collage-libre.js','economics.js','recherches.js','exporter.js','persistence.js','journal.js','cloud.js','llm-assist.js','app.js']
+order=['config.js','utils.js','geocode.js','insulation-library.js','buildings.js','climawin.js','acv-ec.js','donnees-techniques.js','pleiades-sortie.js','rset-cstb.js','notice-carbone.js','calculette-bbca.js','renovation-thermique.js','pleiades-rtex.js','climawin-etude.js','notice-renovation.js','u48win-rtex.js','dpe-3cl.js','livret-prestaterre.js','logiciels-thermiques.js','rset-rtex.js','recap-carbone.js','notice-thermique.js','pleiades-rapports.js','xml-re2020.js','patches.js','classifier.js','readers.js','routing.js','sanity.js','parsers.js','tags.js','learning-memory.js','coherence.js','engine.js','collage-libre.js','economics.js','recherches.js','exporter.js','persistence.js','journal.js','cloud.js','llm-assist.js','box-folder.js','app.js']
 version=(root/'VERSION').read_text().strip()
 parts=[f"/* ExtracTerre bundled runtime v{version} - compatible file:// and GitHub Pages */\n(function(){{\n'use strict';\n"]
 for name in order:

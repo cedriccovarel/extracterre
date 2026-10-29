@@ -1,3 +1,12 @@
+# v2.12.0 — Charger depuis Box (Box Drive)
+- Bouton **📦 Charger depuis Box** dans la zone de dépôt d'une opération. Le dossier « 2 PRODUCTION EVALUATION / 1 BEE Contrats »
+  est choisi une fois (Chrome / Edge en gardent l'accès ; une autorisation d'un clic est redemandée à chaque session).
+- Le dossier « 0000xxxx - … » du contrat de l'opération est retrouvé ; ses sous-dossiers d'Évaluation **CCTP**, **Étude carbone**
+  et **Étude thermique** sont listés (sous-dossiers compris, PDF / XML / Excel / JSON / ZIP) dans une liste à cocher.
+- Pré-cochage des plus récents : études = dernier envoi de chaque dossier (sous-dossiers datés « 2026 02 » = versions,
+  « Old / Ancien / Archive » jamais cochés) ; CCTP = dernière version de chaque lot (indice / révision mis à part).
+  Les documents déjà chargés sont grisés. Tout reste lu sur le poste.
+
 # v2.11.4 — accueil « Coller un tableau » : nouvelles tuiles visibles
 - Un tableau d'une seule opération collé depuis l'accueil remplissait l'opération ouverte en dernier (avec demande de
   remplacement de son tableau) au lieu de créer sa tuile : il crée maintenant sa tuile (ou met à jour celle du même contrat).

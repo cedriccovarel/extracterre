@@ -11,16 +11,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=2.11.4">
-  <script defer src="js/journal-config.js?v=2.11.4"></script>
-  <script defer src="js/security.js?v=2.11.4"></script>
+  <link rel="stylesheet" href="styles.css?v=2.12.0">
+  <script defer src="js/journal-config.js?v=2.12.0"></script>
+  <script defer src="js/security.js?v=2.12.0"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.11.4"></script>
-  <script defer src="js/app.bundle.js?v=2.11.4"></script>
+  <script defer src="js/cloud-config.js?v=2.12.0"></script>
+  <script defer src="js/app.bundle.js?v=2.12.0"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -41,7 +41,7 @@
     </div>
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
-      <span class="ux-version-chip" id="version">v2.11.4</span>
+      <span class="ux-version-chip" id="version">v2.12.0</span>
     </div>
   </header>
 
@@ -94,6 +94,7 @@
                 <input id="fileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls,.json,.zip" multiple>
                 <label id="addFolderBtn" class="btn light file-picker-label" for="folderInput">▱ Ajouter un dossier</label>
                 <input id="folderInput" class="file-input-native" type="file" webkitdirectory directory multiple>
+                <button id="boxLoadBtn" class="btn light" type="button" title="Dossier du contrat dans Box › 1 BEE Contrats : CCTP, Étude carbone, Étude thermique">📦 Charger depuis Box</button>
                 <label id="addManualBtn" class="btn light file-picker-label manual-analysis-btn" for="manualFileInput" title="Import en moteur libre : classification automatique, tous les parseurs pertinents, sans liste blanche de champs ; OCR ciblé, Crible fin et IA restent disponibles">🛠 Moteur libre</label>
                 <input id="manualFileInput" class="file-input-native" type="file" accept=".pdf,.xml,.xlsx,.xls,.json,.zip" multiple>
               </div>
@@ -363,6 +364,17 @@
 </dialog>
 
 
+<dialog id="boxDialog" class="search-integrate-dialog box-dialog">
+  <div class="search-integrate-shell">
+    <div class="search-integrate-head">
+      <div><span class="ux-eyebrow">Box</span><h3>Charger depuis Box</h3><p id="boxInfo"></p></div>
+      <button id="boxClose" class="icon-btn" type="button" aria-label="Fermer">×</button>
+    </div>
+    <div id="boxList" class="box-list"></div>
+    <div class="search-integrate-foot box-foot"><button id="boxRoot" class="btn light" type="button">Changer de dossier Box</button><span></span><button id="boxNone" class="btn light" type="button">Tout décocher</button><button id="boxAll" class="btn light" type="button">Tout cocher</button><button id="boxLoad" class="btn primary" type="button">Charger la sélection</button></div>
+  </div>
+</dialog>
+
 <dialog id="betaErrorDialog" class="search-integrate-dialog beta-error-dialog">
   <div class="search-integrate-shell beta-error-shell">
     <div class="search-integrate-head beta-error-head">
@@ -479,7 +491,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.11.4</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.12.0</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>

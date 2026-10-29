@@ -1,5 +1,6 @@
 import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
 import {classifyDocument} from './classifier.js';
+import {BOX_KINDS,boxSupported,boxSavedRoot,boxPickRoot,boxEnsureAccess,boxFindOperation,boxListEvaluation,boxContractKey} from './box-folder.js';
 import {readFile,readSpreadsheet,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
@@ -273,7 +274,7 @@ function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status===
 let lastImported=new Set();
 function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
   const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
-  // v2.11.4 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
+  // v2.12.0 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
   if(groups.size<2&&!(state.homeView&&groups.size===1)) return false;
   let created=0,updated=0; const fresh=new Set();
   for(const [k,rs] of groups){
@@ -688,7 +689,7 @@ let freePaste=null;
 let pendingExternalText=null;
 function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
-  // v2.11.4 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
+  // v2.12.0 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
   if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
     if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
@@ -698,6 +699,38 @@ function openExternalText(text,source){
 }
 function projectForText(text){ const t=String(text||''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
   return state.projects.find(p=>{ const id=projectIdentity(p); return ope&&String(id.code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`||id.contract&&cs.includes(contractKey(id.contract)); })||null; }
+// v2.12.0 — « Charger depuis Box » : dossier du contrat dans « 1 BEE Contrats » (Box Drive), sous-dossiers d'évaluation
+// CCTP / Étude carbone / Étude thermique ; les plus récents sont cochés, l'utilisateur choisit ce qui est chargé.
+async function openBoxDialog(changeRoot=false){
+  if(!boxSupported()){ toast('Le couplage Box nécessite Chrome ou Edge (accès aux dossiers du poste).','error'); return; }
+  let root=changeRoot?null:await boxSavedRoot();
+  if(!root||!(await boxEnsureAccess(root))){ toast('Choisissez le dossier « 1 BEE Contrats » (Box › 2 PRODUCTION EVALUATION).','info'); try{ root=await boxPickRoot(); }catch{ return; } }
+  let contract=boxContractKey(projectIdentity(activeProject()).contract);
+  if(!contract){ contract=boxContractKey(prompt('Numéro de contrat de l’opération (dossier Box « 0000xxxx - … ») :','')||''); if(!contract){ toast('Numéro de contrat manquant : chargement Box annulé.','warn'); return; } }
+  setStatus(`Box : recherche du dossier ${contract}…`);
+  let op, list;
+  try{ op=await boxFindOperation(root,contract); if(!op){ setStatus('Prêt'); toast(`Aucun dossier « ${contract} - … » dans « ${root.name} ».`,'warn'); return; }
+    setStatus(`Box : lecture de ${op.name}…`); list=await boxListEvaluation(op); }
+  catch(err){ setStatus('Prêt'); toast(`Box illisible : ${err?.message||err}`,'error'); return; }
+  setStatus('Prêt');
+  if(!list.evaluation){ toast(`« ${op.name} » n’a pas de dossier Évaluation.`,'warn'); return; }
+  if(!list.items.length){ toast(`Aucun document dans CCTP, Étude carbone ou Étude thermique de « ${op.name} ».`,'warn'); return; }
+  const loaded=new Set((state.docs||[]).map(d=>`${d.name}|${d.size}`)); const items=list.items.map(it=>loaded.has(`${it.name}|${it.size}`)?{...it,checked:false,loaded:true}:it);
+  const dlg=$('#boxDialog'), box=$('#boxList'), btn=$('#boxLoad');
+  $('#boxInfo').textContent=`${op.name} › ${list.evaluation} — les documents les plus récents de chaque dossier sont cochés.`;
+  const day=t=>t?new Date(t).toLocaleDateString('fr-FR'):'—';
+  box.innerHTML=BOX_KINDS.map(([k,label])=>{ const xs=items.map((it,i)=>({it,i})).filter(x=>x.it.kind===k); if(!xs.length) return `<section><h4>${escapeHtml(label)}</h4><p class="box-empty">Aucun document.</p></section>`;
+    return `<section><h4>${escapeHtml(label)} <small>${xs.length} document(s)</small></h4>${xs.map(({it,i})=>`<label class="box-row${it.loaded?' loaded':''}"><input type="checkbox" data-box-i="${i}" ${it.checked?'checked':''} ${it.loaded?'disabled':''}><span class="box-name">${escapeHtml(it.name)}<small>${escapeHtml(it.path.split('/').slice(2,-1).join(' › '))}</small></span><span class="box-date">${it.loaded?'déjà chargé':day(it.lastModified)}</span><span class="box-size">${formatBytes(it.size)}</span></label>`).join('')}</section>`; }).join('');
+  const count=()=>{ const n=box.querySelectorAll('[data-box-i]:checked').length; btn.textContent=`Charger la sélection (${n})`; btn.disabled=!n; };
+  box.onchange=count; count();
+  $('#boxAll').onclick=()=>{ box.querySelectorAll('[data-box-i]:not(:disabled)').forEach(c=>c.checked=true); count(); };
+  $('#boxNone').onclick=()=>{ box.querySelectorAll('[data-box-i]').forEach(c=>c.checked=false); count(); };
+  $('#boxRoot').onclick=()=>{ dlg.close(); openBoxDialog(true); };
+  $('#boxClose').onclick=()=>dlg.close();
+  btn.onclick=()=>{ const files=[...box.querySelectorAll('[data-box-i]:checked')].map(c=>{ const it=items[Number(c.dataset.boxI)]; return attachRelativePath(it.file,`${op.name}/${it.path}`); });
+    dlg.close(); if(files.length){ addFiles(files); toast(`${files.length} document(s) chargé(s) depuis Box (${op.name}).`,'success'); } };
+  dlg.showModal();
+}
 function receiveBookmarkletText(){
   const h=location.hash; if(!h.startsWith('#sf=')) return; let t='';
   try{ t=decodeURIComponent(h.slice(4)); }catch{ toast('Texte Salesforce reçu illisible.','error'); }
@@ -2100,12 +2133,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.11.4 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.12.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.11.4 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.12.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -2126,7 +2159,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.11.4 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.12.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();
@@ -2356,6 +2389,7 @@ function wire(){
   });
   fi.addEventListener('click',e=>e.stopPropagation());
   folderInput?.addEventListener('click',e=>e.stopPropagation());
+  $('#boxLoadBtn')?.addEventListener('click',()=>openBoxDialog());
   for(const ev of ['dragenter','dragover']) dz.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer)e.dataTransfer.dropEffect='copy';dz.classList.add('drag');});
   dz.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();if(!dz.contains(e.relatedTarget))dz.classList.remove('drag');});
   dz.addEventListener('drop',async e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('drag');try{const fs=await filesFromDrop(e.dataTransfer);if(fs?.length)addFiles(fs);}catch(err){toast(`Import impossible : ${err?.message||err}`,'error');}});
@@ -2366,7 +2400,7 @@ function wire(){
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
-  // v2.11.4 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
+  // v2.12.0 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
   window.addEventListener('drop',async e=>{ if(dz.contains(e.target)||$('#resultQuickDrop')?.contains(e.target)||!e.dataTransfer?.files?.length) return; e.preventDefault();
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }

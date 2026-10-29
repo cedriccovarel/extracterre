@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText,parseFrNumber} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.11.4','version');
+eq(APP_VERSION, '2.12.0','version');
 
 // ---------- 1. Nombres : le premier nombre seulement, jamais les chiffres de l'unité ----------
 for(const [s,v] of [['57,3 kWh/m2',57.3],['12,5 / 15',12.5],['0,25 W/m².K',0.25],['1 663,5',1663.5],['1 663,5',1663.5],['−4,6',-4.6],
