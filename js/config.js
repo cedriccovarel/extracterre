@@ -1,4 +1,4 @@
-export const APP_VERSION='2.12.1';
+export const APP_VERSION='2.12.2';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -606,7 +606,7 @@ export const ENR_TYPES = [
   pair('Récupération de chaleur',['récupération de chaleur','recuperation de chaleur','récupération sur air extrait','recuperation sur air extrait','récupération eaux grises','recuperation eaux grises'])
 ];
 export const FAN_TYPES = [
-  pair('Brasseur d’air plafonnier',['brasseur d air','brasseur plafond','brasseur plafonnier','ventilateur de plafond']),
+  pair('Brasseur d’air plafonnier',['brasseur d air','brasseurs d air',"brasseur d'air","brasseurs d'air",'brasseur plafond','brasseur plafonnier','brasseurs plafonniers','ventilateur de plafond','ventilateurs de plafond']),
   pair('HVLS',['hvls','high volume low speed'])
 ];
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.12.1','version');
+eq(APP_VERSION,'2.12.2','version');
 const page=`Opération
 OPE-009002
 Évaluateur
@@ -50,4 +50,4 @@ eq([c.internal_code,c.operation_name,c.postcode,c.cep_level],['OPE-009002','Rés
 eq([c.wall_insulation,c.wall_insulation_thickness,c.wall_insulation_r],['PSE',120,4.1],'R de la brique non pris pour l’isolant ; 120+10 mm = 120 mm d’isolant');
 eq([c.heating_mode_after,c.window_shading],['PAC air/eau indiv FICTIVE AI 5 (250L)','Volet roulant'],'générateur sans émetteurs ; VR manuel');
 eq(fp.unmatched,[],'rien de non reconnu');
-console.log(`v2.12.1 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.12.2 — ${n} vérifications OK (données fictives)`);

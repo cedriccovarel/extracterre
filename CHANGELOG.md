@@ -1,3 +1,12 @@
+# v2.12.2 — accueil : « Coller un tableau » crée bien les opérations
+- Un tableau d'opérations à 2 colonnes (contrat + maître d'ouvrage, par ex.) était pris pour un collage libre et appliqué à
+  l'opération ouverte : aucune tuile créée. Toute zone avec une colonne contrat ou code interne est lue comme un tableau.
+- Une cellule Excel sur plusieurs lignes (commentaire, adresse) coupait sa rangée et faisait basculer le collage en collage
+  libre : elle est remise sur une ligne.
+- CCTP : les brasseurs d'air (type et nombre) sont lus et alimentent la colonne « Brasseur d’air » (Oui) ; « brasseur(s) d’air »
+  avec apostrophe et au pluriel sont reconnus ; une attente, une option ou « sans objet » n'en est pas un ; un numéro d'article
+  (« 4.2 Brasseurs d’air ») n'est plus pris pour un nombre.
+
 # v2.12.1 — fiche Évaluation Salesforce : enveloppe appliquée à chaque bâtiment, nombres et DH fiabilisés
 - Les valeurs de la fiche hors bloc de bâtiment (planchers hauts, parois verticales, planchers bas, menuiseries, systèmes,
   identité) s'appliquent à chaque bâtiment (sauf valeur propre au bâtiment) : elles partaient sur un « Bâtiment unique » à part

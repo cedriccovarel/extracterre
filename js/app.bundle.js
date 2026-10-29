@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.12.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.12.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.12.1';
+const APP_VERSION='2.12.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -611,7 +611,7 @@ const ENR_TYPES = [
   pair('Récupération de chaleur',['récupération de chaleur','recuperation de chaleur','récupération sur air extrait','recuperation sur air extrait','récupération eaux grises','recuperation eaux grises'])
 ];
 const FAN_TYPES = [
-  pair('Brasseur d’air plafonnier',['brasseur d air','brasseur plafond','brasseur plafonnier','ventilateur de plafond']),
+  pair('Brasseur d’air plafonnier',['brasseur d air','brasseurs d air',"brasseur d'air","brasseurs d'air",'brasseur plafond','brasseur plafonnier','brasseurs plafonniers','ventilateur de plafond','ventilateurs de plafond']),
   pair('HVLS',['hvls','high volume low speed'])
 ];
 
@@ -6690,7 +6690,9 @@ function parseSystems(doc){
 
     let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
-    let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
+    let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } // CCTP : une attente, une option ou « sans objet » ne signifie pas que des brasseurs sont posés.
+    if(fan&&/\b(?:attentes?|r[eé]servations?|en\s+option|options?|sans\s+objet|non\s+pr[eé]vus?|pas\s+de\s+brasseurs?|aucun\s+brasseur|[eé]ventuels?|ult[eé]rieur)/i.test(fanCtx)) fan=null;
+    if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
 }
 
@@ -7213,7 +7215,7 @@ const FAMILY_ALLOWED_FIELDS=Object.freeze({
   thcex:new Set([...ADMIN_FIELDS,'housing_count','shab','construction_year',...ENVELOPE_FIELDS,
     'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','ubat_before','ubat_after','cep_before','cep_after_final','enr','enr_type']),
   carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS,...EGES_FIELDS]),
-  cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
+  cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type','fan_count','fan_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
   financier:new Set(['internal_code','contract_number']),
@@ -11405,8 +11407,12 @@ async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(
 function renameProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const current=projectTitle(p); const raw=prompt('Renommer le projet',current); if(raw===null)return; const name=raw.trim(); if(!name){ toast('Le nom du projet ne peut pas être vide.','warn'); return; } p.customTitle=name; renderSummary(); toast(`Projet renommé : ${name}`,'success'); scheduleWorkspaceCheckpoint('renommage projet'); }
 
 
+// Excel met entre guillemets une cellule qui contient un retour à la ligne : elle est remise sur une ligne pour ne pas couper sa rangée.
+const excelTsv=raw=>String(raw||'').replace(/\r/g,'').replace(/(^|[\t\n])"((?:[^"]|"")*)"(?=[\t\n]|$)/g,(m,pre,c)=>/[\t\n]/.test(c)?pre+c.replace(/""/g,'"').replace(/\s*[\t\n]\s*/g,' ').trim():m);
+// Tableau d'opérations (colonne contrat ou code interne et au moins deux colonnes) : jamais lu comme un collage libre, même à 2 colonnes.
+const looksLikeOperationTable=raw=>{ const p=parseManualClipboard(raw); return p.columns.length>=2&&p.columns.some(c=>['contract_number','internal_code'].includes(c.def?.key))&&p.rows.some(r=>operationKey(r.values)); };
 function parseManualClipboard(raw=''){
-  const lines=String(raw||'').replace(/\r/g,'').split('\n').filter(line=>line.trim().length);
+  const lines=excelTsv(raw).split('\n').filter(line=>line.trim().length);
   if(!lines.length) return {rows:[],columns:[],unrecognized:[],recognized:0};
   const split=line=>line.includes('\t')?line.split('\t'):(line.includes(';')?line.split(';'):[line]);
   let best={index:-1,count:0,cells:[],defs:[]};
@@ -11567,7 +11573,7 @@ async function captureTabOcr(){
   finally{ stream.getTracks().forEach(t=>t.stop()); }
   if(!c.width) return; const zone=await pickOcrZone(c); if(zone) await ocrToFreePaste(zone);
 }
-function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||'', keep=freePaste?.sourceLabel; if(raw.trim()&&(keep||looksLikeFreeText(raw))){ freePaste=parseFreePaste(raw); if(keep) freePaste.sourceLabel=keep; renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
+function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||'', keep=freePaste?.sourceLabel; if(raw.trim()&&(keep||looksLikeFreeText(excelTsv(raw))&&!looksLikeOperationTable(raw))){ freePaste=parseFreePaste(raw); if(keep) freePaste.sourceLabel=keep; renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
 function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">— ignorer</option>${FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`<option value="${f.key}" ${f.key===cur?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}</select>`; }
 function renderFreePastePreview(){
   const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;

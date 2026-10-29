@@ -623,8 +623,12 @@ async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(
 function renameProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const current=projectTitle(p); const raw=prompt('Renommer le projet',current); if(raw===null)return; const name=raw.trim(); if(!name){ toast('Le nom du projet ne peut pas être vide.','warn'); return; } p.customTitle=name; renderSummary(); toast(`Projet renommé : ${name}`,'success'); scheduleWorkspaceCheckpoint('renommage projet'); }
 
 
+// Excel met entre guillemets une cellule qui contient un retour à la ligne : elle est remise sur une ligne pour ne pas couper sa rangée.
+const excelTsv=raw=>String(raw||'').replace(/\r/g,'').replace(/(^|[\t\n])"((?:[^"]|"")*)"(?=[\t\n]|$)/g,(m,pre,c)=>/[\t\n]/.test(c)?pre+c.replace(/""/g,'"').replace(/\s*[\t\n]\s*/g,' ').trim():m);
+// Tableau d'opérations (colonne contrat ou code interne et au moins deux colonnes) : jamais lu comme un collage libre, même à 2 colonnes.
+const looksLikeOperationTable=raw=>{ const p=parseManualClipboard(raw); return p.columns.length>=2&&p.columns.some(c=>['contract_number','internal_code'].includes(c.def?.key))&&p.rows.some(r=>operationKey(r.values)); };
 function parseManualClipboard(raw=''){
-  const lines=String(raw||'').replace(/\r/g,'').split('\n').filter(line=>line.trim().length);
+  const lines=excelTsv(raw).split('\n').filter(line=>line.trim().length);
   if(!lines.length) return {rows:[],columns:[],unrecognized:[],recognized:0};
   const split=line=>line.includes('\t')?line.split('\t'):(line.includes(';')?line.split(';'):[line]);
   let best={index:-1,count:0,cells:[],defs:[]};
@@ -785,7 +789,7 @@ async function captureTabOcr(){
   finally{ stream.getTracks().forEach(t=>t.stop()); }
   if(!c.width) return; const zone=await pickOcrZone(c); if(zone) await ocrToFreePaste(zone);
 }
-function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||'', keep=freePaste?.sourceLabel; if(raw.trim()&&(keep||looksLikeFreeText(raw))){ freePaste=parseFreePaste(raw); if(keep) freePaste.sourceLabel=keep; renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
+function onManualPasteInput(){ const raw=$('#manualDataPaste')?.value||'', keep=freePaste?.sourceLabel; if(raw.trim()&&(keep||looksLikeFreeText(excelTsv(raw))&&!looksLikeOperationTable(raw))){ freePaste=parseFreePaste(raw); if(keep) freePaste.sourceLabel=keep; renderFreePastePreview(); } else { freePaste=null; renderManualPastePreview(parseManualClipboard(raw)); } }
 function freeFieldSelect(cur,attrs){ return `<select ${attrs}><option value="">— ignorer</option>${FIELD_DEFS.filter(f=>f.key!=='building').map(f=>`<option value="${f.key}" ${f.key===cur?'selected':''}>${escapeHtml(f.label)}</option>`).join('')}</select>`; }
 function renderFreePastePreview(){
   const box=$('#manualDataPreview'); if(!box||!freePaste) return; const fp=freePaste;

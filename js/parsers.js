@@ -1246,7 +1246,9 @@ function parseSystems(doc){
 
     let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
-    let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
+    let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } // CCTP : une attente, une option ou « sans objet » ne signifie pas que des brasseurs sont posés.
+    if(fan&&/\b(?:attentes?|r[eé]servations?|en\s+option|options?|sans\s+objet|non\s+pr[eé]vus?|pas\s+de\s+brasseurs?|aucun\s+brasseur|[eé]ventuels?|ult[eé]rieur)/i.test(fanCtx)) fan=null;
+    if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
 }
 
@@ -1769,7 +1771,7 @@ export const FAMILY_ALLOWED_FIELDS=Object.freeze({
   thcex:new Set([...ADMIN_FIELDS,'housing_count','shab','construction_year',...ENVELOPE_FIELDS,
     'heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation','ubat_before','ubat_after','cep_before','cep_after_final','enr','enr_type']),
   carbone:new Set([...ADMIN_FIELDS,'ic_components','ic_site','stock_c_per_m2',...IC_LOTS,'ic_energy',...IC_ENERGY_POSTS,...IC_LIMIT_FIELDS,...EGES_FIELDS]),
-  cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
+  cctp:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type','fan_count','fan_type']),
   dpgf:new Set([...ADMIN_FIELDS,...ENVELOPE_FIELDS,'heating_vector_after','heating_mode_after','ecs_vector_after','ecs','cooling','ventilation','enr','enr_type']),
   // DPE / 3CL : état existant uniquement pour les systèmes (les recommandations sont exclues en amont).
   financier:new Set(['internal_code','contract_number']),
