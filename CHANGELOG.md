@@ -1,10 +1,12 @@
+# v2.11.1 — DH sans type de zone reporté en DH ZNT
+- Un DH lu sans type de zone (ClimaWin, notices, « DH = … ») va en DH ZNT, sauf si le bâtiment n'a que des zones
+  traversantes (DH ZT). L'alerte « DH lu sans type de zone » est retirée ; la traçabilité indique « reporté en DH ZNT ».
+
 # v2.11.0 — DH ZT / DH ZNT à la place de DH ; colonnes ITE, ITI, Brasseur d'air, Climatisation active
 - La colonne « DH » est remplacée, au même endroit, par « DH Zone traversante (DH ZT) » et « DH Zone non traversante (DH ZNT) ».
   Chacune garde le groupe le plus défavorable de son type de zone. Le type de zone vient de la colonne « Trav. » du tableau DH
   des RSET, de Is_Traversant dans les XML RE2020, et des libellés « DH ZT / DH ZNT / zones (non) traversantes » des fiches collées et Salesforce.
   DH (la zone la plus défavorable) reste lu et contrôlé en interne (cohérence avec DH max), mais n'est plus exporté (211 colonnes).
-- Un bâtiment qui n'a qu'un type de zone reçoit son DH dans la colonne de ce type. Avec deux types et un DH sans détail
-  (ClimaWin, notices, « DH = … »), rien n'est deviné : une alerte demande de renseigner DH ZT / DH ZNT.
 - 4 colonnes « Oui / Non » ajoutées en fin d'export, déduites des colonnes de détail (une saisie n'est jamais remplacée) :
   ITE et ITI (Oui si l'isolant de ce côté est décrit, Non si seul l'autre côté l'est), Brasseur d'air (Oui si des brasseurs
   sont lus, Non si leur nombre est 0), Climatisation active (Non si « Refroidissement » = Aucun, Oui pour un système actif).

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.11.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.11.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.11.0';
+const APP_VERSION='2.11.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -130,7 +130,7 @@ const FIELD_DEFS = [
   {key:"shab",label:"Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",family:"Programme",type:"number",tags:["Surface bâtiment (SHAB / Sref / SU / SURT / SRT)", "Surface bâtiment", "SHAB", "Sref", "S ref", "surface de référence", "surface habitable", "SU", "SURT", "SRT", "SHONRT"] ,presence:false},
   {key:"housing_typologies",label:"Typologies de logements",family:"Programme",type:"text",tags:["Typologies de logements", "typologie logements", "types de logements", "répartition typologique", "T1 T2 T3"] ,presence:false},
   {key:"construction_year",label:"Année de construction",family:"Programme",type:"number",tags:["Année de construction", "année construction"] ,presence:false},
-  // v2.11.0 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
+  // v2.11.1 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
   {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false,hidden:true},
   {key:"dh_zt",label:"DH Zone traversante (DH ZT)",family:"Confort d’été",type:"number",tags:["DH Zone traversante (DH ZT)", "DH ZT", "DH zone traversante", "DH zones traversantes"] ,presence:false},
   {key:"dh_znt",label:"DH Zone non traversante (DH ZNT)",family:"Confort d’été",type:"number",tags:["DH Zone non traversante (DH ZNT)", "DH ZNT", "DH zone non traversante", "DH zones non traversantes"] ,presence:false},
@@ -261,7 +261,7 @@ const FIELD_DEFS = [
   {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
   {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
   {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
-  // v2.11.0 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
+  // v2.11.1 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
   {key:"wall_ite",label:"ITE",family:"Enveloppe",type:"text",tags:["ITE", "Isolation par l’extérieur (ITE)"] ,presence:false},
   {key:"wall_iti",label:"ITI",family:"Enveloppe",type:"text",tags:["ITI", "Isolation par l’intérieur (ITI)"] ,presence:false},
   {key:"fan_presence",label:"Brasseur d’air",family:"Confort d’été",type:"text",tags:["Brasseur d’air", "brasseur d'air", "brasseurs d’air"] ,presence:false},
@@ -7932,7 +7932,7 @@ function withWallSides(raw){
   for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
   return out;
 }
-// v2.11.0 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
+// v2.11.1 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
 function withDhZones(raw){ return [...raw,...raw.filter(o=>o?.field==='dh'&&(o.dhZone==='zt'||o.dhZone==='znt')).map(o=>({...o,field:`dh_${o.dhZone}`}))]; }
 function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
@@ -8197,7 +8197,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
-    // v2.11.0 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
+    // v2.11.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
     if(Array.isArray(d.cachedOccurrences)&&d.read&&!d.dhZonesRead&&d.cachedOccurrences.some(o=>o?.field==='dh')){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')) d.cachedOccurrences=null; }
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
@@ -8217,7 +8217,6 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   applyComparisonBases(consolidated);
   const coherence=applyCoherenceChecks(consolidated);
   alerts.push(...coherence.alerts);
-  for(const row of consolidated.rows||[]) if(numOrNull(row.dh)!==null&&numOrNull(row.dh_zt)===null&&numOrNull(row.dh_znt)===null) alerts.push({level:'warning',building:row.building,message:`DH ${row.dh} °C.h lu sans type de zone pour ${row.building||'le bâtiment'} : DH ZT / DH ZNT à renseigner (le document ne dit pas quelle zone).`});
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
   const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
   return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
@@ -8250,13 +8249,13 @@ function applyComparisonBases(result){
     if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
       if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
       result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
-    // v2.11.0 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
+    // v2.11.1 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
     const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
     const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
     const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
-    // Un seul type de zone dans le bâtiment : son DH est le DH du bâtiment ; deux types sans détail : rien (signalé dans les alertes).
-    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const zt=yes('cross_ventilated'), znt=yes('non_cross_ventilated');
-      if(zt!==znt) derive(zt?'dh_zt':'dh_znt',row.dh,'dh',`Le bâtiment n’a que des zones ${zt?'traversantes':'non traversantes'} : DH du bâtiment.`); }
+    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.11.1).
+    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
+      derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
     for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
       if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }
@@ -8725,7 +8724,7 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.11.0 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.11.1 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
   assert('Schéma métier = 212 champs (211 colonnes + DH interne)',FIELD_DEFS.length===212,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
@@ -9882,7 +9881,7 @@ function serializeProject(project={}){
   };
 }
 
-// v2.11.0 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
+// v2.11.1 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
 // document (comme le checkpoint IndexedDB), afin qu'un import restitue toutes les données sans les fichiers sources.
 function serializeProjectFull(project={}){
   const docs=project.docs||[];
@@ -12803,12 +12802,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.11.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.11.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.11.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.11.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -12829,7 +12828,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.11.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.11.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();

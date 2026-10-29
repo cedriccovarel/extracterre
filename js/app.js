@@ -2092,12 +2092,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.11.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.11.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.11.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.11.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -2118,7 +2118,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.11.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.11.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();
