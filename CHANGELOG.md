@@ -1,3 +1,14 @@
+# v2.13.0 — DPE 3CL d'immeuble par bâtiment : avant / après lus dans des documents séparés
+- Rapport « 3CL non réglementaire » (Pléiades…) lu comme un DPE 2021 : classes énergie et GES recalculées depuis l'énergie
+  totale, les émissions et la surface (seuils DPE 2021, étiquette = la plus défavorable). Bâtiment pris dans le nom du fichier
+  (« Bâtiment J.pdf ») au lieu de « Bâtiment unique » ou de la légende « bâtiment extrêmement peu performant » ; noms de
+  fichiers macOS (Unicode décomposé) et texte OCR accentué pris en compte.
+- XML DPE de l'ADEME (« <dpe version=…> ») : classes énergie et GES lues par balises (surface et année en source secondaire).
+- Phase par le chemin du fichier : « - EI », « état initial », « avant » = avant travaux ; « EF », « après » = après. Un DPE sans
+  mention passe en après travaux quand un autre document du même bâtiment est explicitement l'état initial.
+- Valeur au seuil de classe (rapport qui affiche des valeurs tronquées : 6,1 kgCO₂ affiché « 6 ») : classe mise à vérifier.
+- Bâtiments parasites écartés : en-tête « Bâtiment J L M N O P Q Total », « bâtiment conforme », « Étiquette DPE »…
+
 # v2.12.4 — données collées : jamais remplacées sans validation
 - Accueil, « Coller un tableau » sur une opération existante : les lignes s'ajoutent à son tableau manuel au lieu de le
   remplacer (bâtiments, logements… étaient effacés sans avertir). Une valeur déjà collée qui changerait est listée et n'est

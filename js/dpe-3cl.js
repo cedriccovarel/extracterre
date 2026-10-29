@@ -16,23 +16,35 @@ const worst=(a,b)=>a>b?a:b;
 export function dpeClasses(cep,ges){ const e=cls(cep,EP), g=cls(ges,GES); return {energy:worst(e,g),ges:g,energyOnly:e}; }
 
 export function isDpe2021(doc){
-  const t=String(doc?.read?.text||'').slice(0,200000);
-  return /diagnostic\s+de\s+performance\s+n°/i.test(t)&&/DPE\s+(?:energetique|diagnostic|\/\s*ANNEXES)/i.test(t)&&/energie\s+totale\s+pour/i.test(t);
+  // Texte sans accents : l'OCR des pages peu remplies rend « réglementaire », « énergie ».
+  const t=normalizeText(String(doc?.read?.text||'').slice(0,200000));
+  // v2.13.0 — même mise en page sans numéro de DPE : étude « 3CL non réglementaire » (un rapport = un bâtiment).
+  return (/diagnostic\s+de\s+performance\s+n°/i.test(t)&&/DPE\s+(?:energetique|diagnostic|\/\s*ANNEXES)/i.test(t)||/3cl\s+non\s+reglementaire/i.test(t))&&/energie\s+totale\s+pour/i.test(t);
 }
 export function isDpeRecapTable(doc){
   const t=String(doc?.read?.text||'').slice(0,40000);
   return /Cep\s+init\b/i.test(t)&&/Cep\s+reno\b/i.test(t)&&/Etiquette/i.test(t)&&/\bLgt\.?\s*\w+/i.test(t);
 }
 const DP_V=s=>/gaz/i.test(s)?'Gaz':/electri/i.test(s)?'Électricité':/fioul/i.test(s)?'Fioul':/bois|granul/i.test(s)?'Bois / biomasse':/reseau|chaleur\s+urbain/i.test(s)?'Réseau de chaleur urbain':null;
-function dp_split(L){ const st=[]; L.forEach((x,i)=>{ if(/^diagnostic\s+de\s+performance\s+n°/i.test(x.t)) st.push(i); }); return st.map((a,k)=>({a,b:k+1<st.length?st[k+1]:L.length})); }
+function dp_split(L){ const st=[]; L.forEach((x,i)=>{ if(/^diagnostic\s+de\s+performance\s+n°/i.test(x.t)) st.push(i); }); if(!st.length&&L.some(x=>/3cl\s+non\s+reglementaire/i.test(x.t))) return [{a:0,b:L.length}]; return st.map((a,k)=>({a,b:k+1<st.length?st[k+1]:L.length})); }
+// v2.13.0 — DPE d'immeuble rangé par bâtiment : « Bâtiment J.pdf », « état initial 3CL/Bâtiment J - EI.pdf ».
+// Noms macOS en Unicode décomposé (« a » + accent combinant) : comparés sans accents.
+export const dpeBuildingOf=s=>{ const m=normalizeText(String(s||'').split('/').pop()).match(/\bbat(?:iment)?(?:\.\s*|[\s_-]+)([A-Z0-9]{1,3})(?![\w])/i); return m?`Bâtiment ${m[1].toUpperCase()}`:''; };
+// Phase lue dans le chemin du fichier : « EI », « état initial », « avant » = avant travaux ; « EF », « état projeté », « après » = après.
+export function dpePhaseOf(path){
+  const n=normalizeText(String(path||'')).toLowerCase().replace(/\.[a-z0-9]+$/,'').replace(/[_.\-/()]+/g,' ');
+  if(/\b(?:ei|etat initial|etat existant|initial|avant travaux|avant)\b/.test(n)) return 'before';
+  if(/\b(?:ef|etat final|etat projete|dpe projete|apres travaux|apres)\b/.test(n)) return 'after';
+  return null;
+}
 export function dpeBuildingName(seg){
   const mis=seg.find(x=>/^mission\s*:/i.test(x.t)); const m=mis?.t.match(/(?:Maison|Logement|Appartement|Lgt\.?)\s*n?°?\s*(\w+)/i); return m?`Logement ${m[1]}`:null;
 }
 
 export function dpe2021BuildingNames(doc){
   const L=dp_lines(doc); const segs=dp_split(L); const S=segs.map(sg=>L.slice(sg.a,sg.b));
-  if(S.some(z=>/immeuble|batiment\s+collectif/i.test(z.find(x=>/^type\s+de\s+bien\s*:/i.test(x.t))?.t||''))) return ['Bâtiment unique'];
-  const n=[...new Set(S.map(dpeBuildingName).filter(Boolean))]; return n.length?n:['Bâtiment unique'];
+  if(S.some(z=>/immeuble|batiment\s+collectif/i.test(z.find(x=>/^type\s+de\s+bien\s*:/i.test(x.t))?.t||''))) return [dpeBuildingOf(doc.relativePath||doc.name)||'Bâtiment unique'];
+  const n=[...new Set(S.map(dpeBuildingName).filter(Boolean))]; return n.length?n:[dpeBuildingOf(doc.relativePath||doc.name)||'Bâtiment unique'];
 }
 export function dpeRecapBuildingNames(doc){ return [...new Set(dp_lines(doc).map(x=>(x.t.match(/^Lgt\.?\s*([A-Z]?\s*\d+|[A-Z])\b.*\bT\d\s+\d/)||[])[1]).filter(Boolean).map(k=>`Logement ${k.replace(/\s+/g,' ')}`))]; }
 export function parseDpe2021(doc,occ,canonical=(s)=>s){
@@ -57,13 +69,18 @@ export function parseDpe2021(doc,occ,canonical=(s)=>s){
     return {S,type,surf,sx,ep,ex,kg,gx,heat,ecs,yr,eqt:eq(),name:dpeBuildingName(S)}; });
   // Un DPE « Immeuble » (bâtiment collectif) fait foi ; sinon chaque DPE de logement est rattaché à son logement.
   const coll=parsed.filter(p=>/immeuble|batiment\s+collectif/i.test(p.type));
-  const use=coll.length?coll.slice(0,1).map(p=>({...p,B:'Bâtiment unique'})):parsed.map(p=>({...p,B:parsed.length===1&&!p.name?'Bâtiment unique':(p.name||'Bâtiment unique')}));
-  const P=after?'after':'before';
-  const note=(p,extra='')=>({provenanceNote:`DPE ${after?'de l’état projeté':'de l’état existant'}${inferred?' (annexe DPE de l’étude de rénovation)':''} : ${p.ep} kWhEP/an et ${p.kg} kg CO₂/an pour ${p.surf} m²${extra}.`,...(inferred?{reviewCap:0.88}:{})});
+  const use=coll.length?coll.slice(0,1).map(p=>({...p,B:dpeBuildingOf(doc.relativePath||doc.name)||'Bâtiment unique'})):parsed.map(p=>({...p,B:parsed.length===1&&!p.name?(dpeBuildingOf(doc.relativePath||doc.name)||'Bâtiment unique'):(p.name||'Bâtiment unique')}));
+  // Sans indication (texte ou chemin), le DPE est présumé avant travaux ; le moteur le passe en « après » si un autre document
+  // du même bâtiment est explicitement l'état initial (withDpePhases, engine.js).
+  const filePhase=dpePhaseOf(doc.relativePath||doc.name), P=filePhase||(after?'after':'before'), guess=!filePhase&&!after;
+  const note=(p,extra='')=>({provenanceNote:`DPE ${P==='after'?'de l’état projeté':'de l’état existant'}${filePhase?' (d’après le nom du fichier)':inferred?' (annexe DPE de l’étude de rénovation)':guess?' (présumé)':''} : ${p.ep} kWhEP/an et ${p.kg} kg CO₂/an pour ${p.surf} m²${extra}.`,...(inferred&&!filePhase?{reviewCap:0.88}:{}),...(guess?{dpePhaseGuess:true}:{})});
   for(const p of use){ if(!(p.surf>0)) continue;
     if(p.ep>0&&p.kg>=0){ const cep=Math.round(p.ep/p.surf*10)/10, ges=Math.round(p.kg/p.surf*10)/10; const c=dpeClasses(cep,ges);
-      emit(p.ex,p.B,`dpe_energy_${P}`,c.energy,'etiquette-energie',0.9,'',note(p,` → ${cep} kWhEP/m².an (classe ${c.energyOnly}), ${ges} kgCO₂/m².an (classe ${c.ges}) ; étiquette = classe la plus défavorable`));
-      emit(p.gx||p.ex,p.B,`dpe_ges_${P}`,c.ges,'etiquette-ges',0.9,'',note(p,` → ${ges} kgCO₂/m².an`)); }
+      // Les rapports affichent des valeurs tronquées (83,99 → « 83 ») : si la classe change avec la valeur tronquée, l'étiquette
+      // dessinée peut être l'une ou l'autre — valeur gardée, signalée à vérifier.
+      const t=dpeClasses(Math.floor(p.ep/p.surf),Math.floor(p.kg/p.surf)), edge=(k,extra)=>t[k]===c[k]?note(p,extra):{...note(p,`${extra} ; valeur au seuil de classe (affichée ${Math.floor(p.ep/p.surf)} kWhEP et ${Math.floor(p.kg/p.surf)} kgCO₂) : vérifier l’étiquette du document`),reviewCap:0.8};
+      emit(p.ex,p.B,`dpe_energy_${P}`,c.energy,'etiquette-energie',0.9,'',edge('energy',` → ${cep} kWhEP/m².an (classe ${c.energyOnly}), ${ges} kgCO₂/m².an (classe ${c.ges}) ; étiquette = classe la plus défavorable`));
+      emit(p.gx||p.ex,p.B,`dpe_ges_${P}`,c.ges,'etiquette-ges',0.9,'',edge('ges',` → ${ges} kgCO₂/m².an`)); }
     if(p.heat) emit(p.heat.x,p.B,`heating_vector_${P}`,p.heat.v,'chauffage-energie',0.9,'',{provenanceNote:`Consommation de chauffage du DPE : ${p.heat.x.t.slice(0,80)}.`});
     if(p.ecs) emit(p.ecs.x,p.B,`ecs_vector_${P}`,p.ecs.v,'ecs-energie',0.9,'',{provenanceNote:`Consommation d’eau chaude du DPE : ${p.ecs.x.t.slice(0,80)}.`});
     if(P==='before') emit(p.sx,p.B,'shab',p.surf,'surface',0.85,'m²',{reviewCap:0.85});
@@ -88,5 +105,30 @@ export function parseDpeRecapTable(doc,occ,canonical=(s)=>s){
     emit(x,B,'dpe_energy_before',m[6],'energie-init',0.9,'',note); emit(x,B,'dpe_ges_before',m[7],'ges-init',0.9,'',note); emit(x,B,'dpe_energy_after',m[10],'energie-reno',0.9,'',note); emit(x,B,'dpe_ges_after',m[11],'ges-reno',0.9,'',note);
     emit(x,B,'shab',dp_n(m[3]),'surface',0.86,'m²',note); emit(x,B,'housing_typologies',`${m[2]} : 1`,'typologie',0.86,'',note); emit(x,B,'housing_count',1,'logement',0.85); }
   if(n&&first){ emit(first,'Bâtiment unique','housing_count',n,'total-logements',0.86,'',{provenanceNote:`${n} logements dans le récapitulatif DPE.`}); emit(first,'Bâtiment unique','housing_typologies',Object.entries(typ).sort().map(([k,v])=>`${k} : ${v}`).join(' ; '),'typologies',0.86); }
+  return out;
+}
+
+// v2.13.0 — XML DPE de l'ADEME (« <dpe version=…> ») : classes et valeurs lues par balises (premières occurrences = immeuble).
+export const isDpeXmlText=t=>/<dpe\b[^>]*>/i.test(String(t).slice(0,600))&&/<administratif>/.test(String(t).slice(0,4000));
+export function readDpeXml(text){
+  const tag=t=>(String(text).match(new RegExp(`<${t}>([^<]*)</${t}>`))||[])[1]?.trim()||'', num=t=>{ const v=parseFrNumber(tag(t)); return v===null?null:v; };
+  const v={reference:tag('reference_interne_projet'),date:tag('date_etablissement_dpe'),energy:tag('classe_bilan_dpe'),ges:tag('classe_emission_ges'),cep:num('ep_conso_5_usages_m2'),
+    gesValue:num('emission_ges_5_usages_m2'),surface:num('surface_habitable_immeuble')??num('surface_habitable_logement'),logements:num('nombre_appartement'),annee:num('annee_construction')};
+  const r=x=>String(Math.round(x*10)/10).replace('.',',');
+  const lines=[`DPE méthode 3CL (XML ADEME)${v.reference?` — ${v.reference}`:''}`,v.date&&`Établi le ${v.date}`,/^[A-G]$/.test(v.energy)&&`Étiquette énergie DPE : ${v.energy}`,/^[A-G]$/.test(v.ges)&&`Étiquette GES : ${v.ges}`,
+    v.cep!==null&&`Consommation en énergie primaire 5 usages : ${r(v.cep)} kWhEP/m²/an`,v.gesValue!==null&&`Émissions de GES 5 usages : ${r(v.gesValue)} kgCO2/m²/an`,
+    v.surface!==null&&`Surface habitable : ${r(v.surface)} m²`,v.logements!==null&&`Nombre de logements : ${v.logements}`,v.annee!==null&&`Année de construction : ${v.annee}`].filter(Boolean);
+  const page={page:1,text:lines.join('\n'),lines:lines.map((t,i)=>({text:t,index:i,y:i}))};
+  return {kind:'xml',xmlFormat:'dpe',dpe:v,pages:[page],text:page.text,pageCount:1};
+}
+export function parseDpeXml(doc,occ,canonical=(s)=>s){
+  const v=doc.read.dpe, out=[], page=doc.read.pages[0], L=page.lines, at=re=>L.find(l=>re.test(l.text))||L[0];
+  const filePhase=dpePhaseOf(doc.relativePath||doc.name)||dpePhaseOf(v.reference), P=filePhase||'before';
+  const B=canonical(dpeBuildingOf(doc.relativePath||doc.name)||dpeBuildingOf(v.reference)||'Bâtiment unique');
+  const note={provenanceNote:`XML DPE ADEME${v.reference?` « ${v.reference} »`:''}, ${P==='after'?'état projeté':'état existant'}${filePhase?'':' (présumé)'}${v.cep!==null?` : ${v.cep} kWhEP/m².an`:''}${v.gesValue!==null?`, ${Math.round(v.gesValue*10)/10} kgCO₂/m².an`:''}.`,...(filePhase?{}:{dpePhaseGuess:true})};
+  const emit=(l,field,value,method,conf,unit='')=>{ const o=value===null||value===''?null:occ(doc,page,l,field,value,`dpe-xml:${method}`,conf,unit,{building:B,structuredXml:true,origin:'XML DPE ADEME',dedicatedRank:8,...note}); if(o) out.push(o); };
+  if(/^[A-G]$/.test(v.energy)) emit(at(/^Étiquette énergie/),`dpe_energy_${P}`,v.energy,'classe-bilan',0.97);
+  if(/^[A-G]$/.test(v.ges)) emit(at(/^Étiquette GES/),`dpe_ges_${P}`,v.ges,'classe-ges',0.97);
+  if(P==='before'){ emit(at(/^Surface/),'shab',v.surface,'surface',0.85,'m²'); emit(at(/^Année/),'construction_year',v.annee,'annee',0.9); }
   return out;
 }

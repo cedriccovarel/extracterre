@@ -20,7 +20,7 @@ import {isClimaWinRtexStudy,isClimaWinRtexInput,parseClimaWinRenovation} from '.
 import {isRenovationNotice,parseRenovationNotice} from './notice-renovation.js';
 import {isU48WinRtexReport,parseU48WinRtex} from './u48win-rtex.js';
 import {isFinancialQuestionnaire,parseFinancialQuestionnaire} from './economics.js';
-import {isDpe2021,parseDpe2021,isDpeRecapTable,parseDpeRecapTable} from './dpe-3cl.js';
+import {isDpe2021,parseDpe2021,isDpeRecapTable,parseDpeRecapTable,parseDpeXml} from './dpe-3cl.js';
 import {isPrestaterreBooklet,parsePrestaterreBooklet} from './livret-prestaterre.js';
 import {isPleiadesAcvReport,parsePleiadesAcvReport,isPleiadesServicesSummary,parsePleiadesServicesSummary,isHeatLossReport,parseHeatLossReport} from './pleiades-rapports.js';
 import {isThermalNoticeColumns,parseThermalNoticeColumns,isBiosourcedLabelNotice,parseBiosourcedLabelNotice} from './notice-thermique.js';
@@ -2125,6 +2125,7 @@ function parseFinancialIdentity(doc){
 }
 function parseDocumentCore(doc){
   if(doc?.read?.re2020) return parseRe2020Xml(doc);
+  if(doc?.read?.xmlFormat==='dpe') return annotateSemanticHierarchy(doc,parseDpeXml(doc,occ,canonicalBuilding)).map(o=>({...o,specializedFamily:'dpe-xml'}));
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
   if(!doc.__skipDedicated&&isRecapCarboneRe2020(doc)) return parseRecapCarboneDocument(doc);

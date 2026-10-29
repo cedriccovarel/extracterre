@@ -2,6 +2,7 @@ import {isFinancialJson,financialJsonRead} from './economics.js';
 import {MAX_OCR_WORKERS} from './config.js';
 import {normalizeText, uid} from './utils.js';
 import {parseXmlDocument,isRe2020XmlDocument,extractRe2020,re2020SummaryPages} from './xml-re2020.js';
+import {isDpeXmlText,readDpeXml} from './dpe-3cl.js';
 
 const OCR_DEFAULTS={mode:'auto',lang:'fra+eng',scale:1.85,maxPixels:5200000,minChars:150};
 function throwIfAborted(signal){ if(signal?.aborted){ const e=new Error(signal.reason==='analysis-timeout'?'Analyse interrompue après 5 minutes.':'Analyse annulée.'); e.name='AbortError'; throw e; } }
@@ -431,6 +432,8 @@ export async function readXml(file){
   return readXmlText(text);
 }
 export function readXmlText(text){
+  // v2.13.0 — XML DPE de l'ADEME : classes et valeurs lues par balises.
+  if(isDpeXmlText(text)) return readDpeXml(text);
   const xml=parseXmlDocument(text);
   // v2.3 — XML RE2020 (RSEE / RSET / RSEnv) : extraction structurée par balises normalisées.
   // Le texte conservé est une synthèse lisible (une page par bâtiment) et non l'arbre complet,

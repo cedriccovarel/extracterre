@@ -46,10 +46,19 @@ export function withWallSides(raw){
 }
 // v2.12.1 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
 export function withDhZones(raw){ return [...raw,...raw.filter(o=>o?.field==='dh'&&(o.dhZone==='zt'||o.dhZone==='znt')).map(o=>({...o,field:`dh_${o.dhZone}`}))]; }
+// v2.13.0 — DPE sans phase indiquée (présumé avant travaux) : il décrit l'après quand un autre document du même bâtiment
+// est explicitement l'état initial (« Bâtiment J - EI.pdf » et « Bâtiment J.pdf »).
+const DPE_AFTER={dpe_energy_before:'dpe_energy_after',dpe_ges_before:'dpe_ges_after',heating_vector_before:'heating_vector_after',ecs_vector_before:'ecs_vector_after',ventilation_before:'ventilation'};
+export function withDpePhases(raw){
+  const explicit=new Set(raw.filter(o=>o&&!o.dpePhaseGuess&&/^dpe_(?:energy|ges)_before$/.test(o.field)).map(o=>`${o.building}|${o.docId}`));
+  const hasBefore=(o)=>[...explicit].some(k=>k.startsWith(`${o.building}|`)&&k!==`${o.building}|${o.docId}`);
+  return raw.map(o=>{ if(!o?.dpePhaseGuess||!hasBefore(o)) return o; if(DPE_AFTER[o.field]) return {...o,field:DPE_AFTER[o.field],dpePhaseGuess:false,provenanceNote:`${o.provenanceNote||''} Passé en après travaux : un autre document du bâtiment est l’état initial.`.trim()};
+    return o; });
+}
 export function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
-  const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(raw)));
+  const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(withDpePhases(raw))));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();

@@ -10,7 +10,7 @@ import {isRtexThermalNotice,rtexNoticeBuildingNames,isInsulationMarkupPlan,isPha
 import {isPleiadesRtexReport,pleiadesRtexBuildingNames} from './pleiades-rtex.js';
 import {isClimaWinRtexStudy,isClimaWinRtexInput,climaWinStudyBuildingNames} from './climawin-etude.js';
 import {isU48WinRtexReport,u48WinBuildingNames} from './u48win-rtex.js';
-import {isDpe2021,dpe2021BuildingNames,isDpeRecapTable,dpeRecapBuildingNames} from './dpe-3cl.js';
+import {isDpe2021,dpe2021BuildingNames,isDpeRecapTable,dpeRecapBuildingNames,dpeBuildingOf} from './dpe-3cl.js';
 import {isPrestaterreBooklet} from './livret-prestaterre.js';
 import {isRenovationNotice,renovationNoticeBuildingNames} from './notice-renovation.js';
 import {isPleiadesAcvReport,isPleiadesServicesSummary,isHeatLossReport,pleiadesReportBuildingNames} from './pleiades-rapports.js';
@@ -93,6 +93,10 @@ function looksLikeBuildingId(raw){
   const s=cleanCandidate(raw);
   if(!s||s.length>150) return false;
   if(/^(?:s|srt|sref|zone(?:s)?|usage|surface|ref|m2|projet)$/i.test(s)) return false;
+  // v2.13.0 — en-tête de tableau « Bâtiment J L M N O P Q Total », légende DPE « bâtiment extrêmement peu performant »,
+  // « bâtiment conforme », « bâtiment Étiquette DPE », « … de la valeur du bâtiment » : jamais des noms de bâtiment.
+  if(/(?:^|\s)[A-Z0-9](?:\s+[A-Z0-9]){2,}(?:\s|$)/i.test(s)) return false;
+  if(/^(?:de\s+la\s+valeur\s+du\s+b[aâ]timent|(?:non\s+)?conforme|[eé]tiquettes?(?:\s+dpe)?|total|(?:extr[eê]mement\s+)?(?:peu\s+)?performant)$/i.test(normalizeText(s))) return false;
   return /\d|[a-zà-ÿ]/i.test(s);
 }
 
@@ -126,6 +130,7 @@ export function detectBuildings(doc){
     if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'renovation-thermique',hits:[]};
   }
   if(isPrestaterreBooklet(doc)) return {names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'livret-prestaterre'};
+  if(doc?.read?.xmlFormat==='dpe'){ const b=dpeBuildingOf(doc.relativePath||doc.name)||dpeBuildingOf(doc.read.dpe?.reference); return b?{names:[canonicalBuilding(b)],expectedCount:1,source:'dpe-xml',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'dpe-xml'}; }
   if(isDpe2021(doc)||isDpeRecapTable(doc)){ const u=[...new Set((isDpe2021(doc)?dpe2021BuildingNames(doc):dpeRecapBuildingNames(doc)).map(n=>n==='Bâtiment unique'?n:canonicalBuilding(n)))]; return u.length&&!(u.length===1&&u[0]==='Bâtiment unique')?{names:u,expectedCount:u.length,source:'dpe-3cl',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'dpe-3cl'}; }
   if(isU48WinRtexReport(doc)){ const u=[...new Set(u48WinBuildingNames(doc).map(n=>n==='Bâtiment unique'?n:canonicalBuilding(n)))]; return u.length&&!(u.length===1&&u[0]==='Bâtiment unique')?{names:u,expectedCount:u.length,source:'u48win',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'u48win'}; }
   if(isClimaWinRtexStudy(doc)||isClimaWinRtexInput(doc)){ const names=(isClimaWinRtexStudy(doc)?climaWinStudyBuildingNames(doc):[]).map(n=>/^\d*re\.?batiment$|^batiment$/i.test(n)?'Bâtiment unique':canonicalBuilding(n.replace(/^re\./i,''))); const u=[...new Set(names)]; return u.length&&!(u.length===1&&u[0]==='Bâtiment unique')?{names:u,expectedCount:u.length,source:'climawin-etude',hits:[]}:{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'climawin-etude'}; }
