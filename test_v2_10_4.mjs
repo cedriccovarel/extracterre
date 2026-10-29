@@ -1,10 +1,10 @@
-// ExtracTerre v2.11.1 — fiche Évaluation Salesforce : en-têtes à puce « * BEG-1/2 : x2 lgts indiv : », valeurs
+// ExtracTerre v2.10.4 — fiche Évaluation Salesforce : en-têtes à puce « * BEG-1/2 : x2 lgts indiv : », valeurs
 // « valeur / maximum / gain », DH sur deux zones. Données FICTIVES.
 import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.11.1','version');
+eq(APP_VERSION,'2.11.2','version');
 const page=`Opération
 OPE-009002
 Évaluateur
@@ -50,4 +50,4 @@ eq([c.internal_code,c.operation_name,c.postcode,c.cep_level],['OPE-009002','Rés
 eq([c.wall_insulation,c.wall_insulation_thickness,c.wall_insulation_r],['PSE',120,4.1],'R de la brique non pris pour l’isolant ; 120+10 mm = 120 mm d’isolant');
 eq([c.heating_mode_after,c.window_shading],['PAC air/eau indiv FICTIVE AI 5 (250L)','Volet roulant'],'générateur sans émetteurs ; VR manuel');
 eq(fp.unmatched,[],'rien de non reconnu');
-console.log(`v2.11.1 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.11.2 — ${n} vérifications OK (données fictives)`);

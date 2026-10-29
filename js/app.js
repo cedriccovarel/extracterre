@@ -685,11 +685,16 @@ let freePaste=null;
 let pendingExternalText=null;
 function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
-  if(state.homeView){ pendingExternalText={text,source}; $('#manualDataDialog')?.close(); toast(`${source} reçu : ouvrez la tuile de l’opération concernée, l’aperçu s’ouvrira.`,'info'); return; }
+  // v2.11.2 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
+  if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
+    if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
+    toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
   pendingExternalText=null; const dlg=$('#manualDataDialog'), ta=$('#manualDataPaste'); if(!dlg||!ta) return;
   // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
   freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
 }
+function projectForText(text){ const t=String(text||''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
+  return state.projects.find(p=>{ const id=projectIdentity(p); return ope&&String(id.code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`||id.contract&&cs.includes(contractKey(id.contract)); })||null; }
 function receiveBookmarkletText(){
   const h=location.hash; if(!h.startsWith('#sf=')) return; let t='';
   try{ t=decodeURIComponent(h.slice(4)); }catch{ toast('Texte Salesforce reçu illisible.','error'); }
@@ -2092,12 +2097,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.11.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.11.2 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.11.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.11.2 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -2118,7 +2123,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.11.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.11.2 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();

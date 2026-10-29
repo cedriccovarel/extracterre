@@ -1,3 +1,8 @@
+# v2.11.2 — favori Salesforce : la fiche reçue s'ouvre aussi depuis l'accueil
+- Depuis l'accueil, le texte envoyé par le favori « → ExtracTerre » ne donnait qu'une notification de quelques secondes.
+  Il ouvre maintenant l'opération dont l'OPE ou le numéro de contrat figure dans la fiche (sinon une nouvelle opération)
+  et affiche directement l'aperçu du collage.
+
 # v2.11.1 — DH sans type de zone reporté en DH ZNT
 - Un DH lu sans type de zone (ClimaWin, notices, « DH = … ») va en DH ZNT, sauf si le bâtiment n'a que des zones
   traversantes (DH ZT). L'alerte « DH lu sans type de zone » est retirée ; la traçabilité indique « reporté en DH ZNT ».

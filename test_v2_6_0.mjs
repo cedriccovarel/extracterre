@@ -10,7 +10,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {applyComparisonBases} from './js/engine.js';
 import {parseLlmJson,llmComplete} from './js/llm-assist.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.11.1','version');
+eq(APP_VERSION, '2.11.2','version');
 const page=(no,ls)=>({page:no,lines:ls.map((t,index)=>({index,text:normalizeText(t),items:[]}))});
 const D=(name,pages,type='CCTP')=>({id:name,name,type,status:'ready',read:{pages}});
 

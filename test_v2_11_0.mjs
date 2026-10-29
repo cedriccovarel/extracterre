@@ -1,4 +1,4 @@
-// ExtracTerre v2.11.1 — DH ZT / DH ZNT à la place de DH ; colonnes ITE, ITI, Brasseur d'air, Climatisation active (Oui / Non). Données FICTIVES.
+// ExtracTerre v2.11.0 — DH ZT / DH ZNT à la place de DH ; colonnes ITE, ITI, Brasseur d'air, Climatisation active (Oui / Non). Données FICTIVES.
 import assert from 'node:assert/strict';
 import {APP_VERSION,FIELD_DEFS,FIELD_MAP,matchFieldByHeader,DEFAULT_SOURCE_RULES,DOC_TYPES} from './js/config.js';
 import {analyzeDocuments,applyComparisonBases} from './js/engine.js';
@@ -9,7 +9,7 @@ import {readXmlText} from './js/readers.js';
 import {parseFreePaste,freePasteValues,salesforceEvaluationToPaste} from './js/collage-libre.js';
 import {textDoc,fictitiousRe2020Xml} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.11.1','version');
+eq(APP_VERSION,'2.11.2','version');
 
 // Schéma : DH ZT / DH ZNT à la place de DH (DH reste interne), 4 colonnes Oui / Non en fin.
 const cols=FIELD_DEFS.filter(f=>!f.hidden).map(f=>f.key);
@@ -47,7 +47,7 @@ r=res({dh:500}); eq([r.dh_zt,r.dh_znt],[undefined,500],'sans type de zone connu 
 r=res({wall_ite:'Non',wall_ite_r:4.5,cooling:'Climatisation active',cooling_active:'Non'});
 eq([r.wall_ite,r.cooling_active],['Non','Non'],'saisies conservées');
 eq(analyzeDocuments([prep(textDoc('n1','Notice.pdf',DOC_TYPES.RSET_RE2020,'Bâtiment A\nDH = 712 °C.h'))],structuredClone(DEFAULT_SOURCE_RULES),'Op').rows[0].dh_znt,712,'DH sans type de zone → DH ZNT');
-console.log(`v2.11.1 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.11.2 — ${n} vérifications OK (données fictives)`);
 
 // Session JSON complète : un projet exporté puis importé redonne les mêmes valeurs, sans les fichiers.
 {
@@ -59,4 +59,4 @@ console.log(`v2.11.1 — ${n} vérifications OK (données fictives)`);
   const res1=analyzeDocuments(back.docs,structuredClone(DEFAULT_SOURCE_RULES),'Op');
   eq([res1.rows[0].dh_zt,res1.rows[0].dh_znt],[res0.rows[0].dh_zt,res0.rows[0].dh_znt],'mêmes valeurs après import');
 }
-console.log(`v2.11.1 — session : ${n} vérifications OK`);
+console.log(`v2.11.2 — session : ${n} vérifications OK`);
