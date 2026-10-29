@@ -1,3 +1,11 @@
+# v2.12.4 — données collées : jamais remplacées sans validation
+- Accueil, « Coller un tableau » sur une opération existante : les lignes s'ajoutent à son tableau manuel au lieu de le
+  remplacer (bâtiments, logements… étaient effacés sans avertir). Une valeur déjà collée qui changerait est listée et n'est
+  remplacée qu'après « OK » ; une ligne sans bâtiment est comparée à chaque bâtiment. Le maître d'ouvrage n'est plus écrasé.
+- Une opération remplie uniquement par collage libre n'est plus réutilisée comme opération vide après rechargement.
+- Collage libre : valeurs définitives dès la consolidation (comme le tableau Excel) ; les colonnes déduites (Oui / Non,
+  DH ZT / ZNT) partent de la valeur collée et non d'une valeur de document contraire.
+
 # v2.12.3 — accueil : tableau « Code projet | Nom projet | Maître d’ouvrage | Groupe MOA »
 - « Code projet » est reconnu comme code interne (OPE-…) et « Groupe MOA » comme société principale du maître d'ouvrage :
   sans colonne contrat ni code reconnue, aucune opération n'était créée. « Nom projet » donne le nom de la tuile.

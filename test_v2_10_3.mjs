@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.12.3','version');
+eq(APP_VERSION,'2.12.4','version');
 const page=`Observations générales
 Performance thermique
 ILOT_1 :
@@ -53,7 +53,7 @@ eq([b.ILOT_1.housing_count,b.ILOT_1.shab,b.ILOT_1.bbio_max,b.ILOT_1.dh,b.ILOT_1.
 eq([b.ILOT_2.housing_count,b.ILOT_2.shab,b.ILOT_2.bbio],[4,300,70],'ILOT_2 séparé d’ILOT_1');
 eq(fp.notes,['ILOT_2 : ilot 3 sur ACV (remarque de la fiche).'],'remarque d’en-tête signalée');
 const c=b[''];
-// v2.12.3 : une ligne ITI / ITE remplit aussi la colonne générale (comme la lecture des documents) ; le refend (R=1,2) reste ignoré.
+// v2.12.4 : une ligne ITI / ITE remplit aussi la colonne générale (comme la lecture des documents) ; le refend (R=1,2) reste ignoré.
 eq([c.wall_iti_insulation,c.wall_iti_thickness,c.wall_iti_r,c.wall_insulation_r],['Fibre de bois',100,2.75,2.75],'contre-cloison en ITI, refend ignoré');
 eq([c.floor_insulation_thickness,c.floor_insulation_r],[260,6.84],'R ≥');
 eq([c.window_material,c.window_shading,c.heating_mode_after,c.ventilation,c.enr],['Bois','Volet roulant','Pompe à chaleur air/eau FICTIVE 3 kW','VMC Hygro B','Non'],'menuiseries hors fenêtres de toit, générateur seul, SO');

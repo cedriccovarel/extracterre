@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.12.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.12.4 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.12.3';
+const APP_VERSION='2.12.4';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11060,14 +11060,24 @@ function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
   const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
   // v2.12.1 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
   if(groups.size<2&&!(state.homeView&&groups.size===1)) return false;
-  let created=0,updated=0; const fresh=new Set();
+  let created=0,updated=0; const fresh=new Set(), conflicts=[];
+  // Opération existante : les lignes collées s'ajoutent à son tableau manuel (même bâtiment = même ligne) ; une valeur déjà
+  // collée n'est remplacée qu'après validation.
+  const sameRow=(a,b)=>String(a.values?.building||'').trim()===String(b.values?.building||'').trim();
+  const merge=(p,rs)=>{ const rows=(p.manualPasteRows||[]).map(r=>({...r,values:{...r.values}}));
+    // Ligne sans bâtiment collée sur une opération décrite par bâtiment : comparée à chaque bâtiment.
+    for(const r of rs){ const same=rows.filter(x=>sameRow(x,r)), targets=same.length?same:(!String(r.values?.building||'').trim()&&rows.length?rows:[]); if(!targets.length){ rows.push(r); continue; }
+      for(const cur of targets) for(const [f,val] of Object.entries(r.values||{})){ const old=cur.values[f]; if(old===undefined||old===null||old==='') cur.values[f]=val; else if(String(old)!==String(val)) conflicts.push({p,row:cur,f,val,text:`${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)}${cur.values.building?` · ${cur.values.building}`:''} · ${FIELD_MAP[f]?.label||f} : « ${formatValue(old)} » → « ${formatValue(val)} »`}); } }
+    return rows; };
   for(const [k,rs] of groups){
     let p=state.projects.find(x=>{ const id=projectIdentity(x); return id.contract===k||id.code===k||(!id.contract&&!id.code&&id.name===k); });
-    if(p) updated++; else { p=state.projects.find(x=>!(x.docs||[]).length&&!x.result&&!(x.manualPasteRows||[]).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; } fresh.add(p.id);
-    const v=rs[0].values||{}; p.manualPasteRows=rs; p.manualPasteColumns=columns; p.manualPasteRaw='';
-    if(!p.operationName) p.operationName=String(v.operation_name||v.project||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
-    computeProjectResult(p);
+    if(p) updated++; else { p=state.projects.find(x=>projectIsEmpty(x)&&!Object.keys(x.manualValues||{}).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; } fresh.add(p.id);
+    const v=rs[0].values||{}; const known=new Set((p.manualPasteColumns||[]).map(c=>c.key||c.header));
+    p.manualPasteRows=merge(p,rs); p.manualPasteColumns=[...(p.manualPasteColumns||[]),...columns.filter(c=>!known.has(c.key||c.header))]; p.manualPasteRaw='';
+    if(!p.operationName) p.operationName=String(v.operation_name||v.project||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner&&!p.ownerName) p.ownerName=owner;
   }
+  if(conflicts.length&&confirm(`⚠️ ${conflicts.length} donnée(s) déjà collée(s) seraient modifiée(s) :\n${conflicts.slice(0,12).map(x=>x.text).join('\n')}${conflicts.length>12?'\n…':''}\n\nOK = remplacer · Annuler = conserver les valeurs existantes (les autres valeurs collées sont intégrées).`)) for(const x of conflicts){ x.row.values[x.f]=x.val; if(['owner_company','owner_main_company'].includes(x.f)) x.p.ownerName=String(x.row.values.owner_company||x.row.values.owner_main_company||'').trim(); }
+  for(const id of fresh) computeProjectResult(state.projects.find(p=>p.id===id));
   lastImported=fresh; state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); setHomeMode(true); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
   learn('manual_paste',{rows:rows.length,operations:groups.size,created,updated,source,split:true},activeProject());
   toast(`${groups.size} opération(s) importée(s) (${source}) : ${created} créée(s), ${updated} mise(s) à jour.`,'success'); return true;
@@ -11442,7 +11452,7 @@ function retainRemovedDocument(project,doc){
 }
 function manualPasteOccurrences(project=activeProject()){
   const out=[...retainedOccurrences(project)]; let n=0;
-  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,page:'',pinnedBuilding:!!r.building,excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
+  for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,userValidated:true,manualDefinitive:true,page:'',pinnedBuilding:!!r.building,excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
     for(const [field,value] of Object.entries(row.values||{})){
