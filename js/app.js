@@ -274,7 +274,7 @@ function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status===
 let lastImported=new Set();
 function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
   const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
-  // v2.12.0 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
+  // v2.12.1 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
   if(groups.size<2&&!(state.homeView&&groups.size===1)) return false;
   let created=0,updated=0; const fresh=new Set();
   for(const [k,rs] of groups){
@@ -689,7 +689,7 @@ let freePaste=null;
 let pendingExternalText=null;
 function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
-  // v2.12.0 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
+  // v2.12.1 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
   if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
     if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
@@ -697,9 +697,11 @@ function openExternalText(text,source){
   // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
   freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
 }
-function projectForText(text){ const t=String(text||''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
-  return state.projects.find(p=>{ const id=projectIdentity(p); return ope&&String(id.code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`||id.contract&&cs.includes(contractKey(id.contract)); })||null; }
-// v2.12.0 — « Charger depuis Box » : dossier du contrat dans « 1 BEE Contrats » (Box Drive), sous-dossiers d'évaluation
+// Les onglets Salesforce ouverts (« 00005424 | Contrat ») ne désignent pas la fiche : ignorés ; l'OPE de la fiche prime sur le contrat.
+function projectForText(text){ const t=String(text||'').replace(/^\s*\d{8}\s*\|\s*Contra[ct]t?\s*$/gim,''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
+  const id=p=>projectIdentity(p);
+  return (ope&&state.projects.find(p=>String(id(p).code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`))||state.projects.find(p=>id(p).contract&&cs.includes(contractKey(id(p).contract)))||null; }
+// v2.12.1 — « Charger depuis Box » : dossier du contrat dans « 1 BEE Contrats » (Box Drive), sous-dossiers d'évaluation
 // CCTP / Étude carbone / Étude thermique ; les plus récents sont cochés, l'utilisateur choisit ce qui est chargé.
 async function openBoxDialog(changeRoot=false){
   if(!boxSupported()){ toast('Le couplage Box nécessite Chrome ou Edge (accès aux dossiers du poste).','error'); return; }
@@ -816,9 +818,13 @@ function applyFreePaste(){
   if(state.homeView){ toast('Texte libre : ouvrez d’abord la tuile de l’opération concernée, puis Compléments → Données manuelles → Coller.','warn'); return; }
   const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length); const srcName=freePaste.sourceLabel?`Collage libre — ${freePaste.sourceLabel}`:'Collage libre';
   // Valeurs « Toute l'opération » (texte descriptif) : reportées sur tous les bâtiments de l'analyse, documents compris.
-  const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; const allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
+  const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; let allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
   const ownFields=Object.fromEntries((freePaste.buildings||[]).filter(b=>b.name!=='*').map(b=>[b.name,new Set(b.items.map(i=>i.field).filter(Boolean))]));
   if(!vals.length){ toast('Aucune valeur rangée dans une colonne.','warn'); return; }
+  // v2.12.1 — valeurs de la fiche hors bloc de bâtiment (enveloppe, systèmes, identité) : pour chaque bâtiment, sauf valeur propre,
+  // au lieu d'un « Bâtiment unique » à part dès qu'il y a plusieurs bâtiments (fiche ou analyse).
+  const common=vals.find(v=>!v.building);
+  if(common&&(vals.some(v=>v.building)||(state.result?.rows||[]).length>1)){ vals.splice(vals.indexOf(common),1); allVals={values:{...common.values,...allVals?.values},sources:{...common.sources,...allVals?.sources}}; }
   // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
@@ -2133,12 +2139,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.12.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.12.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -2159,7 +2165,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.12.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.12.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();
@@ -2400,7 +2406,7 @@ function wire(){
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
-  // v2.12.0 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
+  // v2.12.1 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
   window.addEventListener('drop',async e=>{ if(dz.contains(e.target)||$('#resultQuickDrop')?.contains(e.target)||!e.dataTransfer?.files?.length) return; e.preventDefault();
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }

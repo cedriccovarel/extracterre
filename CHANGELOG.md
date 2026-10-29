@@ -1,3 +1,16 @@
+# v2.12.1 — fiche Évaluation Salesforce : enveloppe appliquée à chaque bâtiment, nombres et DH fiabilisés
+- Les valeurs de la fiche hors bloc de bâtiment (planchers hauts, parois verticales, planchers bas, menuiseries, systèmes,
+  identité) s'appliquent à chaque bâtiment (sauf valeur propre au bâtiment) : elles partaient sur un « Bâtiment unique » à part
+  quand l'opération avait déjà plusieurs bâtiments.
+- Paroi : isolant, épaisseur et R viennent de la même ligne (plus de mélange entre deux lignes) ; « LM projetée » = laine minérale ;
+  le sous-titre « Mur extérieur ITI : / ITE : » range les isolants qui suivent dans les colonnes ITI / ITE, et la première
+  ligne du mur extérieur remplit aussi la colonne générale.
+- « Sref = 1 780,20 » : espace des milliers gardé (lu 1 auparavant) ; « (Gain BBio = 30,4 %) » reconnu ;
+  « IC Construction = … / IC Construction 2025 = … » : libellés de plusieurs mots séparés par « / ».
+- « DH (Zones non traversantes) = Groupe … : 1 048,50 ; Groupe … : 1 175,20 » : groupe le plus défavorable (le premier auparavant).
+- Favori depuis l'accueil : les onglets Salesforce ouverts (« 00005424 | Contrat ») ne servent plus à choisir l'opération ;
+  l'OPE de la fiche prime sur le numéro de contrat.
+
 # v2.12.0 — Charger depuis Box (Box Drive)
 - Bouton **📦 Charger depuis Box** dans la zone de dépôt d'une opération. Le dossier « 2 PRODUCTION EVALUATION / 1 BEE Contrats »
   est choisi une fois (Chrome / Edge en gardent l'accès ; une autorisation d'un clic est redemandée à chaque session).

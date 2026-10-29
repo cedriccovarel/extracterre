@@ -182,11 +182,15 @@ const sf_ALIASES={bbio:'bbio',bbiomax:'bbio_max',gainbbio:'bbio_gain',cep:'cep',
   dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icconstructionmax2025:'ic_construction_max',icconstructionmax2028:'ic_construction_max_2028',icenergie:'ic_energy',icenergiemax:'ic_energy_max',icenergiemax2025:'ic_energy_max',icenergiemax2028:'ic_energy_max_2028',icconstruction2025:'ic_construction_max',icenergie2025:'ic_energy_max',
   tic:'tic',ticref:'tic_ref',nombredelogements:'housing_count',logements:'housing_count',nbrelogts:'housing_count',nblogts:'housing_count',nbrelogements:'housing_count',nblogements:'housing_count',nombrelogts:'housing_count',logts:'housing_count'};
 const sf_key=l=>normLower(l).replace(/[^a-z0-9]/g,'');
-const sf_num=raw=>{ const m=String(raw).replace(/ /g,' ').match(/[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0]):null; };
+// « 1 780,20 » : espace des milliers (normale, insécable ou fine) gardée dans le nombre.
+const sf_num=raw=>{ const m=String(raw).replace(/[\u00a0\u202f]/g,' ').match(/[-+]?\d{1,3}(?: \d{3})+(?:[.,]\d+)?(?![\d.,])|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/ /g,'')):null; };
 // « Bbio=33 Bbiomax=81,3 » : plusieurs paires « libellé=valeur » sur une ligne.
 // « Bbio = 57,1 ; Bbio max = 71,9 » : paires séparées par « ; ».
 // « BBio = 71,3 - Bbiomax = 71,9 - Gain = 0,8 » : paires séparées par « - » (un « - » collé au nombre reste un signe).
-const sf_pairs=l=>l.split(/\s*;\s*|\s+[-–]\s+(?=[^=]*[A-Za-zÀ-ÿ][^=]*=)/).flatMap(x=>(x.match(/=/g)||[]).length>1?x.split(/\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[x]);
+// Paires d'une ligne : « ; », « - libellé = », « / libellé = » ; « Bbio=33 Bbiomax=81,3 » (espace après une valeur).
+// Le contenu entre parenthèses (« (Gain BBio = 30,4 %) ») reste attaché à sa paire.
+const sf_pairs=l=>{ const keep=[], back=x=>x.replace(/\u0001(\d+)\u0002/g,(_,k)=>keep[k]); const P=String(l).replace(/\([^()]*\)/g,m=>`\u0001${keep.push(m)-1}\u0002`);
+  return P.split(/\s*;\s*|\s+[-–]\s+(?=[^=]*[A-Za-zÀ-ÿ][^=]*=)|\s+\/\s+(?=[^=\/]*[A-Za-zÀ-ÿ][^=\/]*=)/).flatMap(x=>(x.match(/=/g)||[]).length>1?x.split(/(?<=[\d%\u0002=])\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[x]).map(back); };
 const sf_fmt=v=>String(Math.round(v*1000)/1000).replace('.',',');
 const sf_SECTIONS=[['roof',/^planchers?\s+hauts?\b/],['wall',/^parois?\s+verticales?\b/],['floor',/^planchers?\s+bas\b/],['win',/^menuiseries?\s+exterieures?\b/],['bridge',/^ponts?\s+thermiques?\b/],
   ['heat',/^chauffage\b/],['ecs',/^eau\s+chaude\s+sanitaire\b/],['vent',/^renouvellement\s+d.air\b/],['reg',/^regulation\b/],['enr',/^energies?\s+renouvelables?\b/]];
@@ -245,6 +249,10 @@ export function salesforceEvaluationToPaste(text){
     if(/^DH\b/i.test(t)&&/=/.test(t)&&(/\bZN?T\b/i.test(t)||(t.match(/=/g)||[]).length>1)){ const vals=[...t.matchAll(/=\s*([-+]?\d+(?:[.,]\d+)?)/g)].map(x=>parseFrNumber(x[1]));
       if(vals.length){ const raw=cur?cur.raw:dhCommon, z=/\bZNT\b/i.test(t)?'dh_znt':/\bZT\b/i.test(t)?'dh_zt':null;
         for(const k of z?['dh',z]:['dh']){ raw[k]=Math.max(raw[k]??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key===k); if(j>=0) common.splice(j,1); put(common,k,raw[k]); } } } continue; }
+    // « DH (Zones non traversantes) = Groupe NT A radiateur élec : 1 048,50 ; Groupe NT A clim : 1 175,20 » : le groupe le plus défavorable.
+    const dg=t.match(/^(DH\b[^=]*)=\s*(.+)$/i), dgz=dg&&fp_dhZone(dg[1]);
+    if(dgz&&/[;:]/.test(dg[2])){ const vals=dg[2].split(';').map(seg=>sf_num(seg.slice(seg.lastIndexOf(':')+1))).filter(x=>x!==null);
+      if(vals.length){ const raw=cur?cur.raw:dhCommon; for(const k of ['dh',dgz==='non'?'dh_znt':'dh_zt']){ raw[k]=Math.max(raw[k]??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key===k); if(j>=0) common.splice(j,1); put(common,k,raw[k]); } } } continue; }
     let prev=null; // « Gain = 0,8 » sans précision : le gain de la valeur qui précède sur la ligne
     for(const piece of sf_pairs(L[i])){
     const m=piece.match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
@@ -252,7 +260,7 @@ export function salesforceEvaluationToPaste(text){
     if(fp_dhZone(m[1])){ if(cur) b.extra.push(`${m[1].trim()} = ${m[2].trim()}`); continue; }
     const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(key) prev=key; if(!key||key in b.raw) continue;
     // « Bbio max = 71,9 (Gain 20,6 %) » : le gain suit le maximum entre parenthèses.
-    const gm=m[2].match(/\(\s*gain\s*:?\s*([-+]?\d+(?:[.,]\d+)?)\s*%?\s*\)/i), gk=key.replace(/_max$/,'_gain');
+    const gm=m[2].match(/\(\s*gain\b[^=:\d)]*[=:]?\s*([-+]?\d+(?:[.,]\d+)?)\s*%?\s*\)/i), gk=key.replace(/_max$/,'_gain');
     if(gm&&gk!==key&&FIELD_MAP[gk]&&!(gk in b.raw)){ b.raw[gk]=parseFrNumber(gm[1]); if(!cur) put(common,gk,b.raw[gk]); }
     if(TRIPLES[key]&&m[2].includes('/')){ const parts=m[2].split('/').map(sf_num); if(parts[0]===null) continue; b.raw[key]=parts[0]; TRIPLES[key].forEach((k,j)=>{ if(parts[j+1]!=null&&!(k in b.raw)) b.raw[k]=parts[j+1]; }); if(!cur) TRIPLES[key].forEach(k=>k in b.raw&&put(common,k,b.raw[k])); if(!cur) put(common,key,parts[0]); continue; }
     // « DH : 713,9 et 625 » : deux zones sans type ; on retient la plus défavorable (comme la lecture des RSET).
@@ -283,11 +291,16 @@ export function salesforceEvaluationToPaste(text){
   const ids=x=>new Set((String(x).replace(/\bb[âa]t(?:iment)?s?\.?/ig,'').replace(/\bet\b/ig,' ').toUpperCase().match(/[A-Z0-9]/g)||[]));
   const sinks=raw=>{ const bm=String(raw).match(/^\s*(b[âa]t(?:iment)?s?\.?\s+[^\/:]{1,20}?)\s*\/\s*(.+)$/i); if(!bm||!blocks.length) return [raw,[common]];
     const want=ids(bm[1]), hit=blocks.filter(b=>{ const have=ids(b.name); return have.size&&[...have].every(c=>want.has(c)); }); return hit.length?[bm[2],hit.map(b=>b.items)]:[raw,[common]]; };
+  // « Mur extérieur ITI : » puis les isolants en dessous : le côté du sous-titre vaut pour ses lignes (colonnes ITI / ITE).
+  { let side=''; sec.wall=(sec.wall||[]).map(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ side=wallInsulationSide(raw)||''; return raw; } return side&&!wallInsulationSide(raw)?`${raw} (${side.toUpperCase()})`:raw; }); }
   for(const part of ['roof','wall','floor']) for(const raw0 of outer(sec[part])){ const [raw,dst]=sinks(raw0), put=(_,k,v)=>dst.forEach(a=>putAt(a,k,v)); const l=sf_clean(raw); if(!l) continue; const r=rval(l);
     const mat=findFirstMatch(l,MATERIALS)||product(l);
     // Une ligne avec R n'est un isolant que si elle le dit (matériau reconnu ou mot d'isolation) : « Brique … R=1,5 » est la structure.
     if(r!==null&&(mat||/isol|doublage|laine|ouate|polystyr|polyur|sous\s+chape|fibre|flocage/i.test(l))){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
-      put(common,keys[0],mat); put(common,keys[1],thick(l)); put(common,keys[2],r); }
+      // Isolant, épaisseur et R d'une même ligne : une paroi déjà décrite n'est pas complétée par une autre ligne ; une ligne ITI / ITE
+      // remplit aussi la colonne générale (la première ligne décrite la porte).
+      const vals=[mat,thick(l),r], put3=ks=>dst.forEach(a=>{ if(!ks.some(k=>a.some(x=>x.key===k))) ks.forEach((k,j)=>putAt(a,k,vals[j])); });
+      put3(keys); if(side) put3(['wall_insulation','wall_insulation_thickness','wall_insulation_r']); }
     else { const st=findFirstMatch(l,STRUCTURES); if(st) put(common,`${part}_structure`,st); } }
   for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
     put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }

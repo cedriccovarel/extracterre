@@ -1,4 +1,4 @@
-export const APP_VERSION='2.12.0';
+export const APP_VERSION='2.12.1';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -125,7 +125,7 @@ export const FIELD_DEFS = [
   {key:"shab",label:"Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",family:"Programme",type:"number",tags:["Surface bâtiment (SHAB / Sref / SU / SURT / SRT)", "Surface bâtiment", "SHAB", "Sref", "S ref", "surface de référence", "surface habitable", "SU", "SURT", "SRT", "SHONRT"] ,presence:false},
   {key:"housing_typologies",label:"Typologies de logements",family:"Programme",type:"text",tags:["Typologies de logements", "typologie logements", "types de logements", "répartition typologique", "T1 T2 T3"] ,presence:false},
   {key:"construction_year",label:"Année de construction",family:"Programme",type:"number",tags:["Année de construction", "année construction"] ,presence:false},
-  // v2.12.0 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
+  // v2.12.1 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
   {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false,hidden:true},
   {key:"dh_zt",label:"DH Zone traversante (DH ZT)",family:"Confort d’été",type:"number",tags:["DH Zone traversante (DH ZT)", "DH ZT", "DH zone traversante", "DH zones traversantes"] ,presence:false},
   {key:"dh_znt",label:"DH Zone non traversante (DH ZNT)",family:"Confort d’été",type:"number",tags:["DH Zone non traversante (DH ZNT)", "DH ZNT", "DH zone non traversante", "DH zones non traversantes"] ,presence:false},
@@ -256,7 +256,7 @@ export const FIELD_DEFS = [
   {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
   {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
   {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
-  // v2.12.0 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
+  // v2.12.1 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
   {key:"wall_ite",label:"ITE",family:"Enveloppe",type:"text",tags:["ITE", "Isolation par l’extérieur (ITE)"] ,presence:false},
   {key:"wall_iti",label:"ITI",family:"Enveloppe",type:"text",tags:["ITI", "Isolation par l’intérieur (ITI)"] ,presence:false},
   {key:"fan_presence",label:"Brasseur d’air",family:"Confort d’été",type:"text",tags:["Brasseur d’air", "brasseur d'air", "brasseurs d’air"] ,presence:false},
@@ -469,7 +469,7 @@ export const MATERIALS = [
   pair('PSE graphité',['pse graphité','pse graphite','pregymax','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
   pair('Laine de roche',['laine de roche','ldr','rockwool','rockfacade','rockmur','rockplus','rocksol','rockfeu','alpharock','mb rock','redair','jetrock','rockair','ecorock']),
   pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit']),
-  pair('Laine minérale',['laine minérale','laine minerale','mineral wool','laine minerale semi rigide','fibrexpan']),
+  pair('Laine minérale',['laine minérale','laine minerale','lm projetée','lm projetee','lm soufflée','lm soufflee','mineral wool','laine minerale semi rigide','fibrexpan']),
   pair('PSE',['pse','polystyrène expansé','polystyrene expanse','eps','knauf therm','therm th','therm itex','webertherm pse','unicell','cellomur']),
   pair('XPS',['xps','polystyrène extrudé','polystyrene extrude','styrodur','jackodur','ursa xps','soprema xps']),
   pair('PIR',['pir','polyisocyanurate','eurothane','powerwall','powerdeck','eurosol','fitforall','efisol','kingspan kooltherm']),

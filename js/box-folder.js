@@ -1,4 +1,4 @@
-// v2.12.0 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
+// v2.12.1 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
 // son accès est gardé par Chrome (File System Access API) ; pour une opération, le dossier « 0000xxxx - … » de son contrat est
 // retrouvé et ses sous-dossiers d'évaluation CCTP, Étude carbone et Étude thermique sont proposés, les plus récents cochés.
 // Les fichiers sont lus sur le poste : rien n'est envoyé.

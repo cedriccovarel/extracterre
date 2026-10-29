@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.12.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.12.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.12.0';
+const APP_VERSION='2.12.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -130,7 +130,7 @@ const FIELD_DEFS = [
   {key:"shab",label:"Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",family:"Programme",type:"number",tags:["Surface bâtiment (SHAB / Sref / SU / SURT / SRT)", "Surface bâtiment", "SHAB", "Sref", "S ref", "surface de référence", "surface habitable", "SU", "SURT", "SRT", "SHONRT"] ,presence:false},
   {key:"housing_typologies",label:"Typologies de logements",family:"Programme",type:"text",tags:["Typologies de logements", "typologie logements", "types de logements", "répartition typologique", "T1 T2 T3"] ,presence:false},
   {key:"construction_year",label:"Année de construction",family:"Programme",type:"number",tags:["Année de construction", "année construction"] ,presence:false},
-  // v2.12.0 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
+  // v2.12.1 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
   {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false,hidden:true},
   {key:"dh_zt",label:"DH Zone traversante (DH ZT)",family:"Confort d’été",type:"number",tags:["DH Zone traversante (DH ZT)", "DH ZT", "DH zone traversante", "DH zones traversantes"] ,presence:false},
   {key:"dh_znt",label:"DH Zone non traversante (DH ZNT)",family:"Confort d’été",type:"number",tags:["DH Zone non traversante (DH ZNT)", "DH ZNT", "DH zone non traversante", "DH zones non traversantes"] ,presence:false},
@@ -261,7 +261,7 @@ const FIELD_DEFS = [
   {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
   {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
   {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
-  // v2.12.0 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
+  // v2.12.1 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
   {key:"wall_ite",label:"ITE",family:"Enveloppe",type:"text",tags:["ITE", "Isolation par l’extérieur (ITE)"] ,presence:false},
   {key:"wall_iti",label:"ITI",family:"Enveloppe",type:"text",tags:["ITI", "Isolation par l’intérieur (ITI)"] ,presence:false},
   {key:"fan_presence",label:"Brasseur d’air",family:"Confort d’été",type:"text",tags:["Brasseur d’air", "brasseur d'air", "brasseurs d’air"] ,presence:false},
@@ -474,7 +474,7 @@ const MATERIALS = [
   pair('PSE graphité',['pse graphité','pse graphite','pregymax','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
   pair('Laine de roche',['laine de roche','ldr','rockwool','rockfacade','rockmur','rockplus','rocksol','rockfeu','alpharock','mb rock','redair','jetrock','rockair','ecorock']),
   pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit']),
-  pair('Laine minérale',['laine minérale','laine minerale','mineral wool','laine minerale semi rigide','fibrexpan']),
+  pair('Laine minérale',['laine minérale','laine minerale','lm projetée','lm projetee','lm soufflée','lm soufflee','mineral wool','laine minerale semi rigide','fibrexpan']),
   pair('PSE',['pse','polystyrène expansé','polystyrene expanse','eps','knauf therm','therm th','therm itex','webertherm pse','unicell','cellomur']),
   pair('XPS',['xps','polystyrène extrudé','polystyrene extrude','styrodur','jackodur','ursa xps','soprema xps']),
   pair('PIR',['pir','polyisocyanurate','eurothane','powerwall','powerdeck','eurosol','fitforall','efisol','kingspan kooltherm']),
@@ -7932,7 +7932,7 @@ function withWallSides(raw){
   for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
   return out;
 }
-// v2.12.0 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
+// v2.12.1 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
 function withDhZones(raw){ return [...raw,...raw.filter(o=>o?.field==='dh'&&(o.dhZone==='zt'||o.dhZone==='znt')).map(o=>({...o,field:`dh_${o.dhZone}`}))]; }
 function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
@@ -8197,7 +8197,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
-    // v2.12.0 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
+    // v2.12.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
     if(Array.isArray(d.cachedOccurrences)&&d.read&&!d.dhZonesRead&&d.cachedOccurrences.some(o=>o?.field==='dh')){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')) d.cachedOccurrences=null; }
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
@@ -8249,11 +8249,11 @@ function applyComparisonBases(result){
     if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
       if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
       result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
-    // v2.12.0 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
+    // v2.12.1 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
     const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
     const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
     const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
-    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.0).
+    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.1).
     if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
       derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
@@ -8724,7 +8724,7 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.12.0 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.12.1 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
   assert('Schéma métier = 212 champs (211 colonnes + DH interne)',FIELD_DEFS.length===212,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
@@ -9063,11 +9063,15 @@ const sf_ALIASES={bbio:'bbio',bbiomax:'bbio_max',gainbbio:'bbio_gain',cep:'cep',
   dh:'dh',dhmax:'dh_max',shab:'shab',sref:'shab',srt:'shab',q4:'q4pa_surf',q4pasurf:'q4pa_surf',icconstruction:'ic_construction',icconstructionmax:'ic_construction_max',icconstructionmax2025:'ic_construction_max',icconstructionmax2028:'ic_construction_max_2028',icenergie:'ic_energy',icenergiemax:'ic_energy_max',icenergiemax2025:'ic_energy_max',icenergiemax2028:'ic_energy_max_2028',icconstruction2025:'ic_construction_max',icenergie2025:'ic_energy_max',
   tic:'tic',ticref:'tic_ref',nombredelogements:'housing_count',logements:'housing_count',nbrelogts:'housing_count',nblogts:'housing_count',nbrelogements:'housing_count',nblogements:'housing_count',nombrelogts:'housing_count',logts:'housing_count'};
 const sf_key=l=>normLower(l).replace(/[^a-z0-9]/g,'');
-const sf_num=raw=>{ const m=String(raw).replace(/ /g,' ').match(/[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0]):null; };
+// « 1 780,20 » : espace des milliers (normale, insécable ou fine) gardée dans le nombre.
+const sf_num=raw=>{ const m=String(raw).replace(/[\u00a0\u202f]/g,' ').match(/[-+]?\d{1,3}(?: \d{3})+(?:[.,]\d+)?(?![\d.,])|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/ /g,'')):null; };
 // « Bbio=33 Bbiomax=81,3 » : plusieurs paires « libellé=valeur » sur une ligne.
 // « Bbio = 57,1 ; Bbio max = 71,9 » : paires séparées par « ; ».
 // « BBio = 71,3 - Bbiomax = 71,9 - Gain = 0,8 » : paires séparées par « - » (un « - » collé au nombre reste un signe).
-const sf_pairs=l=>l.split(/\s*;\s*|\s+[-–]\s+(?=[^=]*[A-Za-zÀ-ÿ][^=]*=)/).flatMap(x=>(x.match(/=/g)||[]).length>1?x.split(/\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[x]);
+// Paires d'une ligne : « ; », « - libellé = », « / libellé = » ; « Bbio=33 Bbiomax=81,3 » (espace après une valeur).
+// Le contenu entre parenthèses (« (Gain BBio = 30,4 %) ») reste attaché à sa paire.
+const sf_pairs=l=>{ const keep=[], back=x=>x.replace(/\u0001(\d+)\u0002/g,(_,k)=>keep[k]); const P=String(l).replace(/\([^()]*\)/g,m=>`\u0001${keep.push(m)-1}\u0002`);
+  return P.split(/\s*;\s*|\s+[-–]\s+(?=[^=]*[A-Za-zÀ-ÿ][^=]*=)|\s+\/\s+(?=[^=\/]*[A-Za-zÀ-ÿ][^=\/]*=)/).flatMap(x=>(x.match(/=/g)||[]).length>1?x.split(/(?<=[\d%\u0002=])\s+(?=[A-Za-zÀ-ÿ][^\s=]*\s*=)/):[x]).map(back); };
 const sf_fmt=v=>String(Math.round(v*1000)/1000).replace('.',',');
 const sf_SECTIONS=[['roof',/^planchers?\s+hauts?\b/],['wall',/^parois?\s+verticales?\b/],['floor',/^planchers?\s+bas\b/],['win',/^menuiseries?\s+exterieures?\b/],['bridge',/^ponts?\s+thermiques?\b/],
   ['heat',/^chauffage\b/],['ecs',/^eau\s+chaude\s+sanitaire\b/],['vent',/^renouvellement\s+d.air\b/],['reg',/^regulation\b/],['enr',/^energies?\s+renouvelables?\b/]];
@@ -9126,6 +9130,10 @@ function salesforceEvaluationToPaste(text){
     if(/^DH\b/i.test(t)&&/=/.test(t)&&(/\bZN?T\b/i.test(t)||(t.match(/=/g)||[]).length>1)){ const vals=[...t.matchAll(/=\s*([-+]?\d+(?:[.,]\d+)?)/g)].map(x=>parseFrNumber(x[1]));
       if(vals.length){ const raw=cur?cur.raw:dhCommon, z=/\bZNT\b/i.test(t)?'dh_znt':/\bZT\b/i.test(t)?'dh_zt':null;
         for(const k of z?['dh',z]:['dh']){ raw[k]=Math.max(raw[k]??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key===k); if(j>=0) common.splice(j,1); put(common,k,raw[k]); } } } continue; }
+    // « DH (Zones non traversantes) = Groupe NT A radiateur élec : 1 048,50 ; Groupe NT A clim : 1 175,20 » : le groupe le plus défavorable.
+    const dg=t.match(/^(DH\b[^=]*)=\s*(.+)$/i), dgz=dg&&fp_dhZone(dg[1]);
+    if(dgz&&/[;:]/.test(dg[2])){ const vals=dg[2].split(';').map(seg=>sf_num(seg.slice(seg.lastIndexOf(':')+1))).filter(x=>x!==null);
+      if(vals.length){ const raw=cur?cur.raw:dhCommon; for(const k of ['dh',dgz==='non'?'dh_znt':'dh_zt']){ raw[k]=Math.max(raw[k]??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key===k); if(j>=0) common.splice(j,1); put(common,k,raw[k]); } } } continue; }
     let prev=null; // « Gain = 0,8 » sans précision : le gain de la valeur qui précède sur la ligne
     for(const piece of sf_pairs(L[i])){
     const m=piece.match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
@@ -9133,7 +9141,7 @@ function salesforceEvaluationToPaste(text){
     if(fp_dhZone(m[1])){ if(cur) b.extra.push(`${m[1].trim()} = ${m[2].trim()}`); continue; }
     const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(key) prev=key; if(!key||key in b.raw) continue;
     // « Bbio max = 71,9 (Gain 20,6 %) » : le gain suit le maximum entre parenthèses.
-    const gm=m[2].match(/\(\s*gain\s*:?\s*([-+]?\d+(?:[.,]\d+)?)\s*%?\s*\)/i), gk=key.replace(/_max$/,'_gain');
+    const gm=m[2].match(/\(\s*gain\b[^=:\d)]*[=:]?\s*([-+]?\d+(?:[.,]\d+)?)\s*%?\s*\)/i), gk=key.replace(/_max$/,'_gain');
     if(gm&&gk!==key&&FIELD_MAP[gk]&&!(gk in b.raw)){ b.raw[gk]=parseFrNumber(gm[1]); if(!cur) put(common,gk,b.raw[gk]); }
     if(TRIPLES[key]&&m[2].includes('/')){ const parts=m[2].split('/').map(sf_num); if(parts[0]===null) continue; b.raw[key]=parts[0]; TRIPLES[key].forEach((k,j)=>{ if(parts[j+1]!=null&&!(k in b.raw)) b.raw[k]=parts[j+1]; }); if(!cur) TRIPLES[key].forEach(k=>k in b.raw&&put(common,k,b.raw[k])); if(!cur) put(common,key,parts[0]); continue; }
     // « DH : 713,9 et 625 » : deux zones sans type ; on retient la plus défavorable (comme la lecture des RSET).
@@ -9164,11 +9172,16 @@ function salesforceEvaluationToPaste(text){
   const ids=x=>new Set((String(x).replace(/\bb[âa]t(?:iment)?s?\.?/ig,'').replace(/\bet\b/ig,' ').toUpperCase().match(/[A-Z0-9]/g)||[]));
   const sinks=raw=>{ const bm=String(raw).match(/^\s*(b[âa]t(?:iment)?s?\.?\s+[^\/:]{1,20}?)\s*\/\s*(.+)$/i); if(!bm||!blocks.length) return [raw,[common]];
     const want=ids(bm[1]), hit=blocks.filter(b=>{ const have=ids(b.name); return have.size&&[...have].every(c=>want.has(c)); }); return hit.length?[bm[2],hit.map(b=>b.items)]:[raw,[common]]; };
+  // « Mur extérieur ITI : » puis les isolants en dessous : le côté du sous-titre vaut pour ses lignes (colonnes ITI / ITE).
+  { let side=''; sec.wall=(sec.wall||[]).map(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ side=wallInsulationSide(raw)||''; return raw; } return side&&!wallInsulationSide(raw)?`${raw} (${side.toUpperCase()})`:raw; }); }
   for(const part of ['roof','wall','floor']) for(const raw0 of outer(sec[part])){ const [raw,dst]=sinks(raw0), put=(_,k,v)=>dst.forEach(a=>putAt(a,k,v)); const l=sf_clean(raw); if(!l) continue; const r=rval(l);
     const mat=findFirstMatch(l,MATERIALS)||product(l);
     // Une ligne avec R n'est un isolant que si elle le dit (matériau reconnu ou mot d'isolation) : « Brique … R=1,5 » est la structure.
     if(r!==null&&(mat||/isol|doublage|laine|ouate|polystyr|polyur|sous\s+chape|fibre|flocage/i.test(l))){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
-      put(common,keys[0],mat); put(common,keys[1],thick(l)); put(common,keys[2],r); }
+      // Isolant, épaisseur et R d'une même ligne : une paroi déjà décrite n'est pas complétée par une autre ligne ; une ligne ITI / ITE
+      // remplit aussi la colonne générale (la première ligne décrite la porte).
+      const vals=[mat,thick(l),r], put3=ks=>dst.forEach(a=>{ if(!ks.some(k=>a.some(x=>x.key===k))) ks.forEach((k,j)=>putAt(a,k,vals[j])); });
+      put3(keys); if(side) put3(['wall_insulation','wall_insulation_thickness','wall_insulation_r']); }
     else { const st=findFirstMatch(l,STRUCTURES); if(st) put(common,`${part}_structure`,st); } }
   for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
     put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }
@@ -9881,7 +9894,7 @@ function serializeProject(project={}){
   };
 }
 
-// v2.12.0 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
+// v2.12.1 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
 // document (comme le checkpoint IndexedDB), afin qu'un import restitue toutes les données sans les fichiers sources.
 function serializeProjectFull(project={}){
   const docs=project.docs||[];
@@ -10731,7 +10744,7 @@ async function runLlmAssist(doc,{missingFields=null,config=null,fetchImpl=null,i
 }
 
 /* ---- box-folder.js ---- */
-// v2.12.0 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
+// v2.12.1 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
 // son accès est gardé par Chrome (File System Access API) ; pour une opération, le dossier « 0000xxxx - … » de son contrat est
 // retrouvé et ses sous-dossiers d'évaluation CCTP, Étude carbone et Étude thermique sont proposés, les plus récents cochés.
 // Les fichiers sont lus sur le poste : rien n'est envoyé.
@@ -11043,7 +11056,7 @@ function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status===
 let lastImported=new Set();
 function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
   const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
-  // v2.12.0 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
+  // v2.12.1 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
   if(groups.size<2&&!(state.homeView&&groups.size===1)) return false;
   let created=0,updated=0; const fresh=new Set();
   for(const [k,rs] of groups){
@@ -11458,7 +11471,7 @@ let freePaste=null;
 let pendingExternalText=null;
 function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
-  // v2.12.0 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
+  // v2.12.1 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
   if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
     if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
@@ -11466,9 +11479,11 @@ function openExternalText(text,source){
   // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
   freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
 }
-function projectForText(text){ const t=String(text||''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
-  return state.projects.find(p=>{ const id=projectIdentity(p); return ope&&String(id.code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`||id.contract&&cs.includes(contractKey(id.contract)); })||null; }
-// v2.12.0 — « Charger depuis Box » : dossier du contrat dans « 1 BEE Contrats » (Box Drive), sous-dossiers d'évaluation
+// Les onglets Salesforce ouverts (« 00005424 | Contrat ») ne désignent pas la fiche : ignorés ; l'OPE de la fiche prime sur le contrat.
+function projectForText(text){ const t=String(text||'').replace(/^\s*\d{8}\s*\|\s*Contra[ct]t?\s*$/gim,''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
+  const id=p=>projectIdentity(p);
+  return (ope&&state.projects.find(p=>String(id(p).code).toUpperCase().replace(/[\s_]/g,'-')===`OPE-${ope}`))||state.projects.find(p=>id(p).contract&&cs.includes(contractKey(id(p).contract)))||null; }
+// v2.12.1 — « Charger depuis Box » : dossier du contrat dans « 1 BEE Contrats » (Box Drive), sous-dossiers d'évaluation
 // CCTP / Étude carbone / Étude thermique ; les plus récents sont cochés, l'utilisateur choisit ce qui est chargé.
 async function openBoxDialog(changeRoot=false){
   if(!boxSupported()){ toast('Le couplage Box nécessite Chrome ou Edge (accès aux dossiers du poste).','error'); return; }
@@ -11585,9 +11600,13 @@ function applyFreePaste(){
   if(state.homeView){ toast('Texte libre : ouvrez d’abord la tuile de l’opération concernée, puis Compléments → Données manuelles → Coller.','warn'); return; }
   const p=activeProject(); const vals=freePasteValues(freePaste).filter(v=>Object.keys(v.values).length); const srcName=freePaste.sourceLabel?`Collage libre — ${freePaste.sourceLabel}`:'Collage libre';
   // Valeurs « Toute l'opération » (texte descriptif) : reportées sur tous les bâtiments de l'analyse, documents compris.
-  const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; const allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
+  const allItems=freePaste.buildings.find(b=>b.name==='*')?.items||[]; let allVals=allItems.length?freePasteValues({buildings:[{name:'',items:allItems}]})[0]:null;
   const ownFields=Object.fromEntries((freePaste.buildings||[]).filter(b=>b.name!=='*').map(b=>[b.name,new Set(b.items.map(i=>i.field).filter(Boolean))]));
   if(!vals.length){ toast('Aucune valeur rangée dans une colonne.','warn'); return; }
+  // v2.12.1 — valeurs de la fiche hors bloc de bâtiment (enveloppe, systèmes, identité) : pour chaque bâtiment, sauf valeur propre,
+  // au lieu d'un « Bâtiment unique » à part dès qu'il y a plusieurs bâtiments (fiche ou analyse).
+  const common=vals.find(v=>!v.building);
+  if(common&&(vals.some(v=>v.building)||(state.result?.rows||[]).length>1)){ vals.splice(vals.indexOf(common),1); allVals={values:{...common.values,...allVals?.values},sources:{...common.sources,...allVals?.sources}}; }
   // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
@@ -12902,12 +12921,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.12.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.12.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -12928,7 +12947,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.12.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.12.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();
@@ -13169,7 +13188,7 @@ function wire(){
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
-  // v2.12.0 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
+  // v2.12.1 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
   window.addEventListener('drop',async e=>{ if(dz.contains(e.target)||$('#resultQuickDrop')?.contains(e.target)||!e.dataTransfer?.files?.length) return; e.preventDefault();
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
