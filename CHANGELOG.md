@@ -1,3 +1,24 @@
+# v2.11.0 — DH ZT / DH ZNT à la place de DH ; colonnes ITE, ITI, Brasseur d'air, Climatisation active
+- La colonne « DH » est remplacée, au même endroit, par « DH Zone traversante (DH ZT) » et « DH Zone non traversante (DH ZNT) ».
+  Chacune garde le groupe le plus défavorable de son type de zone. Le type de zone vient de la colonne « Trav. » du tableau DH
+  des RSET, de Is_Traversant dans les XML RE2020, et des libellés « DH ZT / DH ZNT / zones (non) traversantes » des fiches collées et Salesforce.
+  DH (la zone la plus défavorable) reste lu et contrôlé en interne (cohérence avec DH max), mais n'est plus exporté (211 colonnes).
+- Un bâtiment qui n'a qu'un type de zone reçoit son DH dans la colonne de ce type. Avec deux types et un DH sans détail
+  (ClimaWin, notices, « DH = … »), rien n'est deviné : une alerte demande de renseigner DH ZT / DH ZNT.
+- 4 colonnes « Oui / Non » ajoutées en fin d'export, déduites des colonnes de détail (une saisie n'est jamais remplacée) :
+  ITE et ITI (Oui si l'isolant de ce côté est décrit, Non si seul l'autre côté l'est), Brasseur d'air (Oui si des brasseurs
+  sont lus, Non si leur nombre est 0), Climatisation active (Non si « Refroidissement » = Aucun, Oui pour un système actif).
+- XML RE2020 : un groupe déclaré climatisé (Is_Climatise = 1) donne « Refroidissement = Climatisation active ».
+- Corrections : « Le DH max est de 1250 °C.h » n'est plus lu comme un DH ; la phrase type des RSET sur les groupes
+  climatisés (indicateur DH) n'est plus lue comme un système de refroidissement.
+- Les documents déjà analysés qui portent un DH sont relus une fois pour récupérer le type de zone.
+- **Importer une session (.json)** (menu latéral) : les opérations du fichier s'ajoutent à la liste et sont sauvegardées localement.
+  L'export de session contient désormais les projets complets (documents lus, occurrences, saisies, collages, économie) : l'import
+  restitue toutes les données, sans les fichiers sources (à redéposer seulement pour le surlignage PDF). Un export plus ancien
+  restitue les valeurs retenues avec leur source, les saisies et les collages.
+- **Doublons de numéro de contrat** : une alerte apparaît dès que plusieurs tuiles portent le même contrat (« 00004723 » = « 4723 ») ;
+  les tuiles sont marquées « doublon » et chaque tuile Maître d'ouvrage indique combien de ses opérations sont concernées.
+
 # v2.10.7 — fiche Évaluation Salesforce : en-têtes « BAT AB / Nbre logts = 14 / Q4 = 0,72 »
 - Paires « libellé = valeur » sur l'en-tête de bâtiment, séparées par « / » (logements, Q4…).
 - Paires séparées par « - » ; « Gain = … » seul prend le gain de la valeur qui précède.

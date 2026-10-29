@@ -145,6 +145,20 @@ function serializeProject(project={}){
   };
 }
 
+// v2.11.0 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
+// document (comme le checkpoint IndexedDB), afin qu'un import restitue toutes les données sans les fichiers sources.
+export function serializeProjectFull(project={}){
+  const docs=project.docs||[];
+  return {...serializeProject(project),docs:docs.map(d=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null}))};
+}
+export function hydrateProjectFull(raw={}){
+  return {...raw,docs:(raw.docs||[]).map(({analysis,...meta})=>{ const doc=hydrateDocMeta(meta);
+    if(analysis){ doc.read=hydrateRead(analysis.read); doc.cachedOccurrences=Array.isArray(analysis.cachedOccurrences)?analysis.cachedOccurrences:[];
+      for(const k of ['buildings','classification','type','specializedFamily','specializedLabel','families','familyMode','analysisCachedAt']) if(analysis[k]!=null) doc[k]=analysis[k];
+      doc.persistenceMode=analysis.storageMode||'compact'; doc.status='ready'; }
+    else doc.status='missing';
+    return doc; })};
+}
 export async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab='summary'}={}){
   const record={
     key:WORKSPACE_KEY,

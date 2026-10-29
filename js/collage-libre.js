@@ -17,8 +17,8 @@ function fp_value(field,raw){
   const m=s.replace(/\u00a0/g,' ').match(/(?<![A-Za-z\d.,+])[-+]?\d+(?:[ .]\d{3})*(?:[.,]\d+)?/); if(!m) return null;
   return parseFrNumber(m[0]);
 }
-// DH par type de zone : la colonne DH garde la plus défavorable (comme la lecture des RSET) ; le type de zone est noté.
-function fp_dhZone(label){ const l=normLower(label); if(!/\bdh\b|degres?[- ]heures?/.test(l)||!/travers/.test(l)) return null; return /non\s+travers/.test(l)?'non':'oui'; }
+// DH par type de zone : DH ZT / DH ZNT reçoivent la zone la plus défavorable de leur type, DH (interne) la plus défavorable des deux.
+function fp_dhZone(label){ const l=normLower(label); if(!/\bdh\b|degres?[- ]heures?/.test(l)||!/travers|\bzn?t\b/.test(l)) return null; return /non\s+travers|\bznt\b/.test(l)?'non':'oui'; }
 
 export function matchFreeLabel(label){
   const clean=fp_clean(label); const r=matchFieldByHeaderDetailed(clean)||matchFieldByHeaderDetailed(label);
@@ -140,7 +140,7 @@ export function freePasteValues(parsed){
     const vals={}, src={};
     for(const it of items){
       if(!it.field||it.value===null||it.value===undefined||it.value==='') continue;
-      if(it.dhZone){ if(vals.dh===undefined||it.value>vals.dh){ vals.dh=it.value; src.dh=it.line; } const k=it.dhZone==='oui'?'cross_ventilated':'non_cross_ventilated'; vals[k]='Oui'; src[k]=it.line; continue; }
+      if(it.dhZone){ const z=it.dhZone==='oui'?'dh_zt':'dh_znt'; for(const f of ['dh',z]) if(vals[f]===undefined||it.value>vals[f]){ vals[f]=it.value; src[f]=it.line; } const k=it.dhZone==='oui'?'cross_ventilated':'non_cross_ventilated'; vals[k]='Oui'; src[k]=it.line; continue; }
       vals[it.field]=it.value; src[it.field]=it.line;
     }
     res.push({building:b.name,values:vals,sources:src});
@@ -243,7 +243,8 @@ export function salesforceEvaluationToPaste(text){
     if(!/[=:]/.test(t)&&t.length<=60&&!isField(t)&&nx&&(sf_ALIASES[sf_key(nx[1])]||fp_strictLabel(nx[1]))){ cur={name:t.trim(),items:[],raw:{},extra:[]}; blocks.push(cur); continue; }
     // « DH ZT - T3 = 634,2 - T2 = 841,7 » : DH par zone et par typologie ; on retient le plus défavorable (comme la lecture des RSET).
     if(/^DH\b/i.test(t)&&/=/.test(t)&&(/\bZN?T\b/i.test(t)||(t.match(/=/g)||[]).length>1)){ const vals=[...t.matchAll(/=\s*([-+]?\d+(?:[.,]\d+)?)/g)].map(x=>parseFrNumber(x[1]));
-      if(vals.length){ const raw=cur?cur.raw:dhCommon; raw.dh=Math.max(raw.dh??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key==='dh'); if(j>=0) common.splice(j,1); put(common,'dh',raw.dh); } } continue; }
+      if(vals.length){ const raw=cur?cur.raw:dhCommon, z=/\bZNT\b/i.test(t)?'dh_znt':/\bZT\b/i.test(t)?'dh_zt':null;
+        for(const k of z?['dh',z]:['dh']){ raw[k]=Math.max(raw[k]??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key===k); if(j>=0) common.splice(j,1); put(common,k,raw[k]); } } } continue; }
     let prev=null; // « Gain = 0,8 » sans précision : le gain de la valeur qui précède sur la ligne
     for(const piece of sf_pairs(L[i])){
     const m=piece.match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};

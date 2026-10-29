@@ -8,7 +8,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {buildBuildingGrouping,analyzeDocuments} from './js/engine.js';
 import {DEFAULT_SOURCE_RULES,DOC_TYPES} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.10.7','version');
+eq(APP_VERSION, '2.11.0','version');
 const TXT=`Bâtiment X :
 Nombre de logements = 30
 Sref (ou Srt) = 2000,5
@@ -35,7 +35,7 @@ Commentaire : vérifié le 12/03`;
 ok(looksLikeFreeText(TXT)&&!looksLikeFreeText('Code interne\tNom opération\tCep\nOPE-1\tX\t40'),'texte libre ≠ tableau Excel');
 const p=parseFreePaste(TXT); const v=freePasteValues(p);
 eq(v.map(x=>x.building),['Bâtiment X','Bâtiment Y'],'bâtiments reconnus (« Bat Y » → « Bâtiment Y »)');
-eq(v[0].values,{housing_count:30,shab:2000.5,bbio:60.1,bbio_max:70.2,bbio_gain:14.4,cep:40,cep_max:80,cep_gain:50,cepnr:40,cepnr_max:70,cepnr_gain:42.9,dh:800.8,cross_ventilated:'Oui',non_cross_ventilated:'Oui',ic_construction:700.25,ic_energy:45.5,q4pa_surf:0.8},'toutes les lignes rangées (DH = zone la plus défavorable)');
+eq(v[0].values,{housing_count:30,shab:2000.5,bbio:60.1,bbio_max:70.2,bbio_gain:14.4,cep:40,cep_max:80,cep_gain:50,cepnr:40,cepnr_max:70,cepnr_gain:42.9,dh:800.8,dh_zt:500.5,dh_znt:800.8,cross_ventilated:'Oui',non_cross_ventilated:'Oui',ic_construction:700.25,ic_energy:45.5,q4pa_surf:0.8},'toutes les lignes rangées (DH = zone la plus défavorable)');
 eq(v[1].values,{housing_count:12,cep:35.2},'bâtiment Y');
 eq(p.unmatched.map(u=>u.line),['Commentaire : vérifié le 12/03'],'ligne avec chiffre non reconnue gardée pour l’IA ; remarque sans chiffre = texte descriptif');
 eq(v[0].sources.cep,'Cep = 40,0','ligne source conservée (traçabilité)');
@@ -46,7 +46,7 @@ const ix=re=>q.unmatched.findIndex(x=>re.test(x.line))+1;
 const added=applyFreePasteAi(q,{lines:[{n:ix(/Perméabilité/),field:'q4pa_surf',value:'0,6'},{n:ix(/Truc/),field:'champ_invente',value:'5'},{n:ix(/Truc/),field:'cep',value:'999'}]});
 eq([added,freePasteValues(q)[0].values],[2,{q4pa_surf:0.6,cep:5}],'colonne inventée refusée ; valeur relue dans la ligne (5, pas 999)');
 // Colonne Q4Pa-surf en fin d'export, en-têtes courts
-eq([FIELD_DEFS.findIndex(f=>f.key==='q4pa_surf'),FIELD_MAP.q4pa_surf.type],[192,'number'],'193e colonne Q4Pa-surf');
+eq([FIELD_DEFS.filter(f=>!f.hidden).findIndex(f=>f.key==='q4pa_surf'),FIELD_MAP.q4pa_surf.type],[193,'number'],'194e colonne d’export Q4Pa-surf (DH ZT / DH ZNT à la place de DH)');
 eq(['Sref (ou Srt)','Cepnrmax','Q4 Pa-surf'].map(matchFreeLabel),['shab','cepnr_max','q4pa_surf'],'libellés courts');
 eq([sanitizeOccurrence({field:'q4pa_surf',value:45,method:'generic:label',excerpt:'Q4 45'}),sanitizeOccurrence({field:'q4pa_surf',value:0.8,method:'generic:label',excerpt:'Q4Pa-surf 0,8'})?.value],[null,0.8],'Q4 borné');
 // Interface : collage libre prioritaire, export JSON, observatoire

@@ -13,7 +13,7 @@ export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   const usable=(projects||[]).filter(p=>p?.result);
   if(!usable.length) throw new Error('Aucun projet analysé à exporter.');
   const wb=XLSX.utils.book_new();
-  const fields=FIELD_DEFS;
+  const fields=FIELD_DEFS.filter(f=>!f.hidden); // DH (interne) remplacé par DH ZT / DH ZNT
 
   // La feuille principale respecte strictement le schéma métier : 192 colonnes dans l'ordre de référence
   // (les nouvelles colonnes sont toujours ajoutées à la fin), puis la colonne « Tags » du projet.

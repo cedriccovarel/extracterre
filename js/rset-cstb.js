@@ -82,8 +82,11 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     } }
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
-    if(!b) continue; let worst=null;
-    for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh}; }
+    if(!b) continue; let worst=null; const zones={};
+    for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[2]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
+      // colonne « Trav. » du tableau : Oui = zone traversante
+      const z=/^oui$/i.test(m[1])?'dh_zt':'dh_znt'; if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
+    for(const [z,w] of Object.entries(zones)) emit(w.x,z,w.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:`Groupe le plus défavorable des zones ${z==='dh_zt'?'traversantes':'non traversantes'} (tableau DH).`});
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
       // v2.3.11 — 1250 °C.h est le seuil de la catégorie 1, celle des logements : retenu pour un bâtiment d'habitation,

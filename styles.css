@@ -1274,3 +1274,6 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .ocr-zone-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}.ocr-zone-head span{display:block;font-size:12px;color:var(--muted)}.ocr-zone-head>div:last-child{display:flex;gap:8px}
 .ocr-zone-wrap{position:relative;overflow:auto;max-height:calc(94vh - 70px);padding:10px;background:#eef3f0}.ocr-zone-img{display:block;max-width:100%;height:auto;cursor:crosshair;touch-action:none;user-select:none}
 .ocr-zone-rect{position:absolute;border:2px solid #0c6748;background:rgba(12,103,72,.12);pointer-events:none}
+
+/* v2.11.0 — tuile dont le numéro de contrat figure aussi sur une autre opération */
+.op-tile.dup{border-color:#c0392b}.op-dup{color:#fff;background:#c0392b;border-radius:4px;padding:0 5px;margin-left:6px;font-size:.66rem;letter-spacing:0}

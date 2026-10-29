@@ -1,4 +1,4 @@
-export const APP_VERSION='2.10.7';
+export const APP_VERSION='2.11.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -125,7 +125,10 @@ export const FIELD_DEFS = [
   {key:"shab",label:"Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",family:"Programme",type:"number",tags:["Surface bâtiment (SHAB / Sref / SU / SURT / SRT)", "Surface bâtiment", "SHAB", "Sref", "S ref", "surface de référence", "surface habitable", "SU", "SURT", "SRT", "SHONRT"] ,presence:false},
   {key:"housing_typologies",label:"Typologies de logements",family:"Programme",type:"text",tags:["Typologies de logements", "typologie logements", "types de logements", "répartition typologique", "T1 T2 T3"] ,presence:false},
   {key:"construction_year",label:"Année de construction",family:"Programme",type:"number",tags:["Année de construction", "année construction"] ,presence:false},
-  {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false},
+  // v2.11.0 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
+  {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false,hidden:true},
+  {key:"dh_zt",label:"DH Zone traversante (DH ZT)",family:"Confort d’été",type:"number",tags:["DH Zone traversante (DH ZT)", "DH ZT", "DH zone traversante", "DH zones traversantes"] ,presence:false},
+  {key:"dh_znt",label:"DH Zone non traversante (DH ZNT)",family:"Confort d’été",type:"number",tags:["DH Zone non traversante (DH ZNT)", "DH ZNT", "DH zone non traversante", "DH zones non traversantes"] ,presence:false},
   {key:"dh_max",label:"DH Max",family:"Confort d’été",type:"number",tags:["DH Max", "DHmax", "seuil DH", "DH réglementaire"] ,presence:false},
   {key:"tic",label:"Tic",family:"Confort d’été",type:"number",tags:["Tic", "température intérieure conventionnelle"] ,presence:false},
   {key:"tic_ref",label:"Tic ref",family:"Confort d’été",type:"number",tags:["Tic ref", "Ticréf", "Tic référence"] ,presence:false},
@@ -253,6 +256,11 @@ export const FIELD_DEFS = [
   {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
   {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
   {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
+  // v2.11.0 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
+  {key:"wall_ite",label:"ITE",family:"Enveloppe",type:"text",tags:["ITE", "Isolation par l’extérieur (ITE)"] ,presence:false},
+  {key:"wall_iti",label:"ITI",family:"Enveloppe",type:"text",tags:["ITI", "Isolation par l’intérieur (ITI)"] ,presence:false},
+  {key:"fan_presence",label:"Brasseur d’air",family:"Confort d’été",type:"text",tags:["Brasseur d’air", "brasseur d'air", "brasseurs d’air"] ,presence:false},
+  {key:"cooling_active",label:"Climatisation active",family:"Systèmes",type:"text",tags:["Climatisation active"] ,presence:false},
 ];
 export const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 export const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -419,10 +427,10 @@ for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PRO
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
-for(const key of ['dh','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
+for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 // v2.3.20 — une étude RT existant (Th-C-E ex) déclare explicitement ses zones traversantes, comme une étude thermique.
-for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
+for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type','fan_presence']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
 for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON,DOC_TYPES.DIAGNOSTIC]);
 // v2.3.19 — rénovation : l'étude RT existant est l'étude réglementaire du projet ; elle devient source principale du Cep,
 // du Cep max et du gain Cep (classée après RSEE / RSET / RT2012 / étude thermique, qui priment s'ils sont présents).

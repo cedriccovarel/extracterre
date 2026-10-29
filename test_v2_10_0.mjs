@@ -5,11 +5,11 @@ import {wallInsulationSide,withWallSides,analyzeDocuments} from './js/engine.js'
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.10.7','version');
+eq(APP_VERSION,'2.11.0','version');
 
 // 6 colonnes ajoutées en fin, en-têtes reconnus, mêmes sources que les parois verticales.
 const keys=['wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r'];
-eq(FIELD_DEFS.slice(-6).map(f=>f.key),keys,'ajoutées en fin');
+eq(FIELD_DEFS.slice(-10,-4).map(f=>f.key),keys,'ajoutées en fin');
 eq(keys.map(k=>matchFieldByHeader(FIELD_MAP[k].label)?.key),keys,'en-têtes');
 eq(DEFAULT_SOURCE_RULES.wall_ite_r,DEFAULT_SOURCE_RULES.wall_insulation_r,'sources');
 

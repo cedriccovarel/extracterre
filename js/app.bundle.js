@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.10.7 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.11.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.10.7';
+const APP_VERSION='2.11.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -130,7 +130,10 @@ const FIELD_DEFS = [
   {key:"shab",label:"Surface bâtiment (SHAB / Sref / SU / SURT / SRT)",family:"Programme",type:"number",tags:["Surface bâtiment (SHAB / Sref / SU / SURT / SRT)", "Surface bâtiment", "SHAB", "Sref", "S ref", "surface de référence", "surface habitable", "SU", "SURT", "SRT", "SHONRT"] ,presence:false},
   {key:"housing_typologies",label:"Typologies de logements",family:"Programme",type:"text",tags:["Typologies de logements", "typologie logements", "types de logements", "répartition typologique", "T1 T2 T3"] ,presence:false},
   {key:"construction_year",label:"Année de construction",family:"Programme",type:"number",tags:["Année de construction", "année construction"] ,presence:false},
-  {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false},
+  // v2.11.0 — DH (zone la plus défavorable) reste lu et contrôlé, mais n'est plus une colonne : DH ZT et DH ZNT le remplacent.
+  {key:"dh",label:"DH",family:"Confort d’été",type:"number",tags:["DH", "degrés-heures", "degrés heures", "DH bâtiment"] ,presence:false,hidden:true},
+  {key:"dh_zt",label:"DH Zone traversante (DH ZT)",family:"Confort d’été",type:"number",tags:["DH Zone traversante (DH ZT)", "DH ZT", "DH zone traversante", "DH zones traversantes"] ,presence:false},
+  {key:"dh_znt",label:"DH Zone non traversante (DH ZNT)",family:"Confort d’été",type:"number",tags:["DH Zone non traversante (DH ZNT)", "DH ZNT", "DH zone non traversante", "DH zones non traversantes"] ,presence:false},
   {key:"dh_max",label:"DH Max",family:"Confort d’été",type:"number",tags:["DH Max", "DHmax", "seuil DH", "DH réglementaire"] ,presence:false},
   {key:"tic",label:"Tic",family:"Confort d’été",type:"number",tags:["Tic", "température intérieure conventionnelle"] ,presence:false},
   {key:"tic_ref",label:"Tic ref",family:"Confort d’été",type:"number",tags:["Tic ref", "Ticréf", "Tic référence"] ,presence:false},
@@ -258,6 +261,11 @@ const FIELD_DEFS = [
   {key:"wall_ite_insulation",label:"Parois verticales ITE type d’isolant",family:"Enveloppe",type:"text",tags:["Parois verticales ITE type d’isolant"] ,presence:false},
   {key:"wall_ite_thickness",label:"Parois verticales ITE épaisseur isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE épaisseur isolant"] ,presence:false},
   {key:"wall_ite_r",label:"Parois verticales ITE R isolant",family:"Enveloppe",type:"number",tags:["Parois verticales ITE R isolant"] ,presence:false},
+  // v2.11.0 — Oui / Non déduits des colonnes de détail (voir applyComparisonBases, engine.js), ajoutés en fin.
+  {key:"wall_ite",label:"ITE",family:"Enveloppe",type:"text",tags:["ITE", "Isolation par l’extérieur (ITE)"] ,presence:false},
+  {key:"wall_iti",label:"ITI",family:"Enveloppe",type:"text",tags:["ITI", "Isolation par l’intérieur (ITI)"] ,presence:false},
+  {key:"fan_presence",label:"Brasseur d’air",family:"Confort d’été",type:"text",tags:["Brasseur d’air", "brasseur d'air", "brasseurs d’air"] ,presence:false},
+  {key:"cooling_active",label:"Climatisation active",family:"Systèmes",type:"text",tags:["Climatisation active"] ,presence:false},
 ];
 const FIELD_MAP = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,f]));
 const FIELD_TAGS = Object.fromEntries(FIELD_DEFS.map(f=>[f.key,[...f.tags]]));
@@ -424,10 +432,10 @@ for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PRO
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
-for(const key of ['dh','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
+for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 // v2.3.20 — une étude RT existant (Th-C-E ex) déclare explicitement ses zones traversantes, comme une étude thermique.
-for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
+for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type','fan_presence']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
 for(const key of ['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.RT_EXISTING,DOC_TYPES.CARBON,DOC_TYPES.DIAGNOSTIC]);
 // v2.3.19 — rénovation : l'étude RT existant est l'étude réglementaire du projet ; elle devient source principale du Cep,
 // du Cep max et du gain Cep (classée après RSEE / RSET / RT2012 / étude thermique, qui priment s'ils sont présents).
@@ -1870,8 +1878,11 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     } }
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
-    if(!b) continue; let worst=null;
-    for(const x of ls){ const m=x.t.match(/(?:^|\s)(?:Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[1]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh}; }
+    if(!b) continue; let worst=null; const zones={};
+    for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[2]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
+      // colonne « Trav. » du tableau : Oui = zone traversante
+      const z=/^oui$/i.test(m[1])?'dh_zt':'dh_znt'; if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
+    for(const [z,w] of Object.entries(zones)) emit(w.x,z,w.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:`Groupe le plus défavorable des zones ${z==='dh_zt'?'traversantes':'non traversantes'} (tableau DH).`});
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
       // v2.3.11 — 1250 °C.h est le seuil de la catégorie 1, celle des logements : retenu pour un bâtiment d'habitation,
@@ -4372,10 +4383,14 @@ function extractRe2020(xml){
     for(const u of ['ecl','auxvent','auxdist','deplacement']) use[`elec_${u}`]=re20PathNum(sC,`O_Cef_elec_imp_${u}_annuel`);
     b.cef={vectors:vec,uses:use};
     // --- DH : groupe le plus défavorable, DHmax lu sur le même groupe.
-    let worst=null;
+    let worst=null; b.dhZones={};
+    // Sortie_Zone_D et Zone d'entrée partagent leur Index : Is_Traversant donne le type de zone (DH ZT / DH ZNT).
+    const travOf=new Map(zones.map(z=>[re20PathNum(z,'Index'),re20PathNum(z,'Is_Traversant')]));
     for(const z of re20All(re20Path(sD,'Sortie_Zone_D_Collection'),'Sortie_Zone_D')) for(const g of re20All(re20Path(z,'Sortie_Groupe_D_Collection'),'Sortie_Groupe_D')){
       const dh=re20PathNum(g,'O_NbDegresHeures'); if(dh===null) continue;
       if(!worst||dh>worst.dh) worst={dh,dhMax:re20PathNum(g,'O_NbDegresHeures_max'),group:re20PathText(g,'Name')};
+      const t=travOf.get(re20PathNum(z,'Index')), k=t===1?'dh_zt':t===0?'dh_znt':null;
+      if(k&&!(b.dhZones[k]?.dh>=dh)) b.dhZones[k]={dh,group:re20PathText(g,'Name')};
     }
     b.dh=worst?.dh??null; b.dhMax=worst?.dhMax??null; b.dhGroup=worst?.group||'';
     // --- ACV (RSEnv sortie bâtiment)
@@ -4485,9 +4500,11 @@ function re2020Occurrences(doc,makeOcc){
     add(b,'cep_gain',gain(b.cep,b.cepMax),'rset-gain-calc','%',/^Cep :/,{confidence:0.995,derived:true,note:'Gain = (Cep max − Cep) / Cep max, calculé à partir des deux valeurs du XML.'});
     add(b,'cepnr_gain',gain(b.cepnr,b.cepnrMax),'rset-gain-calc','%',/Cep,nr/,{confidence:0.995,derived:true,note:'Gain = (Cep,nr max − Cep,nr) / Cep,nr max, calculé à partir des deux valeurs du XML.'});
     add(b,'dh',b.dh,'rset-dh','°C.h',/^DH/,{note:`DH du groupe le plus défavorable (${b.dhGroup||'groupe'}) lu dans Sortie_Groupe_D.`});
+    for(const [k,w] of Object.entries(b.dhZones)) add(b,k,w.dh,'rset-dh','°C.h',/^DH/,{note:`DH du groupe le plus défavorable des zones ${k==='dh_zt'?'traversantes':'non traversantes'} (${w.group||'groupe'}), Is_Traversant du XML.`});
     add(b,'dh_max',b.dhMax,'rset-dh','°C.h',/^DH/,{note:`DH max lu sur le même groupe que le DH retenu (${b.dhGroup||'groupe'}).`});
     if(b.crossVentilated) add(b,'cross_ventilated','Oui','rset-traversant','',/^Bâtiment/);
     if(b.nonCrossVentilated) add(b,'non_cross_ventilated','Oui','rset-traversant','',/^Bâtiment/);
+    if(b.anyCooled) add(b,'cooling','Climatisation active','rset-climatisation','',/^Bâtiment/,{confidence:0.95,note:'Au moins un groupe déclaré climatisé (Is_Climatise = 1) dans le XML.'});
     if(b.groupsKnown&&!b.anyCooled) add(b,'cooling','Aucun','rset-climatisation','',/^Bâtiment/,{confidence:0.95,note:'Aucun groupe déclaré climatisé (Is_Climatise = 0) dans le XML.'});
     // Cep par poste / par vecteur : Cef importée × coefficient RE2020 (élec 2,3 ; autres 1), contrôlé vs O_Cep_annuel.
     const u=b.cef?.uses||{}, v=b.cef?.vectors||{};
@@ -5359,7 +5376,7 @@ function sourceRank(field,docType,rules){ const r=rules[field]||DEFAULT_SOURCE_R
 const EXTRACTION_RANGES=Object.freeze({
   bbio:[5,400], bbio_max:[5,400], cep:[10,1500], cep_max:[30,1500], cepnr:[5,1500], cepnr_max:[20,1500],
   cep_before:[10,2500], cep_after_final:[10,1500], ubat_before:[0.05,5], ubat_after:[0.05,5],
-  tic:[15,45], tic_ref:[15,45], dh:[0,3000], dh_max:[300,3000],
+  tic:[15,45], tic_ref:[15,45], dh:[0,3000], dh_zt:[0,3000], dh_znt:[0,3000], dh_max:[300,3000],
   cep_cooling:[0,400], cep_lighting:[0,200], cep_aux_vent:[0,200], cep_aux_dist:[0,200], cep_mobility:[0,200],
   cep_electricity:[0,1000], cep_gas:[0,1500], cep_district:[0,1500], cep_biomass:[0,1500],
   shab:[8,500000], housing_count:[1,5000], construction_year:[1000,2100],
@@ -6163,7 +6180,7 @@ function parseRset(doc){
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:cep-summary-row',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:cep-summary-row',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:cep-summary-row',0.99,'%')); }
       }
       if(/\bdh\b|degres?[- ]heures?/i.test(s)){
-        const explicit=firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); if(explicit!==null) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
+        const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */ if(explicit!==null) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
         const max=firstValueAfterLabel(s,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
       }
       if(/conforme|non\s+conforme/i.test(s) && i>0){
@@ -6174,7 +6191,7 @@ function parseRset(doc){
             const n=numbersIn(s.slice(yn.index));
             if(n.length>=2){
               const building=buildingForPosition(doc,page.page,line.index);
-              push(out,occ(doc,page,line,'dh',n[1],'rset:dh-row',0.97,'°C.h',{building,context:'tableau DH',excerpt:normalizeText(context).slice(0,420)}));
+              push(out,occ(doc,page,line,'dh',n[1],'rset:dh-row',0.97,'°C.h',{building,dhZone:/^oui$/i.test(yn[0])?'zt':'znt',context:'tableau DH',excerpt:normalizeText(context).slice(0,420)}));
             }
           }
         }
@@ -6201,7 +6218,7 @@ function parseRset(doc){
 function fallbackRset(doc,current){
   const have=new Set(current.map(o=>`${o.building}|${o.field}`)); const out=[...current];
   for(const page of doc.read.pages){ for(const line of page.lines||[]){ const s=normalizeText(line.text), building=buildingForPosition(doc,page.page,line.index); if(/certification|referentiel|référentiel|performance|niveau|label|objectif|seuil|article|\bart\.?\s*\d+|représente|represente/i.test(normLower(s))) continue; const patterns={bbio:/\bbbio\b(?!\s*max)/i,bbio_max:/\bbbio\s*max\b/i,cep:/\bcep\b(?!\s*,?\s*nr|\s*max)/i,cep_max:/\bcep\s*max\b/i,cepnr:/\bcep\s*,?\s*nr\b(?!\s*max)/i,cepnr_max:/\bcep\s*,?\s*nr\s*max\b/i,dh:/\bdh\b|degres?[- ]heures?/i};
-    for(const [field,re] of Object.entries(patterns)){ const key=`${building}|${field}`; if(have.has(key)||!re.test(s)) continue; const val=firstValueAfterLabel(s,re); if(val!==null){ push(out,occ(doc,page,line,field,val,'rset:fallback-label',0.87,'',{building})); have.add(key); } }
+    for(const [field,re] of Object.entries(patterns)){ const key=`${building}|${field}`; if(have.has(key)||!re.test(s)||field==='dh'&&/\bDH\s*(?:max|seuil)/i.test(s)) continue; const val=firstValueAfterLabel(s,re); if(val!==null){ push(out,occ(doc,page,line,field,val,'rset:fallback-label',0.87,'',{building})); have.add(key); } }
   }} return out;
 }
 
@@ -6669,7 +6686,7 @@ function parseSystems(doc){
 
     let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
-    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|pas\s+de\s+climatisation\s+active|absence\s+de\s+climatisation/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
+    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/degres?[- ]?heures?|si\s+l.?on\s+retire|groupes?\s+climatises?,/i.test(coolLow)||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|pas\s+de\s+climatisation\s+active|absence\s+de\s+climatisation/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
     let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
@@ -7806,7 +7823,7 @@ function __learningMemoryTestSimilarity(a,b){return locationSimilarity(a,b);}
 
 const PLAUSIBLE_RANGES=Object.freeze({
   bbio:[5,300], bbio_max:[5,300], cep:[5,700], cep_max:[5,1500], cepnr:[5,700], cepnr_max:[5,700],
-  dh:[0,5000], dh_max:[0,5000], tic:[15,45], tic_ref:[15,45], ubat_before:[0.05,5], ubat_after:[0.05,5], ubat_ref:[0.05,5], ges:[0,150], ges_before:[0,250], ges_ref:[0,250],
+  dh:[0,5000], dh_zt:[0,5000], dh_znt:[0,5000], dh_max:[0,5000], tic:[15,45], tic_ref:[15,45], ubat_before:[0.05,5], ubat_after:[0.05,5], ubat_ref:[0.05,5], ges:[0,150], ges_before:[0,250], ges_ref:[0,250],
   cep_before:[5,1500], cep_after_final:[5,1500], shab:[8,500000], housing_count:[1,5000],
   ic_components:[100,2500], ic_site:[0,250], ic_energy:[0,2000], stock_c_per_m2:[0,400],
   bbio_gain:[-100,100], cep_gain:[-100,100], cepnr_gain:[-100,100], ubat_gain:[-100,100], ges_gain:[-100,100], construction_year:[1700,2035]
@@ -7915,10 +7932,12 @@ function withWallSides(raw){
   for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
   return out;
 }
+// v2.11.0 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
+function withDhZones(raw){ return [...raw,...raw.filter(o=>o?.field==='dh'&&(o.dhZone==='zt'||o.dhZone==='znt')).map(o=>({...o,field:`dh_${o.dhZone}`}))]; }
 function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
-  const learnedRaw=applyLearningBoosts(withWallSides(raw));
+  const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(raw)));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
@@ -8063,7 +8082,7 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
-      if(f.key==='dh') {
+      if(f.key==='dh'||f.key==='dh_zt'||f.key==='dh_znt') {
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
@@ -8178,6 +8197,8 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
+    // v2.11.0 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
+    if(Array.isArray(d.cachedOccurrences)&&d.read&&!d.dhZonesRead&&d.cachedOccurrences.some(o=>o?.field==='dh')){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')) d.cachedOccurrences=null; }
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
   }
@@ -8196,6 +8217,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   applyComparisonBases(consolidated);
   const coherence=applyCoherenceChecks(consolidated);
   alerts.push(...coherence.alerts);
+  for(const row of consolidated.rows||[]) if(numOrNull(row.dh)!==null&&numOrNull(row.dh_zt)===null&&numOrNull(row.dh_znt)===null) alerts.push({level:'warning',building:row.building,message:`DH ${row.dh} °C.h lu sans type de zone pour ${row.building||'le bâtiment'} : DH ZT / DH ZNT à renseigner (le document ne dit pas quelle zone).`});
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
   const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
   return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
@@ -8228,6 +8250,19 @@ function applyComparisonBases(result){
     if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
       if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
       result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
+    // v2.11.0 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
+    const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
+    const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
+    const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
+    // Un seul type de zone dans le bâtiment : son DH est le DH du bâtiment ; deux types sans détail : rien (signalé dans les alertes).
+    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const zt=yes('cross_ventilated'), znt=yes('non_cross_ventilated');
+      if(zt!==znt) derive(zt?'dh_zt':'dh_znt',row.dh,'dh',`Le bâtiment n’a que des zones ${zt?'traversantes':'non traversantes'} : DH du bâtiment.`); }
+    const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
+    for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
+      if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }
+    const fc=numOrNull(row.fan_count);
+    if(fc>0||!empty('fan_type')) derive('fan_presence','Oui',fc>0?'fan_count':'fan_type','Brasseurs d’air lus dans le document.'); else if(fc===0) derive('fan_presence','Non','fan_count','Nombre de brasseurs d’air = 0.');
+    if(!empty('cooling')) derive('cooling_active',/^(?:aucun|non|sans)\b/i.test(String(row.cooling))?'Non':'Oui','cooling',`Refroidissement : ${row.cooling}.`);
   }
   return result;
 }
@@ -8690,8 +8725,8 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin.
-  assert('Schéma métier = 206 colonnes',FIELD_DEFS.length===206,String(FIELD_DEFS.length));
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.11.0 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
+  assert('Schéma métier = 212 champs (211 colonnes + DH interne)',FIELD_DEFS.length===212,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));
   const contractTagged=parseDocument(mk('Code interne : OPE-009999\nNom opération : Résidence Test',DOC_TYPES.CONTRACT));
@@ -8864,8 +8899,8 @@ function fp_value(field,raw){
   const m=s.replace(/\u00a0/g,' ').match(/(?<![A-Za-z\d.,+])[-+]?\d+(?:[ .]\d{3})*(?:[.,]\d+)?/); if(!m) return null;
   return parseFrNumber(m[0]);
 }
-// DH par type de zone : la colonne DH garde la plus défavorable (comme la lecture des RSET) ; le type de zone est noté.
-function fp_dhZone(label){ const l=normLower(label); if(!/\bdh\b|degres?[- ]heures?/.test(l)||!/travers/.test(l)) return null; return /non\s+travers/.test(l)?'non':'oui'; }
+// DH par type de zone : DH ZT / DH ZNT reçoivent la zone la plus défavorable de leur type, DH (interne) la plus défavorable des deux.
+function fp_dhZone(label){ const l=normLower(label); if(!/\bdh\b|degres?[- ]heures?/.test(l)||!/travers|\bzn?t\b/.test(l)) return null; return /non\s+travers|\bznt\b/.test(l)?'non':'oui'; }
 
 function matchFreeLabel(label){
   const clean=fp_clean(label); const r=matchFieldByHeaderDetailed(clean)||matchFieldByHeaderDetailed(label);
@@ -8987,7 +9022,7 @@ function freePasteValues(parsed){
     const vals={}, src={};
     for(const it of items){
       if(!it.field||it.value===null||it.value===undefined||it.value==='') continue;
-      if(it.dhZone){ if(vals.dh===undefined||it.value>vals.dh){ vals.dh=it.value; src.dh=it.line; } const k=it.dhZone==='oui'?'cross_ventilated':'non_cross_ventilated'; vals[k]='Oui'; src[k]=it.line; continue; }
+      if(it.dhZone){ const z=it.dhZone==='oui'?'dh_zt':'dh_znt'; for(const f of ['dh',z]) if(vals[f]===undefined||it.value>vals[f]){ vals[f]=it.value; src[f]=it.line; } const k=it.dhZone==='oui'?'cross_ventilated':'non_cross_ventilated'; vals[k]='Oui'; src[k]=it.line; continue; }
       vals[it.field]=it.value; src[it.field]=it.line;
     }
     res.push({building:b.name,values:vals,sources:src});
@@ -9090,7 +9125,8 @@ function salesforceEvaluationToPaste(text){
     if(!/[=:]/.test(t)&&t.length<=60&&!isField(t)&&nx&&(sf_ALIASES[sf_key(nx[1])]||fp_strictLabel(nx[1]))){ cur={name:t.trim(),items:[],raw:{},extra:[]}; blocks.push(cur); continue; }
     // « DH ZT - T3 = 634,2 - T2 = 841,7 » : DH par zone et par typologie ; on retient le plus défavorable (comme la lecture des RSET).
     if(/^DH\b/i.test(t)&&/=/.test(t)&&(/\bZN?T\b/i.test(t)||(t.match(/=/g)||[]).length>1)){ const vals=[...t.matchAll(/=\s*([-+]?\d+(?:[.,]\d+)?)/g)].map(x=>parseFrNumber(x[1]));
-      if(vals.length){ const raw=cur?cur.raw:dhCommon; raw.dh=Math.max(raw.dh??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key==='dh'); if(j>=0) common.splice(j,1); put(common,'dh',raw.dh); } } continue; }
+      if(vals.length){ const raw=cur?cur.raw:dhCommon, z=/\bZNT\b/i.test(t)?'dh_znt':/\bZT\b/i.test(t)?'dh_zt':null;
+        for(const k of z?['dh',z]:['dh']){ raw[k]=Math.max(raw[k]??-Infinity,...vals); if(!cur){ const j=common.findIndex(x=>x.key===k); if(j>=0) common.splice(j,1); put(common,k,raw[k]); } } } continue; }
     let prev=null; // « Gain = 0,8 » sans précision : le gain de la valeur qui précède sur la ligne
     for(const piece of sf_pairs(L[i])){
     const m=piece.match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
@@ -9642,7 +9678,7 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   const usable=(projects||[]).filter(p=>p?.result);
   if(!usable.length) throw new Error('Aucun projet analysé à exporter.');
   const wb=XLSX.utils.book_new();
-  const fields=FIELD_DEFS;
+  const fields=FIELD_DEFS.filter(f=>!f.hidden); // DH (interne) remplacé par DH ZT / DH ZNT
 
   // La feuille principale respecte strictement le schéma métier : 192 colonnes dans l'ordre de référence
   // (les nouvelles colonnes sont toujours ajoutées à la fin), puis la colonne « Tags » du projet.
@@ -9846,6 +9882,20 @@ function serializeProject(project={}){
   };
 }
 
+// v2.11.0 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
+// document (comme le checkpoint IndexedDB), afin qu'un import restitue toutes les données sans les fichiers sources.
+function serializeProjectFull(project={}){
+  const docs=project.docs||[];
+  return {...serializeProject(project),docs:docs.map(d=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null}))};
+}
+function hydrateProjectFull(raw={}){
+  return {...raw,docs:(raw.docs||[]).map(({analysis,...meta})=>{ const doc=hydrateDocMeta(meta);
+    if(analysis){ doc.read=hydrateRead(analysis.read); doc.cachedOccurrences=Array.isArray(analysis.cachedOccurrences)?analysis.cachedOccurrences:[];
+      for(const k of ['buildings','classification','type','specializedFamily','specializedLabel','families','familyMode','analysisCachedAt']) if(analysis[k]!=null) doc[k]=analysis[k];
+      doc.persistenceMode=analysis.storageMode||'compact'; doc.status='ready'; }
+    else doc.status='missing';
+    return doc; })};
+}
 async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab='summary'}={}){
   const record={
     key:WORKSPACE_KEY,
@@ -10829,8 +10879,8 @@ const RESULT_VIEWS = Object.freeze({
     {title:'Niveaux de certification',keys:['dpe_ges_label','energy_level','passive_level','cep_level','cepnr_level','bbio_level','ic_construction_level','ic_energy_level','enhanced_performance','biosourced_2013']}
   ]},
   thermal:{label:'Thermique',groups:[
-    {title:'Confort d’été',keys:['dh','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
-    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
+    {title:'Confort d’été',keys:['dh_zt','dh_znt','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_presence','fan_count','fan_type']},
+    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','cooling_active','ventilation_before','ventilation','enr','enr_type']},
     {title:'Performance réglementaire',keys:['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']},
     {title:'Rénovation — avant / après',keys:['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
     {title:'Consommations par poste / énergie',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']}
@@ -10844,7 +10894,7 @@ const RESULT_VIEWS = Object.freeze({
   economics:{label:'Économie',groups:[]},
   searches:{label:'Recherches',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
-    {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
+    {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_ite','wall_iti','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
   ]}
 });
@@ -10854,7 +10904,7 @@ function currentResultView(){ const p=activeProject(); const key=normalizedResul
 function fieldsForResultGroup(group){
   const prof=projectProfile();
   if(group.keys) return group.keys.map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,prof));
-  const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&families.has(f.family)&&fieldInProfile(f.key,prof));
+  const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&!f.hidden&&families.has(f.family)&&fieldInProfile(f.key,prof));
 }
 function fieldsForCurrentResultView(){ return [...new Map(currentResultView().groups.flatMap(fieldsForResultGroup).map(f=>[f.key,f])).values()]; }
 function syncResultTabs(){ const key=normalizedResultViewKey(activeProject().resultView); $$('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.resultView===key)); }
@@ -10894,6 +10944,7 @@ const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
   const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+  const dups=contractDuplicates(); warnContractDuplicates(dups); const isDup=id=>dups.has(contractKey(id.contract));
   const grouped=items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
   if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
@@ -10902,11 +10953,11 @@ function renderTiles(wrap,{home=false}={}){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
     body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
-      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
+      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
     const xs=grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items;
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
-    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
+    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
       <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
@@ -11409,7 +11460,7 @@ function renderFreePastePreview(){
   const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
   box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1}</b> bâtiment(s)</span>${fp.buildings.some(b=>b.name==='*')?`<span><b>${fp.buildings.find(b=>b.name==='*').items.length}</b> valeur(s) pour toute l’opération</span>`:''}<span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
   ${fp.salesforce?`<p class="manual-free-note">Fiche Évaluation Salesforce convertie : une section par bâtiment de « Performance thermique », enveloppe et systèmes pour toute l’opération (sous-sections « Notes » ignorées).</p>`:''}${fp.notes?.length?`<ul class="manual-free-warn">${fp.notes.map(n=>`<li>⚠ ${escapeHtml(n)}</li>`).join('')}</ul>`:''}
-  <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
+  <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : DH ZT et DH ZNT gardent chacun la zone la plus défavorable de leur type, les types de zones sont notés.':''}</p>
   <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
   ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?`<i>Toute l’opération</i><small> → tous les bâtiments${state.result?.rows?.length?` (${state.result.rows.length})`:''}</small>`:escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
   ${fp.unmatched.map((u,ui)=>`<tr class="unmatched"><td>${escapeHtml(u.building||'—')}</td><td>${escapeHtml(u.line)}</td><td>${freeFieldSelect('',`data-fp-u="${ui}"`)}</td><td><small>non reconnue</small></td></tr>`).join('')}
@@ -11976,7 +12027,7 @@ function renderSummary(){
 // champ (valeur, état, source), filtrable (à compléter / à vérifier / renseigné), corrigeable sur place, avec les candidats
 // proposés et l'accès direct au document. Le profil masque les champs qui n'ont pas de sens pour l'opération ; l'export
 // Excel reste complet.
-const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_max','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
+const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_zt','dh_znt','dh_max','fan_presence','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
   ...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility','ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028',
   'bbio_level','cepnr_level','ic_construction_level','ic_energy_level','biosourced_2013','mention_ec','derogation_ec','effinergie_energy_carbon_level']);
 const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','ges_before','built_before_1948','built_after_1948','renovation']);
@@ -12000,16 +12051,16 @@ const REVIEW_GROUPS=Object.freeze([
   {title:'Localisation',families:['Localisation']},
   {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','ubat_ref','ubat_gain','ges_before','ges','ges_ref','ges_gain','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
-  {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
-  {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
-  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
+  {title:'Confort d’été',keys:['tic','tic_ref','dh_zt','dh_znt','dh_max','cross_ventilated','non_cross_ventilated','fan_presence','fan_count','fan_type']},
+  {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','cooling_active','ventilation_before','ventilation','enr','enr_type']},
+  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_ite','wall_iti','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
   {title:'Consommations par poste',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']},
   {title:'Carbone',optional:'reno',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy','ic_energy_max','ic_energy_max_2028','ic_components','ic_site','stock_c_per_m2','eges_total','eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total_max']},
   {title:'Données administratives',admin:true,families:['Administration'],keys:['reference_name','reference_version','mentions','performance','selected_profile','specific_profile','renovation','mention_effinergie','mention_bbca','mention_biosourced_building']}
 ]);
 let reviewState={building:'',filter:'todo',query:'',editing:'',openAdmin:false};
 const isBlank=v=>v===undefined||v===null||v===''||v==='non précisé';
-function reviewFields(group,profile){ const keys=[...(group.keys||[]),...(group.families?FIELD_DEFS.filter(f=>group.families.includes(f.family)).map(f=>f.key):[])]; return [...new Set(keys)].map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,profile)); }
+function reviewFields(group,profile){ const keys=[...(group.keys||[]),...(group.families?FIELD_DEFS.filter(f=>!f.hidden&&group.families.includes(f.family)).map(f=>f.key):[])]; return [...new Set(keys)].map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,profile)); }
 function reviewEntry(building,def){
   const r=state.result, row=r?.rows?.find(x=>x.building===building); const v=row?.[def.key];
   const src=r?.finals?.find(o=>o.field===def.key&&o.building===building)||r?.finals?.find(o=>o.field===def.key&&o.building==='Bâtiment unique');
@@ -12165,7 +12216,7 @@ function manualAnalysisFields(section=manualAnalysisState.section,{all=false,sea
   const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general; const prof=projectProfile();
   // v2.4.1 — recherche : toutes les familles, libellé ou synonymes contenant le texte saisi (casse et accents ignorés).
   const q=search?normLower(manualAnalysisState.query||''):'';
-  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&(q?manualAnalysisSectionOf(f.key):cfg.families.has(f.family))&&fieldInProfile(f.key,prof)&&(!q||normLower([f.label,...(f.tags||[])].join(' | ')).includes(q)));
+  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&!f.hidden&&(q?manualAnalysisSectionOf(f.key):cfg.families.has(f.family))&&fieldInProfile(f.key,prof)&&(!q||normLower([f.label,...(f.tags||[])].join(' | ')).includes(q)));
   // v2.4.0 — « À compléter » : champs vides ou dont la valeur est seulement proposée (à vérifier), le champ actif restant visible.
   if(all||manualAnalysisState.filter==='all') return defs;
   return defs.filter(f=>f.key===manualAnalysisState.field||manualAnalysisNeeds(manualAnalysisState.building,f.key));
@@ -12752,9 +12803,40 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
+  // v2.11.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
+// v2.11.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
+// les saisies, les collages et l'économie, sans le texte des documents.
+async function importSessionJson(file){
+  let o; try{ const t=await file.text(); o=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))); }catch(err){ toast(`Session illisible : ${err?.message||err}`,'error'); return; }
+  if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
+  const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
+  const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
+    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
+      docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
+      retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
+  for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }
+  restoringWorkspace=true; try{ for(const p of projects) rebuildProjectFromCheckpoints(p); } finally { restoringWorkspace=false; }
+  const cur=activeProject(); if(cur&&projectIsEmpty(cur)) state.projects=state.projects.filter(p=>p!==cur);
+  state.projects.push(...projects); if(!state.projects.some(p=>p.id===state.activeProjectId)) state.activeProjectId=projects[0]?.id;
+  for(const p of projects) for(const d of p.docs) if(d.status==='ready') await checkpointDocument(p,d);
+  await checkpointWorkspace('import de session',true);
+  setHomeMode(true); renderAll();
+  const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
+  toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
+}
+// v2.11.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
+function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
+const warnedDuplicates=new Set();
+function warnContractDuplicates(dups){ const fresh=[];
+  for(const [k,ps] of dups){ const sig=`${k}|${ps.map(p=>p.id).sort().join(',')}`; if(!warnedDuplicates.has(sig)){ warnedDuplicates.add(sig); fresh.push(ps); } }
+  if(fresh.length>3) toast(`Doublons : ${fresh.length} numéros de contrat figurent sur plusieurs opérations (${fresh.slice(0,6).map(ps=>projectIdentity(ps[0]).contract).join(', ')}${fresh.length>6?'…':''}). Les tuiles concernées sont marquées « doublon ».`,'warn');
+  else for(const ps of fresh) toast(`Doublon : le contrat ${projectIdentity(ps[0]).contract} figure sur ${ps.length} opérations (${ps.map(p=>projectIdentity(p).name||projectTitle(p)).join(' ; ')}).`,'warn'); }
 // Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
 function openSearchObservatory(){
   try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
@@ -13003,7 +13085,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};

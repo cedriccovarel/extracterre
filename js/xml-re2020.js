@@ -198,10 +198,14 @@ export function extractRe2020(xml){
     for(const u of ['ecl','auxvent','auxdist','deplacement']) use[`elec_${u}`]=re20PathNum(sC,`O_Cef_elec_imp_${u}_annuel`);
     b.cef={vectors:vec,uses:use};
     // --- DH : groupe le plus défavorable, DHmax lu sur le même groupe.
-    let worst=null;
+    let worst=null; b.dhZones={};
+    // Sortie_Zone_D et Zone d'entrée partagent leur Index : Is_Traversant donne le type de zone (DH ZT / DH ZNT).
+    const travOf=new Map(zones.map(z=>[re20PathNum(z,'Index'),re20PathNum(z,'Is_Traversant')]));
     for(const z of re20All(re20Path(sD,'Sortie_Zone_D_Collection'),'Sortie_Zone_D')) for(const g of re20All(re20Path(z,'Sortie_Groupe_D_Collection'),'Sortie_Groupe_D')){
       const dh=re20PathNum(g,'O_NbDegresHeures'); if(dh===null) continue;
       if(!worst||dh>worst.dh) worst={dh,dhMax:re20PathNum(g,'O_NbDegresHeures_max'),group:re20PathText(g,'Name')};
+      const t=travOf.get(re20PathNum(z,'Index')), k=t===1?'dh_zt':t===0?'dh_znt':null;
+      if(k&&!(b.dhZones[k]?.dh>=dh)) b.dhZones[k]={dh,group:re20PathText(g,'Name')};
     }
     b.dh=worst?.dh??null; b.dhMax=worst?.dhMax??null; b.dhGroup=worst?.group||'';
     // --- ACV (RSEnv sortie bâtiment)
@@ -311,9 +315,11 @@ export function re2020Occurrences(doc,makeOcc){
     add(b,'cep_gain',gain(b.cep,b.cepMax),'rset-gain-calc','%',/^Cep :/,{confidence:0.995,derived:true,note:'Gain = (Cep max − Cep) / Cep max, calculé à partir des deux valeurs du XML.'});
     add(b,'cepnr_gain',gain(b.cepnr,b.cepnrMax),'rset-gain-calc','%',/Cep,nr/,{confidence:0.995,derived:true,note:'Gain = (Cep,nr max − Cep,nr) / Cep,nr max, calculé à partir des deux valeurs du XML.'});
     add(b,'dh',b.dh,'rset-dh','°C.h',/^DH/,{note:`DH du groupe le plus défavorable (${b.dhGroup||'groupe'}) lu dans Sortie_Groupe_D.`});
+    for(const [k,w] of Object.entries(b.dhZones)) add(b,k,w.dh,'rset-dh','°C.h',/^DH/,{note:`DH du groupe le plus défavorable des zones ${k==='dh_zt'?'traversantes':'non traversantes'} (${w.group||'groupe'}), Is_Traversant du XML.`});
     add(b,'dh_max',b.dhMax,'rset-dh','°C.h',/^DH/,{note:`DH max lu sur le même groupe que le DH retenu (${b.dhGroup||'groupe'}).`});
     if(b.crossVentilated) add(b,'cross_ventilated','Oui','rset-traversant','',/^Bâtiment/);
     if(b.nonCrossVentilated) add(b,'non_cross_ventilated','Oui','rset-traversant','',/^Bâtiment/);
+    if(b.anyCooled) add(b,'cooling','Climatisation active','rset-climatisation','',/^Bâtiment/,{confidence:0.95,note:'Au moins un groupe déclaré climatisé (Is_Climatise = 1) dans le XML.'});
     if(b.groupsKnown&&!b.anyCooled) add(b,'cooling','Aucun','rset-climatisation','',/^Bâtiment/,{confidence:0.95,note:'Aucun groupe déclaré climatisé (Is_Climatise = 0) dans le XML.'});
     // Cep par poste / par vecteur : Cef importée × coefficient RE2020 (élec 2,3 ; autres 1), contrôlé vs O_Cep_annuel.
     const u=b.cef?.uses||{}, v=b.cef?.vectors||{};

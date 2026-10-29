@@ -16,7 +16,7 @@ import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForT
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
 import {normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
-import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
+import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
 import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
 import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud,invokeLlmCloudFunction} from './cloud.js';
@@ -168,8 +168,8 @@ const RESULT_VIEWS = Object.freeze({
     {title:'Niveaux de certification',keys:['dpe_ges_label','energy_level','passive_level','cep_level','cepnr_level','bbio_level','ic_construction_level','ic_energy_level','enhanced_performance','biosourced_2013']}
   ]},
   thermal:{label:'Thermique',groups:[
-    {title:'Confort d’été',keys:['dh','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
-    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
+    {title:'Confort d’été',keys:['dh_zt','dh_znt','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_presence','fan_count','fan_type']},
+    {title:'Systèmes & énergies',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','cooling_active','ventilation_before','ventilation','enr','enr_type']},
     {title:'Performance réglementaire',keys:['bbio','bbio_max','bbio_gain','cep','cep_max','cep_gain','cepnr','cepnr_max','cepnr_gain']},
     {title:'Rénovation — avant / après',keys:['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
     {title:'Consommations par poste / énergie',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']}
@@ -183,7 +183,7 @@ const RESULT_VIEWS = Object.freeze({
   economics:{label:'Économie',groups:[]},
   searches:{label:'Recherches',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
-    {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
+    {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_ite','wall_iti','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
   ]}
 });
@@ -193,7 +193,7 @@ function currentResultView(){ const p=activeProject(); const key=normalizedResul
 function fieldsForResultGroup(group){
   const prof=projectProfile();
   if(group.keys) return group.keys.map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,prof));
-  const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&families.has(f.family)&&fieldInProfile(f.key,prof));
+  const families=new Set(group.families||[]); return FIELD_DEFS.filter(f=>f.key!=='building'&&!f.hidden&&families.has(f.family)&&fieldInProfile(f.key,prof));
 }
 function fieldsForCurrentResultView(){ return [...new Map(currentResultView().groups.flatMap(fieldsForResultGroup).map(f=>[f.key,f])).values()]; }
 function syncResultTabs(){ const key=normalizedResultViewKey(activeProject().resultView); $$('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.resultView===key)); }
@@ -233,6 +233,7 @@ const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
   const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+  const dups=contractDuplicates(); warnContractDuplicates(dups); const isDup=id=>dups.has(contractKey(id.contract));
   const grouped=items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
   if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
@@ -241,11 +242,11 @@ function renderTiles(wrap,{home=false}={}){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
     body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
-      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
+      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
     const xs=grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items;
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
-    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
+    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
       <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
@@ -748,7 +749,7 @@ function renderFreePastePreview(){
   const rows=fp.buildings.flatMap((b,bi)=>b.items.map((it,ii)=>({b,bi,it,ii}))); const n=rows.filter(r=>r.it.field).length;
   box.innerHTML=`<div class="manual-preview-stats"><span><b>Collage libre</b></span><span><b>${fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1}</b> bâtiment(s)</span>${fp.buildings.some(b=>b.name==='*')?`<span><b>${fp.buildings.find(b=>b.name==='*').items.length}</b> valeur(s) pour toute l’opération</span>`:''}<span><b>${n}</b> valeur(s) rangée(s)</span>${fp.unmatched.length?`<span class="warn"><b>${fp.unmatched.length}</b> ligne(s) non reconnue(s)</span>`:''}</div>
   ${fp.salesforce?`<p class="manual-free-note">Fiche Évaluation Salesforce convertie : une section par bâtiment de « Performance thermique », enveloppe et systèmes pour toute l’opération (sous-sections « Notes » ignorées).</p>`:''}${fp.notes?.length?`<ul class="manual-free-warn">${fp.notes.map(n=>`<li>⚠ ${escapeHtml(n)}</li>`).join('')}</ul>`:''}
-  <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : la zone la plus défavorable est retenue, les types de zones sont notés.':''}</p>
+  <p class="manual-free-note">Ces valeurs <b>priment sur les documents</b>. Vérifiez la colonne de chaque ligne ; « — ignorer » écarte une ligne.${rows.some(r=>r.it.dhZone)?' DH : DH ZT et DH ZNT gardent chacun la zone la plus défavorable de leur type, les types de zones sont notés.':''}</p>
   <div class="table-scroll"><table class="free-paste-table"><thead><tr><th>Bâtiment</th><th>Ligne collée</th><th>Colonne ExtracTerre</th><th>Valeur</th></tr></thead><tbody>
   ${rows.map(({b,bi,it,ii})=>`<tr class="${it.ai?'ai':''}"><td>${b.name==='*'?`<i>Toute l’opération</i><small> → tous les bâtiments${state.result?.rows?.length?` (${state.result.rows.length})`:''}</small>`:escapeHtml(b.name||'—')}</td><td>${escapeHtml(it.line)}</td><td>${freeFieldSelect(it.field,`data-fp-b="${bi}" data-fp-i="${ii}"`)}${it.ai?' <small>✨ IA</small>':''}</td><td><b>${escapeHtml(formatValue(it.value))}</b></td></tr>`).join('')}
   ${fp.unmatched.map((u,ui)=>`<tr class="unmatched"><td>${escapeHtml(u.building||'—')}</td><td>${escapeHtml(u.line)}</td><td>${freeFieldSelect('',`data-fp-u="${ui}"`)}</td><td><small>non reconnue</small></td></tr>`).join('')}
@@ -1315,7 +1316,7 @@ function renderSummary(){
 // champ (valeur, état, source), filtrable (à compléter / à vérifier / renseigné), corrigeable sur place, avec les candidats
 // proposés et l'accès direct au document. Le profil masque les champs qui n'ont pas de sens pour l'opération ; l'export
 // Excel reste complet.
-const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_max','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
+const PROFILE_NEW_ONLY=new Set(['bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain','dh','dh_zt','dh_znt','dh_max','fan_presence','fan_count','fan_type','cep_mobility','ic_components','ic_site','stock_c_per_m2',
   ...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy','ic_energy_heating','ic_energy_cooling','ic_energy_ecs','ic_energy_aux_vent','ic_energy_aux_dist','ic_energy_mobility','ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy_max','ic_energy_max_2028',
   'bbio_level','cepnr_level','ic_construction_level','ic_energy_level','biosourced_2013','mention_ec','derogation_ec','effinergie_energy_carbon_level']);
 const PROFILE_RENO_ONLY=new Set(['ubat_before','ubat_after','cep_before','cep_after_final','dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after','heating_vector_before','ecs_vector_before','ventilation_before','ges_before','built_before_1948','built_after_1948','renovation']);
@@ -1339,16 +1340,16 @@ const REVIEW_GROUPS=Object.freeze([
   {title:'Localisation',families:['Localisation']},
   {title:'Performance énergétique',keys:['cep_before','cep_after_final','cep','cep_max','cep_gain','ubat_before','ubat_after','ubat_ref','ubat_gain','ges_before','ges','ges_ref','ges_gain','bbio','bbio_max','bbio_gain','cepnr','cepnr_max','cepnr_gain']},
   {title:'Étiquettes DPE',keys:['dpe_energy_before','dpe_ges_before','dpe_energy_after','dpe_ges_after']},
-  {title:'Confort d’été',keys:['tic','tic_ref','dh','dh_max','cross_ventilated','non_cross_ventilated','fan_count','fan_type']},
-  {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','ventilation_before','ventilation','enr','enr_type']},
-  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
+  {title:'Confort d’été',keys:['tic','tic_ref','dh_zt','dh_znt','dh_max','cross_ventilated','non_cross_ventilated','fan_presence','fan_count','fan_type']},
+  {title:'Systèmes',keys:['heating_vector_before','heating_vector_after','heating_mode_after','ecs_vector_before','ecs_vector_after','ecs','cooling','cooling_active','ventilation_before','ventilation','enr','enr_type']},
+  {title:'Enveloppe',keys:['wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_ite','wall_iti','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r','window_material','window_glazing','window_shading']},
   {title:'Consommations par poste',keys:['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility','cep_electricity','cep_gas','cep_district','cep_biomass']},
   {title:'Carbone',optional:'reno',keys:['ic_construction','ic_construction_max','ic_construction_max_2028','ic_energy','ic_energy_max','ic_energy_max_2028','ic_components','ic_site','stock_c_per_m2','eges_total','eges_pce','eges_pcena','eges_energy','eges_site','eges_water','eges_total_max']},
   {title:'Données administratives',admin:true,families:['Administration'],keys:['reference_name','reference_version','mentions','performance','selected_profile','specific_profile','renovation','mention_effinergie','mention_bbca','mention_biosourced_building']}
 ]);
 let reviewState={building:'',filter:'todo',query:'',editing:'',openAdmin:false};
 const isBlank=v=>v===undefined||v===null||v===''||v==='non précisé';
-function reviewFields(group,profile){ const keys=[...(group.keys||[]),...(group.families?FIELD_DEFS.filter(f=>group.families.includes(f.family)).map(f=>f.key):[])]; return [...new Set(keys)].map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,profile)); }
+function reviewFields(group,profile){ const keys=[...(group.keys||[]),...(group.families?FIELD_DEFS.filter(f=>!f.hidden&&group.families.includes(f.family)).map(f=>f.key):[])]; return [...new Set(keys)].map(k=>FIELD_MAP[k]).filter(f=>f&&fieldInProfile(f.key,profile)); }
 function reviewEntry(building,def){
   const r=state.result, row=r?.rows?.find(x=>x.building===building); const v=row?.[def.key];
   const src=r?.finals?.find(o=>o.field===def.key&&o.building===building)||r?.finals?.find(o=>o.field===def.key&&o.building==='Bâtiment unique');
@@ -1504,7 +1505,7 @@ function manualAnalysisFields(section=manualAnalysisState.section,{all=false,sea
   const cfg=MANUAL_ANALYSIS_SECTIONS[section]||MANUAL_ANALYSIS_SECTIONS.general; const prof=projectProfile();
   // v2.4.1 — recherche : toutes les familles, libellé ou synonymes contenant le texte saisi (casse et accents ignorés).
   const q=search?normLower(manualAnalysisState.query||''):'';
-  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&(q?manualAnalysisSectionOf(f.key):cfg.families.has(f.family))&&fieldInProfile(f.key,prof)&&(!q||normLower([f.label,...(f.tags||[])].join(' | ')).includes(q)));
+  const defs=FIELD_DEFS.filter(f=>f.key!=='building'&&!f.hidden&&(q?manualAnalysisSectionOf(f.key):cfg.families.has(f.family))&&fieldInProfile(f.key,prof)&&(!q||normLower([f.label,...(f.tags||[])].join(' | ')).includes(q)));
   // v2.4.0 — « À compléter » : champs vides ou dont la valeur est seulement proposée (à vérifier), le champ actif restant visible.
   if(all||manualAnalysisState.filter==='all') return defs;
   return defs.filter(f=>f.key===manualAnalysisState.field||manualAnalysisNeeds(manualAnalysisState.building,f.key));
@@ -2091,9 +2092,40 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
+  // v2.11.0 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
+// v2.11.0 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
+// les saisies, les collages et l'économie, sans le texte des documents.
+async function importSessionJson(file){
+  let o; try{ const t=await file.text(); o=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))); }catch(err){ toast(`Session illisible : ${err?.message||err}`,'error'); return; }
+  if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
+  const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
+  const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
+    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
+      docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
+      retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
+  for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }
+  restoringWorkspace=true; try{ for(const p of projects) rebuildProjectFromCheckpoints(p); } finally { restoringWorkspace=false; }
+  const cur=activeProject(); if(cur&&projectIsEmpty(cur)) state.projects=state.projects.filter(p=>p!==cur);
+  state.projects.push(...projects); if(!state.projects.some(p=>p.id===state.activeProjectId)) state.activeProjectId=projects[0]?.id;
+  for(const p of projects) for(const d of p.docs) if(d.status==='ready') await checkpointDocument(p,d);
+  await checkpointWorkspace('import de session',true);
+  setHomeMode(true); renderAll();
+  const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
+  toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
+}
+// v2.11.0 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
+function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
+const warnedDuplicates=new Set();
+function warnContractDuplicates(dups){ const fresh=[];
+  for(const [k,ps] of dups){ const sig=`${k}|${ps.map(p=>p.id).sort().join(',')}`; if(!warnedDuplicates.has(sig)){ warnedDuplicates.add(sig); fresh.push(ps); } }
+  if(fresh.length>3) toast(`Doublons : ${fresh.length} numéros de contrat figurent sur plusieurs opérations (${fresh.slice(0,6).map(ps=>projectIdentity(ps[0]).contract).join(', ')}${fresh.length>6?'…':''}). Les tuiles concernées sont marquées « doublon ».`,'warn');
+  else for(const ps of fresh) toast(`Doublon : le contrat ${projectIdentity(ps[0]).contract} figure sur ${ps.length} opérations (${ps.map(p=>projectIdentity(p).name||projectTitle(p)).join(' ; ')}).`,'warn'); }
 // Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
 function openSearchObservatory(){
   try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
@@ -2342,7 +2374,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};

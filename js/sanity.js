@@ -10,7 +10,7 @@ import {normalizeText} from './utils.js';
 export const EXTRACTION_RANGES=Object.freeze({
   bbio:[5,400], bbio_max:[5,400], cep:[10,1500], cep_max:[30,1500], cepnr:[5,1500], cepnr_max:[20,1500],
   cep_before:[10,2500], cep_after_final:[10,1500], ubat_before:[0.05,5], ubat_after:[0.05,5],
-  tic:[15,45], tic_ref:[15,45], dh:[0,3000], dh_max:[300,3000],
+  tic:[15,45], tic_ref:[15,45], dh:[0,3000], dh_zt:[0,3000], dh_znt:[0,3000], dh_max:[300,3000],
   cep_cooling:[0,400], cep_lighting:[0,200], cep_aux_vent:[0,200], cep_aux_dist:[0,200], cep_mobility:[0,200],
   cep_electricity:[0,1000], cep_gas:[0,1500], cep_district:[0,1500], cep_biomass:[0,1500],
   shab:[8,500000], housing_count:[1,5000], construction_year:[1000,2100],
