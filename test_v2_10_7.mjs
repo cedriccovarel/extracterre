@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.13.1','version');
+eq(APP_VERSION,'2.14.0','version');
 const page=`Performance thermique
 BAT AB / Nbre logts = 10 / Q4 = 0,7
 BBio = 60 - Bbiomax = 70 - Gain = 14,3
@@ -37,4 +37,4 @@ eq([v[0].values.roof_insulation,v[0].values.roof_insulation_thickness,v[0].value
 eq([v[1].values.roof_insulation_thickness,v[1].values.roof_insulation_r],[200,6.25],'combles C dans le bâtiment C');
 eq(all[0].values.heating_mode_after,'Logements : PAC FICTIVE','émoji et « Ca= » sans valeur retirés');
 eq(r.unmatched.length,0,'rien d’ignoré');
-console.log(`v2.13.1 : ${n}/${n} OK`);
+console.log(`v2.14.0 : ${n}/${n} OK`);

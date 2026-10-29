@@ -1,3 +1,13 @@
+# v2.14.0 — favori Salesforce : statuts et code de l'évaluation ; recherche Sécurité : A2P / BP1 seuls, clôtures de chantier
+- Fiche lue aussi pour des colonnes existantes : Évaluation: Code interne (EVA-…), Évaluation: Statut, Contrat: Statut,
+  Société principale du MOA, Version du référentiel (« Version du 21/01/2025 »), Profil spécifique. Un champ vide dans
+  Salesforce (libellé suivi d'un autre libellé) n'est jamais lu comme une valeur.
+- Libellés réécrits sans ambiguïté : « Évaluation Code interne » n'écrase plus l'OPE, « Groupe MOA » n'écrase plus le maître d'ouvrage.
+- Recherche « Sécurité des logements » : « A2P » seul ou « BP1 » seul n'est plus une validation — le critère passe en « Non
+  conforme » (nouveau type de terme « insuffisant ») ; « A2P BP1 », « BP2 … A2P », « A2P * » restent conformes.
+- Clôture ≥ 1,80 m : les clôtures et barrières de chantier (ligne ou ligne voisine : chantier, barrière, Heras, palissade) sont écartées.
+- Grille Sécurité déjà enregistrée dans le navigateur : mise à jour à son chargement, les termes ajoutés par l'utilisateur sont gardés.
+
 # v2.13.1 — favori Salesforce : « Commentaires pré-analyse » lus
 - Blocs « BAT B / Cep initial = … / Cep projet = … / Cep référence = … / Tic = … < Tic réf = … / Ubat = … < Ubat base = … /
   Q4 = … » : Cep avant travaux, Cep et Cep après travaux final, Cep Ref, Tic, Tic ref, Ubat après travaux, Ubat Ref, Q4Pa-surf.

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.13.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.14.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.13.1';
+const APP_VERSION='2.14.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -9141,7 +9141,10 @@ const sf_section=line=>{ const low=normLower(line).replace(/[’']/g,' '); if(/-
   const m=line.match(/^[^:]*:\s*(.*)$/); return [h[0],m?m[1].trim():'']; };
 const sf_clean=l=>/^\s*>\s*lot\b|\bpage\s+\d+\s*(?:;|$)/i.test(l)?'':String(l).replace(/[\u2139\u2600-\u27BF\uFE0F\u{1F300}-\u{1FAFF}]/gu,'').replace(/^[\s*+•>–-]+/,'').replace(/\s*§.*$/,'').replace(/\s+/g,' ').trim();
 // Un libellé « Contrat: Numéro du contrat » serait coupé au premier « : » : on écrit sa forme courte, reconnue à l'identique.
-const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); return fp_strictLabel(short)===key?short:{contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]||short; };
+// v2.14.0 — sinon le premier synonyme sans « : » qui désigne ce seul champ (« Statut » ou « Code interne » seuls en désignent un autre).
+const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); if(fp_strictLabel(short)===key) return short;
+  const fixed={contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]; if(fixed) return fixed;
+  return FIELD_MAP[key].tags.find(t=>!t.includes(':')&&fp_strictLabel(t)===key)||short; };
 function salesforceEvaluationToPaste(text){
   // Lignes non vides ; afterBlank garde celles qui suivent une ligne vide (fin d'un bloc de bâtiment).
   const RAW=String(text||'').replace(/\r/g,'').split('\n').map(l=>l.trim()), L=[], afterBlank=new Set();
@@ -9156,10 +9159,21 @@ function salesforceEvaluationToPaste(text){
   const contract=String(text).match(/Statut du contrat\s+(\d{8})\b/); if(contract) put(common,'contract_number',contract[1]);
   const ref=L.find(l=>/^R[ée]f[ée]rentiel\s+.+\s+-\s+Version\b/i.test(l)); if(ref) put(common,'reference_name',ref.replace(/^R[ée]f[ée]rentiel\s+/i,'').replace(/\s+-\s+Version\b.*$/i,''));
   const moa=L.find(l=>/^Ma[iî]tre d.ouvrage\s*:\s*\S/i.test(l)); if(moa) put(common,'owner_company',moa.replace(/^[^:]*:\s*/,''));
+  // v2.14.0 — statuts et code de l'évaluation : lignes « libellé : valeur » du résumé, sinon libellé puis valeur (onglet Détails) ;
+  // une valeur qui est en fait le libellé suivant (champ vide dans Salesforce) n'est pas prise.
+  const SF_LABEL=/^(?:Sous-traitant|Charg[ée]|[ÉE]valuateur|Interlocuteur|Contact|Repr[ée]sentant|AMO|Dossier|Statut|Date|Type|Commentaires|Points|Chemin|Onglets|D[ée]tails|R[ée]c[ée]piss[ée]|Profil|Observations|Pr[ée]-[ée]valuation|Stade)\b/i;
+  const said=re=>{ const l=L.find(x=>re.test(x)); return l?l.replace(re,'').trim():''; };
+  const nextAfter=(re,ok)=>{ const k=L.findIndex(l=>re.test(l)); const v=k>=0?L[k+1]||'':''; return v&&!/:\s*$/.test(v)&&ok(v)?v:''; };
+  { const eva=L.find(l=>/^EVA-\d{6}$/.test(l))||(String(text).match(/Statut\s+(EVA-\d{6})\s*:/)||[])[1]; if(eva) put(common,'evaluation_internal_code',eva); }
+  put(common,'evaluation_status',said(/^Statut\s+EVA-\d{6}\s*:\s*/)||nextAfter(/^Statut$/,v=>!SF_LABEL.test(v)&&v.length<=60));
+  { const cs=String(text).match(/Statut du contrat\s+\d{8}\s*:\s*([^\n]+)/); if(cs) put(common,'contract_status',cs[1].trim()); }
+  put(common,'owner_main_company',said(/^Soci[ée]t[ée] principale du MOA\s*:\s*/));
+  if(ref){ const vm=ref.match(/\s-\s+(Version\b.*)$/i); if(vm) put(common,'reference_version',vm[1].trim()); }
   const ouv=[...String(text).matchAll(/(\d+)\s+logement\(s\)\s*-\s*(\d+)\s+b[âa]timent\(s\)/gi)]; if(ouv.length){ put(common,'housing_total',ouv.reduce((a,m)=>a+Number(m[1]),0)); put(common,'building_total',ouv.reduce((a,m)=>a+Number(m[2]),0)); }
   // Listes « Mentions : » et « Performance : » : une valeur par ligne jusqu'au libellé suivant (« … : »).
   const listAfter=re=>{ const i=L.findIndex(l=>re.test(l)); if(i<0) return []; const out=[]; for(let j=i+1;j<L.length&&!/:\s*$/.test(L[j])&&!/^\.$/.test(L[j]);j++) out.push(L[j]); return out; };
   const mentions=listAfter(/^Mentions\s*:\s*$/i).filter(m=>!/^aucune?$/i.test(m));
+  { const ps=listAfter(/^Profil sp[ée]cifique\s*:\s*$/i)[0]; if(ps) put(common,'specific_profile',ps); }
   if(mentions.length){ put(common,'mentions',mentions.join(', ')); for(const m of mentions){ const k=fp_strictLabel(`Mention ${m}`); if(k&&k.startsWith('mention_')) put(common,k,'Oui'); } }
   const levels=FIELD_DEFS.filter(f=>/_level$/.test(f.key)).sort((a,b)=>b.label.length-a.label.length);
   for(const line of listAfter(/^Performance\s*:\s*$/i)){ const f=levels.find(d=>normLower(line).startsWith(normLower(d.label)+' ')); if(f) put(common,f.key,line.slice(f.label.length).trim()); }
@@ -9627,12 +9641,21 @@ function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
+  if(g.id==='securite-logements') srch_migrateSecurity(criteria);
   return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
     docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria};
 }
 
+// v2.14.1 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et
+// barrières de chantier sont écartées ; les autres termes saisis par l'utilisateur sont gardés.
+const SRCH_WEAK_DOOR=['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'], SRCH_SITE_FENCE=['chantier','barriere','barrieres','heras','palissade'];
+function srch_migrateSecurity(criteria){
+  const door=criteria.find(c=>c.id==='porte_a2p'); if(door){ door.keywords=door.keywords.filter(k=>!SRCH_WEAK_DOOR.includes(k)); for(const w of SRCH_WEAK_DOOR) if(!door.weak.includes(w)) door.weak.push(w);
+    const both='re:\\bbp\\s?[123]\\b.{0,40}\\ba2p\\b'; if(!door.keywords.includes(both)) door.keywords.push(both); }
+  const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
+}
 // Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
 const srch_termCache=new Map();
 function termRegex(term){
@@ -9664,14 +9687,18 @@ function runSearchGrid(grid,docs,overrides={}){
   const criteria={};
   for(const c of g.criteria){
     const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
-    if(c.keywords.length) for(const {d,lines} of corpus){ let perDoc=0;
-      for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
+    if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
+      for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k];
+        // « weak » : terme insuffisant à lui seul (« A2P » sans BP ni étoile) — trouvé, il compte comme indice contraire.
+        const strong=srch_anyTerm(c.keywords,L.t), weak=!strong&&srch_anyTerm(c.weak,L.t); if((!strong&&!weak)||srch_anyTerm(c.exclude,L.t)) continue;
         const near=lines.slice(Math.max(0,k-c.window),k+c.window+1).filter(x=>x.page===L.page);
+        // « excludeNear » : la ligne précédente ou suivante (« Barrière Heras » au-dessus d'une hauteur) écarte la ligne.
+        if(c.excludeNear.length&&[lines[k-1],lines[k+1]].some(x=>x&&x.page===L.page&&srch_anyTerm(c.excludeNear,x.t))) continue;
         if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
-        let nums=[],ok=true;
+        let nums=[],ok=!weak;
         if(c.kind==='stats'){ const n=srch_cellNumbers(L.t,c.unit).find(x=>(c.min===null||x>=c.min)&&(c.max===null||x<=c.max)); if(n===undefined) continue; nums=[n]; values.push(n); }
         if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
-          if(!nums.length) continue; values.push(...nums); ok=nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
+          if(!nums.length) continue; values.push(...nums); ok=!weak&&nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
         ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
     const manual=overrides?.[c.id];
     // Critère « inverse » : un résultat est un indice contraire (critère non rempli), jamais une preuve de conformité.
@@ -9693,7 +9720,7 @@ function runSearchGrid(grid,docs,overrides={}){
 function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
-  if(x.contrary) return c.inverse?'Indice contraire':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
   if(c.kind==='text') return x.text;
@@ -9721,9 +9748,9 @@ const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des 
     {id:'fen_442',theme:'Fenêtres en rez-de-chaussée',label:'Vitrages 44.2 (retardateur d’effraction)',keywords:['re:\\b44[./ ]?2\\b','re:\\bsp\\s?10\\b','retardateur d effraction','retardateur d\'effraction'],context:['vitrage','fenetre','menuiserie','stadip','feuillete','baie']},
     {id:'fen_barreaux',theme:'Fenêtres en rez-de-chaussée',label:'Fenêtres protégées par des barreaux',keywords:['barreaux','barreaudage','grille de defense','grilles de defense','grille anti effraction'],context:['fenetre','baie','rez de chaussee','rdc','en tableau','tableau'],exclude:['cloture','portail','portillon','garde corps','garde-corps','main courante','tablier','lisse'],window:2},
     {id:'porte_3pts',theme:'Portes d’entrée des logements',label:'Porte pleine, serrure 3 points (hors 3 points de compression)',keywords:['re:serrure[^\\n]{0,40}3\\s*points','re:3\\s*points[^\\n]{0,20}(?:a|à)?\\s*p[eê]ne','re:cr[eé]mone[^\\n]{0,15}3\\s*points[^\\n]{0,40}a2p'],context:['porte palier','porte paliere','portes palieres','bloc porte palier','porte d entree','porte de logement','porte d\'entree'],exclude:['compression','fenetre','porte fenetre','porte-fenetre'],window:8},
-    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)','re:\\bbp\\s?[123]\\b','re:\\ba2p\\b'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
+    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',description:'« A2P » seul ou « BP1 » seul : non conforme à l’exigence.',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
     {id:'abords_portails',theme:'Abords extérieurs',label:'Portails véhicules et piétons à accès sécurisé (obligatoire)',keywords:['portail','portillon'],context:['vigik','badge','digicode','controle d acces','telecommande','platine','interphone','visiophone','ventouse','gache electrique']},
-    {id:'abords_cloture',theme:'Abords extérieurs',label:'Clôture d’au moins 1,80 m (ou règle du PLU)',kind:'number',unit:'m',min:1.8,keywords:['cloture','clotures'],context:['hauteur','ht','h ='],window:3},
+    {id:'abords_cloture',theme:'Abords extérieurs',label:'Clôture d’au moins 1,80 m (ou règle du PLU)',description:'Les clôtures et barrières de chantier ne comptent pas.',kind:'number',unit:'m',min:1.8,keywords:['cloture','clotures'],context:['hauteur','ht','h ='],window:3},
     {id:'abords_acces_unique',theme:'Abords extérieurs',label:'Un seul point d’accès véhicules et piétons',keywords:['seul acces','acces unique','seul point d acces','unique point d acces']},
     {id:'abords_observables',theme:'Abords extérieurs',label:'Au moins 60 % des accès observables depuis un logement',keywords:['observable','surveillance naturelle','vue depuis les logements']},
     {id:'abords_separation',theme:'Abords extérieurs',label:'Pas de communication entre bâtiments',keywords:['separation des batiments','aucune communication entre','pas de communication entre']},

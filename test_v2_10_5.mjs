@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.13.1','version');
+eq(APP_VERSION,'2.14.0','version');
 const page=`Performance thermique
 Logement 1 à 6
 Bbio=30 Bbiomax=80
@@ -22,4 +22,4 @@ eq(v.map(x=>x.building),['Logement 1 à 6','Logement 7 & 8'],'deux bâtiments');
 eq(v[0].values,{housing_count:6,dh:400.1,bbio:30,bbio_max:80,cep:50.5,cep_max:90,cepnr:60,cepnr_max:61.2},'bloc 1 : paires sur une ligne, IC vides ignorés');
 eq(v[1].values,{housing_count:2,dh:420,bbio:40,bbio_max:85},'bloc 2 : « 7 & 8 » = 2 logements');
 eq(r.unmatched.length,0,'rien d’ignoré');
-console.log(`v2.13.1 : ${n}/${n} OK`);
+console.log(`v2.14.0 : ${n}/${n} OK`);

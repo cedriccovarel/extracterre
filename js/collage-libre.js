@@ -199,7 +199,10 @@ const sf_section=line=>{ const low=normLower(line).replace(/[’']/g,' '); if(/-
   const m=line.match(/^[^:]*:\s*(.*)$/); return [h[0],m?m[1].trim():'']; };
 const sf_clean=l=>/^\s*>\s*lot\b|\bpage\s+\d+\s*(?:;|$)/i.test(l)?'':String(l).replace(/[\u2139\u2600-\u27BF\uFE0F\u{1F300}-\u{1FAFF}]/gu,'').replace(/^[\s*+•>–-]+/,'').replace(/\s*§.*$/,'').replace(/\s+/g,' ').trim();
 // Un libellé « Contrat: Numéro du contrat » serait coupé au premier « : » : on écrit sa forme courte, reconnue à l'identique.
-const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); return fp_strictLabel(short)===key?short:{contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]||short; };
+// v2.14.0 — sinon le premier synonyme sans « : » qui désigne ce seul champ (« Statut » ou « Code interne » seuls en désignent un autre).
+const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); if(fp_strictLabel(short)===key) return short;
+  const fixed={contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]; if(fixed) return fixed;
+  return FIELD_MAP[key].tags.find(t=>!t.includes(':')&&fp_strictLabel(t)===key)||short; };
 export function salesforceEvaluationToPaste(text){
   // Lignes non vides ; afterBlank garde celles qui suivent une ligne vide (fin d'un bloc de bâtiment).
   const RAW=String(text||'').replace(/\r/g,'').split('\n').map(l=>l.trim()), L=[], afterBlank=new Set();
@@ -214,10 +217,21 @@ export function salesforceEvaluationToPaste(text){
   const contract=String(text).match(/Statut du contrat\s+(\d{8})\b/); if(contract) put(common,'contract_number',contract[1]);
   const ref=L.find(l=>/^R[ée]f[ée]rentiel\s+.+\s+-\s+Version\b/i.test(l)); if(ref) put(common,'reference_name',ref.replace(/^R[ée]f[ée]rentiel\s+/i,'').replace(/\s+-\s+Version\b.*$/i,''));
   const moa=L.find(l=>/^Ma[iî]tre d.ouvrage\s*:\s*\S/i.test(l)); if(moa) put(common,'owner_company',moa.replace(/^[^:]*:\s*/,''));
+  // v2.14.0 — statuts et code de l'évaluation : lignes « libellé : valeur » du résumé, sinon libellé puis valeur (onglet Détails) ;
+  // une valeur qui est en fait le libellé suivant (champ vide dans Salesforce) n'est pas prise.
+  const SF_LABEL=/^(?:Sous-traitant|Charg[ée]|[ÉE]valuateur|Interlocuteur|Contact|Repr[ée]sentant|AMO|Dossier|Statut|Date|Type|Commentaires|Points|Chemin|Onglets|D[ée]tails|R[ée]c[ée]piss[ée]|Profil|Observations|Pr[ée]-[ée]valuation|Stade)\b/i;
+  const said=re=>{ const l=L.find(x=>re.test(x)); return l?l.replace(re,'').trim():''; };
+  const nextAfter=(re,ok)=>{ const k=L.findIndex(l=>re.test(l)); const v=k>=0?L[k+1]||'':''; return v&&!/:\s*$/.test(v)&&ok(v)?v:''; };
+  { const eva=L.find(l=>/^EVA-\d{6}$/.test(l))||(String(text).match(/Statut\s+(EVA-\d{6})\s*:/)||[])[1]; if(eva) put(common,'evaluation_internal_code',eva); }
+  put(common,'evaluation_status',said(/^Statut\s+EVA-\d{6}\s*:\s*/)||nextAfter(/^Statut$/,v=>!SF_LABEL.test(v)&&v.length<=60));
+  { const cs=String(text).match(/Statut du contrat\s+\d{8}\s*:\s*([^\n]+)/); if(cs) put(common,'contract_status',cs[1].trim()); }
+  put(common,'owner_main_company',said(/^Soci[ée]t[ée] principale du MOA\s*:\s*/));
+  if(ref){ const vm=ref.match(/\s-\s+(Version\b.*)$/i); if(vm) put(common,'reference_version',vm[1].trim()); }
   const ouv=[...String(text).matchAll(/(\d+)\s+logement\(s\)\s*-\s*(\d+)\s+b[âa]timent\(s\)/gi)]; if(ouv.length){ put(common,'housing_total',ouv.reduce((a,m)=>a+Number(m[1]),0)); put(common,'building_total',ouv.reduce((a,m)=>a+Number(m[2]),0)); }
   // Listes « Mentions : » et « Performance : » : une valeur par ligne jusqu'au libellé suivant (« … : »).
   const listAfter=re=>{ const i=L.findIndex(l=>re.test(l)); if(i<0) return []; const out=[]; for(let j=i+1;j<L.length&&!/:\s*$/.test(L[j])&&!/^\.$/.test(L[j]);j++) out.push(L[j]); return out; };
   const mentions=listAfter(/^Mentions\s*:\s*$/i).filter(m=>!/^aucune?$/i.test(m));
+  { const ps=listAfter(/^Profil sp[ée]cifique\s*:\s*$/i)[0]; if(ps) put(common,'specific_profile',ps); }
   if(mentions.length){ put(common,'mentions',mentions.join(', ')); for(const m of mentions){ const k=fp_strictLabel(`Mention ${m}`); if(k&&k.startsWith('mention_')) put(common,k,'Oui'); } }
   const levels=FIELD_DEFS.filter(f=>/_level$/.test(f.key)).sort((a,b)=>b.label.length-a.label.length);
   for(const line of listAfter(/^Performance\s*:\s*$/i)){ const f=levels.find(d=>normLower(line).startsWith(normLower(d.label)+' ')); if(f) put(common,f.key,line.slice(f.label.length).trim()); }

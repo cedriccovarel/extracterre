@@ -29,12 +29,21 @@ export function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
+  if(g.id==='securite-logements') srch_migrateSecurity(criteria);
   return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
     docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria};
 }
 
+// v2.14.1 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et
+// barrières de chantier sont écartées ; les autres termes saisis par l'utilisateur sont gardés.
+const SRCH_WEAK_DOOR=['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'], SRCH_SITE_FENCE=['chantier','barriere','barrieres','heras','palissade'];
+function srch_migrateSecurity(criteria){
+  const door=criteria.find(c=>c.id==='porte_a2p'); if(door){ door.keywords=door.keywords.filter(k=>!SRCH_WEAK_DOOR.includes(k)); for(const w of SRCH_WEAK_DOOR) if(!door.weak.includes(w)) door.weak.push(w);
+    const both='re:\\bbp\\s?[123]\\b.{0,40}\\ba2p\\b'; if(!door.keywords.includes(both)) door.keywords.push(both); }
+  const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
+}
 // Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
 const srch_termCache=new Map();
 export function termRegex(term){
@@ -66,14 +75,18 @@ export function runSearchGrid(grid,docs,overrides={}){
   const criteria={};
   for(const c of g.criteria){
     const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
-    if(c.keywords.length) for(const {d,lines} of corpus){ let perDoc=0;
-      for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k]; if(!srch_anyTerm(c.keywords,L.t)||srch_anyTerm(c.exclude,L.t)) continue;
+    if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
+      for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k];
+        // « weak » : terme insuffisant à lui seul (« A2P » sans BP ni étoile) — trouvé, il compte comme indice contraire.
+        const strong=srch_anyTerm(c.keywords,L.t), weak=!strong&&srch_anyTerm(c.weak,L.t); if((!strong&&!weak)||srch_anyTerm(c.exclude,L.t)) continue;
         const near=lines.slice(Math.max(0,k-c.window),k+c.window+1).filter(x=>x.page===L.page);
+        // « excludeNear » : la ligne précédente ou suivante (« Barrière Heras » au-dessus d'une hauteur) écarte la ligne.
+        if(c.excludeNear.length&&[lines[k-1],lines[k+1]].some(x=>x&&x.page===L.page&&srch_anyTerm(c.excludeNear,x.t))) continue;
         if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
-        let nums=[],ok=true;
+        let nums=[],ok=!weak;
         if(c.kind==='stats'){ const n=srch_cellNumbers(L.t,c.unit).find(x=>(c.min===null||x>=c.min)&&(c.max===null||x<=c.max)); if(n===undefined) continue; nums=[n]; values.push(n); }
         if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
-          if(!nums.length) continue; values.push(...nums); ok=nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
+          if(!nums.length) continue; values.push(...nums); ok=!weak&&nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
         ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
     const manual=overrides?.[c.id];
     // Critère « inverse » : un résultat est un indice contraire (critère non rempli), jamais une preuve de conformité.
@@ -95,7 +108,7 @@ export function runSearchGrid(grid,docs,overrides={}){
 export function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
-  if(x.contrary) return c.inverse?'Indice contraire':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
   if(c.kind==='text') return x.text;
@@ -123,9 +136,9 @@ export const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurit
     {id:'fen_442',theme:'Fenêtres en rez-de-chaussée',label:'Vitrages 44.2 (retardateur d’effraction)',keywords:['re:\\b44[./ ]?2\\b','re:\\bsp\\s?10\\b','retardateur d effraction','retardateur d\'effraction'],context:['vitrage','fenetre','menuiserie','stadip','feuillete','baie']},
     {id:'fen_barreaux',theme:'Fenêtres en rez-de-chaussée',label:'Fenêtres protégées par des barreaux',keywords:['barreaux','barreaudage','grille de defense','grilles de defense','grille anti effraction'],context:['fenetre','baie','rez de chaussee','rdc','en tableau','tableau'],exclude:['cloture','portail','portillon','garde corps','garde-corps','main courante','tablier','lisse'],window:2},
     {id:'porte_3pts',theme:'Portes d’entrée des logements',label:'Porte pleine, serrure 3 points (hors 3 points de compression)',keywords:['re:serrure[^\\n]{0,40}3\\s*points','re:3\\s*points[^\\n]{0,20}(?:a|à)?\\s*p[eê]ne','re:cr[eé]mone[^\\n]{0,15}3\\s*points[^\\n]{0,40}a2p'],context:['porte palier','porte paliere','portes palieres','bloc porte palier','porte d entree','porte de logement','porte d\'entree'],exclude:['compression','fenetre','porte fenetre','porte-fenetre'],window:8},
-    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)','re:\\bbp\\s?[123]\\b','re:\\ba2p\\b'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
+    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',description:'« A2P » seul ou « BP1 » seul : non conforme à l’exigence.',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
     {id:'abords_portails',theme:'Abords extérieurs',label:'Portails véhicules et piétons à accès sécurisé (obligatoire)',keywords:['portail','portillon'],context:['vigik','badge','digicode','controle d acces','telecommande','platine','interphone','visiophone','ventouse','gache electrique']},
-    {id:'abords_cloture',theme:'Abords extérieurs',label:'Clôture d’au moins 1,80 m (ou règle du PLU)',kind:'number',unit:'m',min:1.8,keywords:['cloture','clotures'],context:['hauteur','ht','h ='],window:3},
+    {id:'abords_cloture',theme:'Abords extérieurs',label:'Clôture d’au moins 1,80 m (ou règle du PLU)',description:'Les clôtures et barrières de chantier ne comptent pas.',kind:'number',unit:'m',min:1.8,keywords:['cloture','clotures'],context:['hauteur','ht','h ='],window:3},
     {id:'abords_acces_unique',theme:'Abords extérieurs',label:'Un seul point d’accès véhicules et piétons',keywords:['seul acces','acces unique','seul point d acces','unique point d acces']},
     {id:'abords_observables',theme:'Abords extérieurs',label:'Au moins 60 % des accès observables depuis un logement',keywords:['observable','surveillance naturelle','vue depuis les logements']},
     {id:'abords_separation',theme:'Abords extérieurs',label:'Pas de communication entre bâtiments',keywords:['separation des batiments','aucune communication entre','pas de communication entre']},
