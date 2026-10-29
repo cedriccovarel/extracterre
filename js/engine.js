@@ -44,7 +44,7 @@ export function withWallSides(raw){
   for(const o of raw){ const part=WALL_SIDE_FIELDS[o?.field]; if(!part) continue; const side=wallSideOf(o); if(side) out.push({...o,field:`wall_${side}_${part}`,wallSideFrom:o.field}); }
   return out;
 }
-// v2.11.2 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
+// v2.11.4 — un DH lu avec son type de zone (colonne « Trav. » du RSET, XML Is_Traversant, fiche collée) alimente aussi DH ZT / DH ZNT.
 export function withDhZones(raw){ return [...raw,...raw.filter(o=>o?.field==='dh'&&(o.dhZone==='zt'||o.dhZone==='znt')).map(o=>({...o,field:`dh_${o.dhZone}`}))]; }
 export function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
@@ -309,7 +309,7 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
-    // v2.11.2 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
+    // v2.11.4 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
     if(Array.isArray(d.cachedOccurrences)&&d.read&&!d.dhZonesRead&&d.cachedOccurrences.some(o=>o?.field==='dh')){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')) d.cachedOccurrences=null; }
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
@@ -361,11 +361,11 @@ export function applyComparisonBases(result){
     if(y>1000&&ys) for(const [f,val] of [['built_before_1948',y<1948?'Oui':'Non'],['built_after_1948',y>=1948?'Oui':'Non']]){
       if(!(row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé')) continue;
       result.finals.push({...ys,field:f,value:val,unit:'',method:'derive:annee-construction',derivedFromDocument:true,excerpt:`Année de construction = ${y}`,provenanceNote:`Déduit de l’année de construction (${y}) lue dans le document.`}); row[f]=val; }
-    // v2.11.2 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
+    // v2.11.4 — colonnes Oui / Non et DH par type de zone, déduites des colonnes lues ; une valeur déjà présente (saisie) est gardée.
     const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
     const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
     const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
-    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.11.2).
+    // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.11.4).
     if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
       derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
@@ -836,7 +836,7 @@ Total Lot : 547,3`;
   assert('OCR auto renforcé sur tableau IC critique mal reconstruit',shouldOcrPdfPage(criticalCarbonText,richItems,'auto')===true);
 
   // Contrat de schéma v2.4.0 : 192 colonnes exactes (168 historiques + 5 IC v2.3.5 + 12 Eges v2.3.11 + 7 v2.4.0 : ventilation avant travaux, Ubat Ref / gain, GES, ajoutées en fin), chacune avec des tags reconnus.
-  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.11.2 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
+  // v2.7.0 : + Q4Pa-surf (193) ; v2.9.0 : + localisation (200) ; v2.10.0 : + ITI / ITE (206), ajoutées en fin ; v2.11.4 : DH → DH ZT / DH ZNT, + ITE, ITI, Brasseur d’air, Climatisation active (212).
   assert('Schéma métier = 212 champs (211 colonnes + DH interne)',FIELD_DEFS.length===212,String(FIELD_DEFS.length));
   assert('Chaque colonne possède au moins un tag',FIELD_DEFS.every(f=>Array.isArray(FIELD_TAGS[f.key])&&FIELD_TAGS[f.key].length>0),FIELD_DEFS.filter(f=>!FIELD_TAGS[f.key]?.length).map(f=>f.label).join(', '));
   assert('Tous les intitulés exacts sont reconnus comme en-têtes',FIELD_DEFS.every(f=>matchFieldByHeader(f.label)?.key===f.key),FIELD_DEFS.filter(f=>matchFieldByHeader(f.label)?.key!==f.key).map(f=>f.label).join(', '));

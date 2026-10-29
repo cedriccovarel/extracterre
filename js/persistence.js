@@ -145,7 +145,7 @@ function serializeProject(project={}){
   };
 }
 
-// v2.11.2 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
+// v2.11.4 — projet complet pour l'export JSON de session : métadonnées + lecture compacte et occurrences de chaque
 // document (comme le checkpoint IndexedDB), afin qu'un import restitue toutes les données sans les fichiers sources.
 export function serializeProjectFull(project={}){
   const docs=project.docs||[];

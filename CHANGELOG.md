@@ -1,3 +1,14 @@
+# v2.11.4 — accueil « Coller un tableau » : nouvelles tuiles visibles
+- Un tableau d'une seule opération collé depuis l'accueil remplissait l'opération ouverte en dernier (avec demande de
+  remplacement de son tableau) au lieu de créer sa tuile : il crée maintenant sa tuile (ou met à jour celle du même contrat).
+- Les opérations du dernier import sont marquées « nouvelle », et chaque tuile Maître d'ouvrage indique combien elle en
+  a reçu : une opération ajoutée à un maître d'ouvrage existant ne passe plus inaperçue.
+
+# v2.11.3 — fichiers déposés hors de la zone de dépôt
+- Un fichier (XML, PDF, Excel…) lâché hors du cadre « Déposez ici », notamment sur l'accueil, était ignoré sans message.
+  Depuis l'accueil il ouvre maintenant une opération (la vide en cours, sinon une nouvelle) et y est ajouté ; ailleurs, il
+  rejoint l'opération ouverte.
+
 # v2.11.2 — favori Salesforce : la fiche reçue s'ouvre aussi depuis l'accueil
 - Depuis l'accueil, le texte envoyé par le favori « → ExtracTerre » ne donnait qu'une notification de quelques secondes.
   Il ouvre maintenant l'opération dont l'OPE ou le numéro de contrat figure dans la fiche (sinon une nouvelle opération)

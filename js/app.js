@@ -242,11 +242,11 @@ function renderTiles(wrap,{home=false}={}){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
     body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
-      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
+      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}${xs.some(x=>lastImported.has(x.p.id))?` · <b class="op-new">${xs.filter(x=>lastImported.has(x.p.id)).length} nouvelle(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
     const xs=grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items;
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
-    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
+    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
       <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
@@ -269,20 +269,23 @@ function renderHome(){ const h=$('#homeView'); if(h&&state.homeView) renderTiles
 // Tableau d'opérations (Excel importé ou collé) : une opération par n° de contrat / code interne / nom d'opération.
 function operationKey(v={}){ return String(v.contract_number||v.internal_code||v.operation_name||'').trim(); }
 function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status==='ready'); p.result=analyzeDocuments(valid,state.rules,p.operationName||'',p.buildingOverrides||{},manualPasteOccurrences(p)); applyDeletedBuildings(p); p.result.documentsCount=valid.length; applyManualValuesToProject(p); }
+// Opérations du dernier import de tableau : marquées « nouveau » sur leurs tuiles et sur celle de leur maître d'ouvrage.
+let lastImported=new Set();
 function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
   const groups=new Map(); for(const r of rows||[]){ const k=operationKey(r.values); if(!k) continue; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); }
-  if(groups.size<2) return false;
-  let created=0,updated=0;
+  // v2.11.4 — depuis l'accueil, une seule opération collée crée (ou met à jour) sa tuile au lieu de remplir l'opération ouverte.
+  if(groups.size<2&&!(state.homeView&&groups.size===1)) return false;
+  let created=0,updated=0; const fresh=new Set();
   for(const [k,rs] of groups){
     let p=state.projects.find(x=>{ const id=projectIdentity(x); return id.contract===k||id.code===k||(!id.contract&&!id.code&&id.name===k); });
-    if(p) updated++; else { p=state.projects.find(x=>!(x.docs||[]).length&&!x.result&&!(x.manualPasteRows||[]).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; }
+    if(p) updated++; else { p=state.projects.find(x=>!(x.docs||[]).length&&!x.result&&!(x.manualPasteRows||[]).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; } fresh.add(p.id);
     const v=rs[0].values||{}; p.manualPasteRows=rs; p.manualPasteColumns=columns; p.manualPasteRaw='';
     if(!p.operationName) p.operationName=String(v.operation_name||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
     computeProjectResult(p);
   }
-  state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); setHomeMode(true); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
+  lastImported=fresh; state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); setHomeMode(true); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
   learn('manual_paste',{rows:rows.length,operations:groups.size,created,updated,source,split:true},activeProject());
-  toast(`${groups.size} opérations importées (${source}) : ${created} créée(s), ${updated} mise(s) à jour.`,'success'); return true;
+  toast(`${groups.size} opération(s) importée(s) (${source}) : ${created} créée(s), ${updated} mise(s) à jour.`,'success'); return true;
 }
 // Classeur Excel : s'il liste plusieurs opérations (contrat / code interne), il est réparti en opérations au lieu d'être lu comme un document.
 async function addSpreadsheetOrOperations(file,specializedFamily,opts){
@@ -685,7 +688,7 @@ let freePaste=null;
 let pendingExternalText=null;
 function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
-  // v2.11.2 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
+  // v2.11.4 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
   if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
     if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
@@ -2097,12 +2100,12 @@ function sessionSnapshot({details=true}={}){
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
-  // v2.11.2 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
+  // v2.11.4 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
   downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
-// v2.11.2 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
+// v2.11.4 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
 async function importSessionJson(file){
@@ -2123,7 +2126,7 @@ async function importSessionJson(file){
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
   toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
-// v2.11.2 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
+// v2.11.4 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
 const warnedDuplicates=new Set();
@@ -2363,7 +2366,11 @@ function wire(){
   // v2.3 — une seule zone de dépôt ; la famille est détectée puis modifiable fichier par fichier.
   // Empêche le navigateur d'ouvrir un PDF/XML si un fichier est lâché hors de la zone.
   window.addEventListener('dragover',e=>{ if(e.dataTransfer?.types?.includes?.('Files')) e.preventDefault(); },true);
-  window.addEventListener('drop',e=>{ if(!dz.contains(e.target)&&e.dataTransfer?.files?.length) e.preventDefault(); },true);
+  // v2.11.4 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
+  window.addEventListener('drop',async e=>{ if(dz.contains(e.target)||$('#resultQuickDrop')?.contains(e.target)||!e.dataTransfer?.files?.length) return; e.preventDefault();
+    try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
+      if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
+      addFiles(fs); }catch(err){ toast(`Import impossible : ${err?.message||err}`,'error'); } },true);
   $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
