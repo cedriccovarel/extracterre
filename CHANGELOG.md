@@ -1,3 +1,7 @@
+# v2.12.3 — accueil : tableau « Code projet | Nom projet | Maître d’ouvrage | Groupe MOA »
+- « Code projet » est reconnu comme code interne (OPE-…) et « Groupe MOA » comme société principale du maître d'ouvrage :
+  sans colonne contrat ni code reconnue, aucune opération n'était créée. « Nom projet » donne le nom de la tuile.
+
 # v2.12.2 — accueil : « Coller un tableau » crée bien les opérations
 - Un tableau d'opérations à 2 colonnes (contrat + maître d'ouvrage, par ex.) était pris pour un collage libre et appliqué à
   l'opération ouverte : aucune tuile créée. Toute zone avec une colonne contrat ou code interne est lue comme un tableau.

@@ -1,4 +1,4 @@
-export const APP_VERSION='2.12.2';
+export const APP_VERSION='2.12.3';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -40,14 +40,14 @@ export const DOC_TYPES = {
 };
 
 export const FIELD_DEFS = [
-  {key:"internal_code",label:"Code interne",family:"Administration",type:"text",tags:["Code interne", "code opération", "code interne opération", "n° opération", "numero operation"] ,presence:false},
+  {key:"internal_code",label:"Code interne",family:"Administration",type:"text",tags:["Code interne", "code opération", "code interne opération", "n° opération", "numero operation", "Code projet", "code du projet"] ,presence:false},
   {key:"operation_name",label:"Nom opération",family:"Administration",type:"text",tags:["Nom opération", "nom de l'opération", "nom de l operation", "opération interne"] ,presence:false},
   {key:"contract_status",label:"Contrat: Statut",family:"Administration",type:"text",tags:["Contrat: Statut", "Contrat Statut", "Statut Contrat", "état contrat"] ,presence:false},
   {key:"evaluation_status",label:"Évaluation: Statut",family:"Administration",type:"text",tags:["Évaluation: Statut", "Évaluation Statut", "Statut Évaluation", "état évaluation"] ,presence:false},
   {key:"case_stage",label:"Affaire: Étape",family:"Administration",type:"text",tags:["Affaire: Étape", "Affaire Étape", "Étape Affaire", "phase affaire"] ,presence:false},
   {key:"client_program_name",label:"Nom du programme (client)",family:"Administration",type:"text",tags:["Nom du programme (client)", "Nom du programme", "nom programme client", "programme client"] ,presence:false},
   {key:"owner_company",label:"Maître d'ouvrage: Nom de la société",family:"Administration",type:"text",tags:["Maître d'ouvrage: Nom de la société", "Maître d'ouvrage Nom de la société", "Nom de la société Maître d'ouvrage", "maître d'ouvrage", "maitre d ouvrage", "MOA", "client", "société maître d’ouvrage", "societe maitre d ouvrage"] ,presence:false},
-  {key:"owner_main_company",label:"Maître d'ouvrage: Société principale: Nom de la société",family:"Administration",type:"text",tags:["Maître d'ouvrage: Société principale: Nom de la société", "Maître d'ouvrage Société principale: Nom de la société", "Société principale: Nom de la société Maître d'ouvrage", "société principale du maître d’ouvrage", "societe principale du maitre d ouvrage", "MOA société principale"] ,presence:false},
+  {key:"owner_main_company",label:"Maître d'ouvrage: Société principale: Nom de la société",family:"Administration",type:"text",tags:["Groupe MOA", "groupe maître d’ouvrage", "Maître d'ouvrage: Société principale: Nom de la société", "Maître d'ouvrage Société principale: Nom de la société", "Société principale: Nom de la société Maître d'ouvrage", "société principale du maître d’ouvrage", "societe principale du maitre d ouvrage", "MOA société principale"] ,presence:false},
   {key:"owner_hierarchy",label:"Maître d'ouvrage: Hiérarchie",family:"Administration",type:"text",tags:["Maître d'ouvrage: Hiérarchie", "Maître d'ouvrage Hiérarchie", "Hiérarchie Maître d'ouvrage", "hiérarchie maître d’ouvrage", "hierarchie maitre d ouvrage", "hiérarchie MOA"] ,presence:false},
   {key:"stage",label:"Étape",family:"Administration",type:"text",tags:["Étape", "phase", "étape projet"] ,presence:false},
   {key:"creation_date",label:"Date de création",family:"Administration",type:"text",tags:["Date de création", "créé le", "date création"] ,presence:false},

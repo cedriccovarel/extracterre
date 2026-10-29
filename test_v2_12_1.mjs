@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.12.2','version');
+eq(APP_VERSION,'2.12.3','version');
 const page=`Contract
 00009991 | Contrat
 Performance thermique
@@ -50,4 +50,4 @@ eq([A.dh_zt,A.dh_znt,A.dh,v['Bâtiment B'].dh_zt],[575.6,1175.2,1175.2,689.7],'D
 eq([c.roof_insulation,c.roof_insulation_thickness,c.roof_insulation_r],['PUR',160,7.25],'toiture : première ligne');
 eq([c.wall_iti_insulation,c.wall_iti_r,c.wall_ite_insulation,c.wall_ite_r,c.wall_insulation,c.wall_insulation_r],['PSE graphité',3.4,'Laine de roche',2.6,'PSE graphité',3.4],'ITI / ITE par sous-titre, colonne générale = mur extérieur');
 eq([c.floor_insulation,c.floor_insulation_thickness,c.floor_insulation_r],['Laine minérale',130,3.4],'plancher bas : isolant, épaisseur et R de la même ligne');
-console.log(`v2.12.2 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.12.3 — ${n} vérifications OK (données fictives)`);

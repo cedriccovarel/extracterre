@@ -281,7 +281,7 @@ function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
     let p=state.projects.find(x=>{ const id=projectIdentity(x); return id.contract===k||id.code===k||(!id.contract&&!id.code&&id.name===k); });
     if(p) updated++; else { p=state.projects.find(x=>!(x.docs||[]).length&&!x.result&&!(x.manualPasteRows||[]).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; } fresh.add(p.id);
     const v=rs[0].values||{}; p.manualPasteRows=rs; p.manualPasteColumns=columns; p.manualPasteRaw='';
-    if(!p.operationName) p.operationName=String(v.operation_name||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
+    if(!p.operationName) p.operationName=String(v.operation_name||v.project||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner) p.ownerName=owner;
     computeProjectResult(p);
   }
   lastImported=fresh; state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); setHomeMode(true); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);

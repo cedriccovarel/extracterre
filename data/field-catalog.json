@@ -1,5 +1,5 @@
 {
-  "version": "2.12.2",
+  "version": "2.12.3",
   "generatedAt": "2026-10-29T08:43:16.737Z",
   "count": 212,
   "fields": [
@@ -15,7 +15,9 @@
         "code opération",
         "code interne opération",
         "n° opération",
-        "numero operation"
+        "numero operation",
+        "Code projet",
+        "code du projet"
       ],
       "sources": {
         "main": [
@@ -187,6 +189,8 @@
       "type": "text",
       "presence": false,
       "tags": [
+        "Groupe MOA",
+        "groupe maître d’ouvrage",
         "Maître d'ouvrage: Société principale: Nom de la société",
         "Maître d'ouvrage Société principale: Nom de la société",
         "Société principale: Nom de la société Maître d'ouvrage",
