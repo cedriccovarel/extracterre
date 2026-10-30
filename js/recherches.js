@@ -36,7 +36,7 @@ export function normalizeGrid(g={}){
     docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria};
 }
 
-// v2.14.1 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et
+// v2.14.0 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et
 // barrières de chantier sont écartées ; les autres termes saisis par l'utilisateur sont gardés.
 const SRCH_WEAK_DOOR=['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'], SRCH_SITE_FENCE=['chantier','barriere','barrieres','heras','palissade'];
 function srch_migrateSecurity(criteria){

@@ -1,3 +1,7 @@
+# v2.14.1 — accueil : recherche d'une opération
+- Barre de recherche au-dessus des tuiles de l'accueil : contrat, nom, code projet ou maître d'ouvrage, sans tenir compte
+  des accents ni des majuscules. Les opérations trouvées s'affichent à plat (tous maîtres d'ouvrage confondus) ; Échap efface.
+
 # v2.14.0 — favori Salesforce : statuts et code de l'évaluation ; recherche Sécurité : A2P / BP1 seuls, clôtures de chantier
 - Fiche lue aussi pour des colonnes existantes : Évaluation: Code interne (EVA-…), Évaluation: Statut, Contrat: Statut,
   Société principale du MOA, Version du référentiel (« Version du 21/01/2025 »), Profil spécifique. Un champ vide dans

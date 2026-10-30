@@ -1252,7 +1252,7 @@ body,button,input,select,textarea{font-family:var(--font-ui)}
 
 /* v2.6.1 — écran d'accueil : uniquement les tuiles */
 body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!important}
-.home-view{padding:4px 0 24px}.home-view .result-overview-intro h3{font-size:1.5rem;margin:0}
+.home-view{padding:4px 0 24px}.op-search{flex:0 1 340px;min-width:180px;padding:8px 12px;border:1px solid var(--line,#dde4df);border-radius:10px;font:inherit;font-size:.9rem;background:#fff}.op-search:focus{outline:2px solid var(--forest,#173e31);outline-offset:1px}.op-none{grid-column:1/-1;margin:0;color:var(--muted,#6c7b74);font-size:.9rem}.home-view .result-overview-intro h3{font-size:1.5rem;margin:0}
 .op-tile.action{cursor:pointer;border-style:dashed;border-left-style:dashed;background:#fbfcfb;align-items:flex-start;justify-content:center;min-height:150px}
 .op-tile.action:hover{background:#f1f7f3}.op-tile-plus{font-size:1.6rem;line-height:1;color:var(--forest,#173e31)}
 
