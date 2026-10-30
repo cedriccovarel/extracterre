@@ -1,3 +1,8 @@
+# v2.14.2 — favori Salesforce : bâtiments « Bâtiment n° 1 : A1-A2 »
+- Dans « Performance thermique », un en-tête « Bâtiment n° 1 : A1-A2 » (ou « Bâtiment 3 : D1 - D2 ») ouvre un bâtiment
+  nommé par ses cages (« Bâtiment A1 - A2 ») ; avant, toutes les valeurs tombaient dans un seul bâtiment.
+- « Ubât = 0,552 / 0,895 » et « Tic = 0 / 30,38 » : la seconde valeur va en Ubat réf. et Tic réf. (comme Cep / Cep réf.).
+
 # v2.14.1 — accueil : recherche d'une opération
 - Barre de recherche au-dessus des tuiles de l'accueil : contrat, nom, code projet ou maître d'ouvrage, sans tenir compte
   des accents ni des majuscules. Les opérations trouvées s'affichent à plat (tous maîtres d'ouvrage confondus) ; Échap efface.

@@ -6,7 +6,7 @@ import {salesforceEvaluationToPaste,parseFreePaste,freePasteValues} from './js/c
 import {SECURITY_GRID,normalizeGrid,runSearchGrid,searchCellValue} from './js/recherches.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.14.1','version');
+eq(APP_VERSION,'2.14.2','version');
 eq(FIELD_DEFS.length,212,'aucune colonne ajoutée');
 const page=`Évaluation
 EVA-009991
@@ -45,4 +45,4 @@ eq(run('Barrière Heras\nClôture hauteur 2,00 m')('abords_cloture'),'','barriè
 const old=normalizeGrid({id:'securite-logements',name:'Sécurité',criteria:[{id:'porte_a2p',theme:'Portes',label:'A2P',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)','re:\\bbp\\s?[123]\\b','re:\\ba2p\\b','porte blindée'],context:['porte']},{id:'abords_cloture',theme:'Abords',label:'Clôture',kind:'number',unit:'m',min:1.8,keywords:['cloture'],context:['hauteur']}]});
 eq([old.criteria[0].keywords.includes('porte blindée'),old.criteria[0].keywords.includes('re:\\ba2p\\b'),old.criteria[0].weak.length,old.criteria[1].exclude.includes('chantier')],[true,false,2,true],'grille enregistrée mise à jour');
 eq(run('Portes palières\nSerrure A2P',old)('porte_a2p'),'Non conforme','grille enregistrée : A2P seul non conforme');
-console.log(`v2.14.1 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.14.2 — ${n} vérifications OK (données fictives)`);

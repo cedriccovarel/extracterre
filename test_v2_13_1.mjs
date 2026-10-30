@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {salesforceEvaluationToPaste,parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.14.1','version');
+eq(APP_VERSION,'2.14.2','version');
 const page=`Évaluation
 EVA-009991
 Commentaires pré-analyse
@@ -34,4 +34,4 @@ Statut du contrat 00009991 : En cours`;
 const v=Object.fromEntries(freePasteValues(parseFreePaste(salesforceEvaluationToPaste(page).text)).map(x=>[x.building,x.values]));
 eq(v['Bâtiment Z'],{tic:26.1,tic_ref:29.9,cep:70.2,cep_max:95.1,ubat_after:0.81,cep_before:140.5,cep_after_final:70.2,ubat_ref:1.3,q4pa_surf:1.2},'pré-analyse : bloc BAT Z');
 eq([v['Bâtiment Y'].cep,v['Bâtiment Y'].cep_before,v['Bâtiment Y'].housing_count,v['Bâtiment Y'].shab],[79,150,10,600],'Performance thermique prioritaire, pré-analyse en complément, un seul bâtiment Y');
-console.log(`v2.14.1 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.14.2 — ${n} vérifications OK (données fictives)`);

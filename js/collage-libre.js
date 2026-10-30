@@ -244,7 +244,7 @@ export function salesforceEvaluationToPaste(text){
   const RANGES=[...(perf>=0?[[perf+1,l=>!!sf_section(l)]]:[]),...(pre>=0?[[pre+1,l=>/^(?:[ÉE]valuation avec pr[ée]|Date d.import pr[ée]|Observations g[ée]n[ée]rales|Performance thermique)\b/i.test(l)||!!sf_section(l)]]:[])];
   const isField=l=>!!(sf_ALIASES[sf_key(l)]||fp_strictLabel(l)||fp_dhZone(l)||matchFreeLabel(l));
   // « Bbio : 84,4 / 91,8 / -8,1 % » = valeur / maximum / gain ; « ICconstruction : 767,85 / 780,02 » = valeur / maximum.
-  const TRIPLES={bbio:['bbio_max','bbio_gain'],cep:['cep_max','cep_gain'],cepnr:['cepnr_max','cepnr_gain'],ic_construction:['ic_construction_max'],ic_energy:['ic_energy_max']};
+  const TRIPLES={ubat_after:['ubat_ref'],tic:['tic_ref'],bbio:['bbio_max','bbio_gain'],cep:['cep_max','cep_gain'],cepnr:['cepnr_max','cepnr_gain'],ic_construction:['ic_construction_max'],ic_energy:['ic_energy_max']};
   for(const [start,stop] of RANGES){ cur=null;
   for(i=start;i<L.length&&!stop(L[i]);i++){
     // En-tête de bâtiment : « ILOT_1 : », « Maison 1 = », « ILOT_4 : (ilot 5 sur ACV) », « * BEG-1/2 : x2 lgts indiv : ».
@@ -256,6 +256,9 @@ export function salesforceEvaluationToPaste(text){
     if(bh&&(bh[2]||/\b(?:shab|sref|srt|su)\s*[=:]/i.test(bh[3])||hp.length)){ cur=openBlock(bh[1].trim());
       if(bh[2]) cur.raw.housing_count=Number(bh[2]); const sh=bh[3].match(/\b(?:shab|sref|srt|su)\s*[=:]\s*(\d[\d\s]*(?:[.,]\d+)?)/i); if(sh) cur.raw.shab=parseFrNumber(sh[1].replace(/\s/g,''));
       for(const [,lab,val] of hp){ const k=sf_ALIASES[sf_key(lab)]||fp_strictLabel(lab), v=FIELD_MAP[k]?.type==='number'?sf_num(val):val; if(v!=null&&!(k in cur.raw)) cur.raw[k]=v; } continue; }
+    // v2.14.1 — « Bâtiment n° 1 : A1-A2 », « Bâtiment 3 : D1 - D2 » : en-tête nommé par ses cages (sinon par son numéro).
+    const bn=t.match(/^b[âa]t(?:iment)?\.?\s*(?:n[°o]\s*\.?\s*)?([\w-]+)\s*:\s*([^=:]{1,40}?)\s*$/i);
+    if(bn&&/^[A-Z]{1,2}\d{0,2}(?:\s*[-–\/,&]\s*[A-Z]{1,2}\d{0,2})*$/i.test(bn[2])){ cur=openBlock(`Bâtiment ${bn[2].replace(/\s*[-–\/,&]\s*/g,' - ')}`); continue; }
     // Après une ligne vide, une valeur hors en-tête (« Q4 = 0,8 » sous les blocs) vaut pour toute l'opération.
     if(cur&&afterBlank.has(i)&&/[=:]/.test(t)&&!/:\s*$/.test(t)) cur=null;
     const h=t.match(/^(.{1,60}?)\s*[=:]\s*(.*?)\s*:?\s*$/);
