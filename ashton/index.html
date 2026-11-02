@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ashton</title>
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=0.5.0">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="assets/prestaterre_logo_green.png" alt="Prestaterre Certifications" class="logo"><b>Ashton <svg class="kutch-ico" viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M1 9h22v6H1z"/><path d="M1 12.5h22" stroke-width="1"/><path d="M4 9v1.8M7 9v1M10 9v1.8M13 9v1M16 9v1.8M19 9v1"/></g></svg></b><span class="beta">bêta</span></div>
+  <label class="btn primary file-btn standalone-only">Ouvrir un plan PDF<input id="file" type="file" accept="application/pdf,.pdf" hidden></label>
+  <span class="doc" id="docName"></span>
+  <label class="pages" id="pagesWrap" hidden>Page <select id="pageSel" aria-label="Page"></select> <span id="pageCount"></span></label>
+  <button class="btn ghost" id="tableBtn" type="button" aria-pressed="false" disabled>Tableau des surfaces</button>
+  <span class="ver">v0.5.0</span>
+</header>
+
+<form class="ctx" id="ctx" aria-label="Attributs des nouvelles mesures" onsubmit="return false">
+  <span class="ctx-title">Nouvelles mesures</span>
+  <label>Logement <input id="ctxLot" list="dlLot" placeholder="ex. Logement 3" autocomplete="off"></label>
+  <label>Typologie <input id="ctxTypo" list="dlTypo" placeholder="ex. T3" autocomplete="off" size="6"></label>
+  <label>Élément <input id="ctxCat" list="dlCat" placeholder="ex. Chambre, Rangement" autocomplete="off"></label>
+  <label id="ctxGapWrap" hidden title="Les ouvertures plus étroites (portes) sont fermées d’un trait droit au nu des murs">Fermer les ouvertures jusqu’à <input id="ctxGap" inputmode="decimal" size="4" autocomplete="off"> m</label>
+  <fieldset class="seg" id="ctxRole" hidden><legend>Cote</legend>
+    <label><input type="radio" name="role" value="longueur" checked><span>Longueur</span></label>
+    <label><input type="radio" name="role" value="largeur"><span>Largeur</span></label>
+    <label><input type="radio" name="role" value=""><span>Autre</span></label>
+  </fieldset>
+</form>
+<datalist id="dlLot"></datalist><datalist id="dlTypo"></datalist><datalist id="dlCat"></datalist><datalist id="dlGroup"></datalist>
+
+<div class="work">
+  <nav class="rail" aria-label="Outils">
+    <button class="tool" data-tool="pan" title="Main : se déplacer et sélectionner (V)" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V12m0-7.5v-1a1.5 1.5 0 0 1 3 0V12m0-6.5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-4.9-2.6L4 14.3a1.6 1.6 0 0 1 2.5-2L8 14"/></svg><span>Main</span></button>
+    <button class="tool" data-tool="edit" title="Flèche : déplacer les sommets des mesures (E)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z"/><path d="m13 12.5 4.5 6"/></svg><span>Flèche</span></button>
+    <button class="tool" data-tool="cal" title="Étalonner sur une longueur connue (K)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21z"/><path d="m7 13 2 2m1-5 2 2m1-5 2 2"/></svg><span>Étalonner</span></button>
+    <button class="tool" data-tool="len" title="Longueur, polyligne (L)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 18 10 8l5 6 5-9"/><circle cx="4" cy="18" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="15" cy="14" r="1.6"/><circle cx="20" cy="5" r="1.6"/></svg><span>Longueur</span></button>
+    <button class="tool" data-tool="area" title="Surface, polygone (S)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 7 13 4l7 6-3 10H6z" class="fill"/></svg><span>Surface</span></button>
+    <button class="tool" data-tool="zone" title="Zone auto : clic dans une pièce, ou glisser pour entourer plusieurs pièces ; Maj ajoute, Option retire (Z)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z"/><path d="M7 8h6v4h4v4H7z" class="fill"/><path d="M14 4v3m0 5v8"/></svg><span>Zone auto</span></button>
+    <button class="tool" data-tool="count" title="Comptage : un clic par élément (C)" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.4"/><circle cx="17" cy="6" r="2.4"/><circle cx="8" cy="17" r="2.4"/><circle cx="18" cy="17" r="2.4"/></svg><span>Comptage</span></button>
+    <button class="tool" data-tool="label" title="Étiquette libre : typologie, surface (T)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 5h12l6 7-6 7H3z"/><path d="M7 10h6m-6 4h4"/></svg><span>Étiquette</span></button>
+    <button class="tool" data-tool="ocr" title="Étiquette OCR : encadrez un texte du plan (O)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 8V4h4m8 0h4v4m0 8v4h-4m-8 0H4v-4"/><path d="M8 10h8M8 14h5"/></svg><span>Étiq. OCR</span></button>
+    <hr>
+    <button class="tool toggle" id="snapBtn" title="Accroche aux tracés du plan (A). Maintenir Alt pour la suspendre." aria-pressed="true"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6"/><path d="M12 2v5m0 10v5M2 12h5m10 0h5"/></svg><span>Accroche</span></button>
+    <button class="tool" id="fitBtn" title="Voir toute la page (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/></svg><span>Ajuster</span></button>
+  </nav>
+
+  <main class="view" id="view" data-mode="pan">
+    <div class="stage" id="stage"><canvas id="base"></canvas></div>
+    <canvas id="hires" class="layer" hidden></canvas>
+    <canvas id="over" class="layer"></canvas>
+    <div class="empty" id="empty">
+      <h1>Métré sur plan PDF</h1>
+      <p>Ouvrez ou déposez un plan. Étalonnez-le sur une longueur connue, puis mesurez longueurs et surfaces en vous accrochant aux traits du dessin.</p>
+      <label class="btn primary standalone-only">Ouvrir un plan PDF<input type="file" accept="application/pdf,.pdf" hidden></label>
+    </div>
+    <div class="busy" id="busy" hidden role="status"><span class="spin"></span><span id="busyText"></span></div>
+  </main>
+
+  <aside class="side" aria-label="Mesures">
+    <section class="scale" id="scaleBox"></section>
+    <section class="list" id="list"></section>
+    <section class="props" id="props" hidden></section>
+    <section class="corr" id="corr" hidden aria-label="Correspondance ExtracTerre"></section>
+    <div class="side-actions">
+      <button class="btn primary embed-only" id="sendBtn" type="button" disabled>Envoyer vers ExtracTerre</button>
+      <button class="btn light" id="csvBtn" type="button" disabled>Exporter les mesures (CSV)</button>
+    </div>
+  </aside>
+
+  <section class="sheet" id="sheet" hidden aria-label="Tableau des surfaces">
+    <div class="sheet-head">
+      <h2>Tableau des surfaces</h2>
+      <p class="muted">Calculé à partir de toutes les pages étalonnées. Les logements sont comptés par leurs étiquettes (élément « Logement » ou vide).</p>
+      <div class="sheet-actions"><button class="btn light" id="copyTable" type="button">Copier pour Excel</button><button class="btn light" id="csvTable" type="button">Télécharger en CSV</button><button class="btn primary" id="closeSheet" type="button">Retour au plan</button></div>
+    </div>
+    <div id="sheetBody"></div>
+  </section>
+</div>
+
+<footer class="status"><span id="hint"></span><span id="snapInfo"></span><span id="zoomInfo"></span></footer>
+
+<dialog id="calDlg" aria-labelledby="calTitle">
+  <form method="dialog" id="calForm">
+    <h3 id="calTitle">Longueur réelle de ce segment</h3>
+    <p class="muted" id="calInfo"></p>
+    <div class="field-row">
+      <label class="field grow">Longueur <input id="calInput" inputmode="decimal" autocomplete="off" placeholder="ex. 5,00" required></label>
+      <label class="field">Unité <select id="calUnit"><option value="m">m</option><option value="cm">cm</option><option value="mm">mm</option></select></label>
+    </div>
+    <p class="err" id="calErr" hidden>Saisissez une longueur positive.</p>
+    <div class="dlg-actions"><button class="btn light" type="button" id="calCancel">Annuler</button><button class="btn primary" value="ok" id="calOk">Appliquer l’échelle</button></div>
+  </form>
+</dialog>
+
+<dialog id="lblDlg" aria-labelledby="lblTitle">
+  <form method="dialog" id="lblForm">
+    <h3 id="lblTitle">Étiquette</h3>
+    <p class="muted" id="lblInfo"></p>
+    <label class="field">Texte <input id="lblName" autocomplete="off" placeholder="ex. Logement 3"></label>
+    <div class="field-row">
+      <label class="field">Typologie <input id="lblTypo" list="dlTypo" autocomplete="off" placeholder="ex. T3"></label>
+      <label class="field">Surface (m²) <input id="lblSurf" inputmode="decimal" autocomplete="off" placeholder="ex. 65,20"></label>
+    </div>
+    <label class="field">Élément <input id="lblCat" list="dlCat" autocomplete="off" placeholder="Logement, ou une pièce : Chambre, Rangement…"></label>
+    <p class="muted small">« Logement » (ou vide) : compté comme un logement de cette typologie. Une pièce : sa surface entre dans le tableau des pièces.</p>
+    <div class="dlg-actions"><button class="btn light" type="button" id="lblCancel">Annuler</button><button class="btn primary" value="ok">Placer l’étiquette</button></div>
+  </form>
+</dialog>
+
+<div id="toasts" aria-live="polite"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="module" src="app.js?v=0.5.0"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@ import {analyzeDocuments,freeSearch,runSelfTests,buildBuildingGrouping,applyComp
 import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
 import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS} from './geocode.js';
+import {isPlanDoc,PLAN_QUANTITY_FIELDS,PLAN_KIND,planRowField,planOccurrences,defaultPlanBuilding} from './plans.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {parseFreePaste,freePasteValues,freePastePrompt,applyFreePasteAi,looksLikeFreeText} from './collage-libre.js';
@@ -41,7 +42,8 @@ const FAMILY_CHOICES=Object.freeze([
 function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
 function specializedConfig(family){ const k=normalizeFamilyKey(family)||'annex'; return {label:DOCUMENT_FAMILIES[k]?.label||'Annexe',type:DOCUMENT_FAMILIES[k]?.type||null}; }
 function classifyForSelectedFamily(doc){
-  const auto=classifyDocument(doc.name,doc.read?.text||'',{kind:doc.read?.kind,re2020:doc.read?.re2020||null});
+  const auto0=classifyDocument(doc.name,doc.read?.text||'',{kind:doc.read?.kind,re2020:doc.read?.re2020||null});
+  const auto=doc.read?.plan?{...auto0,type:DOC_TYPES.PLAN,confidence:.95,planFormat:doc.read.plan.format}:auto0;
   const families=resolveDocumentFamilies({...doc,classification:{...auto,automaticType:auto.type},type:auto.type});
   const forcedManual=doc.familyMode==='manual';
   // Le type affiché suit la famille choisie manuellement ; la détection automatique reste mémorisée pour le contrôle.
@@ -50,7 +52,7 @@ function classifyForSelectedFamily(doc){
   return {...auto,automaticType:auto.type,type:forcedType||auto.type,families,familyMode:doc.familyMode||'auto',forcedByUser:!!forcedType};
 }
 function documentCompleteness(doc){
-  if(!Array.isArray(doc.cachedOccurrences)) return null;
+  if(!Array.isArray(doc.cachedOccurrences)||isPlanDoc(doc)) return null;
   const expected=documentExpectedFields(doc); if(!expected.length) return null;
   const found=new Set(doc.cachedOccurrences.map(o=>o?.field).filter(Boolean));
   const ok=e=>Array.isArray(e)?e.some(k=>found.has(k)):found.has(e);
@@ -183,6 +185,7 @@ const RESULT_VIEWS = Object.freeze({
   ]},
   economics:{label:'Économie',groups:[]},
   searches:{label:'Recherches',groups:[]},
+  plans:{label:'Plans',groups:[]},
   envelope:{label:'Structure & enveloppe',groups:[
     {title:'Structure & isolation',keys:['structure','roof_structure','roof_insulation','roof_insulation_thickness','roof_insulation_r','wall_structure','wall_insulation','wall_insulation_thickness','wall_insulation_r','wall_ite','wall_iti','wall_iti_insulation','wall_iti_thickness','wall_iti_r','wall_ite_insulation','wall_ite_thickness','wall_ite_r','floor_structure','floor_insulation','floor_insulation_thickness','floor_insulation_r']},
     {title:'Menuiseries',keys:['window_material','window_glazing','window_shading']}
@@ -520,13 +523,13 @@ async function openFilePreview(id){
 function renderFiles(){
   const box=$('#fileList'); if(!state.docs.length){ box.innerHTML='<div class="empty-small">Aucun fichier ajouté.</div>'; return; }
   box.innerHTML=state.docs.map(d=>{
-    const isPdf=/\.pdf$/i.test(d.name); const targetedRunning=d.targetedStatus==='running'; const showTarget=d.status==='ready'&&isPdf; const canTarget=showTarget&&!!d.file&&!!state.result; const canPreview=!!d.file;
+    const isPdf=/\.pdf$/i.test(d.name); const targetedRunning=d.targetedStatus==='running'; const plan=isPlanDoc(d); const showTarget=d.status==='ready'&&isPdf&&!plan; const canTarget=showTarget&&!!d.file&&!!state.result; const canPreview=!!d.file;
     const targetedMeta=d.targetedLastAt?` · crible fin${Number.isFinite(d.targetedLastProposals)?` ${d.targetedLastProposals} proposition(s)`:''}`:'';
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
-    const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Moteur libre</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
+    const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Moteur libre</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020&&!plan?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions"><button class="btn light preview-file" data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions">${isPlanDoc(d)?`<button class="btn light ashton-file" data-id="${d.id}" ${d.file?'':'disabled'} title="${d.file?'Mesurer ce plan dans Ashton : longueurs, largeurs, surfaces et quantités, renvoyées dans l’onglet Plans':'Redéposez ce plan pour l’ouvrir dans Ashton'}">Ashton ${KUTCH_ICON}</button>`:''}<button class="btn light preview-file" ${plan?'hidden':''} data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{
     // v2.3.7 — retirer un document ne supprime plus les données qu'il a déjà fournies : elles restent dans la consolidation.
@@ -540,6 +543,7 @@ function renderFiles(){
   $$('.family-select').forEach(sel=>{ sel.onchange=()=>changeDocumentFamily(sel.dataset.id,sel.value); sel.onclick=e=>e.stopPropagation(); });
   $$('.llm-file').forEach(b=>b.onclick=()=>llmAssistDocument(b.dataset.id));
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
+  $$('.ashton-file').forEach(b=>b.onclick=()=>openAshton(b.dataset.id));
 }
 
 // v2.5.0 — paquet complet du questionnaire financier (.zip) : seul l'export « _questionnaire.json » est importé (il reprend
@@ -631,11 +635,12 @@ function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)r
 function toggleProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.expanded=!p.expanded; renderSummary(); scheduleWorkspaceCheckpoint('affichage projet'); }
 async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const title=projectTitle(p); const docs=(p.docs||[]).length;
   if(!confirm(`Supprimer le projet « ${title} » de la liste ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}\nLe journal d’amélioration et les règles de sources sont conservés.`)) return;
+  await removeProject(p); renderAll(); toast(`Projet « ${title} » supprimé.`,'success'); scheduleWorkspaceCheckpoint('suppression projet',80); }
+async function removeProject(p){ const id=p.id;
   for(const d of p.docs||[]){ try{await deleteDocumentCheckpoint(d.id);}catch{} }
-  const i=state.projects.findIndex(x=>x.id===id); state.projects.splice(i,1);
+  const i=state.projects.findIndex(x=>x.id===id); if(i<0) return; state.projects.splice(i,1);
   if(!state.projects.length) state.projects.push(createProject(1));
-  if(state.activeProjectId===id){ state.activeProjectId=(state.projects[Math.min(i,state.projects.length-1)]||state.projects[0]).id; if(state.projects.length>1) state.resultWorkspaceMode='overview'; const np=activeProject(); if(!np.result) rebuildProjectFromCheckpoints(np); syncProjectInput(); }
-  renderAll(); toast(`Projet « ${title} » supprimé.`,'success'); scheduleWorkspaceCheckpoint('suppression projet',80); }
+  if(state.activeProjectId===id){ state.activeProjectId=(state.projects[Math.min(i,state.projects.length-1)]||state.projects[0]).id; if(state.projects.length>1) state.resultWorkspaceMode='overview'; const np=activeProject(); if(!np.result) rebuildProjectFromCheckpoints(np); syncProjectInput(); } }
 function renameProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const current=projectTitle(p); const raw=prompt('Renommer le projet',current); if(raw===null)return; const name=raw.trim(); if(!name){ toast('Le nom du projet ne peut pas être vide.','warn'); return; } p.customTitle=name; renderSummary(); toast(`Projet renommé : ${name}`,'success'); scheduleWorkspaceCheckpoint('renommage projet'); }
 
 
@@ -673,7 +678,7 @@ function retainRemovedDocument(project,doc){
   return kept.length;
 }
 function manualPasteOccurrences(project=activeProject()){
-  const out=[...retainedOccurrences(project)]; let n=0;
+  const out=[...retainedOccurrences(project),...planOccurrences(project)]; let n=0;
   for(const r of project.freePasteRows||[]) for(const [field,value] of Object.entries(r.values||{})) if(FIELD_MAP[field]) out.push({field,value,building:r.building?canonicalBuilding(r.building):'Bâtiment unique',docId:`free-paste-${project.id}`,fileName:'Collage libre',docType:DOC_TYPES.MANUAL,userValidated:true,manualDefinitive:true,page:'',pinnedBuilding:!!r.building,excerpt:String(r.sources?.[field]||'').slice(0,420),confidence:.995,method:'manual:free-paste',unit:'',origin:'Entrée manuelle — collage libre',provenanceNote:'Donnée collée : prioritaire sur les documents.'});
   for(const row of project.manualPasteRows||[]){
     const building=String(row.values?.building||'Bâtiment unique').trim()||'Bâtiment unique';
@@ -1121,7 +1126,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
           }
         }
         d.processingLocation=d.processingLocation||'local';
-        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal});
+        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal,detectPlan:d.familyMode!=='manual'});
       })();
       const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
@@ -1139,7 +1144,8 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       try{
         progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.91));
         d.liveStage='parsing'; updateParallelStatus(d,{stage:'parsing'},true); await yieldToBrowser();
-        d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now();
+        // v2.15.0 — un plan n'est lu par aucun parseur : ses quantités viennent de Ashton (onglet Plans).
+        d.cachedOccurrences=d.read?.plan?[]:parseDocument(d); d.analysisCachedAt=Date.now();
         await yieldToBrowser();
         d.read=compactReadForRetention(d.read);
       }catch(parseErr){ console.warn('Pré-extraction checkpoint impossible',parseErr); d.cachedOccurrences=null; }
@@ -1349,6 +1355,7 @@ function renderSummary(){
   if(r&&normalizedResultViewKey(activeProject().resultView)==='review'){ renderProfileSwitch(); renderReview(); return; }
   if(normalizedResultViewKey(activeProject().resultView)==='economics'){ renderEconomic(wrap); renderResultWorkspaceControls(); return; }
   if(normalizedResultViewKey(activeProject().resultView)==='searches'){ renderSearches(wrap); renderResultWorkspaceControls(); return; }
+  if(normalizedResultViewKey(activeProject().resultView)==='plans'){ renderPlans(wrap); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
   const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
@@ -2108,6 +2115,53 @@ async function searchAiGrid(desc,wrap){
   }catch(err){ toast(`Création impossible : ${err?.message||err}`,'error'); }
   finally{ searchUi.busy=''; renderSearches(wrap); }
 }
+// v2.15.0 — plans : repérés à la lecture (grand format), non analysés, mesurés dans Ashton (iframe, même origine).
+// Ashton renvoie une table de correspondance : longueurs / largeurs / surfaces (min, moy, max) et quantités ; une
+// quantité reliée à une colonne (Nombre de brasseurs d'air…) alimente cette colonne comme un document de type Plan.
+// Kutch (règle d'architecte triangulaire) : pictogramme d'Ashton, placé après son nom.
+const KUTCH_ICON='<svg class="kutch-ico" viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M1 9h22v6H1z"/><path d="M1 12.5h22" stroke-width="1"/><path d="M4 9v1.8M7 9v1M10 9v1.8M13 9v1M16 9v1.8M19 9v1"/></g></svg>';
+let ashtonFrame=null;
+function openAshton(docId){
+  const p=activeProject(), d=(p.docs||[]).find(x=>x.id===docId); if(!d?.file) return toast('Redéposez ce plan pour l’ouvrir dans Ashton.','warn');
+  const dlg=document.createElement('dialog'); dlg.className='ashton-dialog';
+  dlg.innerHTML=`<div class="ashton-head"><b>Ashton ${KUTCH_ICON}</b><span>${escapeHtml(d.name)}</span><button type="button" class="btn light" data-mt="close">Fermer</button></div><iframe title="Ashton — ${escapeHtml(d.name)}" src="ashton/index.html?embed=1"></iframe>`;
+  const frame=dlg.querySelector('iframe'); ashtonFrame={dlg,frame,docId,projectId:p.id,received:false};
+  const close=()=>{ const got=ashtonFrame?.received; dlg.close(); dlg.remove(); ashtonFrame=null; if(got){ activeProject().resultView='plans'; state.resultWorkspaceMode='detail'; switchTab('summary'); setHomeMode(false); renderAll(); } };
+  dlg.querySelector('[data-mt="close"]').onclick=close; dlg.addEventListener('cancel',e=>{ e.preventDefault(); close(); });
+  document.body.append(dlg); dlg.showModal();
+}
+window.addEventListener('message',e=>{ const mt=ashtonFrame; if(!mt||e.origin!==location.origin||e.source!==mt.frame.contentWindow) return; const m=e.data||{};
+  const p=state.projects.find(x=>x.id===mt.projectId), d=p?.docs?.find(x=>x.id===mt.docId);
+  if(m.type==='ashton:ready'&&d?.file) mt.frame.contentWindow.postMessage({type:'ashton:open',file:d.file,docId:d.id,quantities:PLAN_QUANTITY_FIELDS.map(f=>({key:f.key,label:f.label}))},location.origin);
+  if(m.type==='ashton:table'&&p&&m.docId===mt.docId){ const prev=(p.planTables||{})[m.docId]||{};
+    p.planTables={...(p.planTables||{}),[m.docId]:{docName:m.docName||d?.name||'Plan',rows:Array.isArray(m.rows)?m.rows:[],uncalibratedPages:m.uncalibratedPages||[],sentAt:m.sentAt||Date.now(),building:prev.building||defaultPlanBuilding(d),refs:prev.refs||{}}};
+    mt.received=true; recomputePlans(p,`Plan « ${m.docName||'plan'} » : ${(m.rows||[]).length} ligne(s) reçue(s) de Ashton.`); } });
+function recomputePlans(p,msg){ if(p===activeProject()&&(state.docs.some(d=>d.status==='ready')||p.result)) recomputeProject(msg); else { computeProjectResult(p); renderAll(); if(msg) toast(msg,'success'); } scheduleWorkspaceCheckpoint('plans Ashton',80); }
+function renderPlans(wrap=$('#summaryView')){
+  if(!wrap) return; const p=activeProject(), plans=(p.docs||[]).filter(isPlanDoc), tables=p.planTables||{};
+  const ids=[...new Set([...plans.map(d=>d.id),...Object.keys(tables)])], buildings=[...new Set((p.result?.rows||[]).map(r=>r.building).filter(b=>b&&b!=='Bâtiment unique'))];
+  const n=v=>Number.isFinite(v)?formatValue(Math.round(v*100)/100):'—';
+  const card=id=>{ const d=plans.find(x=>x.id===id), t=tables[id], name=d?.name||t?.docName||'Plan';
+    const head=`<h4>${escapeHtml(name)} <small>${escapeHtml([d?.read?.plan?.format?`plan ${d.read.plan.format}`:'',d?.read?.pageCount?`${d.read.pageCount} page(s)`:'',d?'':'document retiré de la liste'].filter(Boolean).join(' · '))}</small></h4>
+      <div class="plan-bar"><button type="button" class="btn ${t?'light':'primary'}" data-plan-open="${id}" ${d?.file?'':'disabled'} title="${d?.file?'':'Redéposez ce plan pour l’ouvrir'}">Kutcher ${KUTCH_ICON}</button>
+      ${t?`<label>Quantités affectées à <select data-plan-building="${id}">${[['Bâtiment unique','Toute l’opération'],...buildings.map(b=>[b,b])].map(([v,l])=>`<option value="${escapeHtml(v)}" ${t.building===v?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select></label><small>Reçu le ${new Date(t.sentAt).toLocaleString('fr-FR')}</small><button type="button" class="btn light danger" data-plan-drop="${id}">Retirer le tableau</button>`:''}</div>`;
+    if(!t) return `<section class="eco-group plan-card">${head}<p class="srch-desc">Ouvrez le plan dans Ashton, mesurez puis « Envoyer vers ExtracTerre » : la table de correspondance s’affiche ici.</p></section>`;
+    const rows=t.rows.map(r=>{ const field=planRowField(t,r), ref=t.refs?.[r.key]??r.ref; return `<tr><td>${PLAN_KIND[r.kind]||r.kind}</td>
+      <td>${r.kind==='quantite'?`<input class="eco-input" list="planQtyList" data-plan-ref="${id}" data-key="${escapeHtml(r.key)}" value="${escapeHtml(ref)}" aria-label="Mot-clé de la quantité">`:escapeHtml(ref)}</td><td>${r.n}</td>
+      ${r.kind==='quantite'?`<td colspan="3" class="plan-total">${n(r.total)} u</td><td>${field?`→ ${escapeHtml(FIELD_MAP[field].label)}`:'<span class="muted">aucune colonne : reste dans cet onglet</span>'}</td>`
+        :`<td>${n(r.min)}</td><td>${n(r.avg)}</td><td>${n(r.max)}</td><td class="muted">${r.kind==='surface'?'m²':'m'}</td>`}</tr>`; }).join('');
+    return `<section class="eco-group plan-card">${head}${t.uncalibratedPages?.length?`<p class="warning">Page(s) ${t.uncalibratedPages.join(', ')} non étalonnée(s) dans Ashton : leurs longueurs et surfaces ne sont pas comptées.</p>`:''}
+      ${t.rows.length?`<div class="table-scroll"><table class="plan-table"><thead><tr><th>Type</th><th>Référence</th><th>Mesures</th><th>Min</th><th>Moy</th><th>Max</th><th>Unité / colonne</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="srch-desc">Tableau vide.</p>'}</section>`; };
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Plans · ${plans.length} plan(s) détecté(s) · mesures Ashton</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+    <datalist id="planQtyList">${PLAN_QUANTITY_FIELDS.map(f=>`<option value="${escapeHtml(f.label)}">`).join('')}</datalist>
+    ${ids.length?ids.map(card).join(''):'<div class="empty-state"><h3>Aucun plan dans ce projet</h3><p>Déposez les plans PDF avec les autres documents : ils sont reconnus à leur format et se mesurent dans Ashton.</p></div>'}
+    <small class="llm-hint">Longueurs, largeurs et surfaces : minimum, moyenne et maximum des mesures de chaque référence. Une quantité dont le mot-clé correspond à une colonne (ex. « Brasseur d’air ») renseigne cette colonne dans les autres onglets ; vérifiez le bâtiment affecté.</small>`;
+  $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
+  wrap.querySelectorAll('[data-plan-open]').forEach(b=>b.onclick=()=>openAshton(b.dataset.planOpen));
+  wrap.querySelectorAll('[data-plan-building]').forEach(sel=>sel.onchange=()=>{ p.planTables[sel.dataset.planBuilding].building=sel.value; recomputePlans(p,'Quantités du plan réaffectées.'); });
+  wrap.querySelectorAll('[data-plan-ref]').forEach(inp=>inp.onchange=()=>{ const t=p.planTables[inp.dataset.planRef]; t.refs={...(t.refs||{}),[inp.dataset.key]:inp.value.trim()}; recomputePlans(p,''); });
+  wrap.querySelectorAll('[data-plan-drop]').forEach(b=>b.onclick=()=>{ const t={...p.planTables}; delete t[b.dataset.planDrop]; p.planTables=t; recomputePlans(p,'Tableau du plan retiré.'); });
+}
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
   const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov);
@@ -2155,7 +2209,7 @@ function sessionSnapshot({details=true}={}){
         searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{})]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
-        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
@@ -2172,7 +2226,7 @@ async function importSessionJson(file){
   if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
   const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
   const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
-    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
+    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
       docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
       retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
   for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }
@@ -2188,11 +2242,36 @@ async function importSessionJson(file){
 // v2.12.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
 function contractDuplicates(){ const by=new Map(); for(const p of state.projects){ const k=contractKey(projectIdentity(p).contract); if(k) by.set(k,[...(by.get(k)||[]),p]); } return new Map([...by].filter(([,ps])=>ps.length>1)); }
-const warnedDuplicates=new Set();
+const warnedDuplicates=new Set(); let dupWatch=false;
+const dupSig=(k,ps)=>`${k}|${ps.map(p=>p.id).sort().join(',')}`;
 function warnContractDuplicates(dups){ const fresh=[];
-  for(const [k,ps] of dups){ const sig=`${k}|${ps.map(p=>p.id).sort().join(',')}`; if(!warnedDuplicates.has(sig)){ warnedDuplicates.add(sig); fresh.push(ps); } }
+  // v2.15.0 — après le chargement, un doublon créé par un ajout (tableau, fiche, session, Box…) ouvre la fenêtre de choix.
+  if(dupWatch){ const groups=[...dups].filter(([k,ps])=>!warnedDuplicates.has(dupSig(k,ps))); for(const [k,ps] of groups) warnedDuplicates.add(dupSig(k,ps)); if(groups.length) setTimeout(()=>openDuplicatesDialog(groups),0); return; }
+  for(const [k,ps] of dups){ const sig=dupSig(k,ps); if(!warnedDuplicates.has(sig)){ warnedDuplicates.add(sig); fresh.push(ps); } }
   if(fresh.length>3) toast(`Doublons : ${fresh.length} numéros de contrat figurent sur plusieurs opérations (${fresh.slice(0,6).map(ps=>projectIdentity(ps[0]).contract).join(', ')}${fresh.length>6?'…':''}). Les tuiles concernées sont marquées « doublon ».`,'warn');
   else for(const ps of fresh) toast(`Doublon : le contrat ${projectIdentity(ps[0]).contract} figure sur ${ps.length} opérations (${ps.map(p=>projectIdentity(p).name||projectTitle(p)).join(' ; ')}).`,'warn'); }
+// Doublons de contrat : une ligne par opération, « Garder » coché sur la plus complète (valeurs, puis documents, puis complétion).
+function openDuplicatesDialog(groups){
+  if($('#dupDialog')) return;
+  const score=p=>{ const st=projectResultStats(p); return [st.values,st.docs,projectCompletion(p)]; };
+  const best=ps=>ps.reduce((a,b)=>{ const x=score(a),y=score(b); for(let i=0;i<3;i++) if(x[i]!==y[i]) return y[i]>x[i]?b:a; return a; });
+  const dlg=document.createElement('dialog'); dlg.id='dupDialog'; dlg.className='search-integrate-dialog box-dialog';
+  dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Doublons</span><h3>${groups.length>1?`${groups.length} contrats en double`:`Contrat ${escapeHtml(projectIdentity(groups[0][1][0]).contract)} en double`}</h3><p>Cochez les opérations à garder ; les autres sont retirées avec leurs documents. La plus complète est cochée.</p></div><button class="icon-btn" type="button" data-dup="close" aria-label="Fermer">×</button></div>
+    <div class="box-list">${groups.map(([k,ps])=>{ const keep=best(ps); return `<h4>Contrat ${escapeHtml(projectIdentity(ps[0]).contract)}<small>${ps.length} opérations</small></h4>${ps.map(p=>{ const id=projectIdentity(p), st=projectResultStats(p);
+      return `<label class="box-row"><input type="checkbox" data-dup-keep="${p.id}" data-dup-group="${escapeHtml(k)}"${p===keep?' checked':''}><span class="box-name">${escapeHtml(id.name||projectTitle(p))}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}<small>${escapeHtml([id.code,id.owner].filter(Boolean).join(' · ')||'—')}</small></span><span class="box-date">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs</span><span class="box-size">${projectCompletion(p)} %</span></label>`; }).join('')}`; }).join('')}</div>
+    <div class="search-integrate-foot box-foot"><span data-dup="msg"></span><button class="btn light" type="button" data-dup="close">Tout garder</button><button class="btn primary" type="button" data-dup="apply">Retirer les décochées</button></div></div>`;
+  const boxes=[...dlg.querySelectorAll('[data-dup-keep]')], apply=dlg.querySelector('[data-dup="apply"]'), msg=dlg.querySelector('[data-dup="msg"]');
+  // Chaque contrat garde au moins une opération.
+  const check=()=>{ const empty=groups.filter(([k])=>!boxes.some(b=>b.dataset.dupGroup===k&&b.checked)); const n=boxes.filter(b=>!b.checked).length; apply.disabled=!!empty.length||!n; msg.textContent=empty.length?'Gardez au moins une opération par contrat.':`${n} opération(s) à retirer`; };
+  boxes.forEach(b=>b.onchange=check); check();
+  const close=()=>{ dlg.close(); dlg.remove(); };
+  dlg.querySelectorAll('[data-dup="close"]').forEach(b=>b.onclick=close); dlg.addEventListener('cancel',e=>{ e.preventDefault(); close(); });
+  apply.onclick=async()=>{ const drop=boxes.filter(b=>!b.checked).map(b=>state.projects.find(p=>p.id===b.dataset.dupKeep)).filter(Boolean); close();
+    for(const p of drop) await removeProject(p);
+    for(const [k,ps] of contractDuplicates()) warnedDuplicates.add(dupSig(k,ps));
+    renderAll(); toast(`${drop.length} opération(s) en double retirée(s).`,'success'); scheduleWorkspaceCheckpoint('doublons retirés',80); };
+  document.body.append(dlg); dlg.showModal();
+}
 // Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
 function openSearchObservatory(){
   try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
@@ -2504,6 +2583,7 @@ async function initializeApp(){
   }catch(err){
     console.warn('IndexedDB restore failed',err); persistenceReady=false; setLocalSaveUi('Indisponible'); const detail=$('#localSaveDetail'); if(detail) detail.textContent='Le navigateur ne permet pas la restauration locale dans ce contexte.';
   }
+  warnContractDuplicates(contractDuplicates()); dupWatch=true;
   syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); setHomeMode(true); receiveBookmarkletText(); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
 initializeApp();

@@ -8,7 +8,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {buildBuildingGrouping,analyzeDocuments} from './js/engine.js';
 import {DEFAULT_SOURCE_RULES,DOC_TYPES} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.14.2','version');
+eq(APP_VERSION, '2.15.0','version');
 const TXT=`Bâtiment X :
 Nombre de logements = 30
 Sref (ou Srt) = 2000,5
@@ -40,11 +40,11 @@ eq(v[1].values,{housing_count:12,cep:35.2},'bâtiment Y');
 eq(p.unmatched.map(u=>u.line),['Commentaire : vérifié le 12/03'],'ligne avec chiffre non reconnue gardée pour l’IA ; remarque sans chiffre = texte descriptif');
 eq(v[0].sources.cep,'Cep = 40,0','ligne source conservée (traçabilité)');
 // IA : la colonne doit exister, la valeur est relue dans la ligne (jamais celle inventée par l'IA)
-const q=parseFreePaste('Bâtiment Z :\nPerméabilité mesurée Q4 0,6 m3/h.m2\nTruc = 5');
+const q=parseFreePaste('Bâtiment Z :\nPerméabilité mesurée Q4 0,6 m3/h.m2\nTruc = 50');
 ok(/q4pa_surf/.test(freePastePrompt(q.unmatched).system)&&/Perméabilité/.test(freePastePrompt(q.unmatched).user),'prompt : colonnes + lignes collées seulement');
 const ix=re=>q.unmatched.findIndex(x=>re.test(x.line))+1;
-const added=applyFreePasteAi(q,{lines:[{n:ix(/Perméabilité/),field:'q4pa_surf',value:'0,6'},{n:ix(/Truc/),field:'champ_invente',value:'5'},{n:ix(/Truc/),field:'cep',value:'999'}]});
-eq([added,freePasteValues(q)[0].values],[2,{q4pa_surf:0.6,cep:5}],'colonne inventée refusée ; valeur relue dans la ligne (5, pas 999)');
+const added=applyFreePasteAi(q,{lines:[{n:ix(/Perméabilité/),field:'q4pa_surf',value:'0,6'},{n:ix(/Truc/),field:'champ_invente',value:'50'},{n:ix(/Truc/),field:'cep',value:'999'}]});
+eq([added,freePasteValues(q)[0].values],[2,{q4pa_surf:0.6,cep:50}],'colonne inventée refusée ; valeur relue dans la ligne (50, pas 999)');
 // Colonne Q4Pa-surf en fin d'export, en-têtes courts
 eq([FIELD_DEFS.filter(f=>!f.hidden).findIndex(f=>f.key==='q4pa_surf'),FIELD_MAP.q4pa_surf.type],[193,'number'],'194e colonne d’export Q4Pa-surf (DH ZT / DH ZNT à la place de DH)');
 eq(['Sref (ou Srt)','Cepnrmax','Q4 Pa-surf'].map(matchFreeLabel),['shab','cepnr_max','q4pa_surf'],'libellés courts');

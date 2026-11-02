@@ -5,6 +5,7 @@ import {FIELD_DEFS,FIELD_MAP,matchFieldByHeaderDetailed,DOC_TYPES,STRUCTURES,SHA
 import {wallInsulationSide} from './engine.js';
 import {normLower,parseFrNumber,normalizeText,findFirstMatch,normalizeGlazingType} from './utils.js';
 import {parseDocument} from './parsers.js';
+import {EXTRACTION_RANGES} from './sanity.js';
 
 const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
@@ -12,10 +13,13 @@ const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
 const fp_clean=l=>String(l||'').replace(/\((?:en|unit[eé])\s[^)]*\)\s*$/i,'').replace(/\s*\[[^\]]*\]\s*$/,'').trim();
 function fp_value(field,raw){
   const def=FIELD_MAP[field]; const s=String(raw||'').trim();
+  // v2.15.0 — pack du 02/11 : « Profil = Visite » (type de visite Salesforce) n'est pas un profil.
+  if(field==='selected_profile'&&/^visite\b/i.test(s)) return null;
   if(def?.type!=='number') return s||null;
   // nombre isolé : le « 4 » de « Q4 » ou de « R+4 » n'est pas une valeur
   const m=s.replace(/\u00a0/g,' ').match(/(?<![A-Za-z\d.,+])[-+]?\d+(?:[ .]\d{3})*(?:[.,]\d+)?/); if(!m) return null;
-  return parseFrNumber(m[0]);
+  // hors plage physique (« Tic = 46165 », date Excel) : laissé en ligne non reconnue
+  const v=parseFrNumber(m[0]), r=EXTRACTION_RANGES[field]; return r&&(v<r[0]||v>r[1])?null:v;
 }
 // DH par type de zone : DH ZT / DH ZNT reçoivent la zone la plus défavorable de leur type, DH (interne) la plus défavorable des deux.
 function fp_dhZone(label){ const l=normLower(label); if(!/\bdh\b|degres?[- ]heures?/.test(l)||!/travers|\bzn?t\b/.test(l)) return null; return /non\s+travers|\bznt\b/.test(l)?'non':'oui'; }

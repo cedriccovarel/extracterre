@@ -368,7 +368,7 @@
         "RSET RE2020",
         "RSEE RE2020"
       ],
-      "regex": "Nature\\s+de\\s+l['’]isolation\\s+des\\s+toitures\\s+([^\\n\\r]{2,100})",
+      "regex": "Nature\\s+de\\s+l['’]isolation\\s+des\\s+toitures\\s+([^\\n\\r]{2,100}?)(?=\\s+(?:la\\s+toiture|toiture|v[ée]g[ée]talis)|[\\n\\r]|$)",
       "valueGroup": 1,
       "valueType": "text",
       "confidence": 0.996,

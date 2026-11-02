@@ -10,7 +10,7 @@ import {parseDocument} from './js/parsers.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.14.2','version');
+eq(APP_VERSION, '2.15.0','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
@@ -58,6 +58,6 @@ const r=DEFAULT_SOURCE_RULES.ic_energy_max.main; ok(r.indexOf('RSENV / RSNV')<r.
 const app=fs.readFileSync('./js/app.js','utf8');
 ok(/function retainRemovedDocument\(project,doc\)/.test(app),'conservation des valeurs du document retiré');
 ok(!/remove-file'\)\.forEach\(b=>b\.onclick=async\(\)=>\{ const id=b\.dataset\.id; state\.docs=state\.docs\.filter\(d=>d\.id!==id\); state\.result=null;/.test(app),'plus de remise à zéro du résultat');
-ok(/const out=\[\.\.\.retainedOccurrences\(project\)\]/.test(app),'valeurs conservées réinjectées dans chaque consolidation');
+ok(/const out=\[\.\.\.retainedOccurrences\(project\)[,\]]/.test(app),'valeurs conservées réinjectées dans chaque consolidation');
 ok(/retainedOccurrences:safeJsonClone\(project\.retainedOccurrences,\[\]\)/.test(fs.readFileSync('./js/persistence.js','utf8')),'conservées dans la sauvegarde locale');
 console.log(`v2.3.7 — ${n} vérifications OK (documents fictifs)`);

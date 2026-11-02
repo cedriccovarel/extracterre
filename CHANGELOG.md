@@ -1,3 +1,32 @@
+# v2.15.0 — plans mesurés dans Ashton (onglet Plans), fenêtre des doublons, pack du 02/11/2026
+- **Plans** : un PDF dont la 1re page est en A2 ou plus (ou en A3 avec un nom de plan : « Plan », « Façades », « Coupe »,
+  « RDC », « R+1 »…) est reconnu comme plan dès la lecture ; il n'est ni lu ni OCRisé, aucun parseur ne s'y applique. Une
+  pièce écrite (CCTP, RSET, étude, notice, rapport…) n'est jamais un plan, quel que soit son format.
+- Dans la liste des documents, un plan propose **Ashton** (pictogramme de kutch) à la place d'Aperçu / IA / Crible fin. Ashton (intégré
+  dans `ashton/`, v0.5.0) s'ouvre en plein écran sur le plan ; sa **table de correspondance** regroupe les mesures par type
+  (longueur, largeur, surface, quantité) et par référence : min / moy / max pour les longueurs, largeurs et surfaces, total
+  pour les quantités. Une quantité se relie à une colonne ExtracTerre par un **menu déroulant** (Nombre de brasseurs d'air,
+  Nombre de logements…). « Kutcher » (onglet Plans) rouvre le plan dans Ashton ; « Envoyer vers ExtracTerre » remplit le nouvel **onglet Plans** de l'opération.
+- Onglet Plans : une table par plan, bâtiment d'affectation des quantités (celui du plan s'il n'en nomme qu'un, sinon toute
+  l'opération), **mot-clé** modifiable pour chaque quantité (« Brasseur d'air » → Nombre de brasseurs d'air). Une quantité
+  reliée renseigne sa colonne comme un document de type Plan (priorités de sources inchangées) : « Brasseur d'air » passe
+  alors à Oui / Non dans les autres onglets. Les tables sont gardées dans la session (sauvegarde locale et export JSON).
+- **Doublons** : quand un ajout (tableau d'opérations, fiche Salesforce, session JSON, Box…) crée une ou plusieurs opérations
+  au même numéro de contrat, une fenêtre liste chaque contrat en double avec ses opérations (documents, bâtiments, valeurs,
+  complétion) : la plus complète est cochée, les décochées sont retirées avec leurs documents ; au moins une est gardée par
+  contrat. Les doublons déjà présents à l'ouverture restent signalés comme avant (tuiles « doublon »).
+- **Pack d'amélioration du 02/11/2026** (4 290 événements depuis la v2.6.1, 17 signalements bêta) :
+  - collage libre / fiche Salesforce : valeur hors plage physique non reportée (« Tic = 46165 », date Excel) — la ligne reste
+    « non reconnue » ; « Profil = Visite » n'est plus un profil ;
+  - CCTP : un ouvrage provisoire de chantier (« tunnel de protection provisoire… structure métallique ») n'est plus une structure
+    de mur ; l'intitulé de lot « Chauffage, Ventilation, Climatisation et Désenfumage (CVCD) » n'est plus une climatisation ;
+  - RSET Pléiades : « Nature de l'isolation des toitures » s'arrête avant la question suivante (« Autre » au lieu de
+    « Autre végétalisée ? Non »).
+  - analyses interrompues après 5 minutes : aucune dans le journal depuis la v2.10.1 ; 9 XML BETie / PEP (fiches produits)
+    « illisibles » en v2.14.1 non traités (fichiers absents du pack).
+- Non-régression : 65 fichiers de tests (dont `test_v2_15_0.mjs` et `test_ashton.mjs`), 149/149 auto-tests moteur,
+  banc du pack : 55 signalements « valeur fausse » corrigés sur 59 (54 avant).
+
 # v2.14.2 — favori Salesforce : bâtiments « Bâtiment n° 1 : A1-A2 »
 - Dans « Performance thermique », un en-tête « Bâtiment n° 1 : A1-A2 » (ou « Bâtiment 3 : D1 - D2 ») ouvre un bâtiment
   nommé par ses cages (« Bâtiment A1 - A2 ») ; avant, toutes les valeurs tombaient dans un seul bâtiment.

@@ -1286,3 +1286,15 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .box-date,.box-size{font-size:.8rem;color:var(--muted,#6c7b74);white-space:nowrap}.box-empty{margin:0 0 6px;color:var(--muted,#6c7b74);font-size:.86rem}
 .box-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.box-foot>span{flex:1}
 @media (max-width:640px){.box-row{grid-template-columns:auto 1fr}.box-date,.box-size{grid-column:2}}
+/* v2.15.0 — plans : Ashton intégré, onglet Plans, fenêtre des doublons */
+.file-actions [hidden]{display:none!important}
+.ashton-dialog{width:100vw;height:100vh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:var(--forest,#173e31);display:flex;flex-direction:column}
+.ashton-dialog:not([open]){display:none}
+.ashton-dialog::backdrop{background:rgba(5,30,22,.5)}
+.ashton-head{display:flex;align-items:center;gap:14px;padding:8px 14px;color:#fff}.ashton-head span{flex:1;min-width:0;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ashton-dialog iframe{flex:1;width:100%;border:0;background:#fff}
+.plan-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin:0 0 10px}.plan-bar label{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted,#6c7b74)}
+.plan-bar select{padding:6px 8px}.plan-bar small{color:var(--muted,#6c7b74)}.plan-bar .danger{color:#a3361f}
+.plan-card h4 small{font-weight:500;color:var(--muted,#6c7b74);margin-left:6px}
+.plan-table td{vertical-align:middle;font-variant-numeric:tabular-nums}.plan-table .plan-total{font-weight:700}.plan-table .muted{color:var(--muted,#6c7b74)}.plan-table .eco-input{min-width:200px}
+.kutch-ico{width:1.15em;height:1.15em;vertical-align:-.2em;flex:none}

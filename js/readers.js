@@ -298,6 +298,16 @@ async function createOcrWorker(lang,onLog=()=>{}){
   return globalThis.Tesseract.createWorker(lang||OCR_DEFAULTS.lang,1,{logger:onLog});
 }
 
+// Format d'un plan à partir de la 1re page (points PDF) : A2 et plus, ou A3 dont le nom évoque un plan. Une pièce écrite
+// (CCTP, RSET, étude, notice…) n'est jamais un plan, quel que soit son format.
+const RD_PLAN_FORMATS=[['A0',3300],['A1',2300],['A2',1650],['A3',1150]];
+export function planFormatOf(name,w,h){
+  const n=String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(), side=Math.max(w,h);
+  if(/cctp|dpgf|\brse[te]\b|rsenv|notice|etude|rapport|contrat|\bacv\b|thermique|\bdpe\b|audit|devis|questionnaire|attestation|synthese|reperage/.test(n)) return null;
+  const planName=/(?:^|[^a-z])(?:plans?|pln|facades?|coupes?|niveaux?|rdc|r\+\d|masse|implantation|sous[- ]sol|toitures?|carnet)(?:[^a-z]|$)/.test(n);
+  if(side<1650&&!(side>=1150&&planName)) return null;
+  return RD_PLAN_FORMATS.find(([,min])=>side>=min)[0];
+}
 export async function readPdf(file, onProgress=()=>{}, options={}) {
   if(!globalThis.pdfjsLib) throw new Error('PDF.js non chargé. Vérifiez la connexion au premier chargement.');
   globalThis.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -333,6 +343,9 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
     data=null; // PDF.js possède désormais sa copie ; libère la référence au gros ArrayBuffer du fichier.
     throwIfAborted(opts.signal);
     totalPages=pdf.numPages;
+    // v2.15.0 — plan (grand format, ou A3 nommé comme un plan) : ni texte ni OCR, il se mesure dans Ashton.
+    if(opts.detectPlan){ const p1=await pdf.getPage(1); const [x0,y0,x1,y1]=p1.view; const format=planFormatOf(file.name,x1-x0,y1-y0); p1.cleanup?.();
+      if(format){ onProgress(1,{stage:'plan',page:1,totalPages}); return {kind:'pdf',plan:{format,width:Math.round(x1-x0),height:Math.round(y1-y0)},pages:[],text:'',pageCount:pdf.numPages}; } }
     for(let p=1;p<=pdf.numPages;p++){
       throwIfAborted(opts.signal);
       let page=null, content=null, canvas=null;

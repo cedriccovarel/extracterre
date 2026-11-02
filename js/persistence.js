@@ -140,6 +140,7 @@ function serializeProject(project={}){
     searchOverrides:safeJsonClone(project.searchOverrides,{}),
     geocodes:safeJsonClone(project.geocodes,{}),
     freePasteRows:safeJsonClone(project.freePasteRows,[]),
+    planTables:safeJsonClone(project.planTables,{}),
     ownerName:project.ownerName||'',
     expanded:project.expanded!==false
   };
