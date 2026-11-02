@@ -887,6 +887,11 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.16.4 — 2026-11-02
+- CCTP reconnus à leur structure (titre en page de garde ou en-tête « CCTP 04 - Lot … » répété) : un CCTP de rénovation n'est plus classé RT existant, Contrat ou RSET parce que ses clauses citent « existant », « contrat », « DPE » ou « RE2020 ».
+- CCTP : lignes ignorées pour l'enveloppe et les systèmes — sommaire, références de normes (NF DTU, NF EN…), installation de chantier (palissade, portillon…), exigences acoustiques (LnAT, dB(A)), clauses conditionnelles (« Pour les installations… », « le cas échéant »), ventilation naturelle de locaux annexes ; le lot Démolition (ouvrages déposés) ne fournit aucune valeur.
+- Délai d'analyse : 5 minutes sans aucune avancée (au lieu de 5 minutes au total) ; suspendu pendant l'attente dans la file OCR.
+
 ## v2.16.3 — 2026-11-02
 - Archive .zip d’export RSEE / RSET (« Xml_RSEE_….xml.zip ») : le XML (et PDF) à la racine est extrait et analysé ; les fiches de composants des sous-dossiers sont ignorées. Auparavant, seul un paquet de questionnaire financier était lu et l’archive était écartée.
 

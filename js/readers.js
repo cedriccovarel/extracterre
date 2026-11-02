@@ -5,7 +5,7 @@ import {parseXmlDocument,isRe2020XmlDocument,extractRe2020,re2020SummaryPages} f
 import {isDpeXmlText,readDpeXml} from './dpe-3cl.js';
 
 const OCR_DEFAULTS={mode:'auto',lang:'fra+eng',scale:1.85,maxPixels:5200000,minChars:150};
-function throwIfAborted(signal){ if(signal?.aborted){ const e=new Error(signal.reason==='analysis-timeout'?'Analyse interrompue après 5 minutes.':'Analyse annulée.'); e.name='AbortError'; throw e; } }
+function throwIfAborted(signal){ if(signal?.aborted){ const e=new Error(signal.reason==='analysis-timeout'?'Analyse interrompue : aucune avancée pendant le délai.':'Analyse annulée.'); e.name='AbortError'; throw e; } }
 
 
 let OCR_ACTIVE=0;

@@ -122,6 +122,14 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020]) score[k]=(score[k]||0)*0.1;
   }
+  // v2.16.3 — CCTP reconnu à sa structure : titre en page de garde ou en-tête « CCTP 04 - Lot … » répété de page en page. Les
+  // mots « existant », « contrat », « DPE », « RE2020 » de ses clauses n'en font ni un RT existant, ni un contrat, ni un RSET.
+  const cctpLines=String(text).split('\n').slice(0,6000).map(l=>normLower(l).trim()).filter(Boolean);
+  const cctpHeaders=cctpLines.filter(l=>/^(?:cctp|c\.c\.t\.p\.?)\s/.test(l)).length;
+  if(cctpHeaders>=3||/^(?:\S+\s+){0,2}(?:cctp|cahier\s+des\s+clauses\s+techniques\s+particulieres)\b/.test(cctpLines[0]||'')){
+    score[DOC_TYPES.CCTP]=(score[DOC_TYPES.CCTP]||0)+45;
+    for(const k of [DOC_TYPES.RT_EXISTING,DOC_TYPES.CONTRACT,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.THERMAL,DOC_TYPES.CARBON,DOC_TYPES.PERMIT,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.AIRTIGHTNESS]) score[k]=(score[k]||0)*0.1;
+  }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
   if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s*-?\s*reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov|perimetre\s+de\s+la\s+renovation|eges\s*pce/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;

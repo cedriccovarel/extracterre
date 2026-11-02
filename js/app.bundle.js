@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.16.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.16.4 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.16.3';
+const APP_VERSION='2.16.4';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -4900,6 +4900,14 @@ function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020]) score[k]=(score[k]||0)*0.1;
   }
+  // v2.16.3 — CCTP reconnu à sa structure : titre en page de garde ou en-tête « CCTP 04 - Lot … » répété de page en page. Les
+  // mots « existant », « contrat », « DPE », « RE2020 » de ses clauses n'en font ni un RT existant, ni un contrat, ni un RSET.
+  const cctpLines=String(text).split('\n').slice(0,6000).map(l=>normLower(l).trim()).filter(Boolean);
+  const cctpHeaders=cctpLines.filter(l=>/^(?:cctp|c\.c\.t\.p\.?)\s/.test(l)).length;
+  if(cctpHeaders>=3||/^(?:\S+\s+){0,2}(?:cctp|cahier\s+des\s+clauses\s+techniques\s+particulieres)\b/.test(cctpLines[0]||'')){
+    score[DOC_TYPES.CCTP]=(score[DOC_TYPES.CCTP]||0)+45;
+    for(const k of [DOC_TYPES.RT_EXISTING,DOC_TYPES.CONTRACT,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.THERMAL,DOC_TYPES.CARBON,DOC_TYPES.PERMIT,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.AIRTIGHTNESS]) score[k]=(score[k]||0)*0.1;
+  }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
   if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s*-?\s*reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov|perimetre\s+de\s+la\s+renovation|eges\s*pce/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
@@ -4935,7 +4943,7 @@ function classifyDocument(fileName, text='', meta={}) {
 
 /* ---- readers.js ---- */
 const OCR_DEFAULTS={mode:'auto',lang:'fra+eng',scale:1.85,maxPixels:5200000,minChars:150};
-function throwIfAborted(signal){ if(signal?.aborted){ const e=new Error(signal.reason==='analysis-timeout'?'Analyse interrompue après 5 minutes.':'Analyse annulée.'); e.name='AbortError'; throw e; } }
+function throwIfAborted(signal){ if(signal?.aborted){ const e=new Error(signal.reason==='analysis-timeout'?'Analyse interrompue : aucune avancée pendant le délai.':'Analyse annulée.'); e.name='AbortError'; throw e; } }
 
 
 let OCR_ACTIVE=0;
@@ -6733,12 +6741,28 @@ function parseProgram(doc){
   } return out;
 }
 
+// v2.16.3 — CCTP : lignes qui ne décrivent pas l'ouvrage livré (sommaire, références de normes, installation de chantier,
+// exigences acoustiques ou clauses conditionnelles) et lot Démolition (il décrit ce qui est déposé).
+function cctpLineNoise(doc,text){
+  if(doc.type!==DOC_TYPES.CCTP) return false;
+  const t=normLower(text);
+  return /\.{5,}|…{2,}/.test(text)||/\bnf\s+(?:dtu|en|p\s*\d)|\bdtu\s*\d|norme\s+homologuee|\biso\s*\d{3,}/.test(t)
+    ||/palissade|cloture\s+de\s+chantier|installations?\s+de\s+chantier|base\s+vie|portillon|portails?\s+d['’ ]?acces|bardages?\s+en\s+tole/.test(t)
+    ||/\blnat\b|db\s*\(?a\)?/.test(t)||/^\W*pour\s+les\s+installations|le\s+cas\s+echeant|eventuel(?:le)?s?\b/.test(t)
+    ||/ventilation\s+naturelle\s+(?:de\s+la\s+gaine|des\s+locaux|du\s+local|de\s+la\s+cage|du\s+parking)|lames?\s+micro[- ]?perforees/.test(t);
+}
+// Ligne qui prolonge la précédente (commence en minuscule) : la précédente décide aussi du bruit.
+const cctpNoiseAt=(doc,lines,i)=>cctpLineNoise(doc,lines[i]?.text||'')||(/^\s*[a-zà-ÿ(]/.test(lines[i]?.text||'')&&cctpLineNoise(doc,lines[i-1]?.text||''));
+const cctpDemolitionLot=doc=>doc.type===DOC_TYPES.CCTP&&/demolition|curage|desamiantage/.test(normLower(`${doc.name} ${(doc.read?.pages?.[0]?.text||'').slice(0,300)}`));
+
 function parseEnvelope(doc){
   const out=[];
+  if(cctpDemolitionLot(doc)) return out;
   for(const page of doc.read.pages){
     if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && /(?:chapitre\s*3\s*:.*indicateurs|donn[eé]es\s+r[eé]capitulatives\s+sur\s+les\s+parois)/i.test(page.text||'')) continue;
     const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
     const line=lines[i], base=normalizeText(line.text); let ctx=base, target=targetFromContext(base);
+    if(cctpNoiseAt(doc,lines,i)) continue;
     const baseMat=findFirstMatch(base,MATERIALS), baseStruct=findFirstMatch(base,STRUCTURES);
     if(target) ctx=normalizeText(lineWindow(page,i,0,2));
     else if(baseMat||baseStruct){ ctx=normalizeText(lineWindow(page,i,1,0)); target=targetFromContext(ctx); }
@@ -6775,10 +6799,12 @@ const DPE_CURRENT_HEADING=/(?:etat\s+(?:actuel|initial|existant)|descriptif\s+(?
 const DPE_RECO_VERB=/(?:installation\s+d['’]?(?:une?|des)\b|remplacement\s+(?:par|de|du|des)\b|mise\s+en\s+place|remplacer|installer|pourrait|pourraient|envisager|preconis|recommand|il\s+est\s+conseill|gain\s+estime|economies?\s+estimee?s?)/i;
 function parseSystems(doc){
   const out=[]; let inheritedPhase='unknown';
+  if(cctpDemolitionLot(doc)) return out;
   const recoAware=doc.type===DOC_TYPES.DPE; let inReco=false;
   for(const page of doc.read.pages){ const lines=page.lines||[]; const explicitPagePhase=recoAware?'before':phaseFromContext(page.text||'',doc); if(explicitPagePhase!=='unknown') inheritedPhase=explicitPagePhase; const pagePhase=inheritedPhase; const resolvedPhase=ctx=>{ if(recoAware) return 'before'; const p=phaseFromContext(ctx,doc); return p==='unknown'?pagePhase:p; }; for(let i=0;i<lines.length;i++){
     const line=lines[i], base=normalizeText(line.text), next=normalizeText(lines[i+1]?.text||''); const baseLow=normLower(base); const envInventoryNoise=/(?:\binies\b|fiche\s+de\s+donn[eé]es\s+environnementales|mise\s+[aà]\s+disposition\s+d['’]?un\s+kwh|impact\s+environnemental|contribution\s+composant)/i.test(baseLow);
-    const makeCtx=(kindRe,matcher)=>{ if(!kindRe.test(baseLow)) return null; if(matcher(base)) return base; return normalizeText(`${base} | ${next}`); };
+    if(cctpNoiseAt(doc,lines,i)) continue;
+    const makeCtx=(kindRe,matcher)=>{ if(!kindRe.test(baseLow)) return null; if(matcher(base)) return base; return cctpLineNoise(doc,next)?null:normalizeText(`${base} | ${next}`); };
     if(recoAware){ if(DPE_RECO_HEADING.test(baseLow)) inReco=true; else if(DPE_CURRENT_HEADING.test(baseLow)) inReco=false; if(inReco||DPE_RECO_VERB.test(baseLow)) continue; }
 
     const heatCtx=makeCtx(/chauffage|chaudiere|pac|pompe\s+a\s+chaleur|radiateur|convecteur|plancher\s+chauffant|vrv|drv|sous[- ]station/i,t=>!!(findFirstMatch(t,HVAC.heating)||findFirstMatch(t,HVAC.vectors)));
@@ -6787,7 +6813,7 @@ function parseSystems(doc){
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
     if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsCtx,HVAC.ecs), vec=findFirstMatch(ecsCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
 
-    let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
+    let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && !cctpLineNoise(doc,next) && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
     if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/degres?[- ]?heures?|si\s+l.?on\s+retire|groupes?\s+climatises?,|chauffage,?\s+ventilation,?\s+(?:et\s+)?climatisation|\bcvcd?\b/i.test(coolLow)||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|pas\s+de\s+climatisation\s+active|absence\s+de\s+climatisation/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
@@ -7072,6 +7098,7 @@ function taggedFieldAllowedForDocument(doc,def){
 function parseTaggedFields(doc){
   if(doc.read?.kind==='spreadsheet') return parseTaggedSpreadsheet(doc);
   const out=[];
+  if(cctpDemolitionLot(doc)) return out;
   for(const page of doc.read?.pages||[]){ const lines=page.lines||[];
     for(let i=0;i<lines.length;i++){
       const line=lines[i], raw=String(line.text??'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
@@ -12085,7 +12112,12 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       d.processingLocation=null;
       d.cloudFallback=null;
       d.remoteAnalysis=null;
+      // v2.16.3 — délai d'inactivité : il repart à chaque avancée et reste suspendu pendant l'attente dans la file OCR
+      // (un document en file derrière un long OCR n'est plus interrompu sans avoir travaillé).
+      let rejectTimeout=null;
+      const armTimeout=(ms)=>{ if(timeoutId) clearTimeout(timeoutId); timeoutId=ms&&rejectTimeout?setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue : aucune avancée pendant ${d.analysisTimeoutMinutes} minutes.`); e.name='TimeoutError'; rejectTimeout(e); },ms):null; };
       const progress=(p,meta)=>{
+        if(rejectTimeout) armTimeout(meta?.stage==='ocr-wait'?0:d.analysisTimeoutMinutes*60*1000);
         progressByDoc.set(d.id,Math.max(0,Math.min(1,p||0)));
         d.liveStage=meta?.stage||'reading'; updateParallelStatus(d,meta,false);
       };
@@ -12117,7 +12149,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       })();
       const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
-      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue après ${timeoutMinutes} minutes.`); e.name='TimeoutError'; reject(e); },timeoutMinutes*60*1000); })]);
+      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ rejectTimeout=reject; armTimeout(timeoutMinutes*60*1000); })]);
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
       if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
@@ -12149,7 +12181,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||analysisControl.stopRequested;
       const timedOut=!stopped&&(timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout'));
       if(stopped){ d.status=Array.isArray(d.cachedOccurrences)?'ready':'pending'; d.error=null; }
-      else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue après ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
+      else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue : aucune avancée pendant ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
       else { d.status='error'; d.error=e?.message||String(e); }
       learn('analysis_error',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,status:d.status,error:d.error||e?.message||String(e),ocrMode,elapsedMs:Math.round(performance.now()-started)},activeProject());
     }finally{

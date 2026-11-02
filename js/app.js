@@ -1119,7 +1119,12 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       d.processingLocation=null;
       d.cloudFallback=null;
       d.remoteAnalysis=null;
+      // v2.16.3 — délai d'inactivité : il repart à chaque avancée et reste suspendu pendant l'attente dans la file OCR
+      // (un document en file derrière un long OCR n'est plus interrompu sans avoir travaillé).
+      let rejectTimeout=null;
+      const armTimeout=(ms)=>{ if(timeoutId) clearTimeout(timeoutId); timeoutId=ms&&rejectTimeout?setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue : aucune avancée pendant ${d.analysisTimeoutMinutes} minutes.`); e.name='TimeoutError'; rejectTimeout(e); },ms):null; };
       const progress=(p,meta)=>{
+        if(rejectTimeout) armTimeout(meta?.stage==='ocr-wait'?0:d.analysisTimeoutMinutes*60*1000);
         progressByDoc.set(d.id,Math.max(0,Math.min(1,p||0)));
         d.liveStage=meta?.stage||'reading'; updateParallelStatus(d,meta,false);
       };
@@ -1151,7 +1156,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       })();
       const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
-      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ timeoutId=setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue après ${timeoutMinutes} minutes.`); e.name='TimeoutError'; reject(e); },timeoutMinutes*60*1000); })]);
+      else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ rejectTimeout=reject; armTimeout(timeoutMinutes*60*1000); })]);
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
       if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
@@ -1183,7 +1188,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||analysisControl.stopRequested;
       const timedOut=!stopped&&(timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout'));
       if(stopped){ d.status=Array.isArray(d.cachedOccurrences)?'ready':'pending'; d.error=null; }
-      else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue après ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
+      else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue : aucune avancée pendant ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
       else { d.status='error'; d.error=e?.message||String(e); }
       learn('analysis_error',{docId:d.id,fileName:d.name,relativePath:d.relativePath||d.name,status:d.status,error:d.error||e?.message||String(e),ocrMode,elapsedMs:Math.round(performance.now()-started)},activeProject());
     }finally{
