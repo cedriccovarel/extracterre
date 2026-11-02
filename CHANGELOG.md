@@ -1,3 +1,6 @@
+# v2.16.1 — tuiles d'accueil : dossiers partiellement complétés
+- Tuile de maître d'ouvrage : « x dossier(s) partiellement complété(s) » à côté des dossiers complets (opérations complétées à plus de 10 % et moins de 100 %).
+
 # v2.16.0 — études RE2020 de BE (NRGYS / Perrenoud) lues en entier, favoris des tuiles d'accueil
 - **Étude RE2020 « Synthèse thermique & carbone »** (dossier thermique et environnemental, « Mode constructif ») : classée Étude
   thermique et non plus DPE (la phrase « le DPE est effectué en fin de chantier » donnait 14 points au DPE). Sur une étude réelle de
@@ -883,6 +886,9 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Journal bêta v1.1.17 intégré comme corpus de non-régression.
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
+
+## v2.16.2 — 2026-11-02
+- Accueil : tri des tuiles d’opérations par état du dossier (complets, partiellement complétés > 10 %, incomplets d’abord).
 
 ## v1.1.16 — Retours bêta + bibliothèque de patchs intégrée
 

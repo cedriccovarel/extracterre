@@ -233,6 +233,14 @@ function projectCompletion(p){
   return Math.round(ratios.reduce((a,b)=>a+b,0)/ratios.length*100);
 }
 const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
+// v2.16.1 — tri des tuiles d'opérations par état du dossier : complet (100 %), partiellement complété (> 10 %), incomplet.
+const TILE_SORTS={'':'Ordre par défaut',complete:'Complets d’abord',partial:'Partiellement complétés d’abord',incomplete:'Incomplets d’abord'};
+const tileStatus=pct=>pct>=100?'complete':pct>10?'partial':'incomplete';
+function sortTileItems(xs,mode){
+  if(!mode||!TILE_SORTS[mode]) return xs;
+  const order={complete:['complete','partial','incomplete'],partial:['partial','complete','incomplete'],incomplete:['incomplete','partial','complete']}[mode];
+  return [...xs].sort((a,b)=>order.indexOf(tileStatus(a.pct))-order.indexOf(tileStatus(b.pct))||(mode==='complete'?b.pct-a.pct:a.pct-b.pct)||!!b.p.favorite-!!a.p.favorite);
+}
 const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length&&!(p.freePasteRows||[]).length;
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
@@ -246,14 +254,15 @@ function renderTiles(wrap,{home=false}={}){
   const grouped=!q&&items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
   if(state.overviewOwner&&!(state.overviewOwner===FAV_GROUP?favs.length:items.some(x=>ownerOf(x)===state.overviewOwner))) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
-  let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
+  let sortCtl='',body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
   if(grouped&&!state.overviewOwner){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
-    body=(favs.length?`<button type="button" class="op-tile macro fav" data-tile-owner="${FAV_GROUP}"><span class="op-tile-k">Favoris</span><strong>★ ${favs.length} opération(s)</strong><span class="op-tile-meta">${escapeHtml(favs.slice(0,3).map(x=>x.id.contract||x.id.name||projectTitle(x.p)).join(' · '))}${favs.length>3?' …':''}</span>${bar(Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length))}<span class="op-pct">${Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length)} % complété en moyenne</span></button>`:'')+owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
-      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}${xs.some(x=>lastImported.has(x.p.id))?` · <b class="op-new">${xs.filter(x=>lastImported.has(x.p.id)).length} nouvelle(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
+    body=(favs.length?`<button type="button" class="op-tile macro fav" data-tile-owner="${FAV_GROUP}"><span class="op-tile-k">Favoris</span><strong>★ ${favs.length} opération(s)</strong><span class="op-tile-meta">${escapeHtml(favs.slice(0,3).map(x=>x.id.contract||x.id.name||projectTitle(x.p)).join(' · '))}${favs.length>3?' …':''}</span>${bar(Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length))}<span class="op-pct">${Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length)} % complété en moyenne</span></button>`:'')+owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length, partial=xs.filter(x=>x.pct>10&&x.pct<100).length;
+      return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${partial?` · ${partial} dossier(s) partiellement complété(s)`:''}${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}${xs.some(x=>lastImported.has(x.p.id))?` · <b class="op-new">${xs.filter(x=>lastImported.has(x.p.id)).length} nouvelle(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
-    const xs=found||(grouped?(state.overviewOwner===FAV_GROUP?favs:items.filter(x=>ownerOf(x)===state.overviewOwner)):items);
+    const xs=sortTileItems(found||(grouped?(state.overviewOwner===FAV_GROUP?favs:items.filter(x=>ownerOf(x)===state.overviewOwner)):items),state.tileSort);
+    sortCtl=xs.length>1?`<select class="op-sort" data-tile-sort aria-label="Trier les opérations">${Object.entries(TILE_SORTS).map(([k,l])=>`<option value="${k}"${(state.tileSort||'')===k?' selected':''}>${l}</option>`).join('')}</select>`:'';
     if(found){ sub=`${xs.length} opération(s) trouvée(s) sur ${items.length}`; shown=xs.length; }
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
     body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
@@ -267,9 +276,10 @@ function renderTiles(wrap,{home=false}={}){
     <button type="button" class="op-tile action" data-home-act="paste"><span class="op-tile-plus" aria-hidden="true">⌨</span><strong>Coller un tableau</strong><span class="op-tile-meta">Zone Excel copiée avec ses en-têtes (contrat, n° d’opération, maître d’ouvrage…)</span></button>
     <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
   if(home&&!items.length) sub='Aucune opération pour le moment';
-  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA)" aria-label="Rechercher une opération" value="${escapeHtml(state.homeQuery||'')}">`:''}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}</div><div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA)" aria-label="Rechercher une opération" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}</div><div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
   const search=wrap.querySelector('[data-home-search]');
   if(search){ search.oninput=()=>{ state.homeQuery=search.value; rerender(); const s=wrap.querySelector('[data-home-search]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); }; search.onkeydown=e=>{ if(e.key==='Escape'&&search.value){ search.value=''; search.oninput(); } }; }
+  const sortSel=wrap.querySelector('[data-tile-sort]'); if(sortSel) sortSel.onchange=()=>{ state.tileSort=sortSel.value; rerender(); };
   wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; rerender(); });
   wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });
   wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
