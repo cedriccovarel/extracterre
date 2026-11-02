@@ -1298,3 +1298,9 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .plan-card h4 small{font-weight:500;color:var(--muted,#6c7b74);margin-left:6px}
 .plan-table td{vertical-align:middle;font-variant-numeric:tabular-nums}.plan-table .plan-total{font-weight:700}.plan-table .muted{color:var(--muted,#6c7b74)}.plan-table .eco-input{min-width:200px}
 .kutch-ico{width:1.15em;height:1.15em;vertical-align:-.2em;flex:none}
+/* v2.16.0 — favoris des tuiles d'accueil */
+.op-tile-fav{position:absolute;top:8px;right:38px;border:0;background:none;color:var(--muted,#6c7b74);font-size:1.15rem;line-height:1;cursor:pointer;border-radius:6px;width:28px;height:28px}
+.op-tile-fav:hover{background:#fdf6e3;color:#b07d0b}.op-tile-fav.on{color:#c58f0a}
+.op-tile-fav:focus-visible,.op-tile-del:focus-visible{outline:2px solid var(--forest,#173e31);outline-offset:1px}
+.op-tile.macro.fav{border-left-color:#c58f0a;background:#fffaf0}.op-tile.macro.fav:hover{background:#fdf3dc}
+.op-tile-main .op-tile-k{padding-right:58px}

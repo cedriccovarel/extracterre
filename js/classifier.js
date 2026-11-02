@@ -116,6 +116,12 @@ export function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
+  // v2.15.0 — étude RE2020 de BE (NRGYS / Perrenoud : « Synthèse thermique & carbone », « Mode constructif ») : le « DPE »
+  // cité (« le DPE est effectué en fin de chantier ») n'en fait pas un DPE.
+  if(/synthese\s+thermique\s*(?:&|et)\s*carbone|dossier\s+thermique\s+et\s+environnemental|mode\s+constructif/i.test(t)&&/\bbbio\s*=\s*\d/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
+    for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
   if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s*-?\s*reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov|perimetre\s+de\s+la\s+renovation|eges\s*pce/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;

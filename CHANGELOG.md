@@ -1,3 +1,15 @@
+# v2.16.0 — études RE2020 de BE (NRGYS / Perrenoud) lues en entier, favoris des tuiles d'accueil
+- **Étude RE2020 « Synthèse thermique & carbone »** (dossier thermique et environnemental, « Mode constructif ») : classée Étude
+  thermique et non plus DPE (la phrase « le DPE est effectué en fin de chantier » donnait 14 points au DPE). Sur une étude réelle de
+  25 pages : 40 colonnes renseignées au lieu de 3, lecture en 3 s.
+- **Mode constructif** : par paroi, structure (« Voile béton », « Dalle béton » → Béton armé, « Solive bois » → Plancher bois),
+  isolant, épaisseur et R des planchers bas, parois verticales (extérieures seulement ; ITI / ITE) et planchers hauts.
+- **BioMax** lu comme Bbio max ; **Ic Énergie max / Ic Construction / Ic Construction max** lus (le max n'est plus pris pour
+  l'Ic Énergie) ; **SHAB** du tableau « Composition du projet ».
+- Nouvelle valeur de mode de chauffage **« Hybride (PAC + gaz) »** : « PAC … + Chaudière gaz … », « PAC hybride ».
+- **Favoris** : une étoile sur chaque tuile d'opération ; les favoris passent en tête des listes et une tuile « ★ Favoris »
+  les regroupe au-dessus des maîtres d'ouvrage. Sauvegardés avec l'opération et dans l'export / import de session.
+
 # v2.15.0 — plans mesurés dans Ashton (onglet Plans), fenêtre des doublons, pack du 02/11/2026
 - **Plans** : un PDF dont la 1re page est en A2 ou plus (ou en A3 avec un nom de plan : « Plan », « Façades », « Coupe »,
   « RDC », « R+1 »…) est reconnu comme plan dès la lecture ; il n'est ni lu ni OCRisé, aucun parseur ne s'y applique. Une

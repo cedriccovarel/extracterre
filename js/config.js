@@ -1,4 +1,4 @@
-export const APP_VERSION='2.15.0';
+export const APP_VERSION='2.16.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -526,6 +526,8 @@ export const HVAC = {
     pair('Hybride',['hybride','bi-énergie','bi energie','bivalent'])
   ],
   heating:[
+    // v2.16.0 — PAC + chaudière gaz sur la même installation (« PAC APTAE 40 + Chaudière gaz VARFREE », « PAC hybride »).
+    ['Hybride (PAC + gaz)',/\b(?:pac|pompes?\s+[aà]\s+chaleur)\b[^|\n]{0,60}\+\s*chaudi[eè]res?\s+(?:[aà]\s+)?gaz|\bchaudi[eè]res?\s+(?:[aà]\s+)?gaz\b[^|\n]{0,60}\+\s*(?:pac|pompes?\s+[aà]\s+chaleur)\b|\b(?:pac|pompes?\s+[aà]\s+chaleur)\s+hybrides?\b/i],
     pair('PAC air/eau',['pac air/eau','pompe à chaleur air/eau','pompe a chaleur air/eau','pac aérothermique air eau','pac aerothermique air eau']),
     pair('PAC air/air',['pac air/air','pompe à chaleur air/air','pompe a chaleur air/air','split','multi-split','multisplit']),
     pair('PAC eau/eau',['pac eau/eau','pompe à chaleur eau/eau','pompe a chaleur eau/eau']),

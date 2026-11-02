@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.15.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.16.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.15.0';
+const APP_VERSION='2.16.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -531,6 +531,8 @@ const HVAC = {
     pair('Hybride',['hybride','bi-énergie','bi energie','bivalent'])
   ],
   heating:[
+    // v2.16.0 — PAC + chaudière gaz sur la même installation (« PAC APTAE 40 + Chaudière gaz VARFREE », « PAC hybride »).
+    ['Hybride (PAC + gaz)',/\b(?:pac|pompes?\s+[aà]\s+chaleur)\b[^|\n]{0,60}\+\s*chaudi[eè]res?\s+(?:[aà]\s+)?gaz|\bchaudi[eè]res?\s+(?:[aà]\s+)?gaz\b[^|\n]{0,60}\+\s*(?:pac|pompes?\s+[aà]\s+chaleur)\b|\b(?:pac|pompes?\s+[aà]\s+chaleur)\s+hybrides?\b/i],
     pair('PAC air/eau',['pac air/eau','pompe à chaleur air/eau','pompe a chaleur air/eau','pac aérothermique air eau','pac aerothermique air eau']),
     pair('PAC air/air',['pac air/air','pompe à chaleur air/air','pompe a chaleur air/air','split','multi-split','multisplit']),
     pair('PAC eau/eau',['pac eau/eau','pompe à chaleur eau/eau','pompe a chaleur eau/eau']),
@@ -4892,6 +4894,12 @@ function classifyDocument(fileName, text='', meta={}) {
     score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
     for(const k of [DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.DPE]) score[k]=(score[k]||0)*0.1;
   }
+  // v2.15.0 — étude RE2020 de BE (NRGYS / Perrenoud : « Synthèse thermique & carbone », « Mode constructif ») : le « DPE »
+  // cité (« le DPE est effectué en fin de chantier ») n'en fait pas un DPE.
+  if(/synthese\s+thermique\s*(?:&|et)\s*carbone|dossier\s+thermique\s+et\s+environnemental|mode\s+constructif/i.test(t)&&/\bbbio\s*=\s*\d/i.test(t)){
+    score[DOC_TYPES.THERMAL]=(score[DOC_TYPES.THERMAL]||0)+45;
+    for(const k of [DOC_TYPES.DPE,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020]) score[k]=(score[k]||0)*0.1;
+  }
   // v2.3.9 — calculette BBCA (PDF ou classeur) : étude carbone, jamais un tableau de saisie manuelle.
   if((/calculette\s+bbca|score\s+bbca\s+v\d/i.test(t)&&/ic\s+projet\s+bbca/i.test(t))||(/bbca\s*-?\s*reno/i.test(t)&&/impact\s+carbone\s+du\s+lot\s+renov|perimetre\s+de\s+la\s+renovation|eges\s*pce/i.test(t))){
     score[DOC_TYPES.CARBON]=(score[DOC_TYPES.CARBON]||0)+45;
@@ -6311,7 +6319,7 @@ function parseGenericRegulatory(doc){
   // par champ, valeur, bâtiment et page suffit (les doublons ne changeaient rien au résultat, seulement au volume).
   const vus=new Set(); const push=(o_,o)=>{ if(!o) return; const k=`${o.field}|${typeof o.value==='number'?o.value.toFixed(6):o.value}|${o.building||''}|${o.page}|${o.method}`; if(vus.has(k)) return; vus.add(k); o_.push(o); };
   const specs=[
-    ['bbio_max',/\bbbio\s*(?:max|maxi|maximal|_max)\b/i,'points'],['bbio',/\bbbio\b(?!\s*(?:max|maxi|maximal|_max))/i,'points'],
+    ['bbio_max',/\bbbio\s*(?:max|maxi|maximal|_max)\b|\bbiomax\b/i,'points'],['bbio',/\bbbio\b(?!\s*(?:max|maxi|maximal|_max))/i,'points'],
     ['cepnr_max',/\bcep\s*[,._-]?\s*nr\s*(?:max|maxi|maximal|_max)\b/i,'kWhEP/m².an'],['cepnr',/\bcep\s*[,._-]?\s*nr\b(?!\s*(?:max|maxi|maximal|_max))/i,'kWhEP/m².an'],
     ['cep_max',/\bcep\s*(?:max|maxi|maximal|_max)\b/i,'kWhEP/m².an'],['cep',/\bcep\b(?!\s*[,._-]?\s*nr|\s*(?:max|maxi|maximal|_max))/i,'kWhEP/m².an'],
     ['dh_max',/\b(?:dh|degres?[- ]heures?)\s*(?:max|maxi|maximal|seuil)\b/i,'°C.h'],['dh',/\b(?:dh|degres?[- ]heures?)\b(?!\s*(?:max|maxi|maximal|seuil))/i,'°C.h'],
@@ -6604,6 +6612,38 @@ function parseStructuredRenovationThermal(doc){
   return out;
 }
 
+// v2.15.0 — « Mode constructif » d'une étude RE2020 (NRGYS / Perrenoud) : par paroi, une ligne « … Structure <type> <ép.|-> »
+// puis « Isolation … Suivant Reperage Parois joint au dossier [<isolant>] <ép.> <R> ». Parois intérieures (local non chauffé) écartées.
+const MC_SECTIONS=[[/^>\s*les\s+planchers\s+bas\b/,'floor'],[/^>\s*les\s+parois\s+verticales\b/,'wall'],[/^>\s*les\s+planchers\s+hauts\b/,'roof'],[/^>\s*(?:traitement\s+des\s+ponts|les\s+ouvrants|reperage|genie\s+climatique)/,null]];
+const mcStructure=low=>findFirstMatch(low,STRUCTURES)||(/dalle\s+beton/.test(low)?'Béton armé':/solives?\s+bois/.test(low)?'Plancher bois':null);
+function parseConstructionModeTables(doc){
+  const out=[]; let section=null, block=null;
+  for(const page of doc.read.pages){ const lines=page.lines||[];
+    for(let i=0;i<lines.length;i++){ const line=lines[i], raw=normalizeText(line.text), low=normLower(raw);
+      // « COMPOSITION DU PROJET » : « Surface Habitable [m²] … » puis « 5544,9 Immeuble collectif 2 31 33 24 - ».
+      const shab=low.match(/^(\d{2,6}(?:,\d{1,2})?)\s+(?:immeuble\s+collectif|maison\s+individuelle|logements?\s+collectifs?)\b/);
+      if(shab&&/surface\s+habitable/.test(normLower(lineWindow(page,i,4,0)))) push(out,occ(doc,page,line,'shab',parseFrNumber(shab[1]),'thermal:project-composition',0.95,'m²',{building:buildingForPosition(doc,page.page,line.index),surfacePriority:100,excerpt:normalizeText(lineWindow(page,i,4,0)).slice(0,420)}));
+      const sec=MC_SECTIONS.find(([re])=>re.test(low)); if(sec){ section=sec[1]; block=null; continue; }
+      if(!section) continue;
+      const building=buildingForPosition(doc,page.page,line.index), extra={building,excerpt:raw.slice(0,420),origin:'Étude thermique — Mode constructif'};
+      const st=low.match(/\bstructure\s+(.+)$/);
+      if(st){ const inner=section==='wall'&&/interieure|local\s+non\s+chauffe/.test(normLower(lineWindow(page,i,2,1))); block={inner,isoFrom:i};
+        const struct=mcStructure(st[1]); if(struct&&!inner) push(out,occ(doc,page,line,`${section}_structure`,struct,'thermal:construction-mode',0.95,'',extra)); continue; }
+      const iso=low.match(/suivant\s+reperage\s+parois\s+joint\s+au\s+dossier\b(.*?)(\d{2,3})(?:\s*\+\s*\d{1,3})?\s+(\d{1,2},\d{1,2})\s*$/);
+      if(iso&&block&&!block.inner){
+        const zone=lines.slice(block.isoFrom+1,i+3).map(l=>normalizeText(l.text)).join(' | '), mat=findFirstMatch(zone,MATERIALS);
+        const th=Number(iso[2]), r=parseFrNumber(iso[3]);
+        if(mat) push(out,occ(doc,page,line,`${section}_insulation`,mat,'thermal:construction-mode',0.95,'',extra));
+        push(out,occ(doc,page,line,`${section}_insulation_thickness`,th,'thermal:construction-mode',0.95,'mm',extra));
+        if(r!==null) push(out,occ(doc,page,line,`${section}_insulation_r`,r,'thermal:construction-mode',0.95,'m².K/W',extra));
+        if(section==='wall'){ const pos=/\binterieure\b/.test(normLower(zone))?'iti':/\bexterieure\b/.test(normLower(zone))?'ite':null;
+          if(pos){ if(mat) push(out,occ(doc,page,line,`wall_${pos}_insulation`,mat,'thermal:construction-mode',0.95,'',extra)); push(out,occ(doc,page,line,`wall_${pos}_thickness`,th,'thermal:construction-mode',0.95,'mm',extra)); } }
+        block=null;
+      }
+    }
+  }
+  return out;
+}
 function parseThermalStudy(doc){
   const out=[];
   const add=(page,line,field,value,method,confidence=.98,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:doc.type===DOC_TYPES.RT_EXISTING?'RT Existant':'Étude thermique',...extra})); };
@@ -6907,7 +6947,10 @@ function parseCarbon(doc){
   const out=[...parseClimaWinAcv(doc)]; const mappings=[
     ['ic_energy_heating',/ic\s*[eé]nergie[^|]{0,45}chauffage/i],['ic_energy_cooling',/ic\s*[eé]nergie[^|]{0,45}(?:refroid|froid)/i],['ic_energy_ecs',/ic\s*[eé]nergie[^|]{0,45}(?:ecs|eau\s+chaude)/i],
     ['ic_energy_aux_vent',/ic\s*[eé]nergie[^|]{0,60}auxiliaires?[^|]{0,25}ventil/i],['ic_energy_aux_dist',/ic\s*[eé]nergie[^|]{0,60}auxiliaires?[^|]{0,25}distribution/i],['ic_energy_mobility',/ic\s*[eé]nergie[^|]{0,60}(?:deplacements?|déplacements?|ascenseurs?|escalators?|parking)/i],
-    ['ic_components',/ic\s*composants?(?:\s+batiment)?/i],['ic_site',/ic\s*chantier/i],['ic_energy',/ic\s*[eé]nergie(?:\s+batiment)?/i]
+    ['ic_components',/ic\s*composants?(?:\s+batiment)?/i],['ic_site',/ic\s*chantier/i],
+    // v2.15.0 — « Ic Energie max = 271 » est le seuil, pas l'Ic Énergie (étude NRGYS / Perrenoud).
+    ['ic_energy_max',/ic\s*[eé]nergie\s*max\b/i],['ic_construction_max',/ic\s*construction\s*max\b/i],['ic_construction',/ic\s*construction\b(?!\s*max)/i],
+    ['ic_energy',/ic\s*[eé]nergie(?:\s+batiment)?\b(?!\s*max)/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], raw=normalizeText(line.text||''), ctx=normalizeText(lineWindow(page,i,1,2));
     // Apprentissage initial ACV v2.2.3 : le stockage carbone surfacique est une donnée
@@ -7676,7 +7719,7 @@ function parseDocumentCore(doc){
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
   out.push(...parseRt2012Hierarchical(doc));
   if(doc.type===DOC_TYPES.THERMAL) out.push(...parseGenericRegulatory(doc));
-  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); }
+  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); out.push(...parseConstructionModeTables(doc)); }
   out.push(...parseProgram(doc),...parseEnvelope(doc));
   // Un DPE contient de nombreuses recommandations et exemples (PAC, biomasse, climatisation, ENR).
   // Ils ne décrivent pas nécessairement les équipements réellement en place : pas de parseur systèmes générique sur DPE.
@@ -10007,6 +10050,7 @@ function serializeProject(project={}){
     geocodes:safeJsonClone(project.geocodes,{}),
     freePasteRows:safeJsonClone(project.freePasteRows,[]),
     planTables:safeJsonClone(project.planTables,{}),
+    favorite:!!project.favorite,
     ownerName:project.ownerName||'',
     expanded:project.expanded!==false
   };
@@ -11142,7 +11186,7 @@ function renderResultWorkspaceControls(){
 }
 // v2.6.0 — page principale en tuiles : une tuile par opération (n° de contrat a minima), regroupées en macro-tuiles par
 // maître d'ouvrage dès qu'un maître d'ouvrage est connu (import Excel / copier-coller, contrat, livret…).
-const NO_OWNER='Maître d’ouvrage non renseigné';
+const NO_OWNER='Maître d’ouvrage non renseigné', FAV_GROUP='★ Favoris';
 function projectIdentity(p){
   const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
   const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
@@ -11158,27 +11202,30 @@ const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
 const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length&&!(p.freePasteRows||[]).length;
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
-  const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+  // v2.16.0 — favoris : en tête des listes, et regroupés dans une tuile « ★ Favoris » au-dessus des maîtres d'ouvrage.
+  const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)})).sort((a,b)=>!!b.p.favorite-!!a.p.favorite);
+  const favs=items.filter(x=>x.p.favorite);
   const dups=contractDuplicates(); warnContractDuplicates(dups); const isDup=id=>dups.has(contractKey(id.contract));
   // Accueil : la recherche (contrat, nom, code, maître d'ouvrage ; sans accents) liste à plat les tuiles qui correspondent.
   const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(), q=home?fold(state.homeQuery).trim():'';
   const found=q?items.filter(x=>fold([x.id.contract,x.id.name,projectTitle(x.p),x.id.code,x.id.owner].join(' ')).includes(q)):null;
   const grouped=!q&&items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
-  if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
+  if(state.overviewOwner&&!(state.overviewOwner===FAV_GROUP?favs.length:items.some(x=>ownerOf(x)===state.overviewOwner))) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
   let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
   if(grouped&&!state.overviewOwner){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
-    body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
+    body=(favs.length?`<button type="button" class="op-tile macro fav" data-tile-owner="${FAV_GROUP}"><span class="op-tile-k">Favoris</span><strong>★ ${favs.length} opération(s)</strong><span class="op-tile-meta">${escapeHtml(favs.slice(0,3).map(x=>x.id.contract||x.id.name||projectTitle(x.p)).join(' · '))}${favs.length>3?' …':''}</span>${bar(Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length))}<span class="op-pct">${Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length)} % complété en moyenne</span></button>`:'')+owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
       return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}${xs.some(x=>lastImported.has(x.p.id))?` · <b class="op-new">${xs.filter(x=>lastImported.has(x.p.id)).length} nouvelle(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
-    const xs=found||(grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items);
+    const xs=found||(grouped?(state.overviewOwner===FAV_GROUP?favs:items.filter(x=>ownerOf(x)===state.overviewOwner)):items);
     if(found){ sub=`${xs.length} opération(s) trouvée(s) sur ${items.length}`; shown=xs.length; }
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
     body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
+      <button type="button" class="op-tile-fav${p.favorite?' on':''}" data-tile-fav="${p.id}" aria-pressed="${!!p.favorite}" title="${p.favorite?'Retirer des favoris':'Ajouter aux favoris'}" aria-label="${p.favorite?'Retirer des favoris':'Ajouter aux favoris'} : ${escapeHtml(id.contract||projectTitle(p))}">${p.favorite?'★':'☆'}</button>
       <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
   }
   // Accueil : tuiles d'action (créer une opération, coller ou importer un tableau d'opérations).
@@ -11194,6 +11241,7 @@ function renderTiles(wrap,{home=false}={}){
   wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
   wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
+  wrap.querySelectorAll('[data-tile-fav]').forEach(b=>b.onclick=()=>{ const p=state.projects.find(x=>x.id===b.dataset.tileFav); if(!p) return; p.favorite=!p.favorite; rerender(); scheduleWorkspaceCheckpoint(p.favorite?'favori ajouté':'favori retiré'); });
 }
 // v2.6.1 — écran d'accueil : uniquement les tuiles ; une opération ouverte affiche l'espace d'analyse habituel.
 function setHomeMode(on){ state.homeView=!!on; if(!on&&pendingExternalText){ const x=pendingExternalText; setTimeout(()=>openExternalText(x.text,x.source),0); } document.body.classList.toggle('home-mode',state.homeView); const h=$('#homeView'); if(h) h.hidden=!state.homeView; $$('.tab').forEach(b=>b.classList.toggle('active',state.homeView?b.dataset.tab==='summary':b.dataset.tab===state.activeTab)); if(state.homeView){ renderHome(); window.scrollTo?.(0,0); } }
@@ -13131,7 +13179,7 @@ function sessionSnapshot({details=true}={}){
         searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{})]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
-        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
@@ -13148,7 +13196,7 @@ async function importSessionJson(file){
   if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
   const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
   const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
-    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
+    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},favorite:!!op.favorite,searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
       docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
       retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
   for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }

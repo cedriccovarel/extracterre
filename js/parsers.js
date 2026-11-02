@@ -805,7 +805,7 @@ function parseGenericRegulatory(doc){
   // par champ, valeur, bâtiment et page suffit (les doublons ne changeaient rien au résultat, seulement au volume).
   const vus=new Set(); const push=(o_,o)=>{ if(!o) return; const k=`${o.field}|${typeof o.value==='number'?o.value.toFixed(6):o.value}|${o.building||''}|${o.page}|${o.method}`; if(vus.has(k)) return; vus.add(k); o_.push(o); };
   const specs=[
-    ['bbio_max',/\bbbio\s*(?:max|maxi|maximal|_max)\b/i,'points'],['bbio',/\bbbio\b(?!\s*(?:max|maxi|maximal|_max))/i,'points'],
+    ['bbio_max',/\bbbio\s*(?:max|maxi|maximal|_max)\b|\bbiomax\b/i,'points'],['bbio',/\bbbio\b(?!\s*(?:max|maxi|maximal|_max))/i,'points'],
     ['cepnr_max',/\bcep\s*[,._-]?\s*nr\s*(?:max|maxi|maximal|_max)\b/i,'kWhEP/m².an'],['cepnr',/\bcep\s*[,._-]?\s*nr\b(?!\s*(?:max|maxi|maximal|_max))/i,'kWhEP/m².an'],
     ['cep_max',/\bcep\s*(?:max|maxi|maximal|_max)\b/i,'kWhEP/m².an'],['cep',/\bcep\b(?!\s*[,._-]?\s*nr|\s*(?:max|maxi|maximal|_max))/i,'kWhEP/m².an'],
     ['dh_max',/\b(?:dh|degres?[- ]heures?)\s*(?:max|maxi|maximal|seuil)\b/i,'°C.h'],['dh',/\b(?:dh|degres?[- ]heures?)\b(?!\s*(?:max|maxi|maximal|seuil))/i,'°C.h'],
@@ -1098,6 +1098,38 @@ function parseStructuredRenovationThermal(doc){
   return out;
 }
 
+// v2.15.0 — « Mode constructif » d'une étude RE2020 (NRGYS / Perrenoud) : par paroi, une ligne « … Structure <type> <ép.|-> »
+// puis « Isolation … Suivant Reperage Parois joint au dossier [<isolant>] <ép.> <R> ». Parois intérieures (local non chauffé) écartées.
+const MC_SECTIONS=[[/^>\s*les\s+planchers\s+bas\b/,'floor'],[/^>\s*les\s+parois\s+verticales\b/,'wall'],[/^>\s*les\s+planchers\s+hauts\b/,'roof'],[/^>\s*(?:traitement\s+des\s+ponts|les\s+ouvrants|reperage|genie\s+climatique)/,null]];
+const mcStructure=low=>findFirstMatch(low,STRUCTURES)||(/dalle\s+beton/.test(low)?'Béton armé':/solives?\s+bois/.test(low)?'Plancher bois':null);
+function parseConstructionModeTables(doc){
+  const out=[]; let section=null, block=null;
+  for(const page of doc.read.pages){ const lines=page.lines||[];
+    for(let i=0;i<lines.length;i++){ const line=lines[i], raw=normalizeText(line.text), low=normLower(raw);
+      // « COMPOSITION DU PROJET » : « Surface Habitable [m²] … » puis « 5544,9 Immeuble collectif 2 31 33 24 - ».
+      const shab=low.match(/^(\d{2,6}(?:,\d{1,2})?)\s+(?:immeuble\s+collectif|maison\s+individuelle|logements?\s+collectifs?)\b/);
+      if(shab&&/surface\s+habitable/.test(normLower(lineWindow(page,i,4,0)))) push(out,occ(doc,page,line,'shab',parseFrNumber(shab[1]),'thermal:project-composition',0.95,'m²',{building:buildingForPosition(doc,page.page,line.index),surfacePriority:100,excerpt:normalizeText(lineWindow(page,i,4,0)).slice(0,420)}));
+      const sec=MC_SECTIONS.find(([re])=>re.test(low)); if(sec){ section=sec[1]; block=null; continue; }
+      if(!section) continue;
+      const building=buildingForPosition(doc,page.page,line.index), extra={building,excerpt:raw.slice(0,420),origin:'Étude thermique — Mode constructif'};
+      const st=low.match(/\bstructure\s+(.+)$/);
+      if(st){ const inner=section==='wall'&&/interieure|local\s+non\s+chauffe/.test(normLower(lineWindow(page,i,2,1))); block={inner,isoFrom:i};
+        const struct=mcStructure(st[1]); if(struct&&!inner) push(out,occ(doc,page,line,`${section}_structure`,struct,'thermal:construction-mode',0.95,'',extra)); continue; }
+      const iso=low.match(/suivant\s+reperage\s+parois\s+joint\s+au\s+dossier\b(.*?)(\d{2,3})(?:\s*\+\s*\d{1,3})?\s+(\d{1,2},\d{1,2})\s*$/);
+      if(iso&&block&&!block.inner){
+        const zone=lines.slice(block.isoFrom+1,i+3).map(l=>normalizeText(l.text)).join(' | '), mat=findFirstMatch(zone,MATERIALS);
+        const th=Number(iso[2]), r=parseFrNumber(iso[3]);
+        if(mat) push(out,occ(doc,page,line,`${section}_insulation`,mat,'thermal:construction-mode',0.95,'',extra));
+        push(out,occ(doc,page,line,`${section}_insulation_thickness`,th,'thermal:construction-mode',0.95,'mm',extra));
+        if(r!==null) push(out,occ(doc,page,line,`${section}_insulation_r`,r,'thermal:construction-mode',0.95,'m².K/W',extra));
+        if(section==='wall'){ const pos=/\binterieure\b/.test(normLower(zone))?'iti':/\bexterieure\b/.test(normLower(zone))?'ite':null;
+          if(pos){ if(mat) push(out,occ(doc,page,line,`wall_${pos}_insulation`,mat,'thermal:construction-mode',0.95,'',extra)); push(out,occ(doc,page,line,`wall_${pos}_thickness`,th,'thermal:construction-mode',0.95,'mm',extra)); } }
+        block=null;
+      }
+    }
+  }
+  return out;
+}
 function parseThermalStudy(doc){
   const out=[];
   const add=(page,line,field,value,method,confidence=.98,unit='',extra={})=>{ if(value===null||value===undefined||value==='') return; push(out,occ(doc,page,line,field,value,method,confidence,unit,{origin:doc.type===DOC_TYPES.RT_EXISTING?'RT Existant':'Étude thermique',...extra})); };
@@ -1401,7 +1433,10 @@ function parseCarbon(doc){
   const out=[...parseClimaWinAcv(doc)]; const mappings=[
     ['ic_energy_heating',/ic\s*[eé]nergie[^|]{0,45}chauffage/i],['ic_energy_cooling',/ic\s*[eé]nergie[^|]{0,45}(?:refroid|froid)/i],['ic_energy_ecs',/ic\s*[eé]nergie[^|]{0,45}(?:ecs|eau\s+chaude)/i],
     ['ic_energy_aux_vent',/ic\s*[eé]nergie[^|]{0,60}auxiliaires?[^|]{0,25}ventil/i],['ic_energy_aux_dist',/ic\s*[eé]nergie[^|]{0,60}auxiliaires?[^|]{0,25}distribution/i],['ic_energy_mobility',/ic\s*[eé]nergie[^|]{0,60}(?:deplacements?|déplacements?|ascenseurs?|escalators?|parking)/i],
-    ['ic_components',/ic\s*composants?(?:\s+batiment)?/i],['ic_site',/ic\s*chantier/i],['ic_energy',/ic\s*[eé]nergie(?:\s+batiment)?/i]
+    ['ic_components',/ic\s*composants?(?:\s+batiment)?/i],['ic_site',/ic\s*chantier/i],
+    // v2.15.0 — « Ic Energie max = 271 » est le seuil, pas l'Ic Énergie (étude NRGYS / Perrenoud).
+    ['ic_energy_max',/ic\s*[eé]nergie\s*max\b/i],['ic_construction_max',/ic\s*construction\s*max\b/i],['ic_construction',/ic\s*construction\b(?!\s*max)/i],
+    ['ic_energy',/ic\s*[eé]nergie(?:\s+batiment)?\b(?!\s*max)/i]
   ];
   for(const page of doc.read.pages){ const lines=page.lines||[]; for(let i=0;i<lines.length;i++){ const line=lines[i], raw=normalizeText(line.text||''), ctx=normalizeText(lineWindow(page,i,1,2));
     // Apprentissage initial ACV v2.2.3 : le stockage carbone surfacique est une donnée
@@ -2170,7 +2205,7 @@ function parseDocumentCore(doc){
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type)) out.push(...parseRset(doc));
   out.push(...parseRt2012Hierarchical(doc));
   if(doc.type===DOC_TYPES.THERMAL) out.push(...parseGenericRegulatory(doc));
-  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); }
+  if([DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL].includes(doc.type)){ const structuredRenovation=isStructuredRenovationThermalDocument(doc); if(structuredRenovation) out.push(...parseStructuredRenovationThermal(doc)); out.push(...parseThermalStudy(doc)); out.push(...parseConstructionModeTables(doc)); }
   out.push(...parseProgram(doc),...parseEnvelope(doc));
   // Un DPE contient de nombreuses recommandations et exemples (PAC, biomasse, climatisation, ENR).
   // Ils ne décrivent pas nécessairement les équipements réellement en place : pas de parseur systèmes générique sur DPE.

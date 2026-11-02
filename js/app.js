@@ -220,7 +220,7 @@ function renderResultWorkspaceControls(){
 }
 // v2.6.0 — page principale en tuiles : une tuile par opération (n° de contrat a minima), regroupées en macro-tuiles par
 // maître d'ouvrage dès qu'un maître d'ouvrage est connu (import Excel / copier-coller, contrat, livret…).
-const NO_OWNER='Maître d’ouvrage non renseigné';
+const NO_OWNER='Maître d’ouvrage non renseigné', FAV_GROUP='★ Favoris';
 function projectIdentity(p){
   const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
   const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
@@ -236,27 +236,30 @@ const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
 const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]).length&&!(p.freePasteRows||[]).length;
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
-  const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)}));
+  // v2.16.0 — favoris : en tête des listes, et regroupés dans une tuile « ★ Favoris » au-dessus des maîtres d'ouvrage.
+  const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)})).sort((a,b)=>!!b.p.favorite-!!a.p.favorite);
+  const favs=items.filter(x=>x.p.favorite);
   const dups=contractDuplicates(); warnContractDuplicates(dups); const isDup=id=>dups.has(contractKey(id.contract));
   // Accueil : la recherche (contrat, nom, code, maître d'ouvrage ; sans accents) liste à plat les tuiles qui correspondent.
   const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(), q=home?fold(state.homeQuery).trim():'';
   const found=q?items.filter(x=>fold([x.id.contract,x.id.name,projectTitle(x.p),x.id.code,x.id.owner].join(' ')).includes(q)):null;
   const grouped=!q&&items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
-  if(state.overviewOwner&&!items.some(x=>ownerOf(x)===state.overviewOwner)) state.overviewOwner='';
+  if(state.overviewOwner&&!(state.overviewOwner===FAV_GROUP?favs.length:items.some(x=>ownerOf(x)===state.overviewOwner))) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
   let body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
   if(grouped&&!state.overviewOwner){
     const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
-    body=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
+    body=(favs.length?`<button type="button" class="op-tile macro fav" data-tile-owner="${FAV_GROUP}"><span class="op-tile-k">Favoris</span><strong>★ ${favs.length} opération(s)</strong><span class="op-tile-meta">${escapeHtml(favs.slice(0,3).map(x=>x.id.contract||x.id.name||projectTitle(x.p)).join(' · '))}${favs.length>3?' …':''}</span>${bar(Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length))}<span class="op-pct">${Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length)} % complété en moyenne</span></button>`:'')+owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length;
       return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}${xs.some(x=>lastImported.has(x.p.id))?` · <b class="op-new">${xs.filter(x=>lastImported.has(x.p.id)).length} nouvelle(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
   } else {
-    const xs=found||(grouped?items.filter(x=>ownerOf(x)===state.overviewOwner):items);
+    const xs=found||(grouped?(state.overviewOwner===FAV_GROUP?favs:items.filter(x=>ownerOf(x)===state.overviewOwner)):items);
     if(found){ sub=`${xs.length} opération(s) trouvée(s) sur ${items.length}`; shown=xs.length; }
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
     body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
+      <button type="button" class="op-tile-fav${p.favorite?' on':''}" data-tile-fav="${p.id}" aria-pressed="${!!p.favorite}" title="${p.favorite?'Retirer des favoris':'Ajouter aux favoris'}" aria-label="${p.favorite?'Retirer des favoris':'Ajouter aux favoris'} : ${escapeHtml(id.contract||projectTitle(p))}">${p.favorite?'★':'☆'}</button>
       <button type="button" class="op-tile-del" data-tile-delete="${p.id}" title="Supprimer l’opération" aria-label="Supprimer l’opération ${escapeHtml(id.contract||projectTitle(p))}">×</button></article>`).join('');
   }
   // Accueil : tuiles d'action (créer une opération, coller ou importer un tableau d'opérations).
@@ -272,6 +275,7 @@ function renderTiles(wrap,{home=false}={}){
   wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
   wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
+  wrap.querySelectorAll('[data-tile-fav]').forEach(b=>b.onclick=()=>{ const p=state.projects.find(x=>x.id===b.dataset.tileFav); if(!p) return; p.favorite=!p.favorite; rerender(); scheduleWorkspaceCheckpoint(p.favorite?'favori ajouté':'favori retiré'); });
 }
 // v2.6.1 — écran d'accueil : uniquement les tuiles ; une opération ouverte affiche l'espace d'analyse habituel.
 function setHomeMode(on){ state.homeView=!!on; if(!on&&pendingExternalText){ const x=pendingExternalText; setTimeout(()=>openExternalText(x.text,x.source),0); } document.body.classList.toggle('home-mode',state.homeView); const h=$('#homeView'); if(h) h.hidden=!state.homeView; $$('.tab').forEach(b=>b.classList.toggle('active',state.homeView?b.dataset.tab==='summary':b.dataset.tab===state.activeTab)); if(state.homeView){ renderHome(); window.scrollTo?.(0,0); } }
@@ -2209,7 +2213,7 @@ function sessionSnapshot({details=true}={}){
         searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{})]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
-        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
@@ -2226,7 +2230,7 @@ async function importSessionJson(file){
   if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
   const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
   const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
-    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
+    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},favorite:!!op.favorite,searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
       docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
       retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
   for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }
