@@ -562,13 +562,20 @@ function renderFiles(){
 
 // v2.5.0 — paquet complet du questionnaire financier (.zip) : seul l'export « _questionnaire.json » est importé (il reprend
 // la synthèse PDF et les montants des DPGF joints, qui feraient doublon).
+// v2.16.2 — autre archive (export RSEE / RSET d'un logiciel : « Xml_RSEE_….xml.zip ») : XML et PDF à la racine ; les sous-dossiers
+// (fiches de composants : « Chape 6 cm….xml ») ne sont pas des documents de l'opération.
+function zipDocEntries(files){
+  const q=files.filter(f=>!f.dir&&/_questionnaire\.json$/i.test(f.name));
+  return q.length?q:files.filter(f=>!f.dir&&!f.name.includes('/')&&/\.(xml|pdf)$/i.test(f.name));
+}
 async function addQuestionnaireZip(file,specializedFamily,opts){
   try{
     if(!globalThis.JSZip) throw new Error('JSZip non chargé');
     const zip=await globalThis.JSZip.loadAsync(file);
-    const entries=Object.values(zip.files).filter(f=>!f.dir&&/_questionnaire\.json$/i.test(f.name));
-    if(!entries.length){ toast(`Aucun export « _questionnaire.json » dans ${file.name}.`,'warn'); return; }
-    const files=await Promise.all(entries.map(async f=>new File([await f.async('blob')],f.name.split('/').pop(),{type:'application/json'})));
+    const entries=zipDocEntries(Object.values(zip.files));
+    if(!entries.length){ toast(`Aucun document lisible (export « _questionnaire.json », XML ou PDF) dans ${file.name}.`,'warn'); return; }
+    const type=n=>/\.json$/i.test(n)?'application/json':/\.pdf$/i.test(n)?'application/pdf':'text/xml';
+    const files=await Promise.all(entries.map(async f=>new File([await f.async('blob')],f.name.split('/').pop(),{type:type(f.name)})));
     addFiles(files,specializedFamily,opts);
   }catch(err){ toast(`Paquet illisible : ${file.name} (${err?.message||err})`,'error'); }
 }

@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.16.2','version');
+eq(APP_VERSION,'2.16.3','version');
 
 // Plan : A2 et plus, ou A3 nommé comme un plan ; une pièce écrite n'en est jamais un.
 eq(planFormatOf('P02 - Plan généraux.pdf',3370,2384),'A0','A0');
@@ -53,4 +53,4 @@ eq(f(mk(DOC_TYPES.CCTP,['Le présent lot comprend des travaux de Chauffage, Vent
 const rule=JSON.parse(fs.readFileSync('data/patches/ExtracTerre_PATCH_PLEIADES_RE2020_RSET_ETUDE_v1.json','utf8')).extractionRules.find(r=>r.id==='re20-rset-roof-insulation');
 const roof=t=>new RegExp(rule.regex,'im').exec(t)?.[1];
 eq([roof('Nature de l\'isolation des toitures Autre vegetalisee ? Non'),roof('Nature de l\'isolation des toitures Autre La toiture est-t-elle Non'),roof('Nature de l\'isolation des toitures Laine de verre soufflée')],['Autre','Autre','Laine de verre soufflée'],'nature de l’isolation des toitures sans la question suivante');
-console.log(`v2.16.2 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.16.3 — ${n} vérifications OK (données fictives)`);

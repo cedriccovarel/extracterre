@@ -887,6 +887,9 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.16.3 — 2026-11-02
+- Archive .zip d’export RSEE / RSET (« Xml_RSEE_….xml.zip ») : le XML (et PDF) à la racine est extrait et analysé ; les fiches de composants des sous-dossiers sont ignorées. Auparavant, seul un paquet de questionnaire financier était lu et l’archive était écartée.
+
 ## v2.16.2 — 2026-11-02
 - Accueil : tri des tuiles d’opérations par état du dossier (complets, partiellement complétés > 10 %, incomplets d’abord).
 
