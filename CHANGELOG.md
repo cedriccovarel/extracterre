@@ -1,4 +1,5 @@
 # v2.17.0 — tri des tuiles, recherche Sécurité plus précise (Ashton), valeurs étranges surlignées
+- **Ashton v0.6.1** : la barre d’outils de gauche défile quand la fenêtre est trop basse pour afficher tous les outils.
 - **Tuiles d'accueil** : tri par remplissage décroissant / croissant et par ordre alphabétique (nom de l'opération, sinon
   contrat), aussi pour les tuiles de maître d'ouvrage (remplissage moyen).
 - **Recherche Sécurité — portes** : A2P **et** BP1 (ou BP2 / BP3) exigés dans le même bloc ; l'un sans l'autre = non conforme

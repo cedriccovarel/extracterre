@@ -26,9 +26,9 @@ button,input,select{font:inherit;color:inherit}
 
 .work{display:grid;grid-template-columns:76px 1fr 320px;grid-template-rows:minmax(0,1fr);min-height:0}
 .work>*{grid-row:1;min-height:0}.rail{grid-column:1}.view{grid-column:2}.side{grid-column:3}
-.rail{display:flex;flex-direction:column;gap:4px;padding:8px 6px;background:#fff;border-right:1px solid var(--line)}
-.rail hr{width:100%;border:0;border-top:1px solid var(--line);margin:6px 0}
-.tool{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border:0;border-radius:10px;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;font-weight:600}
+.rail{display:flex;flex-direction:column;gap:4px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:8px 6px;background:#fff;border-right:1px solid var(--line)}
+.rail hr{flex-shrink:0;width:100%;border:0;border-top:1px solid var(--line);margin:6px 0}
+.tool{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px;border:0;border-radius:10px;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;font-weight:600}
 .tool svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .tool svg circle{fill:currentColor;stroke:none}
 .tool svg .fill{fill:currentColor;fill-opacity:.18}
