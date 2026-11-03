@@ -2158,7 +2158,7 @@ let ashtonFrame=null;
 function openAshton(docId){
   const p=activeProject(), d=(p.docs||[]).find(x=>x.id===docId); if(!d?.file) return toast('Redéposez ce plan pour l’ouvrir dans Ashton.','warn');
   const dlg=document.createElement('dialog'); dlg.className='ashton-dialog';
-  dlg.innerHTML=`<div class="ashton-head"><b>Ashton ${KUTCH_ICON}</b><span>${escapeHtml(d.name)}</span><button type="button" class="btn light" data-mt="close">Fermer</button></div><iframe title="Ashton — ${escapeHtml(d.name)}" src="ashton/index.html?embed=1"></iframe>`;
+  dlg.innerHTML=`<div class="ashton-head"><b>Ashton ${KUTCH_ICON}</b><span>${escapeHtml(d.name)}</span><button type="button" class="btn light" data-mt="close">Fermer</button></div><iframe title="Ashton — ${escapeHtml(d.name)}" src="ashton/index.html?embed=1&v=0.6.3"></iframe>`;
   const frame=dlg.querySelector('iframe'); ashtonFrame={dlg,frame,docId,projectId:p.id,received:false};
   const close=()=>{ const got=ashtonFrame?.received; dlg.close(); dlg.remove(); ashtonFrame=null; if(got){ activeProject().resultView='plans'; state.resultWorkspaceMode='detail'; switchTab('summary'); setHomeMode(false); renderAll(); } };
   dlg.querySelector('[data-mt="close"]').onclick=close; dlg.addEventListener('cancel',e=>{ e.preventDefault(); close(); });

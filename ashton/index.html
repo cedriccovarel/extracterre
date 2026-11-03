@@ -7,7 +7,7 @@
 <link rel="icon" href="assets/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=0.6.2">
+<link rel="stylesheet" href="styles.css?v=0.6.3">
 </head>
 <body>
 <header class="top">
@@ -16,7 +16,7 @@
   <span class="doc" id="docName"></span>
   <label class="pages" id="pagesWrap" hidden>Page <select id="pageSel" aria-label="Page"></select> <span id="pageCount"></span></label>
   <button class="btn ghost" id="tableBtn" type="button" aria-pressed="false" disabled>Tableau des surfaces</button>
-  <span class="ver">v0.6.2</span>
+  <span class="ver">v0.6.3</span>
 </header>
 
 <form class="ctx" id="ctx" aria-label="Attributs des nouvelles mesures" onsubmit="return false">
@@ -43,6 +43,8 @@
     <button class="tool" data-tool="zone" title="Zone auto : clic dans une pièce, ou glisser pour entourer plusieurs pièces ; Maj ajoute, Option retire (Z)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 4h18v16H3z"/><path d="M7 8h6v4h4v4H7z" class="fill"/><path d="M14 4v3m0 5v8"/></svg><span>Zone auto</span></button>
     <button class="tool" data-tool="count" title="Comptage : un clic par élément (C)" aria-pressed="false"><svg viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.4"/><circle cx="17" cy="6" r="2.4"/><circle cx="8" cy="17" r="2.4"/><circle cx="18" cy="17" r="2.4"/></svg><span>Comptage</span></button>
     <button class="tool" data-tool="access" title="Accès : un clic par accès du hall, pour l’exigence de hall non traversant (H)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 21V4h9v17"/><path d="M13 6l6-2v17l-6 0"/><circle cx="16" cy="13" r=".9"/><path d="M2 21h20"/></svg><span>Accès</span></button>
+    <button class="tool" data-preset="hall" title="Surface du hall : outil Surface avec l’élément « Hall »" type="button"><svg viewBox="0 0 24 24"><path d="M4 6h16v13H4z" class="fill"/><path d="M10 19v-6h4v6"/></svg><span>Hall</span></button>
+    <button class="tool" data-preset="frame" title="Menuiserie du hall : outil Longueur, cote Largeur, élément « Menuiserie hall »" type="button"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM12 4v16M5 12h14"/></svg><span>Menuis. hall</span></button>
     <button class="tool" data-tool="label" title="Étiquette libre : typologie, surface (T)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 5h12l6 7-6 7H3z"/><path d="M7 10h6m-6 4h4"/></svg><span>Étiquette</span></button>
     <button class="tool" data-tool="ocr" title="Étiquette OCR : encadrez un texte du plan (O)" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 8V4h4m8 0h4v4m0 8v4h-4m-8 0H4v-4"/><path d="M8 10h8M8 14h5"/></svg><span>Étiq. OCR</span></button>
     <hr>
@@ -115,6 +117,6 @@
 
 <div id="toasts" aria-live="polite"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script type="module" src="app.js?v=0.6.2"></script>
+<script type="module" src="app.js?v=0.6.3"></script>
 </body>
 </html>

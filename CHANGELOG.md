@@ -1,5 +1,5 @@
 # v2.17.0 — tri des tuiles, recherche Sécurité plus précise (Ashton), valeurs étranges surlignées
-- **Ashton v0.6.1–0.6.2** : la barre d’outils de gauche défile quand la fenêtre est trop basse ; measure.js versionné, pour qu’un ancien fichier en cache ne masque plus les éléments « Hall » et « Menuiserie hall ».
+- **Ashton v0.6.1–0.6.3** : boutons « Hall » et « Menuis. hall » dans la barre d’outils (outil + élément choisis d’un clic) ; Ashton intégré ouvert avec son numéro de version (plus d’ancienne version en cache) ; la barre d’outils de gauche défile quand la fenêtre est trop basse ; measure.js versionné, pour qu’un ancien fichier en cache ne masque plus les éléments « Hall » et « Menuiserie hall ».
 - **Tuiles d'accueil** : tri par remplissage décroissant / croissant et par ordre alphabétique (nom de l'opération, sinon
   contrat), aussi pour les tuiles de maître d'ouvrage (remplissage moyen).
 - **Recherche Sécurité — portes** : A2P **et** BP1 (ou BP2 / BP3) exigés dans le même bloc ; l'un sans l'autre = non conforme

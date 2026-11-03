@@ -1,5 +1,5 @@
 import {dist,pathLength,polygonArea,centroid,scaleFromCalibration,paperRatio,parseLength,fmt,ortho,extractGeometry,SnapIndex,
-  parseLabelText,isDwelling,summarize,DEFAULT_ELEMENTS,autoZone,roomsInLasso,ringsOf,holesOf,areaOf,correspondence} from './measure.js?v=0.6.2';
+  parseLabelText,isDwelling,summarize,DEFAULT_ELEMENTS,autoZone,roomsInLasso,ringsOf,holesOf,areaOf,correspondence} from './measure.js?v=0.6.3';
 
 const pdfjsLib=globalThis.pdfjsLib;
 const $=id=>document.getElementById(id);
@@ -185,6 +185,9 @@ function finish(){
   const pts=t==='count'?S.draft:S.draft.filter((p,i,a)=>!i||dist(p,a[i-1])>1e-6); S.draft=[];
   if(minPts&&pts.length>=minPts) create(t,pts,acc?{cat:ACCESS,ref:ACCESS,name:`${ACCESS} ${S.meas.filter(m=>m.cat===ACCESS).length+1}`}:{}); else draw();
 }
+// Boutons « Hall » et « Menuis. hall » : choisissent l’outil et l’élément attendus par la recherche Sécurité d’ExtracTerre.
+const PRESETS={hall:{cat:'Hall',tool:'area'},frame:{cat:'Menuiserie hall',role:'largeur',tool:'len'}};
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{ const p=PRESETS[b.dataset.preset]; S.ctx.cat=p.cat; if(p.role) S.ctx.role=p.role; syncCtx(); save(); setTool(p.tool); toast(`Élément « ${p.cat} » : tracez ${p.tool==='area'?'la surface du hall':'la largeur des menuiseries du hall'}.`); }));
 function setTool(t){ S.tool=t; S.draft=[]; S.rect=null; view.dataset.mode=t; document.querySelectorAll('.tool[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));
   $('hint').textContent=HINTS[t]; $('ctxRole').hidden=t!=='len'; $('ctxGapWrap').hidden=t!=='zone'; draw(); }
 // Maj + clic : ajoute ou retire de la sélection multiple ; clic simple : une seule mesure.
