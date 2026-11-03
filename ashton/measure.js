@@ -81,7 +81,7 @@ export class SnapIndex{
 }
 
 // ---------- Étiquettes ----------
-const ROOMS=['Séjour','Cuisine','Chambre','Salle de bain','Salle d’eau','WC','Entrée','Dégagement','Rangement','Placard','Cellier','Buanderie','Garage','Bureau','Balcon','Terrasse','Palier','Cave','Loggia','Jardin'];
+const ROOMS=['Séjour','Cuisine','Chambre','Salle de bain','Salle d’eau','WC','Entrée','Dégagement','Rangement','Placard','Cellier','Buanderie','Garage','Bureau','Balcon','Terrasse','Palier','Cave','Loggia','Jardin','Hall','Menuiserie hall'];
 const ROOM_RE=[[/s[ée]jour|salon/i,'Séjour'],[/cuisine/i,'Cuisine'],[/chambre/i,'Chambre'],[/salle\s+de\s+bains?|\bsdb\b/i,'Salle de bain'],[/salle\s+d.eau|\bsde\b/i,'Salle d’eau'],[/\bwc\b/i,'WC'],
   [/entr[ée]e/i,'Entrée'],[/d[ée]gagement|\bdgt\b/i,'Dégagement'],[/rangement|\brgt\b/i,'Rangement'],[/placard|\bplac?\b/i,'Placard'],[/cellier/i,'Cellier'],[/buanderie/i,'Buanderie'],[/garage/i,'Garage'],
   [/bureau/i,'Bureau'],[/balcon/i,'Balcon'],[/terrasse/i,'Terrasse'],[/palier/i,'Palier'],[/\bcave\b/i,'Cave'],[/loggia/i,'Loggia'],[/jardin/i,'Jardin'],[/logement|\blgt\b|appartement|maison|villa/i,'Logement']];

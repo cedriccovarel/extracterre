@@ -8,7 +8,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const COLORS={zone:'#2b8a3e',len:'#d9480f',area:'#2b8a3e',cal:'#7048e8',count:'#1971c2',label:'#0b7285',ocr:'#0b7285'};
 const TYPES={len:'Longueurs',area:'Surfaces',count:'Comptages',label:'Étiquettes'};
 const ONE={len:'Longueur',area:'Surface',count:'Comptage',label:'Étiquette'};
-const SNAP_PX=10;
+const SNAP_PX=10, ACCESS='Accès hall';
 const HINTS={
   pan:'Glissez pour vous déplacer, molette pour zoomer. Cliquez une mesure pour la modifier, Maj + clic pour en sélectionner plusieurs et les grouper.',
   cal:'Cliquez les deux extrémités d’une longueur connue, par exemple une cote.',
@@ -16,10 +16,11 @@ const HINTS={
   area:'Cliquez chaque sommet. Cliquez le premier point, double-cliquez ou Entrée pour fermer la surface.',
   zone:'Cliquez dans une pièce, ou maintenez le clic pour entourer plusieurs pièces (une zone par pièce). Maj : ajouter à la zone, Option : en retirer.',
   edit:'Faites glisser un sommet d’une mesure pour le déplacer (accroche active, Alt pour la suspendre). Cliquez une mesure pour la sélectionner.',
+  access:'Un clic sur chaque accès du hall (porte donnant sur l’extérieur ou sur une autre circulation). Entrée ou double-clic pour enregistrer : un seul accès = hall non traversant.',
   count:'Un clic par élément à compter. Entrée ou double-clic pour enregistrer le comptage, Retour arrière retire le dernier.',
   label:'Cliquez où placer l’étiquette, puis saisissez son texte, sa typologie et sa surface.',
   ocr:'Encadrez un texte du plan (glisser) : il devient une étiquette, typologie et surface reconnues.'};
-const DRAW_TOOLS=['cal','len','area','count'];
+const DRAW_TOOLS=['cal','len','area','count','access'];
 
 // Coordonnées en points PDF de la page (y vers le bas). Écran = page × zoom + (ox, oy).
 const S={pdf:null,name:'',key:'',pageNum:1,page:null,vp:null,baseScale:1,zoom:1,ox:0,oy:0,tool:'pan',draft:[],cursor:null,snap:null,snapOn:true,
@@ -179,9 +180,10 @@ function lassoZones(poly,mode){
         next(); },10); };
     next(); },30); }
 function finish(){
-  const t=S.tool, minPts={len:2,area:3,count:1}[t];
+  // Outil Accès : un comptage « Accès hall », relu par ExtracTerre pour l'exigence de hall non traversant.
+  const acc=S.tool==='access', t=acc?'count':S.tool, minPts={len:2,area:3,count:1}[t];
   const pts=t==='count'?S.draft:S.draft.filter((p,i,a)=>!i||dist(p,a[i-1])>1e-6); S.draft=[];
-  if(minPts&&pts.length>=minPts) create(t,pts); else draw();
+  if(minPts&&pts.length>=minPts) create(t,pts,acc?{cat:ACCESS,ref:ACCESS,name:`${ACCESS} ${S.meas.filter(m=>m.cat===ACCESS).length+1}`}:{}); else draw();
 }
 function setTool(t){ S.tool=t; S.draft=[]; S.rect=null; view.dataset.mode=t; document.querySelectorAll('.tool[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));
   $('hint').textContent=HINTS[t]; $('ctxRole').hidden=t!=='len'; $('ctxGapWrap').hidden=t!=='zone'; draw(); }
@@ -297,7 +299,7 @@ function paint(){
     tag(ctx,[`${m.name} · ${valText(m)}`],at.x,at.y,c); }
   if(S.lasso?.active){ poly(ctx,S.lasso.pts,true); ctx.fillStyle='rgba(43,138,62,.10)'; ctx.fill(); ctx.setLineDash([6,4]); ctx.strokeStyle=COLORS.zone; ctx.lineWidth=1.5; ctx.stroke(); ctx.setLineDash([]); }
   if(S.rect){ const a=toScreen(S.rect); ctx.setLineDash([5,4]); ctx.strokeStyle=COLORS.ocr; ctx.lineWidth=1.5; ctx.fillStyle='rgba(11,114,133,.08)'; ctx.fillRect(a.x,a.y,S.rect.w*S.zoom,S.rect.h*S.zoom); ctx.strokeRect(a.x,a.y,S.rect.w*S.zoom,S.rect.h*S.zoom); ctx.setLineDash([]); }
-  if(S.tool==='count'){ dots(ctx,S.draft,COLORS.count,true); if(S.draft.length){ const s=toScreen(S.draft[S.draft.length-1]); tag(ctx,[`${S.draft.length} élément${S.draft.length>1?'s':''} · Entrée pour enregistrer`],s.x+14,s.y-10,COLORS.count,'left'); } }
+  if(S.tool==='count'||S.tool==='access'){ dots(ctx,S.draft,COLORS.count,true); if(S.draft.length){ const s=toScreen(S.draft[S.draft.length-1]); tag(ctx,[`${S.draft.length} élément${S.draft.length>1?'s':''} · Entrée pour enregistrer`],s.x+14,s.y-10,COLORS.count,'left'); } }
   else if(['cal','len','area'].includes(S.tool)&&(S.draft.length||S.cursor)){ const c=COLORS[S.tool], pts=S.cursor?[...S.draft,S.cursor]:S.draft;
     if(pts.length>1){ poly(ctx,pts,S.tool==='area'&&pts.length>2); if(S.tool==='area'&&pts.length>2){ ctx.fillStyle='rgba(167,200,87,.18)'; ctx.fill(); } ctx.strokeStyle=c; ctx.lineWidth=2; ctx.setLineDash(S.tool==='cal'?[6,4]:[]); ctx.stroke(); ctx.setLineDash([]);
       const kk=k(), s=toScreen(pts[pts.length-1]), un=v=>v||'non étalonné';
@@ -491,7 +493,7 @@ view.addEventListener('pointerup',e=>{
   if(!p.moved&&(S.tool==='pan'||S.tool==='edit')){ const m=hit(toPage(e)); if(m||!e.shiftKey) pick(m,e.shiftKey); } });
 view.addEventListener('pointerleave',()=>{ S.cursor=null; S.snap=null; draw(); });
 // Le double-clic a déjà posé deux points identiques : le comptage retire le doublon.
-view.addEventListener('dblclick',e=>{ if(['len','area','count'].includes(S.tool)){ e.preventDefault(); if(S.tool==='count') S.draft.pop(); finish(); } });
+view.addEventListener('dblclick',e=>{ if(['len','area','count','access'].includes(S.tool)){ e.preventDefault(); if(S.tool==='count'||S.tool==='access') S.draft.pop(); finish(); } });
 view.addEventListener('wheel',e=>{ if(!S.vp) return; e.preventDefault(); const r=view.getBoundingClientRect();
   zoomAt(e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*(e.ctrlKey?0.01:0.0015))); },{passive:false});
 view.addEventListener('contextmenu',e=>{ if(S.draft.length){ e.preventDefault(); finish(); } });
@@ -506,7 +508,7 @@ document.addEventListener('keydown',e=>{
   if(e.target.closest('input,select,textarea,dialog')) return;
   if(e.key===' '){ space=true; e.preventDefault(); return; }
   if(e.metaKey||e.ctrlKey) return;
-  const key=e.key.toLowerCase(), tools={v:'pan',e:'edit',k:'cal',l:'len',s:'area',z:'zone',c:'count',t:'label',o:'ocr'};
+  const key=e.key.toLowerCase(), tools={v:'pan',e:'edit',k:'cal',l:'len',s:'area',z:'zone',c:'count',h:'access',t:'label',o:'ocr'};
   if(tools[key]&&S.vp) return setTool(tools[key]);
   if(key==='a') return $('snapBtn').click();
   if(key==='f') return fit();

@@ -1,3 +1,15 @@
+# v2.17.0 — tri des tuiles, recherche Sécurité plus précise (Ashton), valeurs étranges surlignées
+- **Tuiles d'accueil** : tri par remplissage décroissant / croissant et par ordre alphabétique (nom de l'opération, sinon
+  contrat), aussi pour les tuiles de maître d'ouvrage (remplissage moyen).
+- **Recherche Sécurité — portes** : A2P **et** BP1 (ou BP2 / BP3) exigés dans le même bloc ; l'un sans l'autre = non conforme
+  (« Serrure A2P* » seule ne suffit plus).
+- **Hall vitré** : dans Ashton, surface « Hall » et largeur « Menuiserie hall » ; ExtracTerre calcule largeur × 2,20 m ÷ surface
+  du hall et valide à 30 % ; le 44.2 reste cherché dans les documents (« À vérifier » s'il manque).
+- **Hall non traversant** : nouvel outil **Accès** dans Ashton (v0.6.0, touche H) ; un seul accès compté = conforme, deux ou
+  plus = non conforme. « Hall traversant » écrit dans un document devient un indice contraire.
+- **Valeurs étranges surlignées en jaune** (jamais modifiées) : Tic < 24 °C, DH < 10 ou > 1 250, Cep / Cep,nr > 300
+  (avant travaux > 800), fioul en vecteur chauffage ou ECS après travaux. Mêmes règles dans TotalRecoll.
+
 # v2.16.1 — tuiles d'accueil : dossiers partiellement complétés
 - Tuile de maître d'ouvrage : « x dossier(s) partiellement complété(s) » à côté des dossiers complets (opérations complétées à plus de 10 % et moins de 100 %).
 

@@ -6,7 +6,7 @@ import {classifyDocument} from './js/classifier.js';
 import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.16.4','version');
+eq(APP_VERSION,'2.17.0','version');
 
 // En-tête « CCTP 04 - Lot … » répété : CCTP, malgré « existant », « contrat », « DPE », « RE2020 » dans les clauses.
 const page='CCTP 04 - Lot Etancheite VILLE FICTIVE - Résidence test\nRénovation thermique du bâtiment existant. Le contrat de l’entreprise. DPE après travaux. RE2020.\n';
@@ -27,4 +27,4 @@ ok(vals(mk('12 - Ventilation.pdf',['CCTP 12 - Lot Ventilation','Les logements se
 // Délai d'inactivité : relancé à chaque avancée, suspendu pendant l'attente OCR.
 const app=fs.readFileSync('./js/app.js','utf8');
 ok(/armTimeout\(meta\?\.stage==='ocr-wait'\?0:/.test(app),'délai suspendu en file OCR et relancé à chaque avancée');
-console.log(`v2.16.4 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.17.0 — ${n} vérifications OK (données fictives)`);

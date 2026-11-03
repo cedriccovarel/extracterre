@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.16.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.17.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.16.4';
+const APP_VERSION='2.17.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -5547,6 +5547,21 @@ function sanitizeOccurrence(o){
 }
 function sanitizeOccurrences(list=[]){ return (list||[]).map(sanitizeOccurrence).filter(Boolean); }
 
+// v2.16.4 — valeurs plausibles mais étranges, surlignées en jaune (jamais retirées ni corrigées) : à vérifier sur la source.
+// Mêmes règles dans TotalRecoll (recoll.js oddValue). Seuils : Tic < 24 °C ; DH < 10 ou > 1 250 °C.h ; Cep / Cep,nr après
+// travaux > 300 kWhep/m².an, avant travaux > 800 ; fioul en vecteur chauffage ou ECS après travaux.
+const ODD_RANGES=Object.freeze({tic:[24,null],dh:[10,1250],dh_zt:[10,1250],dh_znt:[10,1250],cep:[null,300],cepnr:[null,300],cep_after_final:[null,300],cep_before:[null,800]});
+const ODD_AFTER_VECTORS=new Set(['heating_vector_after','heating_mode_after','ecs_vector_after']);
+function oddValue(key,v){
+  if(v===undefined||v===null||String(v).trim()==='') return '';
+  if(ODD_AFTER_VECTORS.has(key)) return /\b(?:fioul|fuel|mazout)\b/i.test(normalizeText(String(v)))?'Fioul après travaux : inhabituel':'';
+  const r=ODD_RANGES[key]; if(!r) return '';
+  const n=typeof v==='number'?v:Number(String(v).replace(/[\s ]/g,'').replace(',','.')); if(!Number.isFinite(n)) return '';
+  if(r[0]!==null&&n<r[0]) return `Valeur très faible (< ${String(r[0]).replace('.',',')}) : à vérifier`;
+  if(r[1]!==null&&n>r[1]) return `Valeur très élevée (> ${r[1].toLocaleString('fr-FR')}) : à vérifier`;
+  return '';
+}
+
 /* ---- parsers.js ---- */
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
   if(value===null||value===undefined||value==='') return null;
@@ -9732,7 +9747,7 @@ function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   if(g.id==='securite-logements') srch_migrateSecurity(criteria);
   return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
@@ -9741,10 +9756,13 @@ function normalizeGrid(g={}){
 
 // v2.14.0 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et
 // barrières de chantier sont écartées ; les autres termes saisis par l'utilisateur sont gardés.
-const SRCH_WEAK_DOOR=['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'], SRCH_SITE_FENCE=['chantier','barriere','barrieres','heras','palissade'];
+const SRCH_WEAK_DOOR=['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'], SRCH_SITE_FENCE=['chantier','barriere','barrieres','heras','palissade'], SRCH_HALL_THROUGH=['hall traversant','halls traversants'];
 function srch_migrateSecurity(criteria){
   const door=criteria.find(c=>c.id==='porte_a2p'); if(door){ door.keywords=door.keywords.filter(k=>!SRCH_WEAK_DOOR.includes(k)); for(const w of SRCH_WEAK_DOOR) if(!door.weak.includes(w)) door.weak.push(w);
-    const both='re:\\bbp\\s?[123]\\b.{0,40}\\ba2p\\b'; if(!door.keywords.includes(both)) door.keywords.push(both); }
+    const both='re:\\bbp\\s?[123]\\b.{0,40}\\ba2p\\b'; if(!door.keywords.includes(both)) door.keywords.push(both);
+    for(const w of SRCH_WEAK_DOOR) if(!door.allOf.includes(w)) door.allOf.push(w); }
+  // v2.16.4 — « hall traversant » sans « non » est un indice contraire, plus une preuve.
+  const hall=criteria.find(c=>c.id==='hall_traversant'); if(hall){ hall.keywords=hall.keywords.filter(k=>!SRCH_HALL_THROUGH.includes(k)); for(const w of SRCH_HALL_THROUGH) if(!hall.weak.includes(w)) hall.weak.push(w); }
   const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
 }
 // Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
@@ -9770,12 +9788,31 @@ function srch_docLines(doc){
   return (doc.read?.pages||[]).flatMap(p=>{ const lines=Array.isArray(p.lines)&&p.lines.length?p.lines.map(l=>String(l.text||'')):String(p.text||'').split(/\r?\n/); return lines.map((t,i)=>({page:p.page,i,t:srch_normS(t),raw:t})).filter(x=>x.t.trim()); });
 }
 
+// v2.16.4 — tables Ashton (project.planTables) : hall vitré = largeur des menuiseries × 2,20 m ÷ surface du hall (≥ 30 %) ;
+// hall non traversant = un seul « Accès hall » compté. Un plan sans les deux mesures du hall ne donne pas de ratio.
+const HALL_GLAZING_HEIGHT=2.2, HALL_GLAZING_MIN=0.3;
+const srch_fr=(v,d=2)=>v.toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d});
+function srchPlanFacts(planTables){
+  const out={}, glz=[], acc=[], sum=rs=>rs.reduce((a,r)=>a+(Number(r.avg)||0)*(Number(r.n)||0),0);
+  for(const [docId,t] of Object.entries(planTables||{})){ const rows=t.rows||[], ref=r=>srch_normS(t.refs?.[r.key]??r.ref), at=r=>({doc:t.docName||'Plan',docId,page:(r.pages||[])[0]||'',plan:true});
+    const frame=rows.filter(r=>(r.kind==='largeur'||r.kind==='longueur')&&/menuiserie|vitr|chassis/.test(ref(r))), hall=rows.filter(r=>r.kind==='surface'&&/\bhall\b/.test(ref(r))&&!/menuiserie|vitr|acces/.test(ref(r)));
+    const w=sum(frame), a=sum(hall);
+    if(w>0&&a>0){ const ratio=w*HALL_GLAZING_HEIGHT/a, ok=ratio>=HALL_GLAZING_MIN, pct=Math.round(ratio*100);
+      glz.push({ok,pct,ev:{...at(hall[0]),line:`Ashton : menuiseries ${srch_fr(w)} m × ${srch_fr(HALL_GLAZING_HEIGHT)} m = ${srch_fr(w*HALL_GLAZING_HEIGHT)} m² pour un hall de ${srch_fr(a)} m² → ${pct} % (${ok?'≥':'<'} 30 %)`,context:'',values:[pct],ok}}); }
+    const access=rows.filter(r=>r.kind==='quantite'&&/\bacces\b/.test(ref(r)));
+    if(access.length){ const n=access.reduce((s,r)=>s+(Number(r.total)||0),0), ok=n===1;
+      acc.push({ok,n,ev:{...at(access[0]),line:`Ashton : ${n} accès au hall compté${n>1?'s':''} → ${ok?'hall non traversant':'hall traversant'}`,context:'',values:[n],ok}}); } }
+  if(glz.length) out.hall_vitrage={ok:glz.every(x=>x.ok),ev:glz.map(x=>x.ev),detail:`vitrage ${glz.map(x=>`${x.pct} %`).join(' ; ')} de la surface du hall (Ashton)`};
+  if(acc.length) out.hall_traversant={ok:acc.every(x=>x.ok),ev:acc.map(x=>x.ev),detail:`${acc.map(x=>x.n).join(' ; ')} accès compté(s) dans Ashton`};
+  return out;
+}
+
 // Applique une grille aux documents prêts d'un projet : {criteria:{id:{found,values,evidence}}, themes:{name:{found,min,ok,applicable}}}.
-function runSearchGrid(grid,docs,overrides={}){
+function runSearchGrid(grid,docs,overrides={},planTables={}){
   const g=normalizeGrid(grid); const filter=g.docFilter?srch_list(g.docFilter):[];
   const pool=(docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length&&!d.read?.financialQuestionnaire&&(!filter.length||filter.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))));
   const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
-  const criteria={};
+  const criteria={}, plan=srchPlanFacts(planTables);
   for(const c of g.criteria){
     const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
     if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
@@ -9787,14 +9824,22 @@ function runSearchGrid(grid,docs,overrides={}){
         if(c.excludeNear.length&&[lines[k-1],lines[k+1]].some(x=>x&&x.page===L.page&&srch_anyTerm(c.excludeNear,x.t))) continue;
         if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
         let nums=[],ok=!weak;
+        // v2.16.4 — « allOf » : tous ces termes dans le même bloc (A2P et BP1) ; l'un sans l'autre = indice contraire.
+        if(c.allOf.length) ok=c.allOf.every(t=>near.some(x=>srch_anyTerm([t],x.t)));
         if(c.kind==='stats'){ const n=srch_cellNumbers(L.t,c.unit).find(x=>(c.min===null||x>=c.min)&&(c.max===null||x<=c.max)); if(n===undefined) continue; nums=[n]; values.push(n); }
         if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
           if(!nums.length) continue; values.push(...nums); ok=!weak&&nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
         ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
     const manual=overrides?.[c.id];
     // Critère « inverse » : un résultat est un indice contraire (critère non rempli), jamais une preuve de conformité.
-    const found=manual==='Oui'?true:manual==='Non'||manual==='Sans objet'?false:c.inverse?false:ev.some(e=>e.ok);
-    criteria[c.id]={found,contrary:!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)),manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
+    let found=manual==='Oui'?true:manual==='Non'||manual==='Sans objet'?false:c.inverse?false:ev.some(e=>e.ok);
+    let contrary=!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)), detail='';
+    // Mesures Ashton : décisives pour le ratio vitré et les accès du hall ; le 44.2 reste à trouver dans les documents.
+    const pf=plan[c.id];
+    if(pf){ const textOk=ev.some(e=>e.ok); ev.unshift(...pf.ev); detail=pf.detail;
+      const ok=c.id==='hall_vitrage'?pf.ok&&textOk:pf.ok; if(c.id==='hall_vitrage'&&pf.ok&&!textOk) detail=`À vérifier : ${pf.detail}, 44.2 non trouvé dans les documents`;
+      if(!manual){ found=ok; contrary=!pf.ok; } }
+    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
   }
   const themes={};
   for(const t of g.themes){
@@ -9811,6 +9856,7 @@ function runSearchGrid(grid,docs,overrides={}){
 function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
+  if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
@@ -9839,7 +9885,7 @@ const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des 
     {id:'fen_442',theme:'Fenêtres en rez-de-chaussée',label:'Vitrages 44.2 (retardateur d’effraction)',keywords:['re:\\b44[./ ]?2\\b','re:\\bsp\\s?10\\b','retardateur d effraction','retardateur d\'effraction'],context:['vitrage','fenetre','menuiserie','stadip','feuillete','baie']},
     {id:'fen_barreaux',theme:'Fenêtres en rez-de-chaussée',label:'Fenêtres protégées par des barreaux',keywords:['barreaux','barreaudage','grille de defense','grilles de defense','grille anti effraction'],context:['fenetre','baie','rez de chaussee','rdc','en tableau','tableau'],exclude:['cloture','portail','portillon','garde corps','garde-corps','main courante','tablier','lisse'],window:2},
     {id:'porte_3pts',theme:'Portes d’entrée des logements',label:'Porte pleine, serrure 3 points (hors 3 points de compression)',keywords:['re:serrure[^\\n]{0,40}3\\s*points','re:3\\s*points[^\\n]{0,20}(?:a|à)?\\s*p[eê]ne','re:cr[eé]mone[^\\n]{0,15}3\\s*points[^\\n]{0,40}a2p'],context:['porte palier','porte paliere','portes palieres','bloc porte palier','porte d entree','porte de logement','porte d\'entree'],exclude:['compression','fenetre','porte fenetre','porte-fenetre'],window:8},
-    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',description:'« A2P » seul ou « BP1 » seul : non conforme à l’exigence.',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
+    {id:'porte_a2p',theme:'Portes d’entrée des logements',label:'Bloc-porte A2P BP1 ou équivalent, serrure A2P 1 étoile minimum',description:'« A2P » seul ou « BP1 » seul : non conforme à l’exigence.',keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)'],allOf:['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'],context:['porte','bloc porte','serrure'],exclude:['a2p r1','a2pr1'],window:8},
     {id:'abords_portails',theme:'Abords extérieurs',label:'Portails véhicules et piétons à accès sécurisé (obligatoire)',keywords:['portail','portillon'],context:['vigik','badge','digicode','controle d acces','telecommande','platine','interphone','visiophone','ventouse','gache electrique']},
     {id:'abords_cloture',theme:'Abords extérieurs',label:'Clôture d’au moins 1,80 m (ou règle du PLU)',description:'Les clôtures et barrières de chantier ne comptent pas.',kind:'number',unit:'m',min:1.8,keywords:['cloture','clotures'],context:['hauteur','ht','h ='],window:3},
     {id:'abords_acces_unique',theme:'Abords extérieurs',label:'Un seul point d’accès véhicules et piétons',keywords:['seul acces','acces unique','seul point d acces','unique point d acces']},
@@ -9850,8 +9896,8 @@ const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des 
     {id:'abords_cheminement',theme:'Abords extérieurs',label:'Cheminements d’au moins 1,40 m de large',kind:'number',unit:'m',min:1.4,keywords:['cheminement','cheminements','allee pietonne','allees pietonnes'],context:['largeur','large']},
     {id:'abords_escaliers',theme:'Abords extérieurs',label:'Escaliers extérieurs sans dessous exploitable',keywords:['dessous d escalier','sous face d escalier','dessous des escaliers'],context:['ferme','condamne','obture','grille']},
     {id:'abords_aveugles',theme:'Abords extérieurs',label:'Absence de locaux aveugles non surveillés',keywords:['local aveugle','locaux aveugles']},
-    {id:'hall_traversant',theme:'Halls d’entrée',label:'Hall non traversant (un seul point d’entrée et de sortie)',keywords:['non traversant','hall traversant','halls traversants'],context:['hall']},
-    {id:'hall_vitrage',theme:'Halls d’entrée',label:'Hall vitré (> 30 % de la surface au sol) en 44.2',keywords:['re:\\b44[./ ]?2\\b','stadip','retardateur d effraction'],context:['hall','sas','porte d entree d immeuble','entree principale','ensemble vitre']},
+    {id:'hall_traversant',theme:'Halls d’entrée',label:'Hall non traversant (un seul point d’entrée et de sortie)',description:'Outil « Accès » d’Ashton : un seul accès compté = conforme. « Hall traversant » dans un document = indice contraire.',keywords:['non traversant'],weak:['hall traversant','halls traversants'],context:['hall']},
+    {id:'hall_vitrage',theme:'Halls d’entrée',label:'Hall vitré (> 30 % de la surface au sol) en 44.2',description:'Dans Ashton : surface « Hall » et largeur « Menuiserie hall » ; ratio calculé avec une hauteur de 2,20 m. Le 44.2 est cherché dans les documents.',keywords:['re:\\b44[./ ]?2\\b','stadip','retardateur d effraction'],context:['hall','sas','porte d entree d immeuble','entree principale','ensemble vitre']},
     {id:'hall_sas',theme:'Halls d’entrée',label:'Sas sécurisé : badge + visiophone (platine IK08) puis serrure électronique à badge',keywords:['sas'],context:['badge','vigik','visiophone','interphone','platine','controle d acces','ventouse','gache electrique'],exclude:['cabinet','capital','siret','etabli par','sarl','societe'],window:6},
     {id:'hall_ik08',theme:'Halls d’entrée',label:'Platine de rue anti-vandale IK08 ou plus',keywords:['re:\\bik\\s?(?:0?8|09|10)\\b'],context:['platine','visiophone','interphone','portier']},
     {id:'hall_eclairage',theme:'Halls d’entrée',label:'Éclairage du hall par détecteur, plus de 150 lux',kind:'number',unit:'lux',min:150,keywords:['lux'],context:['hall','detecteur','detection']},
@@ -9913,7 +9959,7 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   // v2.6.0 — recherches personnalisées : une feuille par grille ayant au moins un résultat, puis les citations.
   const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
   for(const grid of grids||[]){
-    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{})}));
+    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables)}));
     if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
     const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
     const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
@@ -11227,10 +11273,14 @@ function projectCompletion(p){
 }
 const tileTone=pct=>pct>=90?'high':pct>=50?'mid':'low';
 // v2.16.1 — tri des tuiles d'opérations par état du dossier : complet (100 %), partiellement complété (> 10 %), incomplet.
-const TILE_SORTS={'':'Ordre par défaut',complete:'Complets d’abord',partial:'Partiellement complétés d’abord',incomplete:'Incomplets d’abord'};
+// v2.16.4 — tri par % de remplissage (croissant / décroissant) et alphabétique (nom, sinon contrat), aussi pour les maîtres d'ouvrage.
+const TILE_SORTS={'':'Ordre par défaut',pctDesc:'Remplissage décroissant',pctAsc:'Remplissage croissant',alpha:'Ordre alphabétique',complete:'Complets d’abord',partial:'Partiellement complétés d’abord',incomplete:'Incomplets d’abord'};
 const tileStatus=pct=>pct>=100?'complete':pct>10?'partial':'incomplete';
 function sortTileItems(xs,mode){
   if(!mode||!TILE_SORTS[mode]) return xs;
+  const fav=(a,b)=>!!b.p.favorite-!!a.p.favorite, label=x=>String(x.id?.name||x.id?.contract||'').trim();
+  if(mode==='pctDesc'||mode==='pctAsc') return [...xs].sort((a,b)=>(mode==='pctDesc'?b.pct-a.pct:a.pct-b.pct)||fav(a,b));
+  if(mode==='alpha') return [...xs].sort((a,b)=>(!label(a))-(!label(b))||label(a).localeCompare(label(b),'fr',{numeric:true,sensitivity:'base'})||fav(a,b));
   const order={complete:['complete','partial','incomplete'],partial:['partial','complete','incomplete'],incomplete:['incomplete','partial','complete']}[mode];
   return [...xs].sort((a,b)=>order.indexOf(tileStatus(a.pct))-order.indexOf(tileStatus(b.pct))||(mode==='complete'?b.pct-a.pct:a.pct-b.pct)||!!b.p.favorite-!!a.p.favorite);
 }
@@ -11249,7 +11299,10 @@ function renderTiles(wrap,{home=false}={}){
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
   let sortCtl='',body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
   if(grouped&&!state.overviewOwner){
-    const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+    let owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+    const ownerItems=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); return {o,id:{name:o===NO_OWNER?'':o},p:{},pct:Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length)}; });
+    owners=sortTileItems(ownerItems,state.tileSort).map(x=>x.o);
+    sortCtl=owners.length>1?`<select class="op-sort" data-tile-sort aria-label="Trier les maîtres d’ouvrage">${Object.entries(TILE_SORTS).map(([k,l])=>`<option value="${k}"${(state.tileSort||'')===k?' selected':''}>${l}</option>`).join('')}</select>`:'';
     sub=`${owners.length} maître(s) d’ouvrage · ${items.length} opération(s)`;
     body=(favs.length?`<button type="button" class="op-tile macro fav" data-tile-owner="${FAV_GROUP}"><span class="op-tile-k">Favoris</span><strong>★ ${favs.length} opération(s)</strong><span class="op-tile-meta">${escapeHtml(favs.slice(0,3).map(x=>x.id.contract||x.id.name||projectTitle(x.p)).join(' · '))}${favs.length>3?' …':''}</span>${bar(Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length))}<span class="op-pct">${Math.round(favs.reduce((a,x)=>a+x.pct,0)/favs.length)} % complété en moyenne</span></button>`:'')+owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); const avg=Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length); const done=xs.filter(x=>x.pct>=100).length, partial=xs.filter(x=>x.pct>10&&x.pct<100).length;
       return `<button type="button" class="op-tile macro" data-tile-owner="${escapeHtml(o)}"><span class="op-tile-k">Maître d’ouvrage</span><strong>${escapeHtml(o)}</strong><span class="op-tile-meta">${xs.length} opération(s) · ${done} dossier(s) complet(s)${partial?` · ${partial} dossier(s) partiellement complété(s)`:''}${xs.some(x=>isDup(x.id))?` · <b class="op-dup">${xs.filter(x=>isDup(x.id)).length} doublon(s)</b>`:''}${xs.some(x=>lastImported.has(x.p.id))?` · <b class="op-new">${xs.filter(x=>lastImported.has(x.p.id)).length} nouvelle(s)</b>`:''}</span>${bar(avg)}<span class="op-pct">${avg} % complété en moyenne</span></button>`; }).join('');
@@ -12347,7 +12400,7 @@ function projectSectionHeader(p,isActive=false){
 function staticProjectBody(p,fields){
   const r=p.result;
   if(!r) return '<div class="empty-small project-empty">Projet sans analyse.</div>';
-  return `<div class="table-scroll project-static-table"><table><thead><tr><th class="sticky building-head">Bâtiment</th>${fields.map(f=>`<th>${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong">${escapeHtml(row.building)}</td>${fields.map(f=>`<td class="${row[f.key]===undefined?'missing':''}">${escapeHtml(formatValue(row[f.key]))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-scroll project-static-table"><table><thead><tr><th class="sticky building-head">Bâtiment</th>${fields.map(f=>`<th>${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong">${escapeHtml(row.building)}</td>${fields.map(f=>{ const odd=oddValue(f.key,row[f.key]); return `<td class="${row[f.key]===undefined?'missing':''}${odd?' odd':''}"${odd?` title="${escapeHtml(odd)}"`:''}>${escapeHtml(formatValue(row[f.key]))}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 function decorateProjectSections(wrap,fields){
   const active=activeProject();
@@ -12386,7 +12439,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml(title)}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${oddValue(f.key,v)?'odd':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -12520,7 +12573,7 @@ function renderReview(){
   const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
     const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}${k==='geocode_precision'?geoLinkHtml(B):''}`);
     const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
-    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value">${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
+    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value${!editing&&oddValue(k,e.v)?' odd':''}"${!editing&&oddValue(k,e.v)?` title="${escapeHtml(oddValue(k,e.v))}"`:''}>${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
       <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${e.manual?`<button type="button" class="rv-btn rv-ghost" data-rv-unset="${k}" title="Supprimer la donnée manuelle : l’analyse des documents reprend ce champ">Supprimer</button>`:''}${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
   const tabs=buildings.map(b=>{ const c=reviewCompletion(b,profile); return `<button type="button" class="rv-bld ${b===B?'active':''}" data-rv-building="${escapeHtml(b)}"><span>${escapeHtml(b.replace(/^Bâtiment\s+/,''))}</span><span class="rv-bld-bar" style="--p:${c.pct}%"></span><small>${c.filled}/${c.total}</small></button>`; }).join('');
   const comp=reviewCompletion(B,profile);
@@ -13183,7 +13236,7 @@ function renderPlans(wrap=$('#summaryView')){
 }
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
-  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov);
+  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables);
   const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
     const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
@@ -13225,7 +13278,7 @@ function sessionSnapshot({details=true}={}){
   return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
     operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
-        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{})]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
+        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};

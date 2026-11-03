@@ -1304,3 +1304,6 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .op-tile-fav:focus-visible,.op-tile-del:focus-visible{outline:2px solid var(--forest,#173e31);outline-offset:1px}
 .op-tile.macro.fav{border-left-color:#c58f0a;background:#fffaf0}.op-tile.macro.fav:hover{background:#fdf3dc}
 .op-tile-main .op-tile-k{padding-right:58px}
+
+/* v2.16.4 — valeur étrange (Tic très faible, DH extrême, Cep démesuré, fioul après travaux) : à vérifier. */
+.summary-value.odd,.project-static-table td.odd,.rv-value.odd{background:#fff3a3;box-shadow:inset 0 0 0 1px #e0c341}

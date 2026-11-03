@@ -102,3 +102,18 @@ export function sanitizeOccurrence(o){
   return o;
 }
 export function sanitizeOccurrences(list=[]){ return (list||[]).map(sanitizeOccurrence).filter(Boolean); }
+
+// v2.16.4 — valeurs plausibles mais étranges, surlignées en jaune (jamais retirées ni corrigées) : à vérifier sur la source.
+// Mêmes règles dans TotalRecoll (recoll.js oddValue). Seuils : Tic < 24 °C ; DH < 10 ou > 1 250 °C.h ; Cep / Cep,nr après
+// travaux > 300 kWhep/m².an, avant travaux > 800 ; fioul en vecteur chauffage ou ECS après travaux.
+export const ODD_RANGES=Object.freeze({tic:[24,null],dh:[10,1250],dh_zt:[10,1250],dh_znt:[10,1250],cep:[null,300],cepnr:[null,300],cep_after_final:[null,300],cep_before:[null,800]});
+const ODD_AFTER_VECTORS=new Set(['heating_vector_after','heating_mode_after','ecs_vector_after']);
+export function oddValue(key,v){
+  if(v===undefined||v===null||String(v).trim()==='') return '';
+  if(ODD_AFTER_VECTORS.has(key)) return /\b(?:fioul|fuel|mazout)\b/i.test(normalizeText(String(v)))?'Fioul après travaux : inhabituel':'';
+  const r=ODD_RANGES[key]; if(!r) return '';
+  const n=typeof v==='number'?v:Number(String(v).replace(/[\s ]/g,'').replace(',','.')); if(!Number.isFinite(n)) return '';
+  if(r[0]!==null&&n<r[0]) return `Valeur très faible (< ${String(r[0]).replace('.',',')}) : à vérifier`;
+  if(r[1]!==null&&n>r[1]) return `Valeur très élevée (> ${r[1].toLocaleString('fr-FR')}) : à vérifier`;
+  return '';
+}
