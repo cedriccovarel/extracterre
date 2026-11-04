@@ -1,3 +1,15 @@
+# v2.18.1 — Fiche Salesforce : bâtiments « * BAT 8 : (= bat E Rset) : x11 lgts collectifs : social LLS »
+- **En-têtes de bâtiment avec remarques** : « BAT n : » suivi de remarques (« (= bat E Rset) », « social LLS ») ouvre bien un bloc,
+  avec ou sans « : » final ; « x11 lgts » donne ses logements. Avant, seul le premier bâtiment était vu et les valeurs du deuxième
+  passaient dans l'opération (le troisième était perdu). Les remarques restent affichées dans les notes de la fiche.
+- **« SRT / SHAB : 913,11 / 728 »** : libellés et valeurs appariés, la SHAB est retenue comme surface du bâtiment.
+- **Logements collectifs** de l'opération : somme des blocs « … lgts collectifs » (nombre de logements et de bâtiments), si la fiche
+  ne les donne pas ailleurs.
+- **Enveloppe propre à certains bâtiments** : « MUR / EXT bat 9 : … », « TERRASSE INACC bat 9 10 : … » ne valent que pour les
+  bâtiments nommés (« bat 10 » ne désigne plus « BAT 1 ») ; une ligne qui nomme tous les bâtiments vaut aussi pour l'opération ;
+  une ligne « + Doublage … » suit les bâtiments de la ligne précédente.
+- « MUR … : Beton » seul = béton armé (comme « mur béton ») ; « Comblissimo » = laine de verre (soufflée).
+
 # v2.18.0 · Ashton v0.7.1 — plan plein écran en mode outil dédié
 - **Ashton** : ouvert depuis une ligne de la recherche, la barre « Nouvelles mesures » est masquée ; la grille de la page décalait
   alors ses rangées et la barre d'état du bas occupait la moitié de l'écran. Chaque zone a désormais sa rangée fixe : le plan

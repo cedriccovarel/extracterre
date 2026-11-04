@@ -1,4 +1,4 @@
-export const APP_VERSION='2.18.0';
+export const APP_VERSION='2.18.1';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -468,7 +468,7 @@ const pair=(canon,aliases)=>[canon,aliasRegex(aliases)];
 export const MATERIALS = [
   pair('PSE graphité',['pse graphité','pse graphite','pregymax','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
   pair('Laine de roche',['laine de roche','ldr','rockwool','rockfacade','rockmur','rockplus','rocksol','rockfeu','alpharock','mb rock','redair','jetrock','rockair','ecorock']),
-  pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit']),
+  pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit','comblissimo']),
   pair('Laine minérale',['laine minérale','laine minerale','lm projetée','lm projetee','lm soufflée','lm soufflee','mineral wool','laine minerale semi rigide','fibrexpan']),
   pair('PSE',['pse','polystyrène expansé','polystyrene expanse','eps','knauf therm','therm th','therm itex','webertherm pse','unicell','cellomur']),
   pair('XPS',['xps','polystyrène extrudé','polystyrene extrude','styrodur','jackodur','ursa xps','soprema xps']),

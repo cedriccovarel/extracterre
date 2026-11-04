@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.18.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.18.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.18.0';
+const APP_VERSION='2.18.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -473,7 +473,7 @@ const pair=(canon,aliases)=>[canon,aliasRegex(aliases)];
 const MATERIALS = [
   pair('PSE graphité',['pse graphité','pse graphite','pregymax','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
   pair('Laine de roche',['laine de roche','ldr','rockwool','rockfacade','rockmur','rockplus','rocksol','rockfeu','alpharock','mb rock','redair','jetrock','rockair','ecorock']),
-  pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit']),
+  pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit','comblissimo']),
   pair('Laine minérale',['laine minérale','laine minerale','lm projetée','lm projetee','lm soufflée','lm soufflee','mineral wool','laine minerale semi rigide','fibrexpan']),
   pair('PSE',['pse','polystyrène expansé','polystyrene expanse','eps','knauf therm','therm th','therm itex','webertherm pse','unicell','cellomur']),
   pair('XPS',['xps','polystyrène extrudé','polystyrene extrude','styrodur','jackodur','ursa xps','soprema xps']),
@@ -9248,7 +9248,8 @@ const sf_section=line=>{ const low=normLower(line).replace(/[’']/g,' '); if(/-
 const sf_clean=l=>/^\s*>\s*lot\b|\bpage\s+\d+\s*(?:;|$)/i.test(l)?'':String(l).replace(/[\u2139\u2600-\u27BF\uFE0F\u{1F300}-\u{1FAFF}]/gu,'').replace(/^[\s*+•>–-]+/,'').replace(/\s*§.*$/,'').replace(/\s+/g,' ').trim();
 // Un libellé « Contrat: Numéro du contrat » serait coupé au premier « : » : on écrit sa forme courte, reconnue à l'identique.
 // v2.14.0 — sinon le premier synonyme sans « : » qui désigne ce seul champ (« Statut » ou « Code interne » seuls en désignent un autre).
-const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return l; const short=l.slice(l.lastIndexOf(':')+1).trim(); if(fp_strictLabel(short)===key) return short;
+// v2.18.0 — un libellé sans « : » qui ne se relit pas, ou coupé par « - » (« Logement collectif - Nombre de logements »), prend un synonyme qui se relit.
+const sf_label=key=>{ const l=FIELD_MAP[key].label; if(!l.includes(':')) return fp_strictLabel(l)===key&&!/\s[-–]\s/.test(l)?l:(t=>t?t[0].toUpperCase()+t.slice(1):l)(FIELD_MAP[key].tags.find(t=>!/:|\s[-–]\s/.test(t)&&fp_strictLabel(t)===key)); const short=l.slice(l.lastIndexOf(':')+1).trim(); if(fp_strictLabel(short)===key) return short;
   const fixed={contract_number:'Numéro du contrat',owner_company:'Maître d\'ouvrage',reference_name:'Référentiel'}[key]; if(fixed) return fixed;
   return FIELD_MAP[key].tags.find(t=>!t.includes(':')&&fp_strictLabel(t)===key)||short; };
 function salesforceEvaluationToPaste(text){
@@ -9307,6 +9308,16 @@ function salesforceEvaluationToPaste(text){
     // v2.14.1 — « Bâtiment n° 1 : A1-A2 », « Bâtiment 3 : D1 - D2 » : en-tête nommé par ses cages (sinon par son numéro).
     const bn=t.match(/^b[âa]t(?:iment)?\.?\s*(?:n[°o]\s*\.?\s*)?([\w-]+)\s*:\s*([^=:]{1,40}?)\s*$/i);
     if(bn&&/^[A-Z]{1,2}\d{0,2}(?:\s*[-–\/,&]\s*[A-Z]{1,2}\d{0,2})*$/i.test(bn[2])){ cur=openBlock(`Bâtiment ${bn[2].replace(/\s*[-–\/,&]\s*/g,' - ')}`); continue; }
+    // v2.18.0 — « BAT 8 : (= bat E Rset) : x11 lgts collectifs : social LLS » : « BAT n : » suivi de remarques (aucune valeur
+    // de performance) ouvre un bloc ; « x11 lgts » donne ses logements, « collectifs » le compte dans les logements collectifs.
+    const bc=t.match(/^((?:b[âa]t(?:iment)?\.?|immeuble|plot|cage|ilot|lot)\s*(?:n[°o]\s*\.?\s*)?(?:\d+[a-z]?|[a-z]{1,3}\d{0,3}))\s*:\s*(.*)$/i);
+    if(bc){ const rest=bc[2].replace(/\([^()]*\)/g,' ');
+      if(!/=/.test(rest)&&!isField(rest.split(':')[0].trim())&&sf_num(rest.split(':')[0])===null||/^\s*x?\s*\d+\s*(?:lgts?|logts?|logements?)\b/i.test(rest.split(':')[0])){
+        cur=openBlock(bc[1].trim());
+        const nb=rest.match(/\bx?\s*(\d+)\s*(?:lgts?|logts?|logements?)\b/i); if(nb&&cur.raw.housing_count===undefined) cur.raw.housing_count=Number(nb[1]);
+        if(/collectifs?\b/i.test(rest)) cur.collective=true;
+        const rem=bc[2].replace(/(?:\s*:)+\s*$/,'').replace(/\s*:(?:\s*:)+\s*/g,' : ').trim(); if(rem) notes.push(`${cur.name} : ${rem} (remarque de la fiche).`);
+        continue; } }
     // Après une ligne vide, une valeur hors en-tête (« Q4 = 0,8 » sous les blocs) vaut pour toute l'opération.
     if(cur&&afterBlank.has(i)&&/[=:]/.test(t)&&!/:\s*$/.test(t)) cur=null;
     const h=t.match(/^(.{1,60}?)\s*[=:]\s*(.*?)\s*:?\s*$/);
@@ -9329,6 +9340,11 @@ function salesforceEvaluationToPaste(text){
     const m=piece.match(/^(.{1,80}?)\s*[=:]\s*(.+)$/); if(!m) continue; const b=cur||{items:common,raw:{},extra:[]};
     if(prev&&sf_key(m[1])==='gain'){ const gk=prev.replace(/_max$/,'')+'_gain'; if(FIELD_MAP[gk]&&!(gk in b.raw)){ const v=sf_num(m[2]); if(v!=null){ b.raw[gk]=v; if(!cur) put(common,gk,v); } } continue; }
     if(fp_dhZone(m[1])){ if(cur) b.extra.push(`${m[1].trim()} = ${m[2].trim()}`); continue; }
+    // v2.18.0 — « SRT / SHAB : 913,11 / 728 m2 » : libellés et valeurs appariés ; pour la surface, la SHAB l'emporte.
+    { const lbs=m[1].split(/\s*\/\s*/), vs=m[2].split('/'); if(lbs.length>1&&vs.length>=lbs.length){
+      const pairs=lbs.map((l,j)=>[l,vs[j]]).sort((a,c)=>(sf_key(c[0])==='shab')-(sf_key(a[0])==='shab')); let done=false;
+      for(const [l,v] of pairs){ const k=sf_ALIASES[sf_key(l)]||fp_strictLabel(l); if(!k||k in b.raw) continue; const n=FIELD_MAP[k].type==='number'?sf_num(v):v.trim(); if(n===null||n==='') continue; b.raw[k]=n; if(!cur) put(common,k,n); done=true; }
+      if(done) continue; } }
     const key=sf_ALIASES[sf_key(m[1])]||fp_strictLabel(m[1]); if(key) prev=key; if(!key||key in b.raw) continue;
     // « Bbio max = 71,9 (Gain 20,6 %) » : le gain suit le maximum entre parenthèses.
     const gm=m[2].match(/\(\s*gain\b[^=:\d)]*[=:]?\s*([-+]?\d+(?:[.,]\d+)?)\s*%?\s*\)/i), gk=key.replace(/_max$/,'_gain');
@@ -9349,6 +9365,8 @@ function salesforceEvaluationToPaste(text){
       const calc=(max-val)/max*100; b.raw[g]=Math.abs(b.raw[g])*(calc<0?-1:1);
       if(Math.abs(Math.abs(calc)-Math.abs(b.raw[g]))>0.6) notes.push(`${b.name} : ${sf_label(g)} ${sf_fmt(b.raw[g])} % ne correspond pas à ${sf_label(v)} ${sf_fmt(val)} et ${sf_label(mx)} ${sf_fmt(max)} (gain calculé ${sf_fmt(Math.round(calc*10)/10)} %) : vérifiez la fiche.`); }
     for(const k of Object.keys(FIELD_MAP)) if(k in b.raw) put(b.items,k,b.raw[k]); }
+  // v2.18.0 — blocs « x11 lgts collectifs » : logements et bâtiments collectifs de l'opération (somme des blocs), si la fiche ne les donne pas.
+  { const col=blocks.filter(b=>b.collective&&b.raw.housing_count>0); if(col.length){ put(common,'housing_collective_units',col.reduce((a,b)=>a+b.raw.housing_count,0)); put(common,'housing_collective_buildings',col.length); } }
   const blockLines=b=>[...b.items.map(x=>`${sf_label(x.key)} = ${x.v}`),...(b.extra||[])];
   // Enveloppe et systèmes : une section par en-tête, les sous-sections « - Notes » sont ignorées.
   const sec={}; let s=null;
@@ -9361,12 +9379,22 @@ function salesforceEvaluationToPaste(text){
   const INNER=/refend|entre\s+(?:logements|logts)|s[ée]parati|mitoyen/i;
   const outer=list=>{ let skip=false; return (list||[]).filter(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ skip=INNER.test(raw); return false; } if(INNER.test(String(raw).split(':')[0])) return false; return !skip; }); };
   // « BAT A & B / Combles : … » : la ligne ne vaut que pour les bâtiments nommés (lettres ou numéros de l'en-tête de bloc).
-  const ids=x=>new Set((String(x).replace(/\bb[âa]t(?:iment)?s?\.?/ig,'').replace(/\bet\b/ig,' ').toUpperCase().match(/[A-Z0-9]/g)||[]));
-  const sinks=raw=>{ const bm=String(raw).match(/^\s*(b[âa]t(?:iment)?s?\.?\s+[^\/:]{1,20}?)\s*\/\s*(.+)$/i); if(!bm||!blocks.length) return [raw,[common]];
-    const want=ids(bm[1]), hit=blocks.filter(b=>{ const have=ids(b.name); return have.size&&[...have].every(c=>want.has(c)); }); return hit.length?[bm[2],hit.map(b=>b.items)]:[raw,[common]]; };
+  // v2.18.0 — numéros entiers (« bat 10 » ne désigne pas « BAT 1 »), lettres une à une (« BAT A & B »).
+  const ids=x=>new Set((String(x).replace(/\bb[âa]t(?:iment)?s?\.?/ig,'').replace(/\bet\b/ig,' ').toUpperCase().match(/\d+|[A-Z]/g)||[]));
+  const hitOf=names=>{ const want=ids(names); return blocks.filter(b=>{ const have=ids(b.name); return have.size&&[...have].every(c=>want.has(c)); }); };
+  const sinks=raw=>{ if(!blocks.length) return [raw,[common]];
+    const bm=String(raw).match(/^\s*(b[âa]t(?:iment)?s?\.?\s+[^\/:]{1,20}?)\s*\/\s*(.+)$/i);
+    if(bm){ const hit=hitOf(bm[1]); return hit.length?[bm[2],hit.map(b=>b.items)]:[raw,[common]]; }
+    // v2.18.0 — « MUR / EXT bat 9 : Brique… », « TERRASSE INACC bat 9 10 : … » : bâtiments nommés en fin de libellé (hors parenthèses).
+    const lab=String(raw).split(':')[0].replace(/\([^()]*\)/g,' ');
+    const mm=lab.match(/\bb[âa]t(?:iment)?s?\.?\s+((?:\d+[a-z]?|[A-Z])(?:\s*(?:[,&+]|\bet\b)?\s*(?:\d+[a-z]?|[A-Z])\b)*)\s*$/i);
+    // Tous les bâtiments nommés : la ligne vaut aussi pour l'opération.
+    if(mm){ const hit=hitOf(mm[1]); if(hit.length) return [raw,hit.length===blocks.length?[common,...hit.map(b=>b.items)]:hit.map(b=>b.items)]; }
+    return [raw,[common]]; };
   // « Mur extérieur ITI : » puis les isolants en dessous : le côté du sous-titre vaut pour ses lignes (colonnes ITI / ITE).
   { let side=''; sec.wall=(sec.wall||[]).map(raw=>{ if(/:\s*$/.test(raw)&&!/^\s*[-–•*+]/.test(raw)){ side=wallInsulationSide(raw)||''; return raw; } return side&&!wallInsulationSide(raw)?`${raw} (${side.toUpperCase()})`:raw; }); }
-  for(const part of ['roof','wall','floor']) for(const raw0 of outer(sec[part])){ const [raw,dst]=sinks(raw0), put=(_,k,v)=>dst.forEach(a=>putAt(a,k,v)); const l=sf_clean(raw); if(!l) continue; const r=rval(l);
+  // Une ligne « + Doublage … » complète la ligne précédente : mêmes bâtiments.
+  for(const part of ['roof','wall','floor']){ let lastDst=null; for(const raw0 of outer(sec[part])){ const [raw,dst]=/^\s*\+/.test(raw0)&&lastDst?[raw0,lastDst]:sinks(raw0); lastDst=dst; const put=(_,k,v)=>dst.forEach(a=>putAt(a,k,v)); const l=sf_clean(raw); if(!l) continue; const r=rval(l);
     const mat=findFirstMatch(l,MATERIALS)||product(l);
     // Une ligne avec R n'est un isolant que si elle le dit (matériau reconnu ou mot d'isolation) : « Brique … R=1,5 » est la structure.
     if(r!==null&&(mat||/isol|doublage|laine|ouate|polystyr|polyur|sous\s+chape|fibre|flocage/i.test(l))){ const side=part==='wall'?wallInsulationSide(l):null; const pre=part==='wall'&&side?`wall_${side}`:part; const keys=side?[`${pre}_insulation`,`${pre}_thickness`,`${pre}_r`]:[`${pre}_insulation`,`${pre}_insulation_thickness`,`${pre}_insulation_r`];
@@ -9374,7 +9402,8 @@ function salesforceEvaluationToPaste(text){
       // remplit aussi la colonne générale (la première ligne décrite la porte).
       const vals=[mat,thick(l),r], put3=ks=>dst.forEach(a=>{ if(!ks.some(k=>a.some(x=>x.key===k))) ks.forEach((k,j)=>putAt(a,k,vals[j])); });
       put3(keys); if(side) put3(['wall_insulation','wall_insulation_thickness','wall_insulation_r']); }
-    else { const st=findFirstMatch(l,STRUCTURES); if(st) put(common,`${part}_structure`,st); } }
+    else { // v2.18.1 — « MUR / EXT … : Beton » : un mur en béton seul, comme « mur béton » (béton armé).
+      const st=findFirstMatch(l,STRUCTURES)||(part==='wall'&&/^b[ée]ton$/i.test(l.slice(l.lastIndexOf(':')+1).trim())?'Béton armé':null); if(st) put(common,`${part}_structure`,st); } } }
   for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
     put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }
   const joined=k=>{ const out=[]; for(const raw of sec[k]||[]){ if(/^\s*(?:[ée]metteurs?|radiateurs?|r[ée]gulation)\b/i.test(raw)) break; if(/:\s*$/.test(raw)&&!/^\s*[*•+]/.test(raw)) continue; if(out.length&&/radiateurs?\b|s[eè]che[- ]serviettes?|[ée]metteurs?|plancher\s+chauffant|convecteurs?/i.test(raw)) continue; const x=sf_clean(raw).replace(/^(?:ecs|chauffage|ventilation)\s*:\s*/i,'').replace(/\s*[-–]?\s*\b[\wÀ-ÿ]{1,6}\s*=\s*(?=&|$)/g,'').replace(/\s*[,;:&]\s*$/,''); if(x&&!/^(?:ras|nc|so|aucun\w*)$/i.test(x)) out.push(x); } return out.slice(0,3).join(' + '); };
