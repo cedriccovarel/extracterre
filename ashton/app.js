@@ -1,5 +1,5 @@
 import {dist,pathLength,polygonArea,centroid,scaleFromCalibration,paperRatio,parseLength,fmt,ortho,extractGeometry,SnapIndex,
-  parseLabelText,isDwelling,summarize,DEFAULT_ELEMENTS,autoZone,roomsInLasso,ringsOf,holesOf,areaOf,correspondence,CHECKS,evaluateCheck} from './measure.js?v=0.7.0';
+  parseLabelText,isDwelling,summarize,DEFAULT_ELEMENTS,autoZone,roomsInLasso,ringsOf,holesOf,areaOf,correspondence,CHECKS,evaluateCheck} from './measure.js?v=0.7.1';
 
 const pdfjsLib=globalThis.pdfjsLib;
 const $=id=>document.getElementById(id);

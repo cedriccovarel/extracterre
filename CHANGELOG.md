@@ -1,3 +1,8 @@
+# v2.18.0 · Ashton v0.7.1 — plan plein écran en mode outil dédié
+- **Ashton** : ouvert depuis une ligne de la recherche, la barre « Nouvelles mesures » est masquée ; la grille de la page décalait
+  alors ses rangées et la barre d'état du bas occupait la moitié de l'écran. Chaque zone a désormais sa rangée fixe : le plan
+  prend toute la hauteur, la barre d'état est ramenée à 22 px.
+
 # v2.18.0 — « Plan » choisi à la main, outils Ashton dédiés aux lignes de la recherche Sécurité
 - **Liste des pièces** : nouveau choix **📐 Plan** dans le menu de chaque PDF. Le document n'est ni lu ni analysé (aucune donnée
   extraite) ; le bouton Ashton apparaît tout de suite, même avant « Analyser ». La ligne indique « non analysé (plan à mesurer

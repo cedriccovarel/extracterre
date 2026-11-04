@@ -2172,7 +2172,7 @@ async function searchAiGrid(desc,wrap){
 const KUTCH_ICON='<svg class="kutch-ico" viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M1 9h22v6H1z"/><path d="M1 12.5h22" stroke-width="1"/><path d="M4 9v1.8M7 9v1M10 9v1.8M13 9v1M16 9v1.8M19 9v1"/></g></svg>';
 let ashtonFrame=null;
 // v2.18.0 — check : ouverture depuis une ligne de l'onglet Recherches ; Ashton n'offre alors que l'outil de ce critère et renvoie Oui / Non.
-const ASHTON_VERSION='0.7.0';
+const ASHTON_VERSION='0.7.1';
 function openAshton(docId,check=null){
   const p=activeProject(), d=(p.docs||[]).find(x=>x.id===docId); if(!d?.file) return toast('Redéposez ce plan pour l’ouvrir dans Ashton.','warn');
   const dlg=document.createElement('dialog'); dlg.className='ashton-dialog';
