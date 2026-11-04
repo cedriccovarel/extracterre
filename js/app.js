@@ -17,7 +17,7 @@ import {canonicalBuilding} from './buildings.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
-import {normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject} from './recherches.js';
+import {normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
@@ -38,6 +38,7 @@ const FAMILY_CHOICES=Object.freeze([
   ['cctp','CCTP'],
   ['dpgf','DPGF'],
   ['dpe','DPE / 3CL'],
+  ['plan','📐 Plan — non analysé, ouvert dans Ashton'],
   ['annex','🛠 Moteur libre — sans liste blanche']
 ]);
 function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
@@ -65,7 +66,8 @@ function familySelectHtml(d){
   const detected=d.classification?autoFamiliesForType(d.classification.automaticType||d.classification.type):null;
   const current=d.familyMode==='manual'&&Array.isArray(d.families)?d.families.join('+'):'auto';
   const autoLabel=detected?`Auto · ${familiesLabel(d.read?.re2020?['rset','carbone']:resolveDocumentFamilies(d))}`:'Auto (détection à la lecture)';
-  return `<select class="family-select" data-id="${d.id}" title="Famille documentaire : pilote les parseurs et la liste blanche de champs">${[['auto',autoLabel],...FAMILY_CHOICES].map(([v,l])=>`<option value="${v}" ${v===current?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
+  const choices=/\.pdf$/i.test(d.name||'')?FAMILY_CHOICES:FAMILY_CHOICES.filter(([v])=>v!=='plan');
+  return `<select class="family-select" data-id="${d.id}" title="Famille documentaire : pilote les parseurs et la liste blanche de champs ; « Plan » : non analysé, ouvert dans Ashton">${[['auto',autoLabel],...choices].map(([v,l])=>`<option value="${v}" ${v===current?'selected':''}>${escapeHtml(l)}</option>`).join('')}</select>`;
 }
 async function changeDocumentFamily(id,value){
   const d=state.docs.find(x=>x.id===id); if(!d) return;
@@ -74,6 +76,20 @@ async function changeDocumentFamily(id,value){
   d.specializedFamily=null;
   // Invalidation : les occurrences en cache venaient de l'ancienne famille.
   d.cachedOccurrences=null; d.analysisCachedAt=null;
+  // v2.18.0 — « Plan » : plus aucune donnée extraite de ce document, bouton Ashton dans la liste. Quitter « Plan » sur un
+  // document jamais lu (lu comme plan) le remet en attente : il sera lu et analysé au prochain « Analyser ».
+  const toPlan=value==='plan';
+  if(toPlan&&d.status!=='reading'||d.status==='ready'&&d.read?.plan){
+    // Un plan n'a pas besoin d'être lu : il est prêt tout de suite, sans analyse (même s'il n'a jamais été lu).
+    if(toPlan){ d.read={...(d.read||{kind:'pdf',pages:[],text:''}),plan:d.read?.plan||{format:'choisi manuellement'}}; d.status='ready'; d.error=null; d.classification=classifyForSelectedFamily(d); d.type=d.classification.type; d.cachedOccurrences=[]; d.analysisCachedAt=Date.now(); }
+    else if(!d.read.pages?.length){ d.status='pending'; d.read=null; d.classification=null; d.type='En attente'; d.buildings=null; }
+    else { const {plan,...rest}=d.read; d.read=rest; }
+    if(toPlan||d.status==='pending'){ await checkpointDocument(activeProject(),d).catch(()=>{});
+      learn('family_change',{docId:d.id,fileName:d.name,familyMode:d.familyMode,families:d.families||[],detectedType:d.classification?.automaticType||''},activeProject());
+      if(state.result) recomputeProject(toPlan?`${d.name} : plan, non analysé — ouvrez-le dans Ashton.`:`${d.name} : remis en attente, cliquez sur Analyser pour le lire.`);
+      else { renderAll(); toast(toPlan?`${d.name} : plan, non analysé.`:`${d.name} : à analyser.`,'success'); }
+      return; }
+  }
   if(d.status==='ready'&&d.read?.text){
     try{
       d.classification=classifyForSelectedFamily(d); d.type=d.classification.type; d.buildings=detectBuildings(d);
@@ -551,7 +567,7 @@ function renderFiles(){
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
     const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Moteur libre</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020&&!plan?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
     const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
-    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?' · analysé':''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions">${isPlanDoc(d)?`<button class="btn light ashton-file" data-id="${d.id}" ${d.file?'':'disabled'} title="${d.file?'Mesurer ce plan dans Ashton : longueurs, largeurs, surfaces et quantités, renvoyées dans l’onglet Plans':'Redéposez ce plan pour l’ouvrir dans Ashton'}">Ashton ${KUTCH_ICON}</button>`:''}<button class="btn light preview-file" ${plan?'hidden':''} data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
+    return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?(isPlanDoc(d)?' · non analysé (plan à mesurer dans Ashton)':' · analysé'):''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions">${isPlanDoc(d)?`<button class="btn light ashton-file" data-id="${d.id}" ${d.file?'':'disabled'} title="${d.file?'Mesurer ce plan dans Ashton : longueurs, largeurs, surfaces et quantités, renvoyées dans l’onglet Plans':'Redéposez ce plan pour l’ouvrir dans Ashton'}">Ashton ${KUTCH_ICON}</button>`:''}<button class="btn light preview-file" ${plan?'hidden':''} data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
   $$('.remove-file').forEach(b=>b.onclick=async()=>{
     // v2.3.7 — retirer un document ne supprime plus les données qu'il a déjà fournies : elles restent dans la consolidation.
@@ -1160,7 +1176,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
           }
         }
         d.processingLocation=d.processingLocation||'local';
-        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal,detectPlan:d.familyMode!=='manual'});
+        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal,detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&(d.families||[]).includes('plan')});
       })();
       const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
@@ -2155,18 +2171,29 @@ async function searchAiGrid(desc,wrap){
 // Kutch (règle d'architecte triangulaire) : pictogramme d'Ashton, placé après son nom.
 const KUTCH_ICON='<svg class="kutch-ico" viewBox="0 0 24 24" aria-hidden="true"><g transform="rotate(-30 12 12)" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M1 9h22v6H1z"/><path d="M1 12.5h22" stroke-width="1"/><path d="M4 9v1.8M7 9v1M10 9v1.8M13 9v1M16 9v1.8M19 9v1"/></g></svg>';
 let ashtonFrame=null;
-function openAshton(docId){
+// v2.18.0 — check : ouverture depuis une ligne de l'onglet Recherches ; Ashton n'offre alors que l'outil de ce critère et renvoie Oui / Non.
+const ASHTON_VERSION='0.7.0';
+function openAshton(docId,check=null){
   const p=activeProject(), d=(p.docs||[]).find(x=>x.id===docId); if(!d?.file) return toast('Redéposez ce plan pour l’ouvrir dans Ashton.','warn');
   const dlg=document.createElement('dialog'); dlg.className='ashton-dialog';
-  dlg.innerHTML=`<div class="ashton-head"><b>Ashton ${KUTCH_ICON}</b><span>${escapeHtml(d.name)}</span><button type="button" class="btn light" data-mt="close">Fermer</button></div><iframe title="Ashton — ${escapeHtml(d.name)}" src="ashton/index.html?embed=1&v=0.6.3"></iframe>`;
-  const frame=dlg.querySelector('iframe'); ashtonFrame={dlg,frame,docId,projectId:p.id,received:false};
-  const close=()=>{ const got=ashtonFrame?.received; dlg.close(); dlg.remove(); ashtonFrame=null; if(got){ activeProject().resultView='plans'; state.resultWorkspaceMode='detail'; switchTab('summary'); setHomeMode(false); renderAll(); } };
+  dlg.innerHTML=`<div class="ashton-head"><b>Ashton ${KUTCH_ICON}</b><span>${escapeHtml(check?`${check.label} · ${d.name}`:d.name)}</span><button type="button" class="btn light" data-mt="close">Fermer</button></div><iframe title="Ashton — ${escapeHtml(d.name)}" src="ashton/index.html?embed=1${check?`&check=${encodeURIComponent(check.id)}`:''}&v=${ASHTON_VERSION}"></iframe>`;
+  const frame=dlg.querySelector('iframe'); ashtonFrame={dlg,frame,docId,projectId:p.id,received:false,check};
+  const close=()=>{ const got=ashtonFrame?.received, chk=ashtonFrame?.check; dlg.close(); dlg.remove(); ashtonFrame=null;
+    if(got&&chk){ activeProject().resultView='searches'; renderAll(); return; }
+    if(got){ activeProject().resultView='plans'; state.resultWorkspaceMode='detail'; switchTab('summary'); setHomeMode(false); renderAll(); } };
   dlg.querySelector('[data-mt="close"]').onclick=close; dlg.addEventListener('cancel',e=>{ e.preventDefault(); close(); });
   document.body.append(dlg); dlg.showModal();
 }
 window.addEventListener('message',e=>{ const mt=ashtonFrame; if(!mt||e.origin!==location.origin||e.source!==mt.frame.contentWindow) return; const m=e.data||{};
   const p=state.projects.find(x=>x.id===mt.projectId), d=p?.docs?.find(x=>x.id===mt.docId);
-  if(m.type==='ashton:ready'&&d?.file) mt.frame.contentWindow.postMessage({type:'ashton:open',file:d.file,docId:d.id,quantities:PLAN_QUANTITY_FIELDS.map(f=>({key:f.key,label:f.label}))},location.origin);
+  if(m.type==='ashton:ready'&&d?.file) mt.frame.contentWindow.postMessage({type:'ashton:open',file:d.file,docId:d.id,quantities:PLAN_QUANTITY_FIELDS.map(f=>({key:f.key,label:f.label})),...(mt.check?{check:mt.check}:{})},location.origin);
+  // Réponse d'un outil dédié : seul le critère ouvert depuis l'onglet Recherches est accepté.
+  if(m.type==='ashton:check'&&p&&mt.check&&m.criterion===mt.check.id&&['Oui','Non'].includes(m.verdict)){
+    p.planChecks={...(p.planChecks||{}),[m.criterion]:{verdict:m.verdict,detail:String(m.detail||'').slice(0,400),comment:String(m.comment||'').slice(0,400),proposal:['Oui','Non'].includes(m.proposal)?m.proposal:'',
+      docId:mt.docId,docName:d?.name||m.docName||'Plan',page:Number(m.page)||'',sentAt:Date.now()}};
+    mt.received=true; scheduleWorkspaceCheckpoint('vérification Ashton',80);
+    learn('ashton_check',{criterion:m.criterion,verdict:m.verdict,proposal:m.proposal||''},p);
+    toast(`${mt.check.label} : ${m.verdict==='Oui'?'conforme':'non conforme'} (Ashton).`,'success'); }
   if(m.type==='ashton:table'&&p&&m.docId===mt.docId){ const prev=(p.planTables||{})[m.docId]||{};
     p.planTables={...(p.planTables||{}),[m.docId]:{docName:m.docName||d?.name||'Plan',rows:Array.isArray(m.rows)?m.rows:[],uncalibratedPages:m.uncalibratedPages||[],sentAt:m.sentAt||Date.now(),building:prev.building||defaultPlanBuilding(d),refs:prev.refs||{}}};
     mt.received=true; recomputePlans(p,`Plan « ${m.docName||'plan'} » : ${(m.rows||[]).length} ligne(s) reçue(s) de Ashton.`); } });
@@ -2196,16 +2223,27 @@ function renderPlans(wrap=$('#summaryView')){
   wrap.querySelectorAll('[data-plan-ref]').forEach(inp=>inp.onchange=()=>{ const t=p.planTables[inp.dataset.planRef]; t.refs={...(t.refs||{}),[inp.dataset.key]:inp.value.trim()}; recomputePlans(p,''); });
   wrap.querySelectorAll('[data-plan-drop]').forEach(b=>b.onclick=()=>{ const t={...p.planTables}; delete t[b.dataset.planDrop]; p.planTables=t; recomputePlans(p,'Tableau du plan retiré.'); });
 }
+// v2.18.0 — bouton Ashton des lignes vérifiables sur plan ; plusieurs plans : choix du plan avant l'ouverture.
+function ashtonCheckButtons(p,c){ const plans=(p.docs||[]).filter(d=>isPlanDoc(d)&&d.file), done=(p.planChecks||{})[c.id];
+  const title=plans.length?`Vérifier sur le plan dans Ashton (outil « ${ASHTON_CHECKS[c.id]} » seulement)`:'Aucun plan disponible : dans la liste des pièces, choisissez « Plan » pour le document (ou redéposez-le)';
+  return `<span class="srch-ashton"><button type="button" class="btn light" data-srch-ashton="${c.id}" ${plans.length?'':'disabled'} title="${escapeHtml(title)}">${done?(done.verdict==='Oui'?'✓ ':'✗ '):''}Ashton ${KUTCH_ICON}</button>${done?`<button type="button" class="btn light danger srch-ashton-clear" data-srch-ashton-clear="${c.id}" title="Retirer la réponse d’Ashton (${escapeHtml(new Date(done.sentAt).toLocaleString('fr-FR'))})" aria-label="Retirer la réponse d’Ashton">×</button>`:''}</span>`; }
+function openAshtonCheck(id,g){ const p=activeProject(), c=g.criteria.find(x=>x.id===id); if(!c||!hasAshtonCheck(id)) return;
+  const plans=(p.docs||[]).filter(d=>isPlanDoc(d)&&d.file), check={id,label:c.label,tool:ASHTON_CHECKS[id]};
+  if(!plans.length) return toast('Aucun plan disponible : choisissez « Plan » pour le document dans la liste des pièces.','warn');
+  if(plans.length===1) return openAshton(plans[0].id,check);
+  const prev=(p.planChecks||{})[id]?.docId, dlg=document.createElement('dialog'); dlg.className='ashton-pick';
+  dlg.innerHTML=`<form method="dialog"><h3>${escapeHtml(c.label)}</h3><p class="srch-desc">Sur quel plan vérifier ce point ?</p>${plans.map(d=>`<button class="btn ${d.id===prev?'primary':'light'}" value="${d.id}">${escapeHtml(d.name)}</button>`).join('')}<button class="btn light" value="">Annuler</button></form>`;
+  dlg.addEventListener('close',()=>{ const v=dlg.returnValue; dlg.remove(); if(v) openAshton(v,check); }); document.body.append(dlg); dlg.showModal(); }
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
-  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables);
+  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables,p.planChecks);
   const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
     const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
     ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
       return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
       ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.slice(0,80).map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
-      <select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></div>`; }).join('')}</section>`; };
+      <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>
     <button type="button" class="btn ${searchUi.editing?'primary':'secondary'}" data-srch="edit">${searchUi.editing?'Fermer le paramétrage':'⚙ Paramétrer'}</button><button type="button" class="btn light" data-srch="new">+ Nouvelle</button><button type="button" class="btn light" data-srch="dup">Dupliquer</button>
@@ -2217,6 +2255,8 @@ function renderSearches(wrap=$('#summaryView')){
   <small class="llm-hint">Chaque résultat cite le document, la page et la ligne. Les indices relevés ne valent pas conformité : vérifiez les citations ; « Auto » peut être remplacé par votre décision.</small>`;
   $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
   $('#srchGrid').onchange=e=>{ setActiveGrid(e.target.value); renderSearches(wrap); };
+  wrap.querySelectorAll('[data-srch-ashton]').forEach(b=>b.onclick=()=>openAshtonCheck(b.dataset.srchAshton,g));
+  wrap.querySelectorAll('[data-srch-ashton-clear]').forEach(b=>b.onclick=()=>{ const id=b.dataset.srchAshtonClear; const c={...(p.planChecks||{})}; delete c[id]; p.planChecks=c; renderSearches(wrap); scheduleWorkspaceCheckpoint('vérification Ashton retirée'); });
   wrap.querySelectorAll('[data-srch-ov]').forEach(sel=>sel.onchange=()=>{ p.searchOverrides=p.searchOverrides||{}; const o=p.searchOverrides[g.id]=p.searchOverrides[g.id]||{}; if(sel.value) o[sel.dataset.srchOv]=sel.value; else delete o[sel.dataset.srchOv]; renderSearches(wrap); scheduleWorkspaceCheckpoint('décision recherche'); });
   const act={edit:()=>{ searchUi.editing=!searchUi.editing; },
     new:()=>{ storeGrid({id:`g${Date.now().toString(36)}`,name:'Nouvelle recherche',themes:[{name:'Critères',min:1}],criteria:[{theme:'Critères',label:'Nouveau critère',keywords:[]}]}); searchUi.editing=true; },
@@ -2240,10 +2280,10 @@ function sessionSnapshot({details=true}={}){
   return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
     operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
-        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
+        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
-        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
 }
 function exportSessionJson(){
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
@@ -2260,7 +2300,7 @@ async function importSessionJson(file){
   if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
   const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
   const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
-    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},favorite:!!op.favorite,searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
+    return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},planChecks:op.planChecks||{},favorite:!!op.favorite,searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
       docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
       retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
   for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }

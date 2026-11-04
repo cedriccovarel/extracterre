@@ -1,3 +1,19 @@
+# v2.18.0 — « Plan » choisi à la main, outils Ashton dédiés aux lignes de la recherche Sécurité
+- **Liste des pièces** : nouveau choix **📐 Plan** dans le menu de chaque PDF. Le document n'est ni lu ni analysé (aucune donnée
+  extraite) ; le bouton Ashton apparaît tout de suite, même avant « Analyser ». La ligne indique « non analysé (plan à mesurer
+  dans Ashton) ». Revenir à une autre famille remet un plan jamais lu en attente : il sera lu au prochain « Analyser ».
+- **Onglet Recherches** : bouton **Ashton** sur 7 lignes — accès observables depuis un logement (≥ 60 %), pas de communication
+  entre bâtiments, renfoncements ≤ 1,20 m, cheminements ≥ 1,40 m, locaux aveugles non surveillés, hall non traversant, hall vitré.
+  Plusieurs plans dans le projet : choix du plan avant l'ouverture. Aucun plan : bouton grisé (choisir « Plan » pour la pièce).
+- **Ashton v0.7.0 — outil de vérification dédié** : ouvert depuis une ligne, Ashton n'offre que l'outil de ce point (comptage
+  « observable / non observable », « communication », « local aveugle surveillé / non surveillé », « accès hall », profondeur de
+  renfoncement, largeur de cheminement, surface du hall + menuiseries), plus Main, Flèche et Étalonner si des mètres sont
+  nécessaires. Le panneau propose un verdict calculé sur les mesures ; l'évaluateur choisit Conforme / Non conforme, ajoute un
+  commentaire et envoie la réponse. Les mesures de chaque outil sont gardées à part ; l'étalonnage déjà fait sur le plan est repris.
+- La réponse d'Ashton fait foi sur la ligne (citation « Ashton (outil dédié) », date, commentaire), sauf décision manuelle Oui /
+  Non / Sans objet ; « × » la retire. Hall vitré : le 44.2 reste cherché dans les documents. Réponses sauvegardées avec le projet
+  (session, export JSON).
+
 # v2.17.0 — tri des tuiles, recherche Sécurité plus précise (Ashton), valeurs étranges surlignées
 - **Ashton v0.6.1–0.6.3** : boutons « Hall » et « Menuis. hall » dans la barre d’outils (outil + élément choisis d’un clic) ; Ashton intégré ouvert avec son numéro de version (plus d’ancienne version en cache) ; la barre d’outils de gauche défile quand la fenêtre est trop basse ; measure.js versionné, pour qu’un ancien fichier en cache ne masque plus les éléments « Hall » et « Menuiserie hall ».
 - **Tuiles d'accueil** : tri par remplissage décroissant / croissant et par ordre alphabétique (nom de l'opération, sinon

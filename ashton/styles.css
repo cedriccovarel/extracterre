@@ -177,3 +177,17 @@ body:not(.embed) .embed-only,body.embed .standalone-only{display:none!important}
 .corr-row input,.corr-row select{padding:5px 7px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:12px;color:var(--ink)}
 .side-actions{display:grid;gap:8px}
 .kutch-ico{width:1.15em;height:1.15em;vertical-align:-.2em}
+/* v0.7.0 — outil de vérification dédié (ouvert depuis l'onglet Recherches d'ExtracTerre) */
+body.check-mode .rail .tool[data-tool]:not([data-tool=pan]):not([data-tool=edit]):not([data-tool=cal]),
+body.check-mode .rail [data-preset],body.check-mode #ctx,body.check-mode #tableBtn,body.check-mode #corr,
+body.check-mode .side-actions,body.check-noscale .rail [data-tool=cal],body.check-noscale #scaleBox{display:none!important}
+.check{padding:12px 16px;border-bottom:1px solid var(--line);background:#f4faf6;display:flex;flex-direction:column;gap:8px}
+.check h2{margin:0;font-size:15px;color:var(--forest)}
+.check p{margin:0}.check .small{font-size:12px}
+.check-rule{font-weight:600}
+.check-result{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;background:#fff;border:1px solid var(--line)}
+.check-result.ok{border-color:#2b8a3e;background:#ebfbee}.check-result.ko{border-color:#c92a2a;background:#fff5f5}
+.check-result span{font-size:12px}
+.check .warn{color:#8a5a00}
+.check .field{display:flex;flex-direction:column;gap:4px;font-size:12px}
+.check-tool span{font-size:10px;line-height:1.1}

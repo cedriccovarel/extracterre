@@ -1785,6 +1785,8 @@ export const DOCUMENT_FAMILIES=Object.freeze({
   dpgf:{label:'DPGF',short:'DPGF',type:DOC_TYPES.DPGF},
   dpe:{label:'DPE / 3CL',short:'DPE',type:DOC_TYPES.DPE},
   financier:{label:'Questionnaire financier Prestaterre',short:'Financier',type:DOC_TYPES.FINANCIAL},
+  // v2.18.0 — choix manuel « Plan » : document non lu ni analysé, ouvert directement dans Ashton.
+  plan:{label:'Plan — mesuré dans Ashton, non analysé',short:'Plan',type:DOC_TYPES.PLAN},
   annex:{label:'Moteur libre — sans liste blanche',short:'Libre',type:null}
 });
 export const LEGACY_FAMILY_ALIASES=Object.freeze({rsenv:'carbone',acv:'carbone','3cl':'dpe',manual:'annex',libre:'annex'});

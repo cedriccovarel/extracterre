@@ -1307,3 +1307,9 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 
 /* v2.16.4 — valeur étrange (Tic très faible, DH extrême, Cep démesuré, fioul après travaux) : à vérifier. */
 .summary-value.odd,.project-static-table td.odd,.rv-value.odd{background:#fff3a3;box-shadow:inset 0 0 0 1px #e0c341}
+/* v2.18.0 — bouton Ashton (outil dédié) à côté de la décision, sur les lignes vérifiables sur plan */
+.srch-side{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.srch-ashton{display:inline-flex;gap:4px;align-items:center}
+.srch-ashton .btn{padding:4px 10px;font-size:.8rem;min-height:0}
+.srch-ashton .srch-ashton-clear{padding:4px 8px}
+.ashton-pick form{display:flex;flex-direction:column;gap:8px;min-width:320px}

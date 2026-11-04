@@ -49,7 +49,7 @@ export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   // v2.6.0 — recherches personnalisées : une feuille par grille ayant au moins un résultat, puis les citations.
   const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
   for(const grid of grids||[]){
-    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables)}));
+    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables,x.p.planChecks)}));
     if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
     const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
     const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];

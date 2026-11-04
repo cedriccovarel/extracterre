@@ -302,3 +302,57 @@ function simplify(ring,tol){ if(ring.length<4) return ring;
   return [...dp(ring.slice(0,far+1)).slice(0,-1),...dp([...ring.slice(far),ring[0]]).slice(0,-1)]; }
 function dedupe(r){ return r.filter((p,i)=>{ const q=r[(i+r.length-1)%r.length]; return Math.hypot(p.x-q.x,p.y-q.y)>1e-6; }); }
 export const _zoneInternals={contours,simplify,dilate,erode,fillHoles};
+
+// v0.7.0 — outils de vérification dédiés, ouverts depuis l'onglet Recherches d'ExtracTerre (?embed&check=<critère>).
+// Chaque outil ne propose que ses éléments ; le verdict proposé se calcule sur les mesures, l'évaluateur confirme ou corrige.
+export const CHECK_ACCESS='Accès hall', HALL_GLAZING_HEIGHT=2.2;
+export const CHECKS=Object.freeze({
+  abords_observables:{title:'Accès observables depuis un logement',rule:'Au moins 60 % des accès (piétons et véhicules) observables depuis un logement.',
+    tools:[{label:'Accès observable',tool:'count',cat:'Accès observable',color:'#2b8a3e'},{label:'Accès non observable',tool:'count',cat:'Accès non observable',color:'#c92a2a'}],
+    hint:'Un clic sur chaque accès : « observable » s’il est visible depuis au moins un logement, « non observable » sinon.'},
+  abords_separation:{title:'Communications entre bâtiments',rule:'Pas de communication entre bâtiments.',
+    tools:[{label:'Communication',tool:'count',cat:'Communication entre bâtiments',color:'#c92a2a'}],
+    hint:'Un clic sur chaque passage reliant deux bâtiments. Aucun passage : répondez « Conforme ».'},
+  abords_renfoncement:{title:'Profondeur des renfoncements',rule:'Renfoncements de 1,20 m de profondeur au maximum.',needsScale:true,
+    tools:[{label:'Profondeur',tool:'len',cat:'Renfoncement',role:'longueur',color:'#d9480f'}],
+    hint:'Tracez la profondeur de chaque renfoncement (du nu de la façade au fond). Aucun renfoncement : répondez « Conforme ».'},
+  abords_cheminement:{title:'Largeur des cheminements',rule:'Cheminements d’au moins 1,40 m de large.',needsScale:true,
+    tools:[{label:'Largeur',tool:'len',cat:'Cheminement',role:'largeur',color:'#d9480f'}],
+    hint:'Tracez la largeur de chaque cheminement, à son point le plus étroit.'},
+  abords_aveugles:{title:'Locaux aveugles',rule:'Absence de locaux aveugles non surveillés.',
+    tools:[{label:'Local aveugle surveillé',tool:'count',cat:'Local aveugle surveillé',color:'#2b8a3e'},{label:'Local aveugle non surveillé',tool:'count',cat:'Local aveugle non surveillé',color:'#c92a2a'}],
+    hint:'Un clic sur chaque local aveugle (sans vue sur l’extérieur), selon qu’il est surveillé ou non. Aucun local aveugle : répondez « Conforme ».'},
+  hall_traversant:{title:'Accès du hall',rule:'Hall non traversant : un seul point d’entrée et de sortie.',
+    tools:[{label:'Accès hall',tool:'count',cat:CHECK_ACCESS,color:'#1971c2'}],
+    hint:'Un clic sur chaque accès du hall (porte sur l’extérieur ou sur une autre circulation).'},
+  hall_vitrage:{title:'Vitrage du hall',rule:'Hall vitré : menuiseries × 2,20 m ≥ 30 % de la surface au sol du hall (le 44.2 est cherché dans les documents).',needsScale:true,
+    tools:[{label:'Surface du hall',tool:'area',cat:'Hall',color:'#2b8a3e'},{label:'Menuiserie hall',tool:'len',cat:'Menuiserie hall',role:'largeur',color:'#d9480f'}],
+    hint:'Tracez la surface du hall, puis la largeur de chaque menuiserie vitrée du hall.'}
+});
+const ck_fr=(v,d=2)=>v.toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const ck_pl=(n,a,b)=>`${n} ${n>1?b:a}`;
+// meas : mesures Ashton ; kOf(page) : mètres par point PDF (null si page non étalonnée).
+// → {proposal:'Oui'|'Non'|'', detail, page, uncalibrated} — proposition vide : rien de mesuré, à trancher par l'évaluateur.
+export function evaluateCheck(id,meas,kOf){
+  const def=CHECKS[id]; if(!def) return null;
+  const of=cat=>(meas||[]).filter(m=>m.cat===cat), count=cat=>of(cat).reduce((s,m)=>s+(m.type==='count'?m.pts.length:0),0);
+  const lens=cat=>{ const out=[]; let unc=0; for(const m of of(cat)){ if(m.type!=='len') continue; const k=kOf(m.page); if(!k){ unc++; continue; } out.push(pathLength(m.pts)*k); } return {v:out,unc}; };
+  const areas=cat=>{ const out=[]; let unc=0; for(const m of of(cat)){ if(m.type!=='area') continue; const k=kOf(m.page); if(!k){ unc++; continue; } out.push(areaOf(m)*k*k); } return {v:out,unc}; };
+  const pageOf=cats=>(meas||[]).find(m=>cats.includes(m.cat))?.page||'';
+  const cats=def.tools.map(t=>t.cat), page=pageOf(cats); let r;
+  if(id==='abords_observables'){ const y=count(cats[0]), n=count(cats[1]), t=y+n;
+    r=!t?{proposal:'',detail:'aucun accès repéré'}:{proposal:y/t>=0.6?'Oui':'Non',detail:`${y} accès observable${y>1?'s':''} sur ${t} (${Math.round(y/t*100)} %, seuil 60 %)`}; }
+  else if(id==='abords_separation'){ const n=count(cats[0]); r=n?{proposal:'Non',detail:`${ck_pl(n,'communication','communications')} entre bâtiments repérée${n>1?'s':''}`}:{proposal:'',detail:'aucune communication entre bâtiments repérée sur le plan'}; }
+  else if(id==='abords_aveugles'){ const s=count(cats[0]), n=count(cats[1]);
+    r=n?{proposal:'Non',detail:`${ck_pl(n,'local aveugle non surveillé','locaux aveugles non surveillés')}${s?`, ${s} surveillé${s>1?'s':''}`:''}`}:s?{proposal:'Oui',detail:`${ck_pl(s,'local aveugle','locaux aveugles')}, tous surveillés`}:{proposal:'',detail:'aucun local aveugle repéré sur le plan'}; }
+  else if(id==='abords_renfoncement'){ const {v,unc}=lens(cats[0]), mx=v.length?Math.max(...v):null;
+    r=mx===null?{proposal:'',detail:'aucun renfoncement mesuré',unc}:{proposal:mx<=1.2+1e-9?'Oui':'Non',detail:`${ck_pl(v.length,'renfoncement mesuré','renfoncements mesurés')}, profondeur max ${ck_fr(mx)} m (max 1,20 m)`,unc}; }
+  else if(id==='abords_cheminement'){ const {v,unc}=lens(cats[0]), mn=v.length?Math.min(...v):null;
+    r=mn===null?{proposal:'',detail:'aucune largeur mesurée',unc}:{proposal:mn>=1.4-1e-9?'Oui':'Non',detail:`${ck_pl(v.length,'largeur mesurée','largeurs mesurées')}, minimum ${ck_fr(mn)} m (min 1,40 m)`,unc}; }
+  else if(id==='hall_traversant'){ const n=count(cats[0]); r=!n?{proposal:'',detail:'aucun accès du hall compté'}:{proposal:n===1?'Oui':'Non',detail:`${ck_pl(n,'accès','accès')} au hall compté${n>1?'s':''} → ${n===1?'hall non traversant':'hall traversant'}`}; }
+  else if(id==='hall_vitrage'){ const a=areas(cats[0]), w=lens(cats[1]), A=a.v.reduce((s,x)=>s+x,0), W=w.v.reduce((s,x)=>s+x,0), unc=a.unc+w.unc;
+    if(!(A>0)||!(W>0)) r={proposal:'',detail:!(A>0)?'surface du hall non mesurée':'menuiseries du hall non mesurées',unc};
+    else { const ratio=W*HALL_GLAZING_HEIGHT/A; r={proposal:ratio>=0.3?'Oui':'Non',detail:`menuiseries ${ck_fr(W)} m × ${ck_fr(HALL_GLAZING_HEIGHT)} m = ${ck_fr(W*HALL_GLAZING_HEIGHT)} m² pour un hall de ${ck_fr(A)} m² → ${Math.round(ratio*100)} % (min 30 %)`,unc}; } }
+  if(r.unc) r.detail+=` · ${ck_pl(r.unc,'mesure ignorée','mesures ignorées')} (page non étalonnée)`;
+  return {proposal:r.proposal,detail:r.detail,page,uncalibrated:r.unc||0};
+}

@@ -1,5 +1,5 @@
 import {dist,pathLength,polygonArea,centroid,scaleFromCalibration,paperRatio,parseLength,fmt,ortho,extractGeometry,SnapIndex,
-  parseLabelText,isDwelling,summarize,DEFAULT_ELEMENTS,autoZone,roomsInLasso,ringsOf,holesOf,areaOf,correspondence} from './measure.js?v=0.6.3';
+  parseLabelText,isDwelling,summarize,DEFAULT_ELEMENTS,autoZone,roomsInLasso,ringsOf,holesOf,areaOf,correspondence,CHECKS,evaluateCheck} from './measure.js?v=0.7.0';
 
 const pdfjsLib=globalThis.pdfjsLib;
 const $=id=>document.getElementById(id);
@@ -30,6 +30,11 @@ globalThis.Ashton=S; // accès console pour le diagnostic de la bêta
 const EMBED=new URLSearchParams(location.search).has('embed')&&window.parent!==window;
 const XT={docId:'',quantities:[]};
 if(EMBED) document.body.classList.add('embed');
+// v0.7.0 — ouvert depuis une ligne de l'onglet Recherches d'ExtracTerre : seul l'outil de ce critère est disponible, ses mesures
+// sont gardées à part (clé propre au critère) et la réponse Oui / Non repart vers ExtracTerre.
+const CHECK_ID=EMBED?new URLSearchParams(location.search).get('check')||'':'', CHECK=CHECKS[CHECK_ID]||null;
+if(CHECK){ document.body.classList.add('check-mode'); if(!CHECK.needsScale) document.body.classList.add('check-noscale'); }
+const checkColor=cat=>CHECK?.tools.find(t=>t.cat===cat)?.color||null;
 
 if(!pdfjsLib) document.addEventListener('DOMContentLoaded',()=>toast('PDF.js n’a pas pu être chargé. Vérifiez la connexion puis rechargez la page.','error'));
 else pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -45,7 +50,9 @@ async function openFile(file){
   busy(`Ouverture de « ${file.name} »…`);
   try{
     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-    S.pdf?.destroy(); Object.assign(S,{pdf,name:file.name,key:`ashton:${file.name}:${file.size}`,snaps:{},texts:{},draft:[],sel:null}); load();
+    S.pdf?.destroy(); Object.assign(S,{pdf,name:file.name,key:`ashton:${CHECK?`check:${CHECK_ID}:`:''}${file.name}:${file.size}`,snaps:{},texts:{},draft:[],sel:null}); load();
+    // Outil dédié : l'étalonnage déjà fait sur ce plan dans Ashton est repris.
+    if(CHECK&&!Object.keys(S.scales).length){ try{ const g=JSON.parse(localStorage.getItem(`ashton:${file.name}:${file.size}`)||'null'); if(g?.scales) S.scales=g.scales; }catch{} }
     $('docName').textContent=file.name; $('pageSel').innerHTML=Array.from({length:pdf.numPages},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
     $('pageCount').textContent=`sur ${pdf.numPages}`; $('pagesWrap').hidden=pdf.numPages<2; $('empty').hidden=true; $('tableBtn').disabled=false; view.classList.remove('no-doc');
     await showPage(1);
@@ -116,13 +123,15 @@ function pointFromEvent(e){ let p=toPage(e); S.snap=null;
   best=best||S.snaps[S.pageNum]?.query(p.x,p.y,rad)||null; S.snap=best; return best?{x:best.x,y:best.y}:p; }
 
 function addPoint(p){
+  // Outil dédié, comptage : chaque clic est enregistré tout de suite.
+  if(CHECK&&S.tool==='count'){ S.draft=[p]; return finish(); }
   if(S.tool==='area'&&S.draft.length>=3&&dist(p,S.draft[0])*S.zoom<=SNAP_PX) return finish();
   S.draft.push(p);
   if(S.tool==='cal'&&S.draft.length===2) openCal();
   draw();
 }
 function create(type,pts,extra={}){
-  const n=S.meas.filter(m=>m.type===type).length+1, c=S.ctx;
+  const c=S.ctx, n=S.meas.filter(m=>m.type===type&&(!CHECK||m.cat===c.cat)).length+1;
   const m={id:S.nextId++,type,page:S.pageNum,pts,name:extra.name||(c.cat?`${c.cat} ${n}`:`${ONE[type]} ${n}`),cat:c.cat,typo:c.typo,lot:c.lot,...(type==='len'?{role:c.role}:{}),...extra};
   S.meas.push(m); S.sel=m.id; save(); renderPanel(); draw(); return m; }
 
@@ -188,8 +197,30 @@ function finish(){
 // Boutons « Hall » et « Menuis. hall » : choisissent l’outil et l’élément attendus par la recherche Sécurité d’ExtracTerre.
 const PRESETS={hall:{cat:'Hall',tool:'area'},frame:{cat:'Menuiserie hall',role:'largeur',tool:'len'}};
 document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{ const p=PRESETS[b.dataset.preset]; S.ctx.cat=p.cat; if(p.role) S.ctx.role=p.role; syncCtx(); save(); setTool(p.tool); toast(`Élément « ${p.cat} » : tracez ${p.tool==='area'?'la surface du hall':'la largeur des menuiseries du hall'}.`); }));
-function setTool(t){ S.tool=t; S.draft=[]; S.rect=null; view.dataset.mode=t; document.querySelectorAll('.tool[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));
-  $('hint').textContent=HINTS[t]; $('ctxRole').hidden=t!=='len'; $('ctxGapWrap').hidden=t!=='zone'; draw(); }
+function setTool(t,checkTool=null){ S.tool=t; S.draft=[]; S.rect=null; S.checkTool=checkTool; view.dataset.mode=t; document.querySelectorAll('.tool[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(checkTool===null&&b.dataset.tool===t)));
+  document.querySelectorAll('[data-check-tool]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.checkTool===checkTool)));
+  $('hint').textContent=checkTool!==null?`${CHECK.tools[checkTool].label} : ${t==='count'?'un clic par élément (enregistré aussitôt).':HINTS[t]}`:HINTS[t]; $('ctxRole').hidden=t!=='len'; $('ctxGapWrap').hidden=t!=='zone'; draw(); }
+// Boutons de l'outil dédié : chacun fixe l'élément (et la cote) des mesures, puis l'outil de tracé.
+function pickCheckTool(i){ const t=CHECK?.tools[i]; if(!t) return; if(S.draft.length) finish(); S.ctx.cat=t.cat; S.ctx.role=t.role||''; S.ctx.lot=''; S.ctx.typo=''; syncCtx(); save(); setTool(t.tool,i); }
+function renderCheck(){ const box=$('check'); if(!box||!CHECK) return; const ev=evaluateCheck(CHECK_ID,S.meas,p=>S.scales[p]?.k||null);
+  const verdict=S.checkVerdict||ev.proposal, word=v=>v==='Oui'?'Conforme':v==='Non'?'Non conforme':'À trancher';
+  box.innerHTML=`<h2>${esc(CHECK.title)}</h2><p class="check-rule">${esc(CHECK.rule)}</p><p class="muted small">${esc(CHECK.hint)}</p>
+    <div class="check-result ${ev.proposal==='Oui'?'ok':ev.proposal==='Non'?'ko':''}"><b>Mesure : ${esc(word(ev.proposal))}</b><span>${esc(ev.detail)}</span></div>
+    <fieldset class="seg check-verdict"><legend>Réponse</legend>${['Oui','Non'].map(v=>`<label><input type="radio" name="checkVerdict" value="${v}"${verdict===v?' checked':''}><span>${word(v)}</span></label>`).join('')}</fieldset>
+    ${S.checkVerdict&&ev.proposal&&S.checkVerdict!==ev.proposal?'<p class="warn small">Votre réponse diffère de la mesure : précisez pourquoi dans le commentaire.</p>':''}
+    <label class="field">Commentaire <input id="checkComment" value="${esc(S.checkComment||'')}" autocomplete="off" placeholder="facultatif"></label>
+    <button class="btn primary" id="checkSend" type="button"${S.vp&&verdict?'':' disabled'}>Envoyer la réponse à ExtracTerre</button>${S.checkSent?`<p class="muted small">Réponse envoyée à ${new Date(S.checkSent).toLocaleTimeString('fr-FR')}. Vous pouvez la corriger et la renvoyer.</p>`:''}`; }
+if(CHECK){
+  document.querySelector('.rail hr').insertAdjacentHTML('beforebegin',CHECK.tools.map((t,i)=>`<button class="tool check-tool" type="button" data-check-tool="${i}" aria-pressed="false" title="${esc(t.label)} (${i+1})"><svg viewBox="0 0 24 24">${t.tool==='count'?`<circle cx="12" cy="12" r="6" style="fill:${t.color};stroke:${t.color}"/>`:t.tool==='area'?`<path d="M4 7 13 4l7 6-3 10H6z" style="fill:${t.color}33;stroke:${t.color}"/>`:`<path d="M4 18 20 6" style="stroke:${t.color}"/><path d="M4 14v8M20 2v8" style="stroke:${t.color}"/>`}</svg><span>${esc(t.label)}</span></button>`).join(''));
+  document.querySelectorAll('[data-check-tool]').forEach(b=>b.addEventListener('click',()=>pickCheckTool(+b.dataset.checkTool)));
+  document.querySelector('.side').insertAdjacentHTML('afterbegin','<section class="check" id="check" aria-label="Vérification"></section>');
+  $('check').addEventListener('change',e=>{ if(e.target.name==='checkVerdict'){ S.checkVerdict=e.target.value; renderCheck(); } if(e.target.id==='checkComment') S.checkComment=e.target.value; });
+  $('check').addEventListener('input',e=>{ if(e.target.id==='checkComment') S.checkComment=e.target.value; });
+  $('check').addEventListener('click',e=>{ if(e.target.id!=='checkSend') return; if(S.draft.length) finish();
+    const ev=evaluateCheck(CHECK_ID,S.meas,p=>S.scales[p]?.k||null), verdict=S.checkVerdict||ev.proposal; if(!verdict) return toast('Choisissez « Conforme » ou « Non conforme ».','error');
+    window.parent.postMessage({type:'ashton:check',criterion:CHECK_ID,verdict,proposal:ev.proposal,detail:ev.detail,comment:String(S.checkComment||'').trim(),page:ev.page,docId:XT.docId,docName:S.name,sentAt:Date.now()},location.origin);
+    S.checkSent=Date.now(); renderCheck(); toast('Réponse envoyée à ExtracTerre.'); });
+}
 // Maj + clic : ajoute ou retire de la sélection multiple ; clic simple : une seule mesure.
 function pick(m,toggle){
   if(toggle&&m){ if(S.sel&&!S.multi.size) S.multi.add(S.sel); S.multi.has(m.id)?S.multi.delete(m.id):S.multi.add(m.id); S.sel=S.multi.size===1?[...S.multi][0]:S.multi.size?m.id:null; if(S.multi.size===1) S.multi.clear(); }
@@ -233,7 +264,7 @@ $('calForm').addEventListener('submit',e=>{
   pref('unit',$('calUnit').value); S.scales[S.pageNum]={k:kk,meters,pts:[a,b]}; save(); toast(`Échelle appliquée : environ 1:${Math.round(paperRatio(kk))}.`,'success');
 });
 $('calCancel').addEventListener('click',()=>$('calDlg').close('cancel'));
-$('calDlg').addEventListener('close',()=>{ const ok=$('calDlg').returnValue==='ok'&&S.scales[S.pageNum]; S.draft=[]; if(ok) setTool('len'); renderPanel(); draw(); });
+$('calDlg').addEventListener('close',()=>{ const ok=$('calDlg').returnValue==='ok'&&S.scales[S.pageNum]; S.draft=[]; if(ok){ if(CHECK){ const i=CHECK.tools.findIndex(t=>t.tool!=='count'); i>=0?pickCheckTool(i):setTool('pan'); } else setTool('len'); } renderPanel(); draw(); });
 
 /* ---------- Étiquettes ---------- */
 function openLabel(at,parsed,info){
@@ -282,13 +313,15 @@ function tag(ctx,lines,x,y,color,anchor='center'){ ctx.font='600 12px "IBM Plex 
   ctx.fillStyle='#18201d'; ctx.textAlign='left'; ctx.textBaseline='middle'; lines.forEach((l,i)=>{ ctx.font=(i?'400':'600')+' 12px "IBM Plex Sans",sans-serif'; ctx.fillText(l,bx+6,by+3+7.5+i*15); });
   return {x:bx,y:by,w,h}; }
 function poly(ctx,pts,closed){ ctx.beginPath(); pts.forEach((p,i)=>{ const s=toScreen(p); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y); }); if(closed) ctx.closePath(); }
-function dots(ctx,pts,color,numbered){ pts.forEach((p,i)=>{ const s=toScreen(p); ctx.beginPath(); ctx.arc(s.x,s.y,numbered?8:3,0,7); ctx.fillStyle=color; ctx.fill();
-  if(numbered){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke(); ctx.fillStyle='#fff'; ctx.font='700 9px "IBM Plex Sans",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(i+1),s.x,s.y+.5); } }); }
+function dots(ctx,pts,color,numbered,start=0){ pts.forEach((p,i)=>{ const s=toScreen(p); ctx.beginPath(); ctx.arc(s.x,s.y,numbered?8:3,0,7); ctx.fillStyle=color; ctx.fill();
+  if(numbered){ ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke(); ctx.fillStyle='#fff'; ctx.font='700 9px "IBM Plex Sans",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(start+i+1),s.x,s.y+.5); } }); }
 function paint(){
   const dpr=devicePixelRatio||1, ctx=over.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,over.width,over.height); if(!S.vp) return;
   const cal=S.scales[S.pageNum];
   if(cal){ ctx.setLineDash([6,4]); ctx.strokeStyle=COLORS.cal; ctx.lineWidth=2; poly(ctx,cal.pts); ctx.stroke(); ctx.setLineDash([]); const a=toScreen(cal.pts[0]), b=toScreen(cal.pts[1]); tag(ctx,[`Étalon ${fmt(cal.meters)} m`],(a.x+b.x)/2,(a.y+b.y)/2-16,COLORS.cal); }
-  for(const m of pageMeas()){ const c=COLORS[m.type], sel=isSel(m.id);
+  for(const m of pageMeas()){ const c=checkColor(m.cat)||COLORS[m.type], sel=isSel(m.id);
+    // Outil dédié : un comptage par clic, numérotés à la suite par élément (1, 2, 3… « Accès observable »).
+    if(m.type==='count'&&CHECK){ const nth=S.meas.filter(x=>x.type==='count'&&x.cat===m.cat).indexOf(m); dots(ctx,m.pts,c,true,nth); if(sel){ const s=toScreen(m.pts[0]); ctx.strokeStyle=c; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(s.x,s.y,12,0,7); ctx.stroke(); const t=toScreen(m.pts[0]); tag(ctx,[m.name],t.x+14,t.y-10,c,'left'); } continue; }
     if(m.type==='count'){ dots(ctx,m.pts,c,true); if(sel){ ctx.strokeStyle=c; ctx.lineWidth=2; m.pts.forEach(p=>{ const s=toScreen(p); ctx.beginPath(); ctx.arc(s.x,s.y,12,0,7); ctx.stroke(); }); }
       const s=toScreen(m.pts[m.pts.length-1]); tag(ctx,[`${m.name} · ${m.pts.length}`],s.x+14,s.y-10,c,'left'); continue; }
     if(m.type==='label'){ if(m.rect){ const a=toScreen(m.rect); ctx.setLineDash([3,3]); ctx.strokeStyle=c; ctx.lineWidth=1; ctx.strokeRect(a.x,a.y,m.rect.w*S.zoom,m.rect.h*S.zoom); ctx.setLineDash([]); }
@@ -336,7 +369,7 @@ function renderPanel(){
       return fold('g:'+name,title(g),(g.area.n?fmt(g.area.sum)+' m²':'')+acts(g),
         `<div class="grp-body">${mine.map(row).join('')}${away?`<p class="none">${away} mesure${away>1?'s':''} du groupe sur d’autres pages.</p>`:''}${g.n?'':'<p class="none">Sélectionnez des mesures puis ＋ pour les ajouter.</p>'}</div>`); }).join('')
     +typeBlocks(ms.filter(m=>!m.group))||'<p class="none">Aucune mesure sur cette page. Choisissez un outil à gauche.</p>')+(others?`<p class="none">${others} mesure${others>1?'s':''} sur d’autres pages.</p>`:''):'';
-  $('csvBtn').disabled=!S.meas.length; renderProps(); renderCorr(); if(!$('sheet').hidden) renderSheet();
+  $('csvBtn').disabled=!S.meas.length; renderProps(); renderCorr(); renderCheck(); if(!$('sheet').hidden) renderSheet();
   const ri=$('list').querySelector('.grp-rename'); if(ri){ ri.focus(); ri.select(); }
 }
 // Fiche de la mesure sélectionnée : nom et attributs modifiables.
@@ -511,7 +544,8 @@ document.addEventListener('keydown',e=>{
   if(e.target.closest('input,select,textarea,dialog')) return;
   if(e.key===' '){ space=true; e.preventDefault(); return; }
   if(e.metaKey||e.ctrlKey) return;
-  const key=e.key.toLowerCase(), tools={v:'pan',e:'edit',k:'cal',l:'len',s:'area',z:'zone',c:'count',h:'access',t:'label',o:'ocr'};
+  const key=e.key.toLowerCase(), tools=CHECK?{v:'pan',e:'edit',...(CHECK.needsScale?{k:'cal'}:{})}:{v:'pan',e:'edit',k:'cal',l:'len',s:'area',z:'zone',c:'count',h:'access',t:'label',o:'ocr'};
+  if(CHECK&&S.vp&&/^[1-9]$/.test(key)&&CHECK.tools[+key-1]) return pickCheckTool(+key-1);
   if(tools[key]&&S.vp) return setTool(tools[key]);
   if(key==='a') return $('snapBtn').click();
   if(key==='f') return fit();

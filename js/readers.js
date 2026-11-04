@@ -344,7 +344,8 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
     throwIfAborted(opts.signal);
     totalPages=pdf.numPages;
     // v2.15.0 — plan (grand format, ou A3 nommé comme un plan) : ni texte ni OCR, il se mesure dans Ashton.
-    if(opts.detectPlan){ const p1=await pdf.getPage(1); const [x0,y0,x1,y1]=p1.view; const format=planFormatOf(file.name,x1-x0,y1-y0); p1.cleanup?.();
+    // v2.18.0 — forcePlan : « Plan » choisi à la main dans la liste des pièces, quel que soit le format.
+    if(opts.detectPlan||opts.forcePlan){ const p1=await pdf.getPage(1); const [x0,y0,x1,y1]=p1.view; const format=planFormatOf(file.name,x1-x0,y1-y0)||(opts.forcePlan?'choisi manuellement':null); p1.cleanup?.();
       if(format){ onProgress(1,{stage:'plan',page:1,totalPages}); return {kind:'pdf',plan:{format,width:Math.round(x1-x0),height:Math.round(y1-y0)},pages:[],text:'',pageCount:pdf.numPages}; } }
     for(let p=1;p<=pdf.numPages;p++){
       throwIfAborted(opts.signal);

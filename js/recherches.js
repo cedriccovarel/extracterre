@@ -89,8 +89,15 @@ export function srchPlanFacts(planTables){
   return out;
 }
 
+// v2.18.0 — outils Ashton dédiés : depuis l'onglet Recherches, une ligne ouvre Ashton sur son seul outil de vérification ;
+// la réponse (Oui / Non + mesure) revient dans project.planChecks[critère] et fait foi, sauf décision manuelle.
+export const ASHTON_CHECKS=Object.freeze({
+  abords_observables:'Accès observables depuis un logement',abords_separation:'Communications entre bâtiments',abords_renfoncement:'Profondeur des renfoncements',
+  abords_cheminement:'Largeur des cheminements',abords_aveugles:'Locaux aveugles',hall_traversant:'Accès du hall',hall_vitrage:'Vitrage du hall'});
+export const hasAshtonCheck=id=>Object.prototype.hasOwnProperty.call(ASHTON_CHECKS,id);
+
 // Applique une grille aux documents prêts d'un projet : {criteria:{id:{found,values,evidence}}, themes:{name:{found,min,ok,applicable}}}.
-export function runSearchGrid(grid,docs,overrides={},planTables={}){
+export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
   const g=normalizeGrid(grid); const filter=g.docFilter?srch_list(g.docFilter):[];
   const pool=(docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length&&!d.read?.financialQuestionnaire&&(!filter.length||filter.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))));
   const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
@@ -117,7 +124,9 @@ export function runSearchGrid(grid,docs,overrides={},planTables={}){
     let found=manual==='Oui'?true:manual==='Non'||manual==='Sans objet'?false:c.inverse?false:ev.some(e=>e.ok);
     let contrary=!manual&&(c.inverse?ev.length>0:ev.length>0&&!ev.some(e=>e.ok)), detail='';
     // Mesures Ashton : décisives pour le ratio vitré et les accès du hall ; le 44.2 reste à trouver dans les documents.
-    const pf=plan[c.id];
+    const chk=hasAshtonCheck(c.id)&&(planChecks||{})[c.id]&&['Oui','Non'].includes(planChecks[c.id].verdict)?planChecks[c.id]:null;
+    const pf=chk?{ok:chk.verdict==='Oui',detail:`Ashton${chk.detail?` : ${chk.detail}`:''}`,
+      ev:[{doc:chk.docName||'Plan',docId:chk.docId||'',page:chk.page||'',plan:true,line:`Ashton (outil dédié) : ${chk.verdict==='Oui'?'conforme':'non conforme'}${chk.detail?` — ${chk.detail}`:''}${chk.comment?` · ${chk.comment}`:''}`,context:'',values:[],ok:chk.verdict==='Oui'}]}:plan[c.id];
     if(pf){ const textOk=ev.some(e=>e.ok); ev.unshift(...pf.ev); detail=pf.detail;
       const ok=c.id==='hall_vitrage'?pf.ok&&textOk:pf.ok; if(c.id==='hall_vitrage'&&pf.ok&&!textOk) detail=`À vérifier : ${pf.detail}, 44.2 non trouvé dans les documents`;
       if(!manual){ found=ok; contrary=!pf.ok; } }
