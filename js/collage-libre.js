@@ -358,7 +358,7 @@ export function salesforceEvaluationToPaste(text){
       // remplit aussi la colonne générale (la première ligne décrite la porte).
       const vals=[mat,thick(l),r], put3=ks=>dst.forEach(a=>{ if(!ks.some(k=>a.some(x=>x.key===k))) ks.forEach((k,j)=>putAt(a,k,vals[j])); });
       put3(keys); if(side) put3(['wall_insulation','wall_insulation_thickness','wall_insulation_r']); }
-    else { // v2.18.1 — « MUR / EXT … : Beton » : un mur en béton seul, comme « mur béton » (béton armé).
+    else { // v2.18.2 — « MUR / EXT … : Beton » : un mur en béton seul, comme « mur béton » (béton armé).
       const st=findFirstMatch(l,STRUCTURES)||(part==='wall'&&/^b[ée]ton$/i.test(l.slice(l.lastIndexOf(':')+1).trim())?'Béton armé':null); if(st) put(common,`${part}_structure`,st); } } }
   for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
     put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }

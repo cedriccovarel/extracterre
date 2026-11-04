@@ -1,3 +1,13 @@
+# v2.18.2 — « Vecteur ECS : Solaire » à tort
+- Relevé dans les sessions : les 192 « Solaire » en vecteur ECS après travaux venaient de quatre tournures, aucune ne décrivant une
+  installation solaire : « Présence composante solaire : Sans composante solaire » (RSET), critère « 16 a Production d'eau chaude
+  sanitaire à partir d'un système … solaire thermique, Conforme », clause « … solaire validant la conformité et le bon
+  fonctionnement », norme « NF P50-103 : Énergie solaire … ». Côté DPE (vecteur ECS avant travaux) : « Présence ECS solaire
+  mesuré/observé : non » et l'intitulé « Stockage et Système solaire ».
+- Dans ces tournures, « solaire » est ignoré pour le vecteur ECS (avant / après) et le mode ECS ; les autres énergies de la même
+  ligne restent lues (« chaudière gaz … Sans composante solaire » → Gaz). Les vraies installations (CESI, chauffe-eau solaire,
+  « Avec composante solaire », ECS solaire thermique) restent lues.
+
 # v2.18.1 — Fiche Salesforce : bâtiments « * BAT 8 : (= bat E Rset) : x11 lgts collectifs : social LLS »
 - **En-têtes de bâtiment avec remarques** : « BAT n : » suivi de remarques (« (= bat E Rset) », « social LLS ») ouvre bien un bloc,
   avec ou sans « : » final ; « x11 lgts » donne ses logements. Avant, seul le premier bâtiment était vu et les valeurs du deuxième

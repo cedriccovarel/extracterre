@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.18.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.18.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.18.1';
+const APP_VERSION='2.18.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -5564,6 +5564,9 @@ function oddValue(key,v){
 }
 
 /* ---- parsers.js ---- */
+// v2.18.1 — tournures où « solaire » ne désigne pas une installation du projet (négation, intitulé, critère, clause, norme).
+const SOLAR_NOISE=/sans\s+(?:composante|ecs|production|installation)\s+solaire|(?:composante|ecs)\s+solaire\s*:?\s*(?:mesure\S*\s*\/?\s*observe\S*\s*:?\s*)?(?:non|sans|aucune?|absente?)\b|stockage\s+et\s+systeme\s+solaire|^\s*(?:art(?:icle)?\.?\s*)?\d+\s*\(?[a-z]\)?\s+production\s+d.eau\s+chaude\s+sanitaire\s+a\s+partir|validant\s+la\s+conformite|\bnf\s+(?:en\s+)?(?:p\s*)?\d{2}[- ]?\d{3}|recours\s+a\s+une\s+source\s+d.energies?\s+renouvelables?/;
+
 function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
   if(value===null||value===undefined||value==='') return null;
   return {field,value,building:buildingForPosition(doc,page.page,line.index),docId:doc.id,fileName:doc.name,docType:doc.type,page:page.page,excerpt:normalizeText(line.text).slice(0,420),confidence:clamp(confidence),method,unit,...extra};
@@ -6827,7 +6830,11 @@ function parseSystems(doc){
     if(heatCtx){ const phase=resolvedPhase(heatCtx), heatLow=normLower(heatCtx); const heatNoise=envInventoryNoise||/(?:taux\s+de\s+couverture|si\s+chauffage|dont\s+chauffage|exigence|rappel|exemple|scenario\s+non\s+retenu|scénario\s+non\s+retenu|hypoth[eè]se)/i.test(heatLow)||(/\bsolaire\b/i.test(heatLow)&&/(?:^|\s)0(?:[,.]0+)?(?:\s+0(?:[,.]0+)?)*\s*$/.test(heatLow)); const mode=heatNoise?null:findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(heatLow); const strongVector=/^(?:type\s+d['’]?energie|type\s+d['’]?énergie|energie|énergie|combustible|vecteur|alimentation)\s*[:=-]/i.test(heatCtx)||/(?:chaudi[eè]re|pac|pompe\s+[aà]\s+chaleur|sous[- ]station|r[eé]seau\s+de\s+chaleur|convecteur|radiateur|plancher\s+chauffant)/i.test(heatLow); const vec=(!heatNoise&&!optionList&&strongVector)?findFirstMatch(heatCtx,HVAC.vectors):null; if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
 
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
-    if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsCtx,HVAC.ecs), vec=findFirstMatch(ecsCtx,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
+    // v2.18.1 — « solaire » sans installation solaire : « Sans composante solaire » (RSET), « Présence ECS solaire … non » et
+    // « Stockage et Système solaire » (DPE), critère « 16 a Production d'ECS … solaire thermique », clause « … solaire validant
+    // la conformité », norme « NF P50-103 : Énergie solaire ». Le mot est ignoré ; les autres énergies de la ligne restent lues.
+    const ecsRead=ecsCtx&&SOLAR_NOISE.test(normLower(ecsCtx))?ecsCtx.replace(/\bsolaires?\b/gi,' '):ecsCtx;
+    if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsRead,HVAC.ecs), vec=findFirstMatch(ecsRead,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
 
     let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && !cctpLineNoise(doc,next) && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
@@ -9402,7 +9409,7 @@ function salesforceEvaluationToPaste(text){
       // remplit aussi la colonne générale (la première ligne décrite la porte).
       const vals=[mat,thick(l),r], put3=ks=>dst.forEach(a=>{ if(!ks.some(k=>a.some(x=>x.key===k))) ks.forEach((k,j)=>putAt(a,k,vals[j])); });
       put3(keys); if(side) put3(['wall_insulation','wall_insulation_thickness','wall_insulation_r']); }
-    else { // v2.18.1 — « MUR / EXT … : Beton » : un mur en béton seul, comme « mur béton » (béton armé).
+    else { // v2.18.2 — « MUR / EXT … : Beton » : un mur en béton seul, comme « mur béton » (béton armé).
       const st=findFirstMatch(l,STRUCTURES)||(part==='wall'&&/^b[ée]ton$/i.test(l.slice(l.lastIndexOf(':')+1).trim())?'Béton armé':null); if(st) put(common,`${part}_structure`,st); } } }
   for(const raw of sec.win||[]){ const l=sf_clean(raw); if(!l||/^fen[eê]tres?\s+de\s+toit/i.test(l)) continue; put(common,'window_material',findFirstMatch(l,WINDOW_MATERIALS)); put(common,'window_glazing',findFirstMatch(l,GLAZINGS));
     put(common,'window_shading',findFirstMatch(l,SHADINGS)||(/^occultations?\s*:\s*\S/i.test(l)?l.replace(/^[^:]*:\s*/,''):null)); }
