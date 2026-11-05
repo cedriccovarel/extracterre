@@ -1,5 +1,12 @@
+// v2.19.3 — mémoïsé : les analyseurs normalisent la même ligne (ou la même fenêtre de lignes) des dizaines de fois ; une étude
+// thermique de 900 pages prenait 16 s, dont l'essentiel ici. Cache borné (lignes et fenêtres) + dernier grand texte.
+const NT_CACHE=new Map(); let NT_BIG_IN=null, NT_BIG_OUT='';
+function normalizeTextRaw(s){ return s.replace(/\u0000/g,'fi').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim(); }
 export function normalizeText(s='') {
-  return String(s).replace(/\u0000/g,'fi').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00a0/g,' ').replace(/[’‘]/g,"'").replace(/\s+/g,' ').trim();
+  const t=String(s);
+  if(t.length>4000){ if(t!==NT_BIG_IN){ NT_BIG_IN=t; NT_BIG_OUT=normalizeTextRaw(t); } return NT_BIG_OUT; }
+  let v=NT_CACHE.get(t); if(v!==undefined) return v;
+  v=normalizeTextRaw(t); if(NT_CACHE.size>=50000) NT_CACHE.clear(); NT_CACHE.set(t,v); return v;
 }
 export function normLower(s=''){ return normalizeText(s).toLowerCase(); }
 

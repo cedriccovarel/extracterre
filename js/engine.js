@@ -244,8 +244,9 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
 export function diagnostics(docs,finals,grouping=null){
   const alerts=[];
   for(const d of docs){
-    const standardized=/recapitulatif\s+standardise\s+d['’]?etude\s+thermique|r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique/i.test(normLower(d.read?.text||''));
-    if(![DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(d.type) || (d.type===DOC_TYPES.RT2012&&!standardized)) continue;
+    // v2.19.3 — type d'abord : le texte complet n'est lu que pour un RT2012 (avant : pour chaque document, à chaque recalcul).
+    if(![DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(d.type)) continue;
+    if(d.type===DOC_TYPES.RT2012&&!/recapitulatif\s+standardise\s+d['’]?etude\s+thermique|r[eé]capitulatif\s+standardis[eé]\s+d['’]?etude\s+thermique/i.test(normLower(d.read?.text||''))) continue;
     const rawBs=d.buildings?.names||['Bâtiment unique']; const bs=rawBs.map(b=>mappedBuilding(b,grouping));
     if(d.buildings?.expectedCount && rawBs.length!==d.buildings.expectedCount) alerts.push({level:'error',docId:d.id,fileName:d.name,message:`Découpage bâtiments incomplet : le RSET annonce ${d.buildings.expectedCount} bâtiment(s)/zone(s), mais ${rawBs.length} identifiant(s) bâtiment ont été détectés.`});
     const required=expectedFieldsForDocument(d);
@@ -255,21 +256,22 @@ export function diagnostics(docs,finals,grouping=null){
       if(found<required.length) alerts.push({level:'warning',docId:d.id,fileName:d.name,building:b,message:`Complétude réglementaire ${b} : ${found}/${required.length} champs structurés obligatoires.`});
     }
   }
-  for(const d of docs){ if(isClimaWinInputReport(d)) alerts.push({level:'info',docId:d.id,fileName:d.name,message:`Rapport de saisie ClimaWin (${d.read?.pageCount||'?'} pages) : paramètres d'entrée non exploités par l'extraction automatique. Les résultats et l'enveloppe par bâtiment viennent de la synthèse ClimaWin.`}); }
-  for(const d of docs){ if(d.read?.kind==='pdf'&&d.read.text.replace(/\s/g,'').length<40) alerts.push({level:'warning',docId:d.id,fileName:d.name,message:'PDF sans couche texte exploitable — OCR probablement nécessaire.'}); if(d.error) alerts.push({level:'error',docId:d.id,fileName:d.name,message:d.error}); }
+  // Rapport de saisie ClimaWin : détecté une fois par document et enregistré (climaWinInput), sans relire son texte ensuite.
+  for(const d of docs){ if(typeof d.climaWinInput!=='boolean') d.climaWinInput=isClimaWinInputReport(d); if(d.climaWinInput) alerts.push({level:'info',docId:d.id,fileName:d.name,message:`Rapport de saisie ClimaWin (${d.read?.pageCount||'?'} pages) : paramètres d'entrée non exploités par l'extraction automatique. Les résultats et l'enveloppe par bâtiment viennent de la synthèse ClimaWin.`}); }
+  // « PDF sans texte » : calculé une fois par document et enregistré (lowText), sans relire tout le texte à chaque recalcul.
+  for(const d of docs){ if(d.lowText===undefined&&d.read) d.lowText=d.read.kind==='pdf'&&!/\S(?:\s*\S){39}/.test(d.read.text||''); if(d.lowText) alerts.push({level:'warning',docId:d.id,fileName:d.name,message:'PDF sans couche texte exploitable — OCR probablement nécessaire.'}); if(d.error) alerts.push({level:'error',docId:d.id,fileName:d.name,message:d.error}); }
   return alerts;
 }
 
 
 function expectedFieldsForDocument(doc){
-  const text=normLower(doc?.read?.text||'');
   if(doc.type===DOC_TYPES.RT2012) return [...REQUIRED_RT2012_RSET_FIELDS];
   if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(doc.type)){
     const base=[...REQUIRED_RE2020_RSET_FIELDS];
     // v2.3.6 — les IC ne sont exigés que si ce document en publie réellement (un RSET seul ne contient pas l'ACV,
     // même s'il cite « Ic construction » dans le rappel des exigences).
     const publishesIc=!Array.isArray(doc.cachedOccurrences)||doc.cachedOccurrences.some(o=>/^ic_(?:components|lot_\d+)$/.test(o?.field||''));
-    if(publishesIc&&/ic\s*(?:composants?|construction)|(?:1\s*[-–—]\s*vrd)|energie\s*\(\s*ce\s*\)/i.test(text)) base.push('ic_components','ic_energy','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`));
+    if(publishesIc&&/ic\s*(?:composants?|construction)|(?:1\s*[-–—]\s*vrd)|energie\s*\(\s*ce\s*\)/i.test(normLower(doc?.read?.text||''))) base.push('ic_components','ic_energy','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`));
     return unique(base);
   }
   if([DOC_TYPES.RSENV,DOC_TYPES.CARBON].includes(doc.type)) return ['ic_components','ic_site',...Array.from({length:13},(_,i)=>`ic_lot_${i+1}`),'ic_energy'];
@@ -318,15 +320,27 @@ export function familyMismatchAlerts(docs=[]){
   }
   return alerts;
 }
+// v2.19.3 — rattrapages d'un document (exporté : l'application les fait document par document, en rendant la main entre deux).
+// Un document à relire (DH sans zone) l'est tout de suite, une seule fois.
+export function catchUpDocument(d){
+  // v2.19.3 — les rattrapages ne tournent qu'une fois par document : la marque est enregistrée avec le document
+  // (avant, elle était perdue au redémarrage : le texte était relu à chaque recalcul, jusqu'à 15 s par opération).
+  // La marque part avec la sauvegarde de l'espace de travail ; un document modifié par un rattrapage est sauvegardé
+  // à part (needsCheckpoint, repris par l'application).
+  // Adresse « Opération » : bloc des RSET seulement ; les autres documents sont marqués sans relire leur texte.
+  if(!d.rsetAddressRead&&![DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020].includes(d.type)) d.rsetAddressRead=true;
+  if(!d.rsetAddressRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.rsetAddressRead=true; if(!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length){ d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; d.needsCheckpoint=true; } } }
+  // v2.12.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
+  if(!d.dhZonesRead&&Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(o=>o?.field==='dh')&&d.read){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')){ d.cachedOccurrences=null; d.needsCheckpoint=true; } }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; }
+}
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
-    if(Array.isArray(d.cachedOccurrences)&&d.read?.pages&&!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length) d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; }
-    // v2.12.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
-    if(Array.isArray(d.cachedOccurrences)&&d.read&&!d.dhZonesRead&&d.cachedOccurrences.some(o=>o?.field==='dh')){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')) d.cachedOccurrences=null; }
+    catchUpDocument(d);
     if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

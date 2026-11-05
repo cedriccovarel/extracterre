@@ -1,3 +1,29 @@
+# v2.19.4 — Observatoire des recherches : export .json, page qui le charge
+- Nouveau bouton « Exporter l'observatoire des recherches (.json) » : calcule les recherches de chaque opération, une à la
+  fois en rendant la main (progression dans l'indicateur de sauvegarde), et télécharge `ExtracTerre_observatoire_AAAA-MM-JJ.json`
+  (identité, complétude, résultats des grilles ; ni citations ni texte des documents). Une opération dont rien n'a changé
+  (documents et date d'analyse, grille, décisions, plans Ashton) reprend son dernier résultat sans relire ses documents.
+  Bilan en fin d'export : opérations avec recherches / sans, et pourquoi.
+- « Observatoire des recherches » ouvre seulement la page (avant : calcul de toutes les recherches de toutes les opérations
+  à l'ouverture, ce qui figeait ExtracTerre). La page demande de charger le fichier exporté ; plusieurs fichiers s'ajoutent.
+- Test : `test_v2_19_4.mjs`.
+
+# v2.19.3 — « ExtracTerre ne répond pas »
+- Mesuré sur une session réelle de 276 opérations (2 160 documents), en local : le recalcul de toutes les opérations prenait
+  68 s, jusqu'à 14–17 s d'affilée pour une seule opération (page figée).
+- Cause 1 : deux rattrapages (adresse « Opération » des RSET v2.10.1, type de zone du DH v2.12.1) devaient tourner une fois,
+  mais leur marque n'était pas enregistrée : le texte des documents était relu, et certaines études reparsées, à chaque
+  recalcul. Marques enregistrées avec le document ; l'adresse n'est cherchée que dans les RSET ; un document modifié par un
+  rattrapage est sauvegardé une fois ; au démarrage, les rattrapages se font document par document en rendant la main.
+- Cause 2 : le diagnostic et la complétude normalisaient le texte complet de chaque document à chaque recalcul ; le type est
+  vérifié d'abord ; « PDF sans texte » et « rapport de saisie ClimaWin » sont détectés une fois et enregistrés : à partir du
+  2e démarrage, le recalcul ne lit plus le texte des documents.
+- `normalizeText` mémoïsé (lignes et fenêtres de lignes répétées par les analyseurs) : analyse d'une étude de 900 pages
+  divisée par deux environ.
+- Résultat sur la même session : recalcul complet < 1 s (opération la plus lourde 0,3 s) à partir du 2e démarrage ; le
+  1er démarrage après mise à jour fait les rattrapages une dernière fois (~30 s en arrière-plan, document par document).
+- Test : `test_v2_19_3.mjs` (données fictives).
+
 # v2.19.2 — Démarrage fluide avec des centaines d'opérations
 - Avant : écran blanc tant que tout n'était pas restauré (une transaction IndexedDB attendue par document, texte de chaque
   document découpé en lignes, puis recalcul de toutes les opérations avant le premier affichage).

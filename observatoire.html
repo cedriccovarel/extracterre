@@ -17,7 +17,7 @@ main{max-width:1280px;margin:0 auto;padding:18px 16px 40px}
 .bar label{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--muted)}
 select,input[type=search]{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:inherit;min-width:200px}
 button,.btn{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:.85rem;cursor:pointer;color:var(--forest)}
-button.primary{background:var(--forest);color:#fff;border-color:var(--forest)}button.danger{color:#a3361f}
+button.primary,.btn.primary{background:var(--forest);color:#fff;border-color:var(--forest)}button.danger{color:#a3361f}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.kpi b{display:block;font-size:1.6rem;color:var(--forest)}.kpi span{font-size:.8rem;color:var(--muted)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
@@ -43,7 +43,7 @@ table{border-collapse:collapse;width:100%;font-size:.82rem}th,td{border-bottom:1
     <label>Maître d’ouvrage<select id="owner"></select></label>
     <label>Rechercher une opération<input id="q" type="search" placeholder="contrat, nom, code…"></label>
     <span style="flex:1"></span>
-    <label class="btn" for="imp" style="flex-direction:row;color:var(--forest)">Importer une session (.json)</label><input id="imp" type="file" accept=".json,application/json" hidden>
+    <label class="btn" for="imp" style="flex-direction:row;color:var(--forest)">Charger l’export de l’observatoire (.json)</label><input id="imp" type="file" accept=".json,application/json" hidden>
     <button id="csv">Exporter le tableau (.csv)</button>
     <button id="clear" class="danger">Vider l’observatoire</button>
   </div>
@@ -66,7 +66,8 @@ function merge(snap){
   return n;
 }
 // Flux transmis par ExtracTerre à l'ouverture.
-try{ const f=localStorage.getItem(FEED); if(f){ merge(JSON.parse(f)); localStorage.removeItem(FEED); store.save(data); } }catch(e){ console.warn('Flux ExtracTerre illisible',e); }
+// v2.19.4 — plus de flux automatique depuis ExtracTerre : on charge le fichier « Exporter l’observatoire des recherches ».
+try{ localStorage.removeItem(FEED); }catch{}
 
 const $=s=>document.querySelector(s);
 const ui={grid:'',owner:'',q:''};
@@ -75,7 +76,7 @@ const nums=v=>(Array.isArray(v)?v:[]).map(Number).filter(Number.isFinite);
 function ops(){ const q=ui.q.toLowerCase(); return Object.values(data.operations).filter(o=>(!ui.owner||(o.identity.owner||'Non renseigné')===ui.owner)&&(!q||`${o.identity.contract} ${o.identity.code} ${o.identity.name} ${o.identity.owner}`.toLowerCase().includes(q))); }
 function render(){
   const grids=Object.values(data.grids); const app=$('#app');
-  if(!grids.length||!Object.keys(data.operations).length){ app.innerHTML='<div class="card empty"><h2>Aucune donnée compilée</h2><p>Dans ExtracTerre, cliquez sur « Observatoire des recherches » dans la barre de gauche, ou importez ici un export de session (.json).</p></div>'; $('#grid').innerHTML=''; $('#owner').innerHTML=''; return; }
+  if(!grids.length||!Object.keys(data.operations).length){ app.innerHTML='<div class="card empty"><h2>Chargez l’export de l’observatoire</h2><p>Dans ExtracTerre, cliquez sur « Exporter l’observatoire des recherches (.json) » dans la barre de gauche, puis chargez ici le fichier téléchargé. Plusieurs fichiers peuvent être chargés : les opérations s’ajoutent (la plus récente l’emporte).</p><p><label class="btn primary" for="imp" style="display:inline-flex;color:#fff">Charger l’export (.json)</label></p></div>'; $('#grid').innerHTML=''; $('#owner').innerHTML=''; return; }
   if(!data.grids[ui.grid]) ui.grid=grids[0].id; const g=data.grids[ui.grid];
   $('#grid').innerHTML=grids.map(x=>`<option value="${esc(x.id)}" ${x.id===ui.grid?'selected':''}>${esc(x.name)}</option>`).join('');
   const owners=[...new Set(Object.values(data.operations).map(o=>o.identity.owner||'Non renseigné'))].sort((a,b)=>a.localeCompare(b,'fr'));
@@ -106,7 +107,7 @@ $('#owner').onchange=e=>{ ui.owner=e.target.value; render(); };
 $('#q').oninput=e=>{ ui.q=e.target.value.trim(); render(); };
 $('#csv').onclick=csv;
 $('#clear').onclick=()=>{ if(!confirm('Vider toutes les données compilées sur ce poste ?')) return; data={grids:{},operations:{}}; store.save(data); render(); };
-$('#imp').onchange=async e=>{ const f=e.target.files?.[0]; e.target.value=''; if(!f) return; try{ if(f.size>50*1024*1024) throw new Error('fichier trop volumineux'); const n=merge(JSON.parse(await f.text())); store.save(data); render(); alert(`${n} opération(s) importée(s).`); }catch(err){ alert(`Import impossible : ${err.message||err}`); } };
+$('#imp').onchange=async e=>{ const f=e.target.files?.[0]; e.target.value=''; if(!f) return; try{ if(f.size>50*1024*1024) throw new Error('fichier trop volumineux : chargez le fichier « ExtracTerre_observatoire_… .json » (Exporter l’observatoire des recherches), pas l’export complet de la session'); const n=merge(JSON.parse(await f.text())); store.save(data); render(); alert(`${n} opération(s) importée(s).`); }catch(err){ alert(`Import impossible : ${err.message||err}`); } };
 render();
 </script>
 </body>

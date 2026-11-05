@@ -6,7 +6,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.19.2','version');
+eq(APP_VERSION,'2.19.4','version');
 const addr=d=>parseDocument(d).filter(o=>['address','postcode','city'].includes(o.field)).map(o=>o.value);
 
 // RE2020 : intervenants d'abord (ignorés), puis bloc Opération.
@@ -27,6 +27,6 @@ const d={...textDoc('r4','RSET.pdf',DOC_TYPES.RSET_RE2020,'Batiment A\n'+re2020+
 const rows=analyzeDocuments([d],structuredClone(DEFAULT_SOURCE_RULES),'Op test').rows;
 eq(rows.every(r=>r.postcode==='69003'&&r.city==='Lyon'),true,'retenue pour chaque bâtiment');
 // Projet sauvegardé avant v2.10.1 : cache sans adresse, texte restauré → adresse rattrapée à l'analyse.
-const old={...d,id:'r5',cachedOccurrences:[{field:'shab',value:100,building:'Batiment A',docId:'r5',docType:DOC_TYPES.RSET_RE2020,confidence:.99,method:'x',excerpt:'SHAB 100'}]};
+const old={...d,id:'r5',rsetAddressRead:false,dhZonesRead:false,cachedOccurrences:[{field:'shab',value:100,building:'Batiment A',docId:'r5',docType:DOC_TYPES.RSET_RE2020,confidence:.99,method:'x',excerpt:'SHAB 100'}]};
 eq(analyzeDocuments([old],structuredClone(DEFAULT_SOURCE_RULES),'Op test').rows.every(r=>r.postcode==='69003'),true,'rattrapage du cache');
 console.log(`v2.10.1 — ${n} vérifications OK (données fictives)`);

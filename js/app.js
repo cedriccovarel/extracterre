@@ -4,7 +4,7 @@ import {BOX_KINDS,boxSupported,boxSavedRoot,boxPickRoot,boxEnsureAccess,boxFindO
 import {readFile,readSpreadsheet,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
-import {analyzeDocuments,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
+import {analyzeDocuments,catchUpDocument,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
 import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS} from './geocode.js';
@@ -2087,6 +2087,11 @@ function manualRow(result,building,deleted,alias){
   row={building,operation:result.operation}; rows.push(row); if(Array.isArray(result.buildings)&&!result.buildings.includes(building)) result.buildings.push(building); return row;
 }
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
+const pendingDocCheckpoints=[]; let docCheckpointTimer=null;
+function flushDocCheckpoints(){ if(docCheckpointTimer) return; docCheckpointTimer=setTimeout(async()=>{ docCheckpointTimer=null;
+  if(!persistenceReady){ flushDocCheckpoints(); return; }
+  while(pendingDocCheckpoints.length){ const [p,d]=pendingDocCheckpoints.shift(); try{ await saveDocumentCheckpoint(p.id,d); }catch(err){ console.warn('Sauvegarde du document après rattrapage impossible',err); } }
+  scheduleWorkspaceCheckpoint('rattrapages enregistrés',1500); },1000); }
 // v2.19.2 — exports, observatoire, session : tous les projets doivent être recalculés (ceux encore en attente le sont ici).
 function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild) rebuildProjectFromCheckpoints(p); }
 function rebuildProjectFromCheckpoints(project){
@@ -2095,6 +2100,9 @@ function rebuildProjectFromCheckpoints(project){
   if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
   applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
+  // v2.19.3 — document modifié par un rattrapage : sauvegardé une fois (sinon le rattrapage recommencerait au démarrage suivant).
+  for(const d of project.docs||[]) if(d.needsCheckpoint){ d.needsCheckpoint=false; pendingDocCheckpoints.push([project,d]); }
+  if(pendingDocCheckpoints.length) flushDocCheckpoints();
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
   // automatiquement dès qu'un document est relu ou qu'une donnée est modifiée.
 }
@@ -2304,12 +2312,16 @@ function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.m
 // Le dernier résultat de chaque grille est gardé dans le projet (searchCache) : une opération dont le texte des documents
 // n'est plus en mémoire (sauvegarde « résultats seuls », session importée sans documents) reste comptée.
 function feedSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:(x.values||[]).slice(0,c.kind==='stats'?400:20)}]; })),themes:r.themes,docCount:r.documents.length}; }
-function feedSearches(p,grids){ const out={}; let changed=false;
-  for(const g of grids){ const r=runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks);
-    if(r.documents.length){ out[g.id]=feedSearch(r); p.searchCache={...(p.searchCache||{}),[g.id]:{...out[g.id],cachedAt:new Date().toISOString()}}; changed=true; }
-    else if(p.searchCache?.[g.id]) out[g.id]=p.searchCache[g.id];
+// Empreinte de ce dont dépend une recherche : grille, documents lus (et leur date d'analyse), décisions, plans Ashton.
+const srchHash=s=>{ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36); };
+function searchSignature(p,g){ return srchHash(JSON.stringify([g,(p.docs||[]).filter(d=>d.status==='ready').map(d=>[d.id,d.analysisCachedAt||0,d.persistenceMode||'']),p.searchOverrides?.[g.id]||{},p.planTables||{},p.planChecks||{}])); }
+function feedSearches(p,grids){ const out={};
+  for(const g of grids){ const sig=searchSignature(p,g), c=p.searchCache?.[g.id];
+    if(c&&c.sig===sig){ const {sig:_s,cachedAt:_c,...v}=c; out[g.id]=v; continue; }
+    const r=runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks);
+    if(r.documents.length){ out[g.id]=feedSearch(r); p.searchCache={...(p.searchCache||{}),[g.id]:{...out[g.id],sig,cachedAt:new Date().toISOString()}}; }
+    else if(c){ const {sig:_s,cachedAt:_c,...v}=c; out[g.id]=v; }
     else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
-  if(changed) scheduleWorkspaceCheckpoint('résultats de recherche',2000);
   return out; }
 function sessionSnapshot({details=true}={}){
   ensureAllRebuilt(); const grids=loadGrids();
@@ -2384,16 +2396,32 @@ function openDuplicatesDialog(groups){
   document.body.append(dlg); dlg.showModal();
 }
 // Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
-function openSearchObservatory(){
-  const snap=sessionSnapshot({details:false}); const ops=snap.operations, withS=ops.filter(o=>Object.keys(o.searches||{}).length);
-  // v2.19.1 — bilan à l'ouverture : opérations transmises, et pourquoi les autres ne le sont pas.
-  const noText=ops.filter(o=>!Object.keys(o.searches||{}).length&&o.documents.some(d=>d.status==='ready')).length, noDoc=ops.filter(o=>!o.documents.length).length;
-  const noKey=withS.filter(o=>!String(o.identity?.contract||o.identity?.code||o.identity?.name||o.title||'').trim()).length;
-  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(snap)); }
-  catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); return; }
-  window.open('observatoire.html','extracterre-observatoire');
-  const why=[noText?`${noText} sans texte de document en mémoire (à réanalyser)`:'',noDoc?`${noDoc} sans document`:'',noKey?`${noKey} sans contrat, code ni nom`:''].filter(Boolean).join(' · ');
-  toast(`Observatoire : ${withS.length} opération(s) transmise(s) sur ${ops.length}${why?` — non transmises : ${why}`:''}.`,why?'warn':'success');
+// v2.19.4 — l'observatoire des recherches ne reçoit plus rien d'ExtracTerre à l'ouverture (le calcul de toutes les recherches
+// figeait la page) : le bouton ouvre la page, qui charge le fichier produit par « Exporter l'observatoire des recherches ».
+function openSearchObservatory(){ window.open('observatoire.html','extracterre-observatoire'); }
+// Export pour l'observatoire : une opération à la fois en rendant la main (progression dans l'indicateur de sauvegarde) ;
+// une opération dont rien n'a changé (documents, grille, décisions) reprend son dernier résultat sans relire ses documents.
+let observatoryExporting=false;
+async function exportObservatoryJson(){
+  if(observatoryExporting){ toast('Export de l’observatoire déjà en cours…','warn'); return; }
+  observatoryExporting=true; const btn=$('#observatoryExportBtn'); if(btn) btn.disabled=true;
+  try{
+    const grids=loadGrids(), list=state.projects.filter(p=>!projectIsEmpty(p)), operations=[];
+    for(let k=0;k<list.length;k++){ const p=list[k];
+      if(p.pendingRebuild) rebuildProjectFromCheckpoints(p);
+      const r=feedSearches(p,grids);
+      const id=projectIdentity(p);
+      operations.push({id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,status:d.status})),searches:r});
+      if(k%3===2||k===list.length-1){ setLocalSaveUi(`Export observatoire… ${k+1} / ${list.length}`); await new Promise(res=>setTimeout(res,0)); } }
+    const snap={format:'extracterre-session',kind:'observatoire',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
+    downloadBlob(new Blob([JSON.stringify(snap)],{type:'application/json'}),`ExtracTerre_observatoire_${new Date().toISOString().slice(0,10)}.json`);
+    const withS=operations.filter(o=>Object.keys(o.searches).length).length;
+    const noText=operations.filter(o=>!Object.keys(o.searches).length&&o.documents.some(d=>d.status==='ready')).length, noDoc=operations.filter(o=>!o.documents.length).length;
+    const why=[noText?`${noText} sans texte de document en mémoire (à réanalyser)`:'',noDoc?`${noDoc} sans document`:''].filter(Boolean).join(' · ');
+    toast(`Observatoire exporté : ${withS} opération(s) avec recherches sur ${operations.length}${why?` — sans recherche : ${why}`:''}. Chargez le fichier dans « Observatoire des recherches ».`,why?'warn':'success');
+    setLocalSaveUi('Session restaurée',lastLocalSaveAt); scheduleWorkspaceCheckpoint('résultats de recherche',2000);
+  }catch(err){ console.warn(err); toast(`Export de l’observatoire impossible : ${err?.message||err}`,'error'); }
+  finally{ observatoryExporting=false; if(btn) btn.disabled=false; }
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
@@ -2644,7 +2672,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory);
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory); $('#observatoryExportBtn')?.addEventListener('click',exportObservatoryJson);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
@@ -2689,7 +2717,12 @@ async function rebuildInBackground(){
   const todo=()=>state.projects.filter(p=>p.pendingRebuild), total=todo().length; if(!total){ restoredToast(); return; }
   let last=performance.now();
   while(todo().length){ const t0=performance.now();
-    for(const p of todo()){ rebuildProjectFromCheckpoints(p); if(performance.now()-t0>40) break; }
+    for(const p of todo()){
+      // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
+      // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
+      if(!p.pendingRebuild) continue;
+      rebuildProjectFromCheckpoints(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);
     if(performance.now()-last>1500||!left){ last=performance.now(); if(state.homeView||state.resultWorkspaceMode==='overview') renderHome(); }
     await new Promise(r=>setTimeout(r,0)); }
