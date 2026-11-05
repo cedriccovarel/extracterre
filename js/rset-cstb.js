@@ -6,13 +6,13 @@
 //    Ic construction (+ max), Ic énergie (+ max), Ic composant, Ic chantier, stockage carbone.
 // Le texte peut provenir d'un OCR (polices sans table Unicode) : chaque couple valeur / max est
 // contrôlé (valeur ≤ max) et, à défaut, la valeur part en « À vérifier ».
-import {normalizeText,parseFrNumber} from './utils.js';
+import {normalizeText,parseFrNumber,stripUnitExponents} from './utils.js';
 import {readTechnicalData,technicalDataFields} from './donnees-techniques.js';
 
 // Milliers séparés par une espace seulement s'ils portent une décimale (« 2 190,5 ») : dans les tableaux,
 // « 631 242 178 » est une suite de trois nombres, pas un seul.
 const cs_NUM_RE=/[-+]?\d{1,3}(?:[ \u00a0]\d{3})+[.,]\d+|[-+]?\d+(?:[.,]\d+)?/g;
-const cs_numbers=s=>(String(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
+const cs_numbers=s=>(stripUnitExponents(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
 // Les séparateurs de cellules « | » produits par l'OCR sont neutralisés.
 const cs_lineText=l=>normalizeText(String(l?.text||'').replace(/\s*\|\s*/g,' '));
 

@@ -1,7 +1,7 @@
 import {FIELD_DEFS,FIELD_MAP,FIELD_TAGS,REQUIRED_RSET_FIELDS,REQUIRED_RE2020_RSET_FIELDS,REQUIRED_RT2012_RSET_FIELDS,DOC_TYPES,MIN_RETAINED_CONFIDENCE,MIN_REVIEW_CONFIDENCE,DEFAULT_SOURCE_RULES,matchFieldByHeader} from './config.js';
 import {sourceTier,sourceRank} from './routing.js';
 import {formatValue,normLower,normalizeText,scoreTokens,unique,numbersIn,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
-import {operationNameFromFiles,detectBuildings,buildingMergeKey,buildingCoreId,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
+import {operationNameFromFiles,detectBuildings,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
 import {parseDocument,parseRsetOperationAddress} from './parsers.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags} from './tags.js';
@@ -111,6 +111,11 @@ export function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={})
     modes[n]=mode;
   }
 
+  // v2.19.0 — « Bâtiment 1 Est » rejoint « Bâtiment 1 » quand ce bâtiment existe tel quel (même identifiant, suivi de mots
+  // seulement : orientation, aile, partie…). Sans « Bâtiment 1 » seul, « 1 Est » et « 1 Ouest » restent distincts (proposés).
+  { const plain=new Map(); for(const n of names){ const k=buildingMergeKey(n); if(k&&/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/.test(k)&&!plain.has(buildingCoreId(n))) plain.set(buildingCoreId(n),n); }
+    for(const n of names){ if(modes[n]!=='distinct'||aliasMap[n]!==n) continue; const c=buildingQualifiedCore(n); const p=c?plain.get(c):null;
+      if(p&&p!==n){ aliasMap[n]=aliasMap[p]||p; modes[n]='auto-qualificatif'; } } }
   // v2.4.0 — logement isolé (« Logement 30 » d'un DPE ou d'un récapitulatif) rattaché au groupe de logements qui le cite
   // (« Logements 30 et 31 », « Logements 28 à 31 ») quand un seul groupe le contient.
   { const one=n=>{ const m=normalizeText(n).match(/^(?:b[aâ]timent\s+)?(?:logement|lgt|maison)s?\.?\s*n?°?\s*(\d+)$/i); return m?Number(m[1]):null; };
@@ -130,7 +135,7 @@ export function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={})
   const suggestions=[];
   for(let i=0;i<canonicalNames.length;i++) for(let j=i+1;j<canonicalNames.length;j++){
     const a=canonicalNames[i], b=canonicalNames[j], score=buildingSimilarity(a,b);
-    if(score>=.72 && score<.98) suggestions.push({a,b,score});
+    if(score>=.72 && (score<.98||buildingMergeKey(a)!==buildingMergeKey(b))) suggestions.push({a,b,score:Math.min(score,.97)});
   }
   suggestions.sort((a,b)=>b.score-a.score);
   const aliases=names.map(source=>({source,target:aliasMap[source]||source,mode:modes[source]||'distinct'}));

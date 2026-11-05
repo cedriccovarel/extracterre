@@ -2,7 +2,7 @@
 // exclusions, type de réponse), appliquées au texte des documents d'un projet. Chaque résultat cite le document, la page et
 // la ligne : une recherche ne produit jamais de valeur absente des documents. Les mots-clés peuvent être proposés par l'IA
 // (Ollama en local), seule la description du critère lui est envoyée.
-import {normLower,parseFrNumber} from './utils.js';
+import {normLower,parseFrNumber,stripUnitExponents} from './utils.js';
 
 export const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques'};
 // v2.8.2 — critère « Statistiques » (tableaux de surfaces) : une valeur par ligne trouvée, puis effectif, min, moyenne, max et centiles.
@@ -63,7 +63,7 @@ const srch_NUM_RE=/(?:^|[^\d,.])(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.
 function srch_numbersInLine(line,unit){
   const out=[]; const u=normLower(unit).replace(/\s+/g,''); const units=u==='m2'||u==='m²'?['m2','m²','m']:u?[u]:null;
   // Unité exacte : « 30 mm » n'est pas « 30 m ».
-  for(const m of line.matchAll(srch_NUM_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
+  for(const m of stripUnitExponents(line).matchAll(srch_NUM_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
   return out;
 }
 function srch_docLines(doc){

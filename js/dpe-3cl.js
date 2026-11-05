@@ -5,11 +5,11 @@
 // Phase : un DPE décrit l'état au jour de la visite (avant travaux) ; une « annexe DPE » d'étude de rénovation, un DPE
 // « projeté » ou « après travaux » décrit l'état projeté.
 // Les recommandations de travaux (packs) et la liste des solutions ENR ne décrivent pas le logement : elles ne sont pas lues.
-import {normalizeText,parseFrNumber} from './utils.js';
+import {normalizeText,parseFrNumber,stripUnitExponents} from './utils.js';
 
 const dp_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function dp_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:dp_t(line)})); return out; }
-const dp_n=s=>parseFrNumber(String(s||'').replace(/\s+/g,''));
+const dp_n=s=>parseFrNumber(stripUnitExponents(s||'').replace(/\s+/g,''));
 const EP=[[70,'A'],[110,'B'],[180,'C'],[250,'D'],[330,'E'],[420,'F']], GES=[[6,'A'],[11,'B'],[30,'C'],[50,'D'],[70,'E'],[100,'F']];
 const cls=(v,T)=>T.find(([s])=>v<=s)?.[1]||'G';
 const worst=(a,b)=>a>b?a:b;

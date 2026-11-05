@@ -37,12 +37,18 @@ export function normalizeGlazingType(value='') {
   if(/simple\s+vitrage|simple\s+verre/.test(low)) return 'Simple vitrage';
   return null;
 }
+// v2.18.2 — exposant d'unité écrit en chiffre devant une valeur : « kgCO2/m2 903 », « m3 1 250 », « CO2 : 85 ».
+// Le « 2 » de m2 / CO2 n'est jamais le début d'un nombre (sinon « m2 903 » devenait 2 903).
+export function stripUnitExponents(s) {
+  return String(s ?? '').replace(/(?<!\be)co[2\u2082](?!\d)/gi, m => m.slice(0, 2))
+    .replace(/(?<![a-z])([kcdh]?m)[23](?=[\s\u00a0\u202f\u2009)\]\/=:|]+[-+]?\d)/gi, '$1');
+}
 export function parseFrNumber(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (v == null) return null;
   // Premier nombre du texte seulement : « 57,3 kWh/m2 » donne 57,3 (et non 57,32), « 12,5 / 15 » donne 12,5.
   // Espaces (y compris insécables et fines) = séparateurs de milliers ; « − » typographique = signe moins.
-  const t = String(v).replace(/[\u00a0\u202f\u2009]/g,' ').replace(/\u2212/g,'-').replace(/\s(?=\d{3}(?:\D|$))/g,'');
+  const t = stripUnitExponents(v).replace(/[\u00a0\u202f\u2009]/g,' ').replace(/\u2212/g,'-').replace(/\s(?=\d{3}(?:\D|$))/g,'');
   const m = t.match(/[-+]?\d+(?:[.,]\d+)*/); // signe collé au nombre : « Bâtiment - 12 » ne donne pas −12
   if (!m) return null;
   const s = m[0].replace(/\s/g,'');

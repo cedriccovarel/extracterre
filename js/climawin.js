@@ -2,11 +2,12 @@
 // Structure stable : « N. Bâtiment X » → N.1 Étude / N.2 Bâtiment / N.3 Enveloppe / N.4 Synthèse RE2020.
 // Chaque indicateur est lu dans sa propre table, rattaché au bâtiment de sa section (jamais deviné par
 // proximité de mots), et contrôlé par recoupement (Σ zones = Sref, gains recalculés, etc.).
-import {normalizeText} from './utils.js';
+import {normalizeText,stripUnitExponents} from './utils.js';
+import {vectorFromShares} from './vecteurs.js';
 import {canonicalBuilding} from './buildings.js';
 
 const cw_NUM='-?\\d+(?:[.,]\\d+)?';
-const cw_num=s=>{ const v=Number(String(s).replace(/\s+/g,'').replace(',','.')); return Number.isFinite(v)?v:null; };
+const cw_num=s=>{ const v=Number(stripUnitExponents(s).replace(/\s+/g,'').replace(',','.')); return Number.isFinite(v)?v:null; };
 const cw_round=(v,d=2)=>{ const f=10**d; return Math.round(v*f)/f; };
 
 export function isClimaWinSynthesis(doc){
@@ -102,7 +103,7 @@ export function parseClimaWinSynthesis(doc,occ){
       if(ep===null) continue; (useEP[use]=useEP[use]||{})[vec]=ep; if(use!=='mobi') vecEP[vec]=(vecEP[vec]||0)+ep;
       if(vec==='elec'&&cw_USAGE_FIELDS[use]) emit(f,cw_USAGE_FIELDS[use],ep,'usage-ep',0.99,'kWhEP/m².an',{excerpt:f.text,provenanceNote:`Colonne « Tot EP » de la ligne « Cef ${vec}-${use} ».`}); }
     for(const [vec,total] of Object.entries(vecEP)){ const field=cw_VECTOR_FIELD[vec]; if(field&&lastLine) emit(lastLine,field,cw_round(total,1),'vector-ep-sum',0.95,'kWhEP/m².an',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:`Somme des « Tot EP » du vecteur ${cw_VECTOR_LABEL[vec]} (hors mobilier).`}); }
-    const dominant=(use)=>{ const row=useEP[use]; if(!row) return null; const e=Object.entries(row).sort((a,b)=>b[1]-a[1]); if(!e.length||e[0][1]<=0) return null; const tot=e.reduce((s,x)=>s+x[1],0); return e[0][1]/tot>=0.7?cw_VECTOR_LABEL[e[0][0]]:'Hybride'; };
+    const dominant=(use)=>{ const row=useEP[use]; if(!row) return null; const e=Object.entries(row).sort((a,b)=>b[1]-a[1]); if(!e.length||e[0][1]<=0) return null; return vectorFromShares(e.map(([k,v])=>[cw_VECTOR_LABEL[k],v])); };
     const hv=dominant('ch'), ev=dominant('ecs');
     if(hv&&lastLine) emit(lastLine,'heating_vector_after',hv,'vector-dominant',0.93,'',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:'Vecteur énergétique majoritaire de la ligne « Cef …-ch » (consommations importées).'});
     if(ev&&lastLine) emit(lastLine,'ecs_vector_after',ev,'vector-dominant',0.93,'',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:'Vecteur énergétique majoritaire de la ligne « Cef …-ecs ».'});

@@ -9,12 +9,12 @@
 //    « R=4.6 », menuiseries, occultations, générateurs, ECS, ventilation.
 // La phase est donnée par le titre du chapitre (« ETAT EXISTANT », « PROJET », « HYPOTHESES », « ETAT FUTUR ») ; un texte
 // d'hypothèses ou de programme de travaux décrit l'état projeté. Épaisseurs en mm, R en m².K/W.
-import {normalizeText,parseFrNumber,normalizeGlazingType} from './utils.js';
+import {normalizeText,parseFrNumber,normalizeGlazingType,stripUnitExponents} from './utils.js';
 import {insulationName} from './donnees-techniques.js';
 
 const nr_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function nr_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:nr_t(line)})); return out; }
-const nr_num=s=>parseFrNumber(String(s).replace(/\s+/g,''));
+const nr_num=s=>parseFrNumber(stripUnitExponents(s).replace(/\s+/g,''));
 const NR_FOOT=/^(?:SAS\s+\S+\s+Bureau|Agence\s|\d{1,5}\s+(?:rue|route|avenue|bd)\b|Page\s+\d+\s*(?:\/|sur)|\d+\s*\/\s*\d+$|\d+\s+sur\s+\d+$)/i;
 
 // Noms de bâtiments écrits sans espaces dans les tableaux (« Logements6et7 », « Logementscollectifs »).

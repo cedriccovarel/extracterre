@@ -12,10 +12,11 @@
 //  • tableaux verticaux « Bbio » / « Bbio max » / 52,4 / 60.
 // Les valeurs de référence (Ubat réf, Cep réf) ne sont jamais rangées en « avant travaux » sans le signaler :
 // elles le sont à vérifier quand l'état initial n'est pas fourni (convention observée dans les corrections).
-import {normalizeText,parseFrNumber} from './utils.js';
+import {normalizeText,parseFrNumber,stripUnitExponents} from './utils.js';
 import {insulationName} from './donnees-techniques.js';
+import {vectorFromShares} from './vecteurs.js';
 
-const lt_n=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
+const lt_n=s=>{ const v=parseFrNumber(stripUnitExponents(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
 const lt_nums=s=>(String(s||'').match(/-?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
 
 // Nombres d'une ligne U48Win : « ,7 » vaut 0,7 (zéro non imprimé).
@@ -30,7 +31,7 @@ const LT_CEP_ENERGIE={'Gaz':'cep_gas','Électricité':'cep_electricity','Réseau
 function emitBilan(b,emit){
   const U=b.usages, x=b.x, B=b.B, apres=b.phase==='after';
   const note=w=>({provenanceNote:`Bilan de l’état ${apres?'projet':'initial'} (sortie Th-C-E ex) : ${w}.`});
-  const dom=k=>{ const e=Object.entries(U[k]?.energies||{}).filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]); if(!e.length) return null; const tot=e.reduce((a,z)=>a+z[1],0); return {v:e[0][0],part:e[0][1]/tot}; };
+  const dom=k=>{ const e=Object.entries(U[k]?.energies||{}).filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]); if(!e.length) return null; const tot=e.reduce((a,z)=>a+z[1],0); return {v:vectorFromShares(e),part:e[0][1]/tot}; };
   const ch=dom('chauffage'), ecs=dom('ecs');
   if(ch) emit(U.chauffage.x||x,B,apres?'heating_vector_after':'heating_vector_before',ch.v,'bilan-chauffage',0.95,'',note(`énergie majoritaire du chauffage (${Math.round(ch.part*100)} % de l’énergie primaire)`));
   if(ecs) emit(U.ecs.x||x,B,apres?'ecs_vector_after':'ecs_vector_before',ecs.v,'bilan-ecs',0.95,'',note(`énergie majoritaire de l’ECS (${Math.round(ecs.part*100)} %)`));

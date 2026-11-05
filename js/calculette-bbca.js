@@ -6,7 +6,7 @@
 //    « Ic Construction = », postes « Exploitation Maîtrisée » (Chauffage, ECS…), « Ic Energie = », « Ic Eau = » ;
 //  • « Score BBCA » : score et niveau visé (Standard / Performance / Excellence).
 // Les seuils BBCA ne sont pas des seuils réglementaires RE2020 : ils ne remplissent pas les colonnes « Max ».
-import {normalizeText,parseFrNumber} from './utils.js';
+import {normalizeText,parseFrNumber,stripUnitExponents} from './utils.js';
 
 const bb_lineText=l=>normalizeText(l?.text||'').replace(/\s*\|\s*/g,' ').replace(/\s+/g,' ').trim();
 
@@ -32,7 +32,7 @@ function bb_num(s,spreadsheet){
 // Valeur portée par une ligne : dernière cellule (classeur) ou fin de ligne (PDF).
 function bb_value(x,spreadsheet){
   if(x.cells&&x.cells.length>=2) return bb_num(x.cells[x.cells.length-1],true);
-  const m=x.t.match(/(-?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?)\s*(?:m²|m2|points?)?\s*$/i);
+  const m=stripUnitExponents(x.t).match(/(-?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?)\s*(?:m²|m2|points?)?\s*$/i);
   return m?bb_num(m[1],spreadsheet):null;
 }
 function bb_text(x){

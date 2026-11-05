@@ -7,7 +7,7 @@
 //  • page « Résultats complémentaires » : Ic.chantier, stock de carbone biogénique (StockC) ;
 //  • hypothèses : surface de référence.
 // Les pages suivantes (préconisations FDES lot par lot) ne décrivent pas le projet : elles ne sont pas lues.
-import {normalizeText,parseFrNumber} from './utils.js';
+import {normalizeText,parseFrNumber,stripUnitExponents} from './utils.js';
 
 const rk_lt=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 export function isRecapCarboneRe2020(doc){
@@ -20,7 +20,7 @@ export function recapCarboneBuildingName(doc){
   const m=t.match(/(?:etude\s+realisee\s+pour\s+le|pour\s+le)\s+batiment\s+([A-Z0-9]{1,4})\b/i)||normalizeText(String(doc?.name||'')).match(/\bBat(?:iment)?\.?[\s_]*([A-Z0-9]{1,3})\b/i);
   return m?`Batiment ${m[1].toUpperCase()}`:'Bâtiment unique';
 }
-const rk_num=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
+const rk_num=s=>{ const v=parseFrNumber(stripUnitExponents(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
 
 export function parseRecapCarboneRe2020(doc,occ,canonical=(s)=>s){
   const out=[]; const lines=rk_lines(doc); const B=canonical(recapCarboneBuildingName(doc)); const origin='Récapitulatif carbone RE2020 (bureau d’études)';

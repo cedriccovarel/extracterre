@@ -4,6 +4,7 @@
 import {canonicalBuilding} from './buildings.js';
 import {normalizeGlazingType} from './utils.js';
 import {parseFrAddress} from './geocode.js';
+import {vectorFromShares} from './vecteurs.js';
 
 // ---------------------------------------------------------------------------
 // Parseur XML minimal (secours hors navigateur / tests Node). Dans le navigateur,
@@ -341,7 +342,7 @@ export function re2020Occurrences(doc,makeOcc){
       add(b,'cep_biomass',re20Round(ep('bois',v.bois),2),'rset-cep-vecteur-calc','kWhEP/m².an',/^Cep :/,d);
     }
     // Vecteurs principaux : vecteur dont la Cef importée est la plus forte pour l'usage.
-    const dominant=k=>{ const rows=['gaz','fioul','bois','elec','reseau'].map(x=>[x,u[`${x}_${k}`]||0]).filter(r=>r[1]>0).sort((a,b2)=>b2[1]-a[1]); if(!rows.length) return null; const total=rows.reduce((s,r)=>s+r[1],0); return rows[0][1]/total>=0.6?RE20_VECTOR_LABELS[rows[0][0]]:'Hybride'; };
+    const dominant=k=>{ const rows=['gaz','fioul','bois','elec','reseau'].map(x=>[x,u[`${x}_${k}`]||0]).filter(r=>r[1]>0).sort((a,b2)=>b2[1]-a[1]); if(!rows.length) return null; return vectorFromShares(rows.map(r=>[RE20_VECTOR_LABELS[r[0]],r[1]])); };
     const vecNote=k=>`Vecteur majoritaire des consommations finales importées (${k}) dans Sortie_Batiment_C.`;
     add(b,'heating_vector_after',dominant('ch'),'rset-vecteur-calc','',/^Bâtiment/,{confidence:0.95,derived:true,note:vecNote('chauffage')});
     add(b,'ecs_vector_after',dominant('ecs'),'rset-vecteur-calc','',/^Bâtiment/,{confidence:0.95,derived:true,note:vecNote('ECS')});

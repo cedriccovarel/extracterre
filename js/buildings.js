@@ -59,6 +59,16 @@ export function buildingCoreId(raw){
   return key;
 }
 
+// v2.19.0 — « Bâtiment 1 Est », « Bât A aile nord », « Bâtiment 2 (partie rue) » : identifiant court suivi de mots seulement.
+// Renvoie l'identifiant (« 1 », « a ») ou '' ; une liste d'identifiants (« 1 2 10 », « A et B », « B C ») n'en est pas un.
+export function buildingQualifiedCore(raw){
+  const key=buildingMergeKey(raw); if(!key) return '';
+  const [first,...rest]=key.split(' ');
+  if(!rest.length||!/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/.test(first)||/^(?:de|du|des|la|le|les|sur|et|un|une)$/.test(first)) return '';
+  if(rest.some(t=>/^(?:[a-z]\d*|\d+[a-z]?|et|a|au|ou)$/.test(t)||t.length<2)) return '';
+  return buildingCoreId(first);
+}
+
 export function buildingSimilarity(a,b){
   const ka=buildingMergeKey(a), kb=buildingMergeKey(b); if(!ka||!kb) return 0;
   if(ka===kb) return 1;

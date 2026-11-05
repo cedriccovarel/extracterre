@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.18.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.19.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.18.2';
+const APP_VERSION='2.19.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -664,12 +664,18 @@ function normalizeGlazingType(value='') {
   if(/simple\s+vitrage|simple\s+verre/.test(low)) return 'Simple vitrage';
   return null;
 }
+// v2.18.2 — exposant d'unité écrit en chiffre devant une valeur : « kgCO2/m2 903 », « m3 1 250 », « CO2 : 85 ».
+// Le « 2 » de m2 / CO2 n'est jamais le début d'un nombre (sinon « m2 903 » devenait 2 903).
+function stripUnitExponents(s) {
+  return String(s ?? '').replace(/(?<!\be)co[2\u2082](?!\d)/gi, m => m.slice(0, 2))
+    .replace(/(?<![a-z])([kcdh]?m)[23](?=[\s\u00a0\u202f\u2009)\]\/=:|]+[-+]?\d)/gi, '$1');
+}
 function parseFrNumber(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (v == null) return null;
   // Premier nombre du texte seulement : « 57,3 kWh/m2 » donne 57,3 (et non 57,32), « 12,5 / 15 » donne 12,5.
   // Espaces (y compris insécables et fines) = séparateurs de milliers ; « − » typographique = signe moins.
-  const t = String(v).replace(/[\u00a0\u202f\u2009]/g,' ').replace(/\u2212/g,'-').replace(/\s(?=\d{3}(?:\D|$))/g,'');
+  const t = stripUnitExponents(v).replace(/[\u00a0\u202f\u2009]/g,' ').replace(/\u2212/g,'-').replace(/\s(?=\d{3}(?:\D|$))/g,'');
   const m = t.match(/[-+]?\d+(?:[.,]\d+)*/); // signe collé au nombre : « Bâtiment - 12 » ne donne pas −12
   if (!m) return null;
   const s = m[0].replace(/\s/g,'');
@@ -748,6 +754,68 @@ async function geocodeAddress(query,row={},fetchImpl=fetch){
   return geocodeVerdict(await r.json(),row);
 }
 const mapLink=(lat,lon)=>`https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;
+
+/* ---- vecteurs.js ---- */
+// ExtracTerre v2.19.0 — vecteur énergétique hybride (chauffage et ECS).
+// « Hybride Gaz/Électricité » : le vecteur PRINCIPAL d'abord, puis le second. Jamais plus de deux vecteurs.
+// Pour ne pas en faire un fourre-tout, l'hybride n'est retenu que :
+//  • en texte, quand le document le dit (« PAC hybride », « bi-énergie », « bivalent », « PAC + chaudière gaz ») et que les
+//    deux vecteurs sont nommés près de cette mention ; un « sèche-serviettes électrique » ailleurs ne compte pas ;
+//  • en calcul (consommations par énergie), quand le second vecteur fait au moins 30 % de l'usage.
+// Sinon le vecteur principal seul, comme avant.
+
+
+const HYBRID_SECOND_SHARE=0.3;
+// Libellés courts dans l'hybride : « Hybride Gaz/Bois », « Hybride RCU/Gaz ».
+const VX_SHORT={'Bois / biomasse':'Bois','Réseau de chaleur urbain':'RCU'};
+const hybridLabel=(main,second)=>main&&second&&main!==second?`Hybride ${VX_SHORT[main]||main}/${VX_SHORT[second]||second}`:(main||null);
+const isHybridVector=v=>/^Hybride\b/.test(String(v||''));
+
+// Consommations par vecteur [[libellé, valeur]…] → vecteur principal, ou hybride si le second pèse ≥ 30 %.
+function vectorFromShares(entries){
+  const by=new Map(); for(const [k,v] of entries||[]){ const n=Number(v); if(k&&Number.isFinite(n)&&n>0) by.set(k,(by.get(k)||0)+n); }
+  const e=[...by].sort((a,b)=>b[1]-a[1]); if(!e.length) return null;
+  const tot=e.reduce((s,x)=>s+x[1],0);
+  return e[1]&&e[1][1]/tot>=HYBRID_SECOND_SHARE?hybridLabel(e[0][0],e[1][0]):e[0][0];
+}
+
+// Générateurs → vecteur (une PAC est électrique, sauf « PAC géothermique » qui reste Géothermie comme dans HVAC.vectors).
+const VX_GEN=[
+  ['Réseau de chaleur urbain',/\brcu\b|reseau\s+de\s+chaleur|chauffage\s+urbain|sous[- ]station/g],
+  ['Bois / biomasse',/\bbois\b|biomasse|granules?\b|pellets?\b|plaquettes/g],
+  ['Géothermie',/geotherm\w*/g],
+  ['Fioul',/\bfioul\b|\bfuel\b|mazout/g],
+  ['Gaz',/\bgaz\b|propane/g],
+  ['Électricité',/\bpac\b|pompes?\s+a\s+chaleur|electri\w*|effet\s+joule|thermodynamique/g]
+];
+const VX_HYB_SIGNAL=/\bhybrides?\b|\bbi[- ]?energies?\b|\bbivalente?s?\b|\b(?:pac|pompes?\s+a\s+chaleur)\b[^|\n]{0,60}\+\s*chaudieres?\b|\bchaudieres?\b[^|\n]{0,60}\+\s*(?:pac|pompes?\s+a\s+chaleur)\b/;
+const VX_SECONDARY=/(?:appoint|releve|secours|complement)/;
+
+// Hybride lu dans le texte, ou null. Fenêtre de 90 caractères autour de la mention.
+function hybridFromText(text){
+  const t=normLower(text).replace(/(?:ventilation|vmc|traitement|mode)\s+hybrides?/g,' ');
+  const m=t.match(VX_HYB_SIGNAL); if(!m) return null;
+  const a=Math.max(0,m.index-90), w=t.slice(a,m.index+m[0].length+90);
+  const found=[];
+  for(const [v,re] of VX_GEN){ re.lastIndex=0; let x; while((x=re.exec(w))){
+    if(v==='Électricité'&&/geotherm/.test(w.slice(x.index,x.index+40))) continue;
+    found.push({v,i:x.index,end:x.index+x[0].length}); } }
+  const firsts=[]; for(const f of found.sort((p,q)=>p.i-q.i)) if(!firsts.some(z=>z.v===f.v)) firsts.push(f);
+  if(firsts.length<2) return 'Hybride';
+  // Le générateur « d'appoint » / « en relève » est le second ; sinon l'ordre du texte.
+  // « PAC en appoint », « chaudière gaz en relève » (après le générateur) ; « relève par chaudière gaz », « appoint gaz »
+  // (avant, sans virgule entre les deux : dans « PAC en appoint, chaudière gaz », le gaz n'est pas l'appoint).
+  const sec=f=>new RegExp(`^(?:\\s+(?:[a-z/]+\\s+){0,3}?)?(?:en\\s+|d.\\s*|de\\s+)?${VX_SECONDARY.source}`).test(w.slice(f.end,f.end+40))
+    ||new RegExp(`${VX_SECONDARY.source}\\w*(?:\\s+(?:par|en|au|a|de|d|du|une?|des?|la|le))*\\s+(?:[a-z]+\\s+)?$`).test(w.slice(Math.max(0,f.i-30),f.i));
+  const two=firsts.slice(0,3); const main=two.find(f=>!sec(f))||two[0]; const second=two.find(f=>f!==main);
+  return hybridLabel(main.v,second.v);
+}
+
+// Remplace findFirstMatch(text,HVAC.vectors) : hybride explicite, sinon premier vecteur reconnu.
+function detectVector(text){
+  const h=hybridFromText(text); if(h) return h;
+  return findFirstMatch(text,HVAC.vectors);
+}
 
 /* ---- insulation-library.js ---- */
 /*
@@ -924,6 +992,16 @@ function buildingCoreId(raw){
   const first=key.split(' ')[0];
   if(/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/.test(first)) return first.replace(/^([a-z]+)0+(\d+)$/,'$1$2').replace(/^0+(\d+)$/,'$1');
   return key;
+}
+
+// v2.19.0 — « Bâtiment 1 Est », « Bât A aile nord », « Bâtiment 2 (partie rue) » : identifiant court suivi de mots seulement.
+// Renvoie l'identifiant (« 1 », « a ») ou '' ; une liste d'identifiants (« 1 2 10 », « A et B », « B C ») n'en est pas un.
+function buildingQualifiedCore(raw){
+  const key=buildingMergeKey(raw); if(!key) return '';
+  const [first,...rest]=key.split(' ');
+  if(!rest.length||!/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/.test(first)||/^(?:de|du|des|la|le|les|sur|et|un|une)$/.test(first)) return '';
+  if(rest.some(t=>/^(?:[a-z]\d*|\d+[a-z]?|et|a|au|ou)$/.test(t)||t.length<2)) return '';
+  return buildingCoreId(first);
 }
 
 function buildingSimilarity(a,b){
@@ -1176,8 +1254,9 @@ function operationNameFromFiles(docs){
 // proximité de mots), et contrôlé par recoupement (Σ zones = Sref, gains recalculés, etc.).
 
 
+
 const cw_NUM='-?\\d+(?:[.,]\\d+)?';
-const cw_num=s=>{ const v=Number(String(s).replace(/\s+/g,'').replace(',','.')); return Number.isFinite(v)?v:null; };
+const cw_num=s=>{ const v=Number(stripUnitExponents(s).replace(/\s+/g,'').replace(',','.')); return Number.isFinite(v)?v:null; };
 const cw_round=(v,d=2)=>{ const f=10**d; return Math.round(v*f)/f; };
 
 function isClimaWinSynthesis(doc){
@@ -1273,7 +1352,7 @@ function parseClimaWinSynthesis(doc,occ){
       if(ep===null) continue; (useEP[use]=useEP[use]||{})[vec]=ep; if(use!=='mobi') vecEP[vec]=(vecEP[vec]||0)+ep;
       if(vec==='elec'&&cw_USAGE_FIELDS[use]) emit(f,cw_USAGE_FIELDS[use],ep,'usage-ep',0.99,'kWhEP/m².an',{excerpt:f.text,provenanceNote:`Colonne « Tot EP » de la ligne « Cef ${vec}-${use} ».`}); }
     for(const [vec,total] of Object.entries(vecEP)){ const field=cw_VECTOR_FIELD[vec]; if(field&&lastLine) emit(lastLine,field,cw_round(total,1),'vector-ep-sum',0.95,'kWhEP/m².an',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:`Somme des « Tot EP » du vecteur ${cw_VECTOR_LABEL[vec]} (hors mobilier).`}); }
-    const dominant=(use)=>{ const row=useEP[use]; if(!row) return null; const e=Object.entries(row).sort((a,b)=>b[1]-a[1]); if(!e.length||e[0][1]<=0) return null; const tot=e.reduce((s,x)=>s+x[1],0); return e[0][1]/tot>=0.7?cw_VECTOR_LABEL[e[0][0]]:'Hybride'; };
+    const dominant=(use)=>{ const row=useEP[use]; if(!row) return null; const e=Object.entries(row).sort((a,b)=>b[1]-a[1]); if(!e.length||e[0][1]<=0) return null; return vectorFromShares(e.map(([k,v])=>[cw_VECTOR_LABEL[k],v])); };
     const hv=dominant('ch'), ev=dominant('ecs');
     if(hv&&lastLine) emit(lastLine,'heating_vector_after',hv,'vector-dominant',0.93,'',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:'Vecteur énergétique majoritaire de la ligne « Cef …-ch » (consommations importées).'});
     if(ev&&lastLine) emit(lastLine,'ecs_vector_after',ev,'vector-dominant',0.93,'',{derivedFromDocument:true,excerpt:lastLine.text,provenanceNote:'Vecteur énergétique majoritaire de la ligne « Cef …-ecs ».'});
@@ -1815,7 +1894,7 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
 // Milliers séparés par une espace seulement s'ils portent une décimale (« 2 190,5 ») : dans les tableaux,
 // « 631 242 178 » est une suite de trois nombres, pas un seul.
 const cs_NUM_RE=/[-+]?\d{1,3}(?:[ \u00a0]\d{3})+[.,]\d+|[-+]?\d+(?:[.,]\d+)?/g;
-const cs_numbers=s=>(String(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
+const cs_numbers=s=>(stripUnitExponents(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
 // Les séparateurs de cellules « | » produits par l'OCR sont neutralisés.
 const cs_lineText=l=>normalizeText(String(l?.text||'').replace(/\s*\|\s*/g,' '));
 
@@ -1994,7 +2073,7 @@ function parseStdReport(doc,occ){
 // Les seuils sont rangés dans « Max 2028 » quand la notice déclare viser le seuil 2028, sinon dans « Max ».
 
 const nc_lineText=l=>normalizeText(l?.text||'');
-const nc_num=s=>{ const m=String(s||'').match(/[-+]?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/[  ]/g,'')):null; };
+const nc_num=s=>{ const m=stripUnitExponents(s||'').match(/[-+]?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/[  ]/g,'')):null; };
 
 function isCarbonNoticeRe2020(doc){
   const t=String(doc?.read?.text||'').slice(0,800000);
@@ -2091,7 +2170,7 @@ function bb_num(s,spreadsheet){
 // Valeur portée par une ligne : dernière cellule (classeur) ou fin de ligne (PDF).
 function bb_value(x,spreadsheet){
   if(x.cells&&x.cells.length>=2) return bb_num(x.cells[x.cells.length-1],true);
-  const m=x.t.match(/(-?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?)\s*(?:m²|m2|points?)?\s*$/i);
+  const m=stripUnitExponents(x.t).match(/(-?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|-?\d+(?:[.,]\d+)?)\s*(?:m²|m2|points?)?\s*$/i);
   return m?bb_num(m[1],spreadsheet):null;
 }
 function bb_text(x){
@@ -2981,7 +3060,7 @@ function parseClimaWinRenovation(doc,occ,canonical=(s)=>s){
 
 const nr_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function nr_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:nr_t(line)})); return out; }
-const nr_num=s=>parseFrNumber(String(s).replace(/\s+/g,''));
+const nr_num=s=>parseFrNumber(stripUnitExponents(s).replace(/\s+/g,''));
 const NR_FOOT=/^(?:SAS\s+\S+\s+Bureau|Agence\s|\d{1,5}\s+(?:rue|route|avenue|bd)\b|Page\s+\d+\s*(?:\/|sur)|\d+\s*\/\s*\d+$|\d+\s+sur\s+\d+$)/i;
 
 // Noms de bâtiments écrits sans espaces dans les tableaux (« Logements6et7 », « Logementscollectifs »).
@@ -3212,6 +3291,7 @@ function parseRenovationNotice(doc,occ,canonical=(s)=>s,opts={}){
 //  • « RESUME de L'ETUDE » (Tic, C'ep / CepMax), « CONTROLE LABELS » (« Cep = 85,1 <= Cepref HPE = 150,0 »).
 
 
+
 const uw_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function uw_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:uw_t(line)})); return out; }
 const uw_n=s=>parseFrNumber(String(s||'').replace(/^,/,'0,'));
@@ -3256,8 +3336,8 @@ function parseU48WinRtex(doc,occ,canonical=(s)=>s){
     const usage=u=>{ const k=R.findIndex(x=>new RegExp(`^${u}$`,'i').test(x.t)); if(k<0) return null; const rows=[]; for(const y of R.slice(k+1,k+8)){ if(/^(?:CHAUFFAGE|REFROIDISSEMENT|ECS|ECLAIRAGE|AUXILIAIRES|AUTRES\s+USAGES|TOTAL)$/i.test(y.t)) break; rows.push(y); } return rows; };
     const P={};
     for(const [u,fb,fa] of [['CHAUFFAGE','heating_vector_before','heating_vector_after'],['ECS','ecs_vector_before','ecs_vector_after']]){ const rows=usage(u)||[];
-      const e=rows.map(y=>({y,e:UW_ENERGY(y.t.replace(/[-\d,.\s%]+$/,'')),v:uw_nums(y.t)[0]})).filter(z=>z.e&&z.v>0).sort((a,b)=>b.v-a.v)[0];
-      if(e) emit(e.y,B,r.phase==='before'?fb:fa,e.e,`${u.toLowerCase()}-energie`,0.93,'',{provenanceNote:`Consommation ${u.toLowerCase()} ${r.phase==='before'?'de l’état initial':'du projet'} : ${e.y.t}.`});
+      const all=rows.map(y=>({y,e:UW_ENERGY(y.t.replace(/[-\d,.\s%]+$/,'')),v:uw_nums(y.t)[0]})).filter(z=>z.e&&z.v>0).sort((a,b)=>b.v-a.v), e=all[0];
+      if(e) emit(e.y,B,r.phase==='before'?fb:fa,vectorFromShares(all.map(z=>[z.e,z.v])),`${u.toLowerCase()}-energie`,0.93,'',{provenanceNote:`Consommation ${u.toLowerCase()} ${r.phase==='before'?'de l’état initial':'du projet'} : ${e.y.t}.`});
       const tot=rows.find(y=>/^Total\s+Energie\s+primaire/i.test(y.t)); if(tot) P[u]={v:uw_nums(tot.t.replace(/^.*?m²\)/i,''))[0],e:e?.e}; }
     for(const u of ['ECLAIRAGE','AUXILIAIRES','REFROIDISSEMENT']){ const rows=usage(u)||[]; const tot=rows.find(y=>/^Total\s+Energie\s+primaire/i.test(y.t)); const ven=rows.find(y=>/^Vent\s*-\s*Total\s+Energie\s+primaire/i.test(y.t)); P[u]={v:tot?uw_nums(tot.t.replace(/^.*?m²\)/i,''))[0]:0,x:tot||rows[0]}; if(ven) P.VENT={v:uw_nums(ven.t.replace(/^.*?m²\)/i,''))[0],x:ven}; }
     if(r.phase==='after'&&!r.old){ const x=find(/^ECLAIRAGE$/i)||cp; const note={provenanceNote:'Résultats de l’état projet : « Total Energie primaire » du poste.'};
@@ -3360,7 +3440,7 @@ function parseU48WinRtex(doc,occ,canonical=(s)=>s){
 
 const dp_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function dp_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:dp_t(line)})); return out; }
-const dp_n=s=>parseFrNumber(String(s||'').replace(/\s+/g,''));
+const dp_n=s=>parseFrNumber(stripUnitExponents(s||'').replace(/\s+/g,''));
 const EP=[[70,'A'],[110,'B'],[180,'C'],[250,'D'],[330,'E'],[420,'F']], GES=[[6,'A'],[11,'B'],[30,'C'],[50,'D'],[70,'E'],[100,'F']];
 const cls=(v,T)=>T.find(([s])=>v<=s)?.[1]||'G';
 const worst=(a,b)=>a>b?a:b;
@@ -3535,7 +3615,8 @@ function parsePrestaterreBooklet(doc,occ){
 // elles le sont à vérifier quand l'état initial n'est pas fourni (convention observée dans les corrections).
 
 
-const lt_n=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
+
+const lt_n=s=>{ const v=parseFrNumber(stripUnitExponents(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
 const lt_nums=s=>(String(s||'').match(/-?\d+(?:[.,]\d+)?/g)||[]).map(x=>parseFrNumber(x)).filter(v=>v!==null);
 
 // Nombres d'une ligne U48Win : « ,7 » vaut 0,7 (zéro non imprimé).
@@ -3550,7 +3631,7 @@ const LT_CEP_ENERGIE={'Gaz':'cep_gas','Électricité':'cep_electricity','Réseau
 function emitBilan(b,emit){
   const U=b.usages, x=b.x, B=b.B, apres=b.phase==='after';
   const note=w=>({provenanceNote:`Bilan de l’état ${apres?'projet':'initial'} (sortie Th-C-E ex) : ${w}.`});
-  const dom=k=>{ const e=Object.entries(U[k]?.energies||{}).filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]); if(!e.length) return null; const tot=e.reduce((a,z)=>a+z[1],0); return {v:e[0][0],part:e[0][1]/tot}; };
+  const dom=k=>{ const e=Object.entries(U[k]?.energies||{}).filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]); if(!e.length) return null; const tot=e.reduce((a,z)=>a+z[1],0); return {v:vectorFromShares(e),part:e[0][1]/tot}; };
   const ch=dom('chauffage'), ecs=dom('ecs');
   if(ch) emit(U.chauffage.x||x,B,apres?'heating_vector_after':'heating_vector_before',ch.v,'bilan-chauffage',0.95,'',note(`énergie majoritaire du chauffage (${Math.round(ch.part*100)} % de l’énergie primaire)`));
   if(ecs) emit(U.ecs.x||x,B,apres?'ecs_vector_after':'ecs_vector_before',ecs.v,'bilan-ecs',0.95,'',note(`énergie majoritaire de l’ECS (${Math.round(ecs.part*100)} %)`));
@@ -3994,7 +4075,7 @@ function recapCarboneBuildingName(doc){
   const m=t.match(/(?:etude\s+realisee\s+pour\s+le|pour\s+le)\s+batiment\s+([A-Z0-9]{1,4})\b/i)||normalizeText(String(doc?.name||'')).match(/\bBat(?:iment)?\.?[\s_]*([A-Z0-9]{1,3})\b/i);
   return m?`Batiment ${m[1].toUpperCase()}`:'Bâtiment unique';
 }
-const rk_num=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
+const rk_num=s=>{ const v=parseFrNumber(stripUnitExponents(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
 
 function parseRecapCarboneRe2020(doc,occ,canonical=(s)=>s){
   const out=[]; const lines=rk_lines(doc); const B=canonical(recapCarboneBuildingName(doc)); const origin='Récapitulatif carbone RE2020 (bureau d’études)';
@@ -4236,6 +4317,7 @@ function parseHeatLossReport(doc,occ){
 // ExtracTerre v2.3 — lecture structurée des XML RE2020 (RSET + RSEnv + Datas_Comp).
 // Les valeurs sont lues directement dans les balises normalisées du schéma RE2020 :
 // aucune expression régulière sur du texte linéarisé, aucun décalage de colonne possible.
+
 
 
 
@@ -4575,7 +4657,7 @@ function re2020Occurrences(doc,makeOcc){
       add(b,'cep_biomass',re20Round(ep('bois',v.bois),2),'rset-cep-vecteur-calc','kWhEP/m².an',/^Cep :/,d);
     }
     // Vecteurs principaux : vecteur dont la Cef importée est la plus forte pour l'usage.
-    const dominant=k=>{ const rows=['gaz','fioul','bois','elec','reseau'].map(x=>[x,u[`${x}_${k}`]||0]).filter(r=>r[1]>0).sort((a,b2)=>b2[1]-a[1]); if(!rows.length) return null; const total=rows.reduce((s,r)=>s+r[1],0); return rows[0][1]/total>=0.6?RE20_VECTOR_LABELS[rows[0][0]]:'Hybride'; };
+    const dominant=k=>{ const rows=['gaz','fioul','bois','elec','reseau'].map(x=>[x,u[`${x}_${k}`]||0]).filter(r=>r[1]>0).sort((a,b2)=>b2[1]-a[1]); if(!rows.length) return null; return vectorFromShares(rows.map(r=>[RE20_VECTOR_LABELS[r[0]],r[1]])); };
     const vecNote=k=>`Vecteur majoritaire des consommations finales importées (${k}) dans Sortie_Batiment_C.`;
     add(b,'heating_vector_after',dominant('ch'),'rset-vecteur-calc','',/^Bâtiment/,{confidence:0.95,derived:true,note:vecNote('chauffage')});
     add(b,'ecs_vector_after',dominant('ecs'),'rset-vecteur-calc','',/^Bâtiment/,{confidence:0.95,derived:true,note:vecNote('ECS')});
@@ -5573,7 +5655,7 @@ function occ(doc,page,line,field,value,method,confidence=0.75,unit='',extra={}){
 }
 function push(out,o){ if(o) out.push(o); }
 function lineWindow(page,i,before=2,after=2){ const ls=page.lines||[]; return ls.slice(Math.max(0,i-before),Math.min(ls.length,i+after+1)).map(x=>x.text).join(' | '); }
-function firstValueAfterLabel(text,labelRe){ const flags=labelRe.flags.includes('i')?'i':''; const clean=normalizeText(maskNonDataNumerics(text)); const m=clean.match(new RegExp(`(?:${labelRe.source})[^0-9+-]{0,90}([-+]?\\d+(?:[\\s.]\\d{3})*(?:[,.]\\d+)?)`,flags)); return m?parseFrNumber(m[1]):null; }
+function firstValueAfterLabel(text,labelRe){ const flags=labelRe.flags.includes('i')?'i':''; const clean=stripUnitExponents(normalizeText(maskNonDataNumerics(text))); const m=clean.match(new RegExp(`(?:${labelRe.source})[^0-9+-]{0,90}([-+]?\\d+(?:[\\s.]\\d{3})*(?:[,.]\\d+)?)`,flags)); return m?parseFrNumber(m[1]):null; }
 function phaseFromContext(text,doc){
   const s=normLower(`${doc.name} ${text}`);
   if(/\b(?:avant\s+travaux|etat\s+initial|etat\s+existant|existant|initial|avant\s+renovation|situation\s+initiale)\b/.test(s)) return 'before';
@@ -5977,7 +6059,7 @@ function rsetSystemsStructured(doc){
       }
       if(/cat[eé]gorie\s+du\s+g[eé]n[eé]rateur|type\s+d['’]?energie\s+de\s+base|poste\s+de\s+consommation\s+assur[eé]e|chaudi[eè]re|pompe\s+[aà]\s+chaleur|r[eé]seau\s+de\s+chaleur/i.test(low)){
         const ctx=normalizeText(lines.slice(i,Math.min(lines.length,i+4)).map(x=>x.text).join(' | '));
-        const mode=findFirstMatch(ctx,HVAC.heating), vec=findFirstMatch(ctx,HVAC.vectors), ecs=findFirstMatch(ctx,HVAC.ecs);
+        const mode=findFirstMatch(ctx,HVAC.heating), vec=detectVector(ctx), ecs=findFirstMatch(ctx,HVAC.ecs);
         if(mode) push(out,occ(doc,page,lines[i],'heating_mode_after',mode,'rset:generation-heating',0.995,'',{building:current,origin:'RSET Feuillets génération',excerpt:ctx.slice(0,420)}));
         if(vec){ push(out,occ(doc,page,lines[i],'heating_vector_after',vec,'rset:generation-heating-vector',0.995,'',{building:current,origin:'RSET Feuillets génération',excerpt:ctx.slice(0,420)})); if(/ecs|eau\s+chaude|sanitaire|ballon|stockage/i.test(normLower(ctx))) push(out,occ(doc,page,lines[i],'ecs_vector_after',vec,'rset:generation-ecs-vector',0.995,'',{building:current,origin:'RSET Feuillets génération',excerpt:ctx.slice(0,420)})); }
         if(ecs||(/chauffage\s*\+\s*eau\s+chaude\s+sanitaire/i.test(ctx)&&mode?.includes('Chaudière'))) push(out,occ(doc,page,lines[i],'ecs',ecs||'Chaudière','rset:generation-ecs',0.995,'',{building:current,origin:'RSET Feuillets génération',excerpt:ctx.slice(0,420)}));
@@ -6531,9 +6613,9 @@ function parseStructuredRenovationThermal(doc){
         const mode=findFirstMatch(m[1],HVAC.heating); if(mode) add(page,line,'heating_mode_after',mode,'bao:heating-generator-after',.999,'',{building,excerpt:ctx});
       }
       if((m=raw.match(/type\s+d['’]?energie\s+pour\s+la\s+production\s+de\s+chaud\s*:\s*(.+)$/i))){
-        const vec=findFirstMatch(m[1],HVAC.vectors); if(vec&&phase==='before') add(page,line,'heating_vector_before',vec,'bao:generator-energy-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'heating_vector_after',vec,'bao:generator-energy-after',.999,'',{building,excerpt:ctx});
+        const vec=detectVector(m[1]); if(vec&&phase==='before') add(page,line,'heating_vector_before',vec,'bao:generator-energy-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'heating_vector_after',vec,'bao:generator-energy-after',.999,'',{building,excerpt:ctx});
       }
-      if((m=raw.match(/type\s+d['’]?ecs\s*:\s*(.+)$/i))){ const vec=findFirstMatch(m[1],HVAC.vectors); if(vec&&phase==='before') add(page,line,'ecs_vector_before',vec,'bao:ecs-vector-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'ecs_vector_after',vec,'bao:ecs-vector-after',.999,'',{building,excerpt:ctx}); }
+      if((m=raw.match(/type\s+d['’]?ecs\s*:\s*(.+)$/i))){ const vec=detectVector(m[1]); if(vec&&phase==='before') add(page,line,'ecs_vector_before',vec,'bao:ecs-vector-before',.999,'',{building,excerpt:ctx}); if(vec&&phase==='after') add(page,line,'ecs_vector_after',vec,'bao:ecs-vector-after',.999,'',{building,excerpt:ctx}); }
       if((m=raw.match(/type\s+de\s+stockage\s*:\s*(.+)$/i))&&phase==='after'){
         const mode=findFirstMatch(m[1],HVAC.ecs); if(mode){
           const nearby=normalizeText(lines.slice(Math.max(0,i-2),Math.min(lines.length,i+4)).map(x=>x.text).join(' | '));
@@ -6827,14 +6909,14 @@ function parseSystems(doc){
     if(recoAware){ if(DPE_RECO_HEADING.test(baseLow)) inReco=true; else if(DPE_CURRENT_HEADING.test(baseLow)) inReco=false; if(inReco||DPE_RECO_VERB.test(baseLow)) continue; }
 
     const heatCtx=makeCtx(/chauffage|chaudiere|pac|pompe\s+a\s+chaleur|radiateur|convecteur|plancher\s+chauffant|vrv|drv|sous[- ]station/i,t=>!!(findFirstMatch(t,HVAC.heating)||findFirstMatch(t,HVAC.vectors)));
-    if(heatCtx){ const phase=resolvedPhase(heatCtx), heatLow=normLower(heatCtx); const heatNoise=envInventoryNoise||/(?:taux\s+de\s+couverture|si\s+chauffage|dont\s+chauffage|exigence|rappel|exemple|scenario\s+non\s+retenu|scénario\s+non\s+retenu|hypoth[eè]se)/i.test(heatLow)||(/\bsolaire\b/i.test(heatLow)&&/(?:^|\s)0(?:[,.]0+)?(?:\s+0(?:[,.]0+)?)*\s*$/.test(heatLow)); const mode=heatNoise?null:findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(heatLow); const strongVector=/^(?:type\s+d['’]?energie|type\s+d['’]?énergie|energie|énergie|combustible|vecteur|alimentation)\s*[:=-]/i.test(heatCtx)||/(?:chaudi[eè]re|pac|pompe\s+[aà]\s+chaleur|sous[- ]station|r[eé]seau\s+de\s+chaleur|convecteur|radiateur|plancher\s+chauffant)/i.test(heatLow); const vec=(!heatNoise&&!optionList&&strongVector)?findFirstMatch(heatCtx,HVAC.vectors):null; if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
+    if(heatCtx){ const phase=resolvedPhase(heatCtx), heatLow=normLower(heatCtx); const heatNoise=envInventoryNoise||/(?:taux\s+de\s+couverture|si\s+chauffage|dont\s+chauffage|exigence|rappel|exemple|scenario\s+non\s+retenu|scénario\s+non\s+retenu|hypoth[eè]se)/i.test(heatLow)||(/\bsolaire\b/i.test(heatLow)&&/(?:^|\s)0(?:[,.]0+)?(?:\s+0(?:[,.]0+)?)*\s*$/.test(heatLow)); const mode=heatNoise?null:findFirstMatch(heatCtx,HVAC.heating); const optionList=/type\s+de\s+chauffage\s*:\s*autre\s*\([^)]*(?:gaz|fioul|bois|reseau)[^)]*\)/i.test(heatLow); const strongVector=/^(?:type\s+d['’]?energie|type\s+d['’]?énergie|energie|énergie|combustible|vecteur|alimentation)\s*[:=-]/i.test(heatCtx)||/(?:chaudi[eè]re|pac|pompe\s+[aà]\s+chaleur|sous[- ]station|r[eé]seau\s+de\s+chaleur|convecteur|radiateur|plancher\s+chauffant)/i.test(heatLow); const vec=(!heatNoise&&!optionList&&strongVector)?detectVector(heatCtx):null; if(mode && phase!=='before') push(out,occ(doc,page,line,'heating_mode_after',mode,'systems:heating-mode-context',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'heating_vector_before',vec,'systems:heating-vector-before',0.94,'',{excerpt:heatCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'heating_vector_after',vec,'systems:heating-vector-after',0.93,'',{excerpt:heatCtx.slice(0,420)})); }
 
     const ecsCtx=makeCtx(/\becs\b|eau\s+chaude\s+sanitaire|chauffe[- ]eau|ballon|cumulus|cesi/i,t=>!!(findFirstMatch(t,HVAC.ecs)||findFirstMatch(t,HVAC.vectors)));
     // v2.18.1 — « solaire » sans installation solaire : « Sans composante solaire » (RSET), « Présence ECS solaire … non » et
     // « Stockage et Système solaire » (DPE), critère « 16 a Production d'ECS … solaire thermique », clause « … solaire validant
     // la conformité », norme « NF P50-103 : Énergie solaire ». Le mot est ignoré ; les autres énergies de la ligne restent lues.
     const ecsRead=ecsCtx&&SOLAR_NOISE.test(normLower(ecsCtx))?ecsCtx.replace(/\bsolaires?\b/gi,' '):ecsCtx;
-    if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsRead,HVAC.ecs), vec=findFirstMatch(ecsRead,HVAC.vectors); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
+    if(ecsCtx){ const phase=resolvedPhase(ecsCtx), mode=findFirstMatch(ecsRead,HVAC.ecs), vec=detectVector(ecsRead); if(mode && phase!=='before') push(out,occ(doc,page,line,'ecs',mode,'systems:ecs-context',phase==='after'?0.96:0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase==='before') push(out,occ(doc,page,line,'ecs_vector_before',vec,'systems:ecs-vector-before',0.94,'',{excerpt:ecsCtx.slice(0,420)})); if(vec && phase!=='before') push(out,occ(doc,page,line,'ecs_vector_after',vec,'systems:ecs-vector-after',0.93,'',{excerpt:ecsCtx.slice(0,420)})); }
 
     let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && !cctpLineNoise(doc,next) && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
@@ -8160,6 +8242,11 @@ function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={}){
     modes[n]=mode;
   }
 
+  // v2.19.0 — « Bâtiment 1 Est » rejoint « Bâtiment 1 » quand ce bâtiment existe tel quel (même identifiant, suivi de mots
+  // seulement : orientation, aile, partie…). Sans « Bâtiment 1 » seul, « 1 Est » et « 1 Ouest » restent distincts (proposés).
+  { const plain=new Map(); for(const n of names){ const k=buildingMergeKey(n); if(k&&/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/.test(k)&&!plain.has(buildingCoreId(n))) plain.set(buildingCoreId(n),n); }
+    for(const n of names){ if(modes[n]!=='distinct'||aliasMap[n]!==n) continue; const c=buildingQualifiedCore(n); const p=c?plain.get(c):null;
+      if(p&&p!==n){ aliasMap[n]=aliasMap[p]||p; modes[n]='auto-qualificatif'; } } }
   // v2.4.0 — logement isolé (« Logement 30 » d'un DPE ou d'un récapitulatif) rattaché au groupe de logements qui le cite
   // (« Logements 30 et 31 », « Logements 28 à 31 ») quand un seul groupe le contient.
   { const one=n=>{ const m=normalizeText(n).match(/^(?:b[aâ]timent\s+)?(?:logement|lgt|maison)s?\.?\s*n?°?\s*(\d+)$/i); return m?Number(m[1]):null; };
@@ -8179,7 +8266,7 @@ function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={}){
   const suggestions=[];
   for(let i=0;i<canonicalNames.length;i++) for(let j=i+1;j<canonicalNames.length;j++){
     const a=canonicalNames[i], b=canonicalNames[j], score=buildingSimilarity(a,b);
-    if(score>=.72 && score<.98) suggestions.push({a,b,score});
+    if(score>=.72 && (score<.98||buildingMergeKey(a)!==buildingMergeKey(b))) suggestions.push({a,b,score:Math.min(score,.97)});
   }
   suggestions.sort((a,b)=>b.score-a.score);
   const aliases=names.map(source=>({source,target:aliasMap[source]||source,mode:modes[source]||'distinct'}));
@@ -9820,7 +9907,7 @@ const srch_NUM_RE=/(?:^|[^\d,.])(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.
 function srch_numbersInLine(line,unit){
   const out=[]; const u=normLower(unit).replace(/\s+/g,''); const units=u==='m2'||u==='m²'?['m2','m²','m']:u?[u]:null;
   // Unité exacte : « 30 mm » n'est pas « 30 m ».
-  for(const m of line.matchAll(srch_NUM_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
+  for(const m of stripUnitExponents(line).matchAll(srch_NUM_RE)){ const n=parseFrNumber(m[1]); if(n===null) continue; const after=normLower(m[2]||'').replace(/\d$/,''); if(units&&!units.includes(after)) continue; out.push(n); }
   return out;
 }
 function srch_docLines(doc){
@@ -12504,14 +12591,27 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement. « B » et « B1 » nécessitent une validation manuelle.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${oddValue(f.key,v)?'odd':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"><td class="sticky strong building-cell">${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span></label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${oddValue(f.key,v)?'odd':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
   const selected=()=>$$('#summaryView .building-select:checked').map(x=>x.value);
   const refreshBuildingActionButtons=()=>{ const n=selected().length, merge=$('#mergeBuildingsBtn'), del=$('#deleteBuildingsBtn'); if(merge) merge.disabled=n<2; if(del) del.disabled=n<1; };
   $$('#summaryView .building-select').forEach(cb=>cb.onchange=refreshBuildingActionButtons);
-  const all=$('#selectAllBuildings'); if(all) all.onchange=()=>{ $$('#summaryView .building-select').forEach(cb=>cb.checked=all.checked); refreshBuildingActionButtons(); };
+  // v2.19.0 — recherche manuelle : filtre les lignes bâtiment (tous les mots, sans accents ; « 1 » ne trouve pas « 10 ») ; « Sélectionner les résultats »
+  // coche les lignes trouvées pour les fusionner. « Tout cocher » ne coche que les lignes affichées.
+  const searchNorm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\bb[aâ]t(?:iment)?\.?\s*/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+  const visibleSelects=()=>$$('#summaryView .building-select').filter(cb=>!cb.closest('tr')?.hidden);
+  const applyBuildingSearch=()=>{ const q=searchNorm(state.buildingSearch); const terms=q?q.split(' '):[]; const hit=new Set();
+    for(const row of r.rows||[]){ const t=` ${searchNorm(row.building)} `; if(!terms.length||terms.every(w=>t.includes(/^\d+$/.test(w)?` ${w} `:` ${w}`))) hit.add(row.building); }
+    $$('#summaryView tr[data-building-row]').forEach(tr=>{ tr.hidden=!hit.has(tr.dataset.buildingRow); });
+    const btn=$('#selectFoundBuildings'), count=$('#buildingSearchCount');
+    if(btn){ btn.disabled=!terms.length||!hit.size; btn.textContent=terms.length&&hit.size?(hit.size>1?`☑ Sélectionner les ${hit.size} résultats`:'☑ Sélectionner le résultat'):'☑ Sélectionner les résultats'; }
+    if(count) count.textContent=terms.length?`${hit.size} / ${(r.rows||[]).length} bâtiment${(r.rows||[]).length>1?'s':''}`:''; };
+  const bSearch=$('#buildingSearch'); if(bSearch){ bSearch.oninput=()=>{ state.buildingSearch=bSearch.value; applyBuildingSearch(); }; bSearch.onkeydown=e=>{ if(e.key==='Escape'){ bSearch.value=''; state.buildingSearch=''; applyBuildingSearch(); } }; }
+  const selFound=$('#selectFoundBuildings'); if(selFound) selFound.onclick=()=>{ visibleSelects().forEach(cb=>cb.checked=true); refreshBuildingActionButtons(); };
+  applyBuildingSearch();
+  const all=$('#selectAllBuildings'); if(all) all.onchange=()=>{ visibleSelects().forEach(cb=>cb.checked=all.checked); refreshBuildingActionButtons(); };
   const merge=$('#mergeBuildingsBtn'); if(merge) merge.onclick=()=>mergeSelectedBuildings(selected());
   const del=$('#deleteBuildingsBtn'); if(del) del.onclick=()=>deleteSelectedBuildings(selected());
   const reset=$('#resetBuildingLinksBtn'); if(reset) reset.onclick=resetBuildingLinks;
@@ -13068,7 +13168,8 @@ function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour
 function mergeSelectedBuildings(names){
   names=[...new Set((names||[]).filter(Boolean))]; if(names.length<2){ toast('Sélectionnez au moins deux lignes bâtiment.','warn'); return; }
   const authoritative=names.find(n=>(state.result?.authoritativeBuildings||[]).includes(n));
-  const suggested=authoritative||names[0];
+  // v2.19.0 — nom proposé : le RSET, sinon le plus court (« Bâtiment 1 » plutôt que « Bâtiment 1 Est »).
+  const suggested=authoritative||names.slice().sort((a,b)=>a.length-b.length)[0];
   const raw=prompt(`Fusionner ${names.length} lignes bâtiment en une seule.\nNom de la ligne finale :`,suggested); if(raw===null) return;
   const target=raw.trim(); if(!target){ toast('Le nom du bâtiment final ne peut pas être vide.','error'); return; }
   const authCount=names.filter(n=>(state.result?.authoritativeBuildings||[]).includes(n)).length;

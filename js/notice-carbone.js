@@ -4,10 +4,10 @@
 //  • la calculette par lot (« 1.VRD … », « 2.1. Fondations … », « Ic Composants = »,  « Ic Chantier = »),
 //  • les postes Ic énergie (« Chauffage 114 », « ECS 65 »…), et la ligne « Ic-Energie 214 ».
 // Les seuils sont rangés dans « Max 2028 » quand la notice déclare viser le seuil 2028, sinon dans « Max ».
-import {normalizeText,parseFrNumber} from './utils.js';
+import {normalizeText,parseFrNumber,stripUnitExponents} from './utils.js';
 
 const nc_lineText=l=>normalizeText(l?.text||'');
-const nc_num=s=>{ const m=String(s||'').match(/[-+]?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/[  ]/g,'')):null; };
+const nc_num=s=>{ const m=stripUnitExponents(s||'').match(/[-+]?\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|[-+]?\d+(?:[.,]\d+)?/); return m?parseFrNumber(m[0].replace(/[  ]/g,'')):null; };
 
 export function isCarbonNoticeRe2020(doc){
   const t=String(doc?.read?.text||'').slice(0,800000);

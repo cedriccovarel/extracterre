@@ -9,6 +9,7 @@
 //  • « RESUME de L'ETUDE » (Tic, C'ep / CepMax), « CONTROLE LABELS » (« Cep = 85,1 <= Cepref HPE = 150,0 »).
 import {normalizeText,parseFrNumber} from './utils.js';
 import {insulationName} from './donnees-techniques.js';
+import {vectorFromShares} from './vecteurs.js';
 
 const uw_t=l=>normalizeText(l?.text||'').replace(/\s+/g,' ').trim();
 function uw_lines(doc){ const out=[]; for(const page of doc.read?.pages||[]) (page.lines||[]).forEach(line=>out.push({page,line,t:uw_t(line)})); return out; }
@@ -54,8 +55,8 @@ export function parseU48WinRtex(doc,occ,canonical=(s)=>s){
     const usage=u=>{ const k=R.findIndex(x=>new RegExp(`^${u}$`,'i').test(x.t)); if(k<0) return null; const rows=[]; for(const y of R.slice(k+1,k+8)){ if(/^(?:CHAUFFAGE|REFROIDISSEMENT|ECS|ECLAIRAGE|AUXILIAIRES|AUTRES\s+USAGES|TOTAL)$/i.test(y.t)) break; rows.push(y); } return rows; };
     const P={};
     for(const [u,fb,fa] of [['CHAUFFAGE','heating_vector_before','heating_vector_after'],['ECS','ecs_vector_before','ecs_vector_after']]){ const rows=usage(u)||[];
-      const e=rows.map(y=>({y,e:UW_ENERGY(y.t.replace(/[-\d,.\s%]+$/,'')),v:uw_nums(y.t)[0]})).filter(z=>z.e&&z.v>0).sort((a,b)=>b.v-a.v)[0];
-      if(e) emit(e.y,B,r.phase==='before'?fb:fa,e.e,`${u.toLowerCase()}-energie`,0.93,'',{provenanceNote:`Consommation ${u.toLowerCase()} ${r.phase==='before'?'de l’état initial':'du projet'} : ${e.y.t}.`});
+      const all=rows.map(y=>({y,e:UW_ENERGY(y.t.replace(/[-\d,.\s%]+$/,'')),v:uw_nums(y.t)[0]})).filter(z=>z.e&&z.v>0).sort((a,b)=>b.v-a.v), e=all[0];
+      if(e) emit(e.y,B,r.phase==='before'?fb:fa,vectorFromShares(all.map(z=>[z.e,z.v])),`${u.toLowerCase()}-energie`,0.93,'',{provenanceNote:`Consommation ${u.toLowerCase()} ${r.phase==='before'?'de l’état initial':'du projet'} : ${e.y.t}.`});
       const tot=rows.find(y=>/^Total\s+Energie\s+primaire/i.test(y.t)); if(tot) P[u]={v:uw_nums(tot.t.replace(/^.*?m²\)/i,''))[0],e:e?.e}; }
     for(const u of ['ECLAIRAGE','AUXILIAIRES','REFROIDISSEMENT']){ const rows=usage(u)||[]; const tot=rows.find(y=>/^Total\s+Energie\s+primaire/i.test(y.t)); const ven=rows.find(y=>/^Vent\s*-\s*Total\s+Energie\s+primaire/i.test(y.t)); P[u]={v:tot?uw_nums(tot.t.replace(/^.*?m²\)/i,''))[0]:0,x:tot||rows[0]}; if(ven) P.VENT={v:uw_nums(ven.t.replace(/^.*?m²\)/i,''))[0],x:ven}; }
     if(r.phase==='after'&&!r.old){ const x=find(/^ECLAIRAGE$/i)||cp; const note={provenanceNote:'Résultats de l’état projet : « Total Energie primaire » du poste.'};

@@ -1,3 +1,29 @@
+# v2.19.0 — Vecteur hybride, « Bâtiment 1 Est » regroupé, recherche des bâtiments
+- **Vecteur énergétique hybride** (chauffage et ECS, avant et après travaux) : « Hybride Gaz/Électricité », vecteur PRINCIPAL
+  d'abord, deux vecteurs au plus, libellés courts (« Hybride Bois/Fioul », « Hybride RCU/Gaz »). Nouveau module `js/vecteurs.js`.
+  - Texte : seulement quand le document le dit (« PAC hybride », « bi-énergie », « bivalent », « PAC + chaudière gaz ») et que
+    les deux vecteurs sont nommés dans les 90 caractères autour ; le générateur « en appoint / en relève / de secours » est le
+    second, sinon l'ordre du texte. « VMC hybride », un sèche-serviettes électrique à côté d'une chaudière gaz : vecteur seul.
+    « PAC hybride » sans second vecteur nommé : « Hybride » (rien d'inventé).
+  - Calcul (consommations par énergie : XML RE2020, ClimaWin, U48Win, Th-C-E ex) : hybride si le second vecteur fait au moins
+    30 % de l'usage, sinon le principal (avant : « Hybride » sans détail sous 60 % / 70 %).
+- **Bâtiments** : « Bâtiment 1 Est », « Bât A aile nord » rejoignent automatiquement « Bâtiment 1 », « Bâtiment A » quand
+  celui-ci existe seul (identifiant suivi de mots seulement). Une liste (« Bâtiment 1 2 10 », « B C »), « A1 » restent
+  distincts. « 1 Est » et « 1 Ouest » sans « Bâtiment 1 » : rapprochement proposé (les identifiants identiques n'étaient
+  jamais proposés).
+- **Recherche manuelle** au-dessus du tableau des bâtiments : filtre les lignes (tous les mots, sans accents, « bât » ignoré),
+  « Sélectionner les n résultats » les coche pour « Fusionner » ; « Tout cocher » ne coche que les lignes affichées ; nom
+  proposé à la fusion : le RSET, sinon le plus court. Échap vide la recherche.
+- Test : `test_v2_19_0.mjs` (données fictives).
+
+# v2.18.3 — IC (et autres valeurs) lues « 2 903 » au lieu de 903
+- L'exposant d'unité écrit en chiffre juste avant la valeur (« kgCO2/m2 903 », « [kg éq. CO2/m2] 903,15 », « m3 1 250 »)
+  était pris pour le premier groupe d'un nombre à milliers : « m2 903 » donnait 2 903, « kgCO2/m2 903 » donnait 2.
+- `stripUnitExponents` (utils) retire le « 2 » / « 3 » de m2, m3, km2… quand une valeur suit, et le « 2 » de CO2 : appliqué à
+  `parseFrNumber`, à la lecture « libellé puis valeur » des études carbone, aux lecteurs RSET/RSEE CSTB, notice carbone,
+  récap carbone, calculette BBCA, ClimaWin, DPE 3CL, notice rénovation, logiciels thermiques et aux recherches.
+- Inchangés : valeur avant l'unité (« 903 kgCO2/m2 »), milliers (« 1 379,6 »), « m23 ». Test : `test_v2_18_3.mjs` (données fictives).
+
 # v2.18.2 — « Vecteur ECS : Solaire » à tort
 - Relevé dans les sessions : les 192 « Solaire » en vecteur ECS après travaux venaient de quatre tournures, aucune ne décrivant une
   installation solaire : « Présence composante solaire : Sans composante solaire » (RSET), critère « 16 a Production d'eau chaude
