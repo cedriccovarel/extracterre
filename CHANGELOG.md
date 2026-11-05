@@ -1,3 +1,15 @@
+# v2.19.1 — Recherches : sas sécurisé « Partiel »
+- Grille Sécurité des logements, critère « Sas sécurisé » : Vigik (ou badge) + visiophone trouvés autour du sas, mais aucune
+  platine IK08 (critère « Platine de rue anti-vandale IK08 ») → **Partiel (Vigik + visiophone, platine IK08 non trouvée)**,
+  icône ◐. Partiel ne compte pas comme trouvé pour le thème Halls d'entrée. Avec IK08 : Oui, comme avant.
+- Décision manuelle « Partiel » ajoutée au menu de ce critère ; règle rappelée sous le critère (grilles enregistrées comprises).
+- **Observatoire des recherches bloqué** (12 opérations sur plus de 100) : le flux transmis contenait les citations et les noms
+  de documents de chaque critère ; avec une centaine d'opérations il dépassait le stockage local, l'envoi échouait et
+  l'observatoire gardait l'envoi précédent. Le flux ne contient plus que ce que l'observatoire lit (statut, valeur, thèmes).
+  Le dernier résultat de chaque grille est gardé dans le projet (`searchCache`, sauvegardé) : une opération dont le texte des
+  documents n'est plus en mémoire reste comptée. À l'ouverture, bilan : opérations transmises / non transmises et pourquoi.
+- Test : `test_v2_19_1.mjs` (données fictives).
+
 # v2.19.0 — Vecteur hybride, « Bâtiment 1 Est » regroupé, recherche des bâtiments
 - **Vecteur énergétique hybride** (chauffage et ECS, avant et après travaux) : « Hybride Gaz/Électricité », vecteur PRINCIPAL
   d'abord, deux vecteurs au plus, libellés courts (« Hybride Bois/Fioul », « Hybride RCU/Gaz »). Nouveau module `js/vecteurs.js`.

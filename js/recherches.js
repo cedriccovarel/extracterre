@@ -45,6 +45,8 @@ function srch_migrateSecurity(criteria){
     for(const w of SRCH_WEAK_DOOR) if(!door.allOf.includes(w)) door.allOf.push(w); }
   // v2.16.4 — « hall traversant » sans « non » est un indice contraire, plus une preuve.
   const hall=criteria.find(c=>c.id==='hall_traversant'); if(hall){ hall.keywords=hall.keywords.filter(k=>!SRCH_HALL_THROUGH.includes(k)); for(const w of SRCH_HALL_THROUGH) if(!hall.weak.includes(w)) hall.weak.push(w); }
+  // v2.19.1 — grilles déjà enregistrées : la règle du statut « Partiel » est rappelée sous le sas.
+  const sas=criteria.find(c=>c.id==='hall_sas'); if(sas&&!sas.description) sas.description='Partiel : Vigik (ou badge) + visiophone, mais sans platine IK08.';
   const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
 }
 // Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
@@ -132,6 +134,14 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
       if(!manual){ found=ok; contrary=!pf.ok; } }
     criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
   }
+  // v2.19.1 — statut « Partiel » du sas sécurisé : Vigik (ou badge) + visiophone trouvés, mais pas de platine IK08.
+  // Partiel ne compte pas comme trouvé pour le thème ; la décision manuelle « Partiel » donne le même statut.
+  const sas=criteria.hall_sas;
+  if(sas){
+    if(sas.manual==='Partiel'){ sas.partial=true; sas.found=false; sas.contrary=false; }
+    else if(!sas.manual&&sas.found){
+      const t=normLower(sas.evidence.filter(e=>e.ok).map(e=>`${e.line} ${e.context}`).join(' '));
+      if(/\bvigik|\bbadges?\b/.test(t)&&/\bvisiophon|\bvideophon/.test(t)&&!criteria.hall_ik08?.found){ sas.found=false; sas.partial=true; sas.detail='Vigik + visiophone, platine IK08 non trouvée'; } } }
   const themes={};
   for(const t of g.themes){
     const own=g.criteria.filter(c=>c.theme===t.name&&c.id!==t.applicableIf);
@@ -147,6 +157,7 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
 export function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
+  if(x.partial) return `Partiel (${x.detail})`;
   if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
@@ -189,7 +200,7 @@ export const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurit
     {id:'abords_aveugles',theme:'Abords extérieurs',label:'Absence de locaux aveugles non surveillés',keywords:['local aveugle','locaux aveugles']},
     {id:'hall_traversant',theme:'Halls d’entrée',label:'Hall non traversant (un seul point d’entrée et de sortie)',description:'Outil « Accès » d’Ashton : un seul accès compté = conforme. « Hall traversant » dans un document = indice contraire.',keywords:['non traversant'],weak:['hall traversant','halls traversants'],context:['hall']},
     {id:'hall_vitrage',theme:'Halls d’entrée',label:'Hall vitré (> 30 % de la surface au sol) en 44.2',description:'Dans Ashton : surface « Hall » et largeur « Menuiserie hall » ; ratio calculé avec une hauteur de 2,20 m. Le 44.2 est cherché dans les documents.',keywords:['re:\\b44[./ ]?2\\b','stadip','retardateur d effraction'],context:['hall','sas','porte d entree d immeuble','entree principale','ensemble vitre']},
-    {id:'hall_sas',theme:'Halls d’entrée',label:'Sas sécurisé : badge + visiophone (platine IK08) puis serrure électronique à badge',keywords:['sas'],context:['badge','vigik','visiophone','interphone','platine','controle d acces','ventouse','gache electrique'],exclude:['cabinet','capital','siret','etabli par','sarl','societe'],window:6},
+    {id:'hall_sas',theme:'Halls d’entrée',label:'Sas sécurisé : badge + visiophone (platine IK08) puis serrure électronique à badge',description:'Partiel : Vigik (ou badge) + visiophone, mais sans platine IK08.',keywords:['sas'],context:['badge','vigik','visiophone','interphone','platine','controle d acces','ventouse','gache electrique'],exclude:['cabinet','capital','siret','etabli par','sarl','societe'],window:6},
     {id:'hall_ik08',theme:'Halls d’entrée',label:'Platine de rue anti-vandale IK08 ou plus',keywords:['re:\\bik\\s?(?:0?8|09|10)\\b'],context:['platine','visiophone','interphone','portier']},
     {id:'hall_eclairage',theme:'Halls d’entrée',label:'Éclairage du hall par détecteur, plus de 150 lux',kind:'number',unit:'lux',min:150,keywords:['lux'],context:['hall','detecteur','detection']},
     {id:'parking_present',theme:'Parkings en sous-sol',label:'Présence d’un parking en sous-sol (condition)',keywords:['parking en sous sol','parc de stationnement','sous sol','sous-sol'],context:['parking','stationnement','garage','vehicule']},

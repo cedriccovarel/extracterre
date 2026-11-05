@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.19.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.19.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.19.0';
+const APP_VERSION='2.19.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -9889,6 +9889,8 @@ function srch_migrateSecurity(criteria){
     for(const w of SRCH_WEAK_DOOR) if(!door.allOf.includes(w)) door.allOf.push(w); }
   // v2.16.4 — « hall traversant » sans « non » est un indice contraire, plus une preuve.
   const hall=criteria.find(c=>c.id==='hall_traversant'); if(hall){ hall.keywords=hall.keywords.filter(k=>!SRCH_HALL_THROUGH.includes(k)); for(const w of SRCH_HALL_THROUGH) if(!hall.weak.includes(w)) hall.weak.push(w); }
+  // v2.19.1 — grilles déjà enregistrées : la règle du statut « Partiel » est rappelée sous le sas.
+  const sas=criteria.find(c=>c.id==='hall_sas'); if(sas&&!sas.description) sas.description='Partiel : Vigik (ou badge) + visiophone, mais sans platine IK08.';
   const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
 }
 // Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
@@ -9976,6 +9978,14 @@ function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
       if(!manual){ found=ok; contrary=!pf.ok; } }
     criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
   }
+  // v2.19.1 — statut « Partiel » du sas sécurisé : Vigik (ou badge) + visiophone trouvés, mais pas de platine IK08.
+  // Partiel ne compte pas comme trouvé pour le thème ; la décision manuelle « Partiel » donne le même statut.
+  const sas=criteria.hall_sas;
+  if(sas){
+    if(sas.manual==='Partiel'){ sas.partial=true; sas.found=false; sas.contrary=false; }
+    else if(!sas.manual&&sas.found){
+      const t=normLower(sas.evidence.filter(e=>e.ok).map(e=>`${e.line} ${e.context}`).join(' '));
+      if(/\bvigik|\bbadges?\b/.test(t)&&/\bvisiophon|\bvideophon/.test(t)&&!criteria.hall_ik08?.found){ sas.found=false; sas.partial=true; sas.detail='Vigik + visiophone, platine IK08 non trouvée'; } } }
   const themes={};
   for(const t of g.themes){
     const own=g.criteria.filter(c=>c.theme===t.name&&c.id!==t.applicableIf);
@@ -9991,6 +10001,7 @@ function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
 function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
+  if(x.partial) return `Partiel (${x.detail})`;
   if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
@@ -10033,7 +10044,7 @@ const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des 
     {id:'abords_aveugles',theme:'Abords extérieurs',label:'Absence de locaux aveugles non surveillés',keywords:['local aveugle','locaux aveugles']},
     {id:'hall_traversant',theme:'Halls d’entrée',label:'Hall non traversant (un seul point d’entrée et de sortie)',description:'Outil « Accès » d’Ashton : un seul accès compté = conforme. « Hall traversant » dans un document = indice contraire.',keywords:['non traversant'],weak:['hall traversant','halls traversants'],context:['hall']},
     {id:'hall_vitrage',theme:'Halls d’entrée',label:'Hall vitré (> 30 % de la surface au sol) en 44.2',description:'Dans Ashton : surface « Hall » et largeur « Menuiserie hall » ; ratio calculé avec une hauteur de 2,20 m. Le 44.2 est cherché dans les documents.',keywords:['re:\\b44[./ ]?2\\b','stadip','retardateur d effraction'],context:['hall','sas','porte d entree d immeuble','entree principale','ensemble vitre']},
-    {id:'hall_sas',theme:'Halls d’entrée',label:'Sas sécurisé : badge + visiophone (platine IK08) puis serrure électronique à badge',keywords:['sas'],context:['badge','vigik','visiophone','interphone','platine','controle d acces','ventouse','gache electrique'],exclude:['cabinet','capital','siret','etabli par','sarl','societe'],window:6},
+    {id:'hall_sas',theme:'Halls d’entrée',label:'Sas sécurisé : badge + visiophone (platine IK08) puis serrure électronique à badge',description:'Partiel : Vigik (ou badge) + visiophone, mais sans platine IK08.',keywords:['sas'],context:['badge','vigik','visiophone','interphone','platine','controle d acces','ventouse','gache electrique'],exclude:['cabinet','capital','siret','etabli par','sarl','societe'],window:6},
     {id:'hall_ik08',theme:'Halls d’entrée',label:'Platine de rue anti-vandale IK08 ou plus',keywords:['re:\\bik\\s?(?:0?8|09|10)\\b'],context:['platine','visiophone','interphone','portier']},
     {id:'hall_eclairage',theme:'Halls d’entrée',label:'Éclairage du hall par détecteur, plus de 150 lux',kind:'number',unit:'lux',min:150,keywords:['lux'],context:['hall','detecteur','detection']},
     {id:'parking_present',theme:'Parkings en sous-sol',label:'Présence d’un parking en sous-sol (condition)',keywords:['parking en sous sol','parc de stationnement','sous sol','sous-sol'],context:['parking','stationnement','garage','vehicule']},
@@ -10255,6 +10266,7 @@ function serializeProject(project={}){
     manualEconomics:safeJsonClone(project.manualEconomics,{}),
     economic:safeJsonClone(project.economic,null),
     searchOverrides:safeJsonClone(project.searchOverrides,{}),
+    searchCache:safeJsonClone(project.searchCache,{}),
     geocodes:safeJsonClone(project.geocodes,{}),
     freePasteRows:safeJsonClone(project.freePasteRows,[]),
     planTables:safeJsonClone(project.planTables,{}),
@@ -13422,16 +13434,18 @@ function openAshtonCheck(id,g){ const p=activeProject(), c=g.criteria.find(x=>x.
   const prev=(p.planChecks||{})[id]?.docId, dlg=document.createElement('dialog'); dlg.className='ashton-pick';
   dlg.innerHTML=`<form method="dialog"><h3>${escapeHtml(c.label)}</h3><p class="srch-desc">Sur quel plan vérifier ce point ?</p>${plans.map(d=>`<button class="btn ${d.id===prev?'primary':'light'}" value="${d.id}">${escapeHtml(d.name)}</button>`).join('')}<button class="btn light" value="">Annuler</button></form>`;
   dlg.addEventListener('close',()=>{ const v=dlg.returnValue; dlg.remove(); if(v) openAshton(v,check); }); document.body.append(dlg); dlg.showModal(); }
+// v2.19.1 — critères qui acceptent le statut « Partiel ».
+const SRCH_PARTIAL_IDS=new Set(['hall_sas']);
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
   const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables,p.planChecks);
   const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
     const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
-    ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
+    ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual&&!x.partial?'manual':x.partial?'partial':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎',partial:'◐'}[cls];
       return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
       ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.slice(0,80).map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
-      <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
+      <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${(SRCH_PARTIAL_IDS.has(c.id)?['Oui','Partiel','Non','Sans objet']:['Oui','Non','Sans objet']).map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>
     <button type="button" class="btn ${searchUi.editing?'primary':'secondary'}" data-srch="edit">${searchUi.editing?'Fermer le paramétrage':'⚙ Paramétrer'}</button><button type="button" class="btn light" data-srch="new">+ Nouvelle</button><button type="button" class="btn light" data-srch="dup">Dupliquer</button>
@@ -13462,13 +13476,25 @@ function renderSearches(wrap=$('#summaryView')){
 
 // v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
 // le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
-function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+// v2.19.1 — flux de l'observatoire des recherches : sans citations ni noms de documents (l'observatoire ne les lit pas ;
+// avec une centaine d'opérations, le flux dépassait le stockage local et l'observatoire restait sur l'envoi précédent).
+// Le dernier résultat de chaque grille est gardé dans le projet (searchCache) : une opération dont le texte des documents
+// n'est plus en mémoire (sauvegarde « résultats seuls », session importée sans documents) reste comptée.
+function feedSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:(x.values||[]).slice(0,c.kind==='stats'?400:20)}]; })),themes:r.themes,docCount:r.documents.length}; }
+function feedSearches(p,grids){ const out={}; let changed=false;
+  for(const g of grids){ const r=runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks);
+    if(r.documents.length){ out[g.id]=feedSearch(r); p.searchCache={...(p.searchCache||{}),[g.id]:{...out[g.id],cachedAt:new Date().toISOString()}}; changed=true; }
+    else if(p.searchCache?.[g.id]) out[g.id]=p.searchCache[g.id];
+    else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
+  if(changed) scheduleWorkspaceCheckpoint('résultats de recherche',2000);
+  return out; }
 function sessionSnapshot({details=true}={}){
   const grids=loadGrids();
   return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
     operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
-        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
+        searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
@@ -13536,8 +13562,15 @@ function openDuplicatesDialog(groups){
 }
 // Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
 function openSearchObservatory(){
-  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
+  const snap=sessionSnapshot({details:false}); const ops=snap.operations, withS=ops.filter(o=>Object.keys(o.searches||{}).length);
+  // v2.19.1 — bilan à l'ouverture : opérations transmises, et pourquoi les autres ne le sont pas.
+  const noText=ops.filter(o=>!Object.keys(o.searches||{}).length&&o.documents.some(d=>d.status==='ready')).length, noDoc=ops.filter(o=>!o.documents.length).length;
+  const noKey=withS.filter(o=>!String(o.identity?.contract||o.identity?.code||o.identity?.name||o.title||'').trim()).length;
+  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(snap)); }
+  catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); return; }
   window.open('observatoire.html','extracterre-observatoire');
+  const why=[noText?`${noText} sans texte de document en mémoire (à réanalyser)`:'',noDoc?`${noDoc} sans document`:'',noKey?`${noKey} sans contrat, code ni nom`:''].filter(Boolean).join(' · ');
+  toast(`Observatoire : ${withS.length} opération(s) transmise(s) sur ${ops.length}${why?` — non transmises : ${why}`:''}.`,why?'warn':'success');
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.

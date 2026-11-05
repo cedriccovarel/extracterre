@@ -2248,16 +2248,18 @@ function openAshtonCheck(id,g){ const p=activeProject(), c=g.criteria.find(x=>x.
   const prev=(p.planChecks||{})[id]?.docId, dlg=document.createElement('dialog'); dlg.className='ashton-pick';
   dlg.innerHTML=`<form method="dialog"><h3>${escapeHtml(c.label)}</h3><p class="srch-desc">Sur quel plan vérifier ce point ?</p>${plans.map(d=>`<button class="btn ${d.id===prev?'primary':'light'}" value="${d.id}">${escapeHtml(d.name)}</button>`).join('')}<button class="btn light" value="">Annuler</button></form>`;
   dlg.addEventListener('close',()=>{ const v=dlg.returnValue; dlg.remove(); if(v) openAshton(v,check); }); document.body.append(dlg); dlg.showModal(); }
+// v2.19.1 — critères qui acceptent le statut « Partiel ».
+const SRCH_PARTIAL_IDS=new Set(['hall_sas']);
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
   const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables,p.planChecks);
   const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
     const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
-    ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual?'manual':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎'}[cls];
+    ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual&&!x.partial?'manual':x.partial?'partial':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎',partial:'◐'}[cls];
       return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
       ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.slice(0,80).map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
-      <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${['Oui','Non','Sans objet'].map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
+      <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${(SRCH_PARTIAL_IDS.has(c.id)?['Oui','Partiel','Non','Sans objet']:['Oui','Non','Sans objet']).map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>
     <button type="button" class="btn ${searchUi.editing?'primary':'secondary'}" data-srch="edit">${searchUi.editing?'Fermer le paramétrage':'⚙ Paramétrer'}</button><button type="button" class="btn light" data-srch="new">+ Nouvelle</button><button type="button" class="btn light" data-srch="dup">Dupliquer</button>
@@ -2288,13 +2290,25 @@ function renderSearches(wrap=$('#summaryView')){
 
 // v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
 // le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
-function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+// v2.19.1 — flux de l'observatoire des recherches : sans citations ni noms de documents (l'observatoire ne les lit pas ;
+// avec une centaine d'opérations, le flux dépassait le stockage local et l'observatoire restait sur l'envoi précédent).
+// Le dernier résultat de chaque grille est gardé dans le projet (searchCache) : une opération dont le texte des documents
+// n'est plus en mémoire (sauvegarde « résultats seuls », session importée sans documents) reste comptée.
+function feedSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:(x.values||[]).slice(0,c.kind==='stats'?400:20)}]; })),themes:r.themes,docCount:r.documents.length}; }
+function feedSearches(p,grids){ const out={}; let changed=false;
+  for(const g of grids){ const r=runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks);
+    if(r.documents.length){ out[g.id]=feedSearch(r); p.searchCache={...(p.searchCache||{}),[g.id]:{...out[g.id],cachedAt:new Date().toISOString()}}; changed=true; }
+    else if(p.searchCache?.[g.id]) out[g.id]=p.searchCache[g.id];
+    else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
+  if(changed) scheduleWorkspaceCheckpoint('résultats de recherche',2000);
+  return out; }
 function sessionSnapshot({details=true}={}){
   const grids=loadGrids();
   return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
     operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
-        searches:Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)]))}; // opérations sans document lu : pas de résultat de recherche
+        searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
@@ -2362,8 +2376,15 @@ function openDuplicatesDialog(groups){
 }
 // Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
 function openSearchObservatory(){
-  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(sessionSnapshot({details:false}))); }catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); }
+  const snap=sessionSnapshot({details:false}); const ops=snap.operations, withS=ops.filter(o=>Object.keys(o.searches||{}).length);
+  // v2.19.1 — bilan à l'ouverture : opérations transmises, et pourquoi les autres ne le sont pas.
+  const noText=ops.filter(o=>!Object.keys(o.searches||{}).length&&o.documents.some(d=>d.status==='ready')).length, noDoc=ops.filter(o=>!o.documents.length).length;
+  const noKey=withS.filter(o=>!String(o.identity?.contract||o.identity?.code||o.identity?.name||o.title||'').trim()).length;
+  try{ localStorage.setItem('extracterre.observatoire.feed',JSON.stringify(snap)); }
+  catch{ toast('Session trop volumineuse pour l’observatoire : exportez-la en JSON puis importez-la dans l’observatoire.','warn'); return; }
   window.open('observatoire.html','extracterre-observatoire');
+  const why=[noText?`${noText} sans texte de document en mémoire (à réanalyser)`:'',noDoc?`${noDoc} sans document`:'',noKey?`${noKey} sans contrat, code ni nom`:''].filter(Boolean).join(' · ');
+  toast(`Observatoire : ${withS.length} opération(s) transmise(s) sur ${ops.length}${why?` — non transmises : ${why}`:''}.`,why?'warn':'success');
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
