@@ -110,6 +110,14 @@ function serializeDocMeta(doc={}){
     persistedAnalysis:hasAnalysis
   };
 }
+// v2.19.2 — texte des documents préparé à la première lecture seulement (recherches, relecture) : au démarrage, 280 opérations
+// ne découpent plus des milliers de pages en lignes. La valeur enregistrée reste brute jusque-là.
+function lazyRead(doc,raw){
+  let value, done=!raw;
+  Object.defineProperty(doc,'read',{configurable:true,enumerable:true,
+    get(){ if(!done){ value=hydrateRead(raw); done=true; raw=null; } return value; },
+    set(v){ value=v; done=true; raw=null; }});
+}
 function hydrateDocMeta(meta={}){
   return {...meta,file:null,read:null,cachedOccurrences:null,status:meta.status||'missing'};
 }
@@ -139,6 +147,7 @@ function serializeProject(project={}){
     economic:safeJsonClone(project.economic,null),
     searchOverrides:safeJsonClone(project.searchOverrides,{}),
     searchCache:safeJsonClone(project.searchCache,{}),
+    tileCache:safeJsonClone(project.tileCache,null),
     geocodes:safeJsonClone(project.geocodes,{}),
     freePasteRows:safeJsonClone(project.freePasteRows,[]),
     planTables:safeJsonClone(project.planTables,{}),
@@ -231,7 +240,13 @@ async function getDocumentRecord(db,id){
   await done;
   return record||null;
 }
-export async function loadWorkspaceSnapshot(){
+async function getDocumentRecords(db,ids,onProgress){
+  const out=new Map(); if(!ids.length) return out;
+  const tx=db.transaction(DOCUMENT_STORE,'readonly'), store=tx.objectStore(DOCUMENT_STORE), done=transactionDone(tx);
+  let n=0; await Promise.all(ids.map(id=>requestPromise(store.get(id)).then(r=>{ if(r) out.set(id,r); n++; if(onProgress&&(n%25===0||n===ids.length)) onProgress(n,ids.length); })));
+  await done; return out;
+}
+export async function loadWorkspaceSnapshot(onProgress=null){
   const db=await openDb();
   try{
     const tx=db.transaction(WORKSPACE_STORE,'readonly');
@@ -240,14 +255,17 @@ export async function loadWorkspaceSnapshot(){
     await done;
     if(!record||record.schema!==SNAPSHOT_SCHEMA||!Array.isArray(record.projects)) return null;
     const projects=[];
+    // v2.19.2 — tous les documents enregistrés lus dans une seule transaction (avant : une transaction attendue par document).
+    const ids=record.projects.flatMap(p=>(p.docs||[]).filter(m=>m.persistedAnalysis).map(m=>m.id));
+    const savedById=await getDocumentRecords(db,ids,onProgress);
     for(const rawProject of record.projects){
       const project={...rawProject,docs:[]};
       for(const meta of rawProject.docs||[]){
         const doc=hydrateDocMeta(meta);
         if(meta.persistedAnalysis){
-          const saved=await getDocumentRecord(db,meta.id);
+          const saved=savedById.get(meta.id);
           if(saved){
-            doc.read=hydrateRead(saved.read);
+            lazyRead(doc,saved.read);
             doc.cachedOccurrences=Array.isArray(saved.cachedOccurrences)?saved.cachedOccurrences:[];
             doc.buildings=saved.buildings||doc.buildings;
             doc.specializedFamily=saved.specializedFamily||doc.specializedFamily||'annex';

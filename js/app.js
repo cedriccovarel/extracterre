@@ -219,7 +219,7 @@ function fieldsForResultGroup(group){
 function fieldsForCurrentResultView(){ return [...new Map(currentResultView().groups.flatMap(fieldsForResultGroup).map(f=>[f.key,f])).values()]; }
 function syncResultTabs(){ const key=normalizedResultViewKey(activeProject().resultView); $$('.result-tab').forEach(b=>b.classList.toggle('active',b.dataset.resultView===key)); }
 function syncStickyResultTabs(){ const key=normalizedResultViewKey(activeProject().resultView); $$('.sticky-result-tab').forEach(b=>b.classList.toggle('active',b.dataset.stickyResultView===key)); const ov=$('#stickyOverviewBtn'); if(ov) ov.classList.toggle('active',state.resultWorkspaceMode==='overview'); }
-function projectResultStats(p){ const r=p?.result; return {docs:(p?.docs||[]).length,buildings:r?.rows?.length||0,values:r?.finals?.length||0,candidates:(r?.uncertain||[]).filter(o=>!Object.prototype.hasOwnProperty.call(p.manualValues||{},`${o.building}|${o.field}`)&&!(p.uncertainRejectedKeys||[]).includes(uncertainKey(o))).length,alerts:r?.alerts?.length||0}; }
+function projectResultStats(p){ if(p?.pendingRebuild&&p.tileCache?.stats) return {...p.tileCache.stats,docs:(p.docs||[]).length}; const r=p?.result; return {docs:(p?.docs||[]).length,buildings:r?.rows?.length||0,values:r?.finals?.length||0,candidates:(r?.uncertain||[]).filter(o=>!Object.prototype.hasOwnProperty.call(p.manualValues||{},`${o.building}|${o.field}`)&&!(p.uncertainRejectedKeys||[]).includes(uncertainKey(o))).length,alerts:r?.alerts?.length||0}; }
 function renderResultNavigator(){
   const nav=$('#resultNavigator'); if(!nav) return;
   const hasAny=state.projects.some(p=>(p.docs||[]).length||p.result); nav.hidden=!hasAny;
@@ -239,11 +239,13 @@ function renderResultWorkspaceControls(){
 // maître d'ouvrage dès qu'un maître d'ouvrage est connu (import Excel / copier-coller, contrat, livret…).
 const NO_OWNER='Maître d’ouvrage non renseigné', FAV_GROUP='★ Favoris';
 function projectIdentity(p){
+  if(p?.pendingRebuild&&p.tileCache?.identity) return {...p.tileCache.identity,name:p.tileCache.identity.name||p.operationName||'',owner:String(p.ownerName||p.tileCache.identity.owner||'').trim()};
   const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
   const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
   return {contract:pick('contract_number')||ev.fin_contract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
 }
 function projectCompletion(p){
+  if(p?.pendingRebuild&&p.tileCache) return p.tileCache.completion||0;
   const rows=p?.result?.rows||[]; if(!rows.length) return 0; const prof=projectProfile(p);
   const defs=REVIEW_GROUPS.filter(g=>!g.admin&&g.optional!==prof).flatMap(g=>reviewFields(g,prof)); if(!defs.length) return 0;
   const ratios=rows.map(r=>defs.filter(d=>!isBlank(r[d.key])).length/defs.length);
@@ -472,7 +474,10 @@ function setLocalSaveUi(status,time=lastLocalSaveAt,detail=''){
 async function refreshLocalStorageInfo(){
   try{ const info=await getWorkspaceStorageInfo(); const detail=$('#localSaveDetail'); if(detail){ detail.textContent=info.supported?(info.quota?`${formatBytes(info.usage)} utilisés · ${formatBytes(info.quota)} disponibles${info.persisted?' · stockage persistant':''}`:'Stockage local du navigateur actif'):'IndexedDB indisponible'; } }catch{}
 }
-function workspacePayload(){ return {projects:state.projects,activeProjectId:state.activeProjectId,activeTab:state.activeTab,resultWorkspaceMode:state.resultWorkspaceMode}; }
+// v2.19.2 — résumé de tuile (identité, complétude, compteurs) enregistré avec le projet : affiché dès le démarrage, avant
+// que le projet soit recalculé en arrière-plan. Un projet pas encore recalculé garde son résumé précédent.
+function refreshTileCache(p){ if(p.pendingRebuild) return; p.tileCache={identity:projectIdentity(p),completion:projectCompletion(p),stats:projectResultStats(p)}; }
+function workspacePayload(){ for(const p of state.projects) refreshTileCache(p); return {projects:state.projects,activeProjectId:state.activeProjectId,activeTab:state.activeTab,resultWorkspaceMode:state.resultWorkspaceMode}; }
 function checkpointWorkspace(reason='mise à jour',silent=true){
   if(!persistenceReady||restoringWorkspace) return Promise.resolve(null);
   const payload=workspacePayload(); setLocalSaveUi('Sauvegarde…');
@@ -2082,7 +2087,10 @@ function manualRow(result,building,deleted,alias){
   row={building,operation:result.operation}; rows.push(row); if(Array.isArray(result.buildings)&&!result.buildings.includes(building)) result.buildings.push(building); return row;
 }
 function applyManualValues(){ applyManualValuesToProject(activeProject()); }
+// v2.19.2 — exports, observatoire, session : tous les projets doivent être recalculés (ceux encore en attente le sont ici).
+function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild) rebuildProjectFromCheckpoints(p); }
 function rebuildProjectFromCheckpoints(project){
+  project.pendingRebuild=false;
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
   if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
   project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
@@ -2304,7 +2312,7 @@ function feedSearches(p,grids){ const out={}; let changed=false;
   if(changed) scheduleWorkspaceCheckpoint('résultats de recherche',2000);
   return out; }
 function sessionSnapshot({details=true}={}){
-  const grids=loadGrids();
+  ensureAllRebuilt(); const grids=loadGrids();
   return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
     operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
@@ -2314,6 +2322,7 @@ function sessionSnapshot({details=true}={}){
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
 }
 function exportSessionJson(){
+  ensureAllRebuilt();
   const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
   // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
@@ -2389,6 +2398,7 @@ function openSearchObservatory(){
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
 function openExportDialog(){
+  ensureAllRebuilt();
   let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
   const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
   const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
@@ -2666,6 +2676,29 @@ function wire(){
   $('#version').textContent=`v${APP_VERSION}`; syncProjectInput(); libraryCheck();
 }
 
+// Écran de progression du démarrage (pas d'écran blanc pendant la lecture de la session).
+function startupProgress(){
+  let el=document.getElementById('startupProgress');
+  if(!el){ el=document.createElement('div'); el.id='startupProgress'; el.className='startup-progress'; el.setAttribute('role','status'); el.setAttribute('aria-live','polite');
+    el.innerHTML='<div class="startup-card"><strong>ExtracTerre</strong><span class="startup-msg">Démarrage…</span><span class="startup-bar"><i></i></span></div>'; document.body.append(el); }
+  return {set(msg,ratio=null){ el.querySelector('.startup-msg').textContent=msg; el.querySelector('.startup-bar i').style.width=ratio===null?'':`${Math.round(Math.min(1,ratio)*100)}%`; el.classList.toggle('indeterminate',ratio===null); },
+    done(){ el.remove(); }};
+}
+// Projets restants recalculés par lots de ~40 ms, l'interface reste utilisable ; progression dans l'indicateur de sauvegarde.
+async function rebuildInBackground(){
+  const todo=()=>state.projects.filter(p=>p.pendingRebuild), total=todo().length; if(!total){ restoredToast(); return; }
+  let last=performance.now();
+  while(todo().length){ const t0=performance.now();
+    for(const p of todo()){ rebuildProjectFromCheckpoints(p); if(performance.now()-t0>40) break; }
+    const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);
+    if(performance.now()-last>1500||!left){ last=performance.now(); if(state.homeView||state.resultWorkspaceMode==='overview') renderHome(); }
+    await new Promise(r=>setTimeout(r,0)); }
+  // Doublons trouvés une fois tout recalculé : signalés comme au démarrage (message), sans ouvrir la fenêtre de choix.
+  const watch=dupWatch; dupWatch=false; warnContractDuplicates(contractDuplicates()); dupWatch=watch;
+  restoredToast(); scheduleWorkspaceCheckpoint('résumés des tuiles',3000);
+}
+function restoredToast(){ const docs=state.projects.reduce((n,p)=>n+(p.docs||[]).filter(d=>Array.isArray(d.cachedOccurrences)).length,0);
+  toast(`Session locale restaurée · ${state.projects.length} projet(s) · ${docs} document(s) déjà analysé(s).`,'success'); setLocalSaveUi('Session restaurée',lastLocalSaveAt); }
 async function initializeApp(){
   if(!globalThis.__extracterreAccessPromise) throw new Error('Le contrôle d’accès ExtracTerre n’a pas été initialisé.');
   await globalThis.__extracterreAccessPromise;
@@ -2673,20 +2706,22 @@ async function initializeApp(){
   await initializeImprovementPatches();
   wire(); setLocalSaveUi('Recherche de session…');
   try{
-    const restored=await loadWorkspaceSnapshot();
+    // v2.19.2 — démarrage fluide : écran de progression pendant la lecture, puis l'accueil s'affiche tout de suite (tuiles
+    // depuis leur résumé enregistré) ; le projet ouvert est recalculé d'abord, les autres en arrière-plan par petits lots.
+    const restoreUi=startupProgress(); restoreUi.set('Lecture de la session enregistrée…');
+    const restored=await loadWorkspaceSnapshot((n,t)=>restoreUi.set(`Lecture des documents enregistrés… ${n} / ${t}`,n/t));
     if(restored?.projects?.length&&meaningfulWorkspace(restored.projects)){
-      restoringWorkspace=true;
       state.projects=restored.projects;
       state.activeProjectId=state.projects.some(p=>p.id===restored.activeProjectId)?restored.activeProjectId:state.projects[0].id; state.resultWorkspaceMode=restored.resultWorkspaceMode||'overview';
       // v2.5.0 — l'ancien onglet latéral « Données économiques » est devenu l'onglet de résultats « Économie ».
       state.activeTab=restored.activeTab==='economics'?'summary':(restored.activeTab||'summary');
       lastLocalSaveAt=restored.savedAt||null;
-      for(const project of state.projects) rebuildProjectFromCheckpoints(project);
-      restoringWorkspace=false;
-      const docs=state.projects.reduce((n,p)=>n+(p.docs||[]).filter(d=>Array.isArray(d.cachedOccurrences)).length,0);
-      toast(`Session locale restaurée · ${state.projects.length} projet(s) · ${docs} document(s) déjà analysé(s).`,'success');
-      setLocalSaveUi('Session restaurée',lastLocalSaveAt);
-    }else setLocalSaveUi('Prêt',restored?.savedAt||null);
+      for(const p of state.projects) p.pendingRebuild=true;
+      const first=activeProject(); restoreUi.set('Préparation du projet ouvert…'); await new Promise(r=>setTimeout(r,0));
+      if(first) rebuildProjectFromCheckpoints(first);
+      restoreUi.done();
+      rebuildInBackground();
+    }else{ restoreUi.done(); setLocalSaveUi('Prêt',restored?.savedAt||null); }
     persistenceReady=true;
     requestPersistentStorage().then(()=>refreshLocalStorageInfo());
   }catch(err){

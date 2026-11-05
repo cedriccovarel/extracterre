@@ -1,3 +1,15 @@
+# v2.19.2 — Démarrage fluide avec des centaines d'opérations
+- Avant : écran blanc tant que tout n'était pas restauré (une transaction IndexedDB attendue par document, texte de chaque
+  document découpé en lignes, puis recalcul de toutes les opérations avant le premier affichage).
+- Écran de progression dès le démarrage (« Lecture des documents enregistrés… n / N »).
+- Documents enregistrés lus dans une seule transaction ; texte préparé seulement à la première lecture (recherches, relecture).
+- Le projet ouvert est recalculé d'abord, l'accueil s'affiche, les autres projets sont recalculés en arrière-plan par lots
+  (« Recalcul des projets… n / N » dans l'indicateur de sauvegarde). Un projet ouvert avant son tour est recalculé à l'ouverture ;
+  exports Excel, session JSON et observatoire des recherches recalculent d'abord ceux qui restent.
+- Résumé de tuile (contrat, nom, complétude, compteurs) enregistré avec chaque projet : tuiles justes dès l'affichage.
+- Mesure (280 opérations fictives, 4 documents chacune) : accueil utilisable en 0,5–1 s au lieu de 5 s.
+- Test : `test_v2_19_2.mjs`.
+
 # v2.19.1 — Recherches : sas sécurisé « Partiel »
 - Grille Sécurité des logements, critère « Sas sécurisé » : Vigik (ou badge) + visiophone trouvés autour du sas, mais aucune
   platine IK08 (critère « Platine de rue anti-vandale IK08 ») → **Partiel (Vigik + visiophone, platine IK08 non trouvée)**,
