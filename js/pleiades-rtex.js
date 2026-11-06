@@ -135,10 +135,10 @@ export function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
         // Deux postes peuvent partager une ligne : « ECS (20.5kWh/m², 34%) Eclairage (8.7kWh/m², 15%) ».
         for(const m of x.t.matchAll(/(Chauffage|Refroidissement|ECS|Eclairage|Aux\.?\s*(?:generation|distribution|ventilation))\s*\(\s*([\d.]+)\s*kWh/gi)){ const kk=normalizeText(m[1]).toLowerCase(); const key=/generation|distribution/.test(kk)?'aux_dist':/ventilation/.test(kk)?'aux_vent':kk; poste[key]=(poste[key]||0)+Number(m[2]); poste.x??=x; } } }
     if(poste.x){ const note={provenanceNote:'Décomposition du Cep projet (hors production ENR).'};
-      emit(poste.x,B,'cep_lighting',px_r2(poste.eclairage||0),'cep-eclairage',0.95,'kWhEP/m².an',note);
-      emit(poste.x,B,'cep_aux_vent',px_r2(poste.aux_vent||0),'cep-aux-ventilation',0.95,'kWhEP/m².an',note);
-      emit(poste.x,B,'cep_aux_dist',px_r2(poste.aux_dist||0),'cep-aux-generation',0.93,'kWhEP/m².an',{provenanceNote:'Décomposition du Cep projet : auxiliaires de génération et de distribution.'});
-      emit(poste.x,B,'cep_cooling',px_r2(poste.refroidissement||0),'cep-refroidissement',0.93,'kWhEP/m².an',note); }
+      if(poste.eclairage!=null) emit(poste.x,B,'cep_lighting',px_r2(poste.eclairage),'cep-eclairage',0.95,'kWhEP/m².an',note);
+      if(poste.aux_vent!=null) emit(poste.x,B,'cep_aux_vent',px_r2(poste.aux_vent),'cep-aux-ventilation',0.95,'kWhEP/m².an',note);
+      if(poste.aux_dist!=null) emit(poste.x,B,'cep_aux_dist',px_r2(poste.aux_dist),'cep-aux-generation',0.93,'kWhEP/m².an',{provenanceNote:'Décomposition du Cep projet : auxiliaires de génération et de distribution.'});
+      if(poste.refroidissement!=null) emit(poste.x,B,'cep_cooling',px_r2(poste.refroidissement),'cep-refroidissement',0.93,'kWhEP/m².an',note); }
     // Consommations en énergie finale : « dont chauffage electrique kWh [initial] projet reference ».
     const tot=find(/^Consommation\s+totale\s+type\s+electrique\s+kWh/i); const ncol=tot?px_nums(tot.t.replace(/^.*?kWh/i,'')).length:3;
     const col={ini:ncol>=3?0:null,proj:ncol>=3?1:0};
@@ -163,7 +163,7 @@ export function parsePleiadesRtexReport(doc,occ,canonical=(s)=>s){
     // Cep par énergie : chauffage et ECS mono-énergie, auxiliaires et éclairage électriques.
     if(poste.x&&usage.chauffage?.seul&&(usage.ECS?.seul||!poste.ecs)){ const parE={}; const add=(e,val)=>{ if(val>0) parE[e]=(parE[e]||0)+val; };
       add(usage.chauffage.vect,poste.chauffage); if(usage.ECS) add(usage.ECS.vect,poste.ecs); add('Électricité',(poste.eclairage||0)+(poste.aux_vent||0)+(poste.aux_dist||0)+(poste.refroidissement||0));
-      for(const [e,f] of Object.entries(px_VECT)) emit(poste.x,B,f,px_r2(parE[e]||0),'cep-energie',0.93,'kWhEP/m².an',{provenanceNote:parE[e]?`Somme des postes du Cep projet au ${e.toLowerCase()}.`:`Aucun poste du Cep projet au ${e.toLowerCase()}.`}); }
+      for(const [e,f] of Object.entries(px_VECT)) if(parE[e]) emit(poste.x,B,f,px_r2(parE[e]),'cep-energie',0.93,'kWhEP/m².an',{provenanceNote:`Somme des postes du Cep projet au ${e.toLowerCase()}.`}); }
     // Enveloppe : « Ubat (hiver) W/m2.K [initial] projet référence ».
     const env=S.env[s.name]||(single?{i:S.chap.env?.i??0,end:S.ends.env??L.length}:null);
     if(env){ const ub=seg(env.i,env.end).find(x=>/^Ubat\s*\(hiver\)/i.test(x.t));

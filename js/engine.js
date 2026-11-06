@@ -9,6 +9,7 @@ import {classifyDocument} from './classifier.js';
 import {shouldOcrPdfPage} from './readers.js';
 import {applyLearningBoosts} from './learning-memory.js';
 import {applyCoherenceChecks} from './coherence.js';
+import {cleanRoofStructure} from './plancher-haut.js';
 import {isClimaWinInputReport} from './climawin.js';
 import {autoFamiliesForType,resolveDocumentFamilies,DOCUMENT_FAMILIES} from './parsers.js';
 
@@ -334,12 +335,14 @@ export function catchUpDocument(d){
   if(!d.dhZonesRead&&Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(o=>o?.field==='dh')&&d.read){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')){ d.cachedOccurrences=null; d.needsCheckpoint=true; } }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; }
 }
+const engRoofClean=o=>{ if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     catchUpDocument(d);
-    if(Array.isArray(d.cachedOccurrences)){ raw.push(...d.cachedOccurrences); reusedParsedCount++; continue; }
+    // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
+    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);

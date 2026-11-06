@@ -3,6 +3,7 @@
 // une ligne (« Libellé valeur », éventuellement deux couples par ligne en OCR), soit coupés autour de la valeur
 // (« Nature de l'isolation des » / « Laine de bois » / « parois verticales exterieures »).
 // Les valeurs sont traduites dans le vocabulaire ExtracTerre ; une valeur non reconnue n'est pas reprise.
+import {roofStructureFrom} from './plancher-haut.js';
 
 const DT_LABELS=[
   ['structureType',["type de structure principale","type de structure porteuse"]],
@@ -90,7 +91,7 @@ export function technicalDataFields(found){
   if(found.floorIns) add('floor_insulation',insulationName(found.floorIns.value),found.floorIns,`Données techniques : ${found.floorIns.value}.`);
   if(found.roofIns) add('roof_insulation',insulationName(found.roofIns.value),found.roofIns,`Données techniques : ${found.roofIns.value}.`);
   if(found.floorType){ const s=dt_norm(found.floorType.value); add('floor_structure',/bois/.test(s)?'Plancher bois':/beton|dalle/.test(s)?'Dalle béton':/acier|metal/.test(s)?'Bac acier':null,found.floorType,`Type principal de plancher : ${found.floorType.value}.`); }
-  if(found.roofType){ const s=dt_norm(found.roofType.value); add('roof_structure',/terrasse/.test(s)?(/non\s+accessible/.test(s)?'Toiture terrasse non accessible':'Toiture terrasse'):/pan|pente|comble/.test(s)?dt_cap(found.roofType.value):null,found.roofType); }
+  if(found.roofType) add('roof_structure',roofStructureFrom(found.roofType.value),found.roofType,`Type principal de toiture : ${found.roofType.value}.`);
   if(found.windows){ const s=dt_norm(found.windows.value); add('window_material',/pvc/.test(s)?'PVC':/bois.*alu|alu.*bois|mixte/.test(s)?'Bois-aluminium':/alu/.test(s)?'Aluminium':/bois/.test(s)?'Bois':null,found.windows); }
   if(found.shading){ const s=dt_norm(found.shading.value); add('window_shading',/sans\s+protection|aucune/.test(s)?'Sans occultation':/volet\s+roulant/.test(s)?'Volet roulant':/brise|bso|venitien/.test(s)?'BSO':/store/.test(s)?'Store':/persienne|battant/.test(s)?'Volet battant':null,found.shading); }
   return out;

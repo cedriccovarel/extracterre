@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {analyzeDocuments} from './js/engine.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.20.0','version');
+eq(APP_VERSION, '2.20.2','version');
 
 // SDP 2000 m² : PCE 600 + énergie 250 + eau 40 + chantier 10 = Eges 900 kg éq. CO2/m² SDP.
 const ind=(ref,nom,v)=>`<indicateurs_performance ref="${ref}"><valeur>${v}</valeur><nom>${nom}</nom><unite>kg éq. CO2</unite></indicateurs_performance>`;
@@ -68,7 +68,7 @@ eq([v('bbio'),v('cep'),v('housing_count')],[40,45,30],'thermique RT2012 conserv�
 eq(v('heating_vector_after'),'Réseau de chaleur urbain','chauffage : O_Cef_reseau_chaleur_imp (RT2012)');
 eq(v('ecs_vector_after'),'Réseau de chaleur urbain','ECS : réseau 8 / électricité 2');
 eq([v('wall_insulation_thickness'),v('wall_insulation_r'),v('wall_structure')],[160,5,'Béton'],'mur dominant (type_paroi 1)');
-eq([v('roof_insulation_thickness'),v('roof_insulation_r'),v('roof_structure')],[200,8.9,'Toiture terrasse'],'toiture (type_paroi 3)');
+eq([v('roof_insulation_thickness'),v('roof_insulation_r'),v('roof_structure')],[200,8.9,undefined],'toiture (type_paroi 3) ; v2.20.2 : pas de statut de toiture en Planchers hauts');
 eq([v('floor_insulation_thickness'),v('floor_insulation_r')],[100,3.1],'plancher bas (type_paroi 2)');
 ok(!occ.some(o=>o.field==='wall_insulation_thickness'&&o.value===0),'parois sur local non chauffé (type 4) ignorées');
 eq([v('window_glazing'),v('ventilation')],['4.16.4 Ar','VMC Hygro B'],'vitrage et ventilation');

@@ -1,3 +1,25 @@
+# v2.20.2 — « Planchers hauts » : le matériau, plus le statut de la toiture
+- « Planchers hauts » donne la structure / le matériau du plancher haut : Dalle béton, Poutrelles-hourdis, Prédalle,
+  Plancher bois, Charpente bois, Charpente métallique, Bac acier (collaborant). Sans matériau écrit dans le document,
+  aucune valeur (« Combles » seul n'est pas un matériau).
+- Le statut de la toiture (« Toiture terrasse non accessible », « terrasse végétalisée », « toiture en pente »…) n'est plus
+  proposé. XML RE2020 et Données techniques des RSET lisent le matériau dans le libellé de la paroi quand il y est ;
+  « Toiture terrasse sur dalle béton » devient « Dalle béton ».
+- Les opérations déjà analysées sont nettoyées au recalcul, sans relire les documents. Les saisies manuelles et le collage
+  Salesforce restent tels quels.
+- Jamais de valeur par défaut, dans aucune colonne : U48win sans ligne « REFROIDISSEMENT » ne donne plus « Cep refroidissement
+  = 0 » ni « Aucun » ; les postes et énergies du Cep absents (Pléiades RT existant, U48win, tableau des postes) ne deviennent
+  plus 0. Seules les valeurs écrites dans le document (ou déduites d'un chiffre écrit, ex. refroidissement = 0 → « Aucun ») restent.
+- Test : `test_v2_20_2.mjs` ; `test_v2_3_8`, `test_v2_3_15` et `test_v2_3_17` mis à jour (plus de statut de toiture attendu).
+
+# v2.20.1 — Contrôle de l'import Salesforce dans la mini-fenêtre
+- Quand une fiche arrive par le favori Salesforce, la mini-fenêtre affiche le contrôle sans revenir sur l'onglet ExtracTerre :
+  nombre de valeurs et de bâtiments, remarques ⚠ de la fiche, puis par bâtiment (et « Opération ») chaque colonne ExtracTerre,
+  la ligne d'origine et la valeur. ✕ ignore une ligne (↺ la reprend), un clic sur la colonne permet d'en choisir une autre,
+  les lignes non reconnues peuvent être rangées. « Intégrer » / « Ignorer l'import » restent visibles en bas.
+- Les actions passent par l'aperçu « Données manuelles » de la page : mêmes règles, même résultat qu'en plein écran.
+- Test : `test_v2_20_1.mjs`.
+
 # v2.20.0 — Fenêtre étroite ou basse, mini-fenêtre flottante
 - Mini-fenêtre (bouton « ⧉ Mini-fenêtre » en haut) : petite fenêtre qui reste au premier plan quand on passe sur un autre
   onglet (Salesforce…), avec le strict minimum : opération active (sélecteur), contrat / code, documents, bâtiments,

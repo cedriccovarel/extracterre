@@ -618,10 +618,10 @@ function addRsetCepBreakdown(doc,out){
       if(v!==null) add(field,v,`${label} : ${v} kWhEP/m².an${primary?' (lu directement)':' après conversion'}.`);
     }
     if(d.energy){
-      add('cep_gas',(d.energy.gas||0)*factor.gas,`Gaz : ${d.energy.gas||0}${primary?' kWhEP/m².an.':' kWhEF/m².an × 1.'}`);
-      add('cep_biomass',(d.energy.biomass||0)*factor.biomass,`Bois/biomasse : ${d.energy.biomass||0}${primary?' kWhEP/m².an.':' kWhEF/m².an × 1.'}`);
-      add('cep_electricity',(d.energy.electricity||0)*factor.electricity,`Électricité : ${d.energy.electricity||0}${primary?' kWhEP/m².an.':` kWhEF/m².an × ${factor.electricity}.`}`);
-      add('cep_district',(d.energy.district||0)*factor.district,`Réseau de chaleur : ${d.energy.district||0}${primary?' kWhEP/m².an.':' kWhEF/m².an × 1.'}`);
+      if(d.energy.gas!=null) add('cep_gas',d.energy.gas*factor.gas,`Gaz : ${d.energy.gas}${primary?' kWhEP/m².an.':' kWhEF/m².an × 1.'}`);
+      if(d.energy.biomass!=null) add('cep_biomass',d.energy.biomass*factor.biomass,`Bois/biomasse : ${d.energy.biomass}${primary?' kWhEP/m².an.':' kWhEF/m².an × 1.'}`);
+      if(d.energy.electricity!=null) add('cep_electricity',d.energy.electricity*factor.electricity,`Électricité : ${d.energy.electricity}${primary?' kWhEP/m².an.':` kWhEF/m².an × ${factor.electricity}.`}`);
+      if(d.energy.district!=null) add('cep_district',d.energy.district*factor.district,`Réseau de chaleur : ${d.energy.district}${primary?' kWhEP/m².an.':' kWhEF/m².an × 1.'}`);
     }
   }
 }

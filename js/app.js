@@ -770,7 +770,7 @@ function openExternalText(text,source){
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
   pendingExternalText=null; const dlg=$('#manualDataDialog'), ta=$('#manualDataPaste'); if(!dlg||!ta) return;
   // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
-  freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal();
+  freePaste=parseFreePaste(text); ta.value=freePaste.text||text; freePaste.sourceLabel=source; renderFreePastePreview(); if(!dlg.open) dlg.showModal(); refreshMiniWindow();
 }
 // Les onglets Salesforce ouverts (« 00005424 | Contrat ») ne désignent pas la fiche : ignorés ; l'OPE de la fiche prime sur le contrat.
 function projectForText(text){ const t=String(text||'').replace(/^\s*\d{8}\s*\|\s*Contra[ct]t?\s*$/gim,''), ope=(t.match(/\bOPE[\s_-]*(\d{6})\b/i)||[])[1], cs=[...t.matchAll(/\b0{2,}\d{4,6}\b/g)].map(m=>contractKey(m[0]));
@@ -879,6 +879,7 @@ function renderFreePastePreview(){
     try{ const pr=freePastePrompt(fp.unmatched); const added=applyFreePasteAi(fp,parseLlmObject(await llmComplete({system:pr.system,user:pr.user,maxTokens:1500},{invokeFunction:invokeLlmCloudFunction}))); toast(added?`${added} ligne(s) rangée(s) par l’IA : vérifiez les colonnes.`:'L’IA n’a trouvé aucune colonne adaptée.',added?'success':'warn'); learn('free_paste_ai',{lines:pr.user.split('\n').length,added},activeProject()); }
     catch(err){ toast(`IA indisponible : ${err?.message||err}`,'error'); }
     renderFreePastePreview(); });
+  refreshMiniWindow();
 }
 // Bâtiment de l'analyse qui reçoit chaque section collée : correspondance automatique, modifiable dans l'aperçu.
 function freePasteAutoTarget(name){ const rows=state.result?.rows||[]; const aliases=state.result?.buildingAliases||[]; if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name);
@@ -2504,14 +2505,23 @@ function renderSearchResults(){
 // Chrome / Edge). Strict minimum : opération active, avancement, état, dépôt de fichiers et bouton d'analyse.
 // Même page, même mémoire : rien n'est stocké ni envoyé ailleurs. Sans cette API, petite fenêtre séparée (pas au premier plan).
 var miniWin=null;
-const MINI_CSS=`*{box-sizing:border-box}body{margin:0;font:13px/1.35 "IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18201d;background:#f5f7f5;display:flex;flex-direction:column;min-height:100vh}
+const MINI_CSS=`*{box-sizing:border-box}body{margin:0;font:13px/1.35 "IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18201d;background:#f5f7f5;display:flex;flex-direction:column;height:100vh;overflow:hidden}
 .mw-head{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#076246;color:#fff}.mw-head b{font-size:14px}.mw-head small{margin-left:auto;opacity:.75;font-size:11px}
-.mw-body{flex:1;display:flex;flex-direction:column;gap:8px;padding:10px}select{width:100%;padding:6px 8px;border:1px solid #cfd8d3;border-radius:8px;font:inherit;background:#fff;color:inherit}
+.mw-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:auto}body.checking .mw-body{overflow:hidden}select{width:100%;padding:6px 8px;border:1px solid #cfd8d3;border-radius:8px;font:inherit;background:#fff;color:inherit}
 .mw-id{color:#6c7b74;font-size:11px;min-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mw-stats{display:flex;gap:10px;font-size:12px;flex-wrap:wrap}.mw-stats b{color:#173e31}
 .mw-bar{height:5px;border-radius:99px;background:#e2eae5;overflow:hidden}.mw-bar i{display:block;height:100%;width:0;background:#245947;transition:width .25s}
 .mw-status{font-size:11px;color:#425149;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mw-drop{flex:1;min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed #aebdb4;border-radius:10px;background:#fff;text-align:center;padding:8px;cursor:pointer;transition:.15s}
 .mw-drop.drag{border-color:#245947;background:#edf6f1}.mw-drop strong{font-size:13px;color:#173e31}.mw-drop small{color:#6c7b74;font-size:11px}
+.mw-check{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;overflow:auto;border:1px solid #cfe0d6;border-radius:10px;background:#fff;padding:8px}.mw-check[hidden]{display:none}
+.mw-check-head{font-size:12px}.mw-check-head b{color:#173e31}.mw-check-head .w{color:#94610d}.mw-check ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.mw-check h4{margin:4px 0 0;font-size:11px;color:#245947;text-transform:uppercase;letter-spacing:.03em}.mw-note{margin:0;font-size:11px;color:#835d18}
+.mw-li{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;gap:6px;align-items:start;padding:3px 0;border-bottom:1px solid #eef2ef;font-size:12px}
+.mw-li .f{border:0;background:none;padding:0;text-align:left;font:inherit;color:#425149;cursor:pointer;text-decoration:underline dotted #9bb0a5}.mw-li .f small{display:block;color:#8a978f;font-size:10px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mw-li>b{color:#18201d;max-width:120px;overflow-wrap:anywhere;text-align:right}.mw-li.off{opacity:.45}.mw-li.off>b{text-decoration:line-through}.mw-li.un .f{color:#94610d}
+.mw-x{border:0;background:#f1f4f2;border-radius:6px;width:20px;height:20px;padding:0;cursor:pointer;color:#6c7b74;font-size:12px;line-height:20px}.mw-x:hover{background:#fde7e7;color:#a23939}
+.mw-li select{grid-column:1/-1;width:100%;font-size:12px;padding:4px}.mw-row{display:flex;gap:6px;position:sticky;bottom:-8px;margin:0 -8px -8px;padding:8px;background:#fff;border-top:1px solid #e3ebe6}.mw-row .mw-go{flex:1}.mw-go.light{background:#fff;color:#173e31;border:1px solid #cfd8d3}
+body.checking .mw-drop{flex:0 0 auto;min-height:44px;padding:6px}body.checking .mw-drop small{display:none}body.checking #mwAnalyze{display:none}
 .mw-go{border:0;border-radius:9px;padding:9px 10px;font:inherit;font-weight:700;background:#173e31;color:#fff;cursor:pointer}.mw-go:disabled{opacity:.45;cursor:not-allowed}
 .mw-go:focus-visible,select:focus-visible,.mw-drop:focus-visible{outline:2px solid #2e8a5f;outline-offset:2px}
 @media(prefers-reduced-motion:reduce){.mw-bar i,.mw-drop{transition:none}}`;
@@ -2519,6 +2529,7 @@ function miniWindowHtml(){ return `<div class="mw-head"><b>ExtracTerre</b><small
 <div class="mw-body"><select id="mwProject" aria-label="Opération active"></select><div class="mw-id" id="mwId"></div>
 <div class="mw-stats"><span><b id="mwDocs">0</b> doc.</span><span><b id="mwBld">0</b> bât.</span><span><b id="mwPct">0</b> % complété</span></div><div class="mw-bar"><i id="mwBar"></i></div>
 <div class="mw-status" id="mwStatus" role="status"></div>
+<section class="mw-check" id="mwCheck" aria-label="Contrôle de l’import Salesforce" hidden></section>
 <label class="mw-drop" id="mwDrop" tabindex="0"><strong>Déposer ici PDF, XML, Excel…</strong><small>ou cliquer pour choisir — ajoutés à l’opération active</small><input id="mwFile" type="file" multiple hidden accept=".pdf,.xml,.xls,.xlsx,.json,.zip"></label>
 <button class="mw-go" id="mwAnalyze" type="button"></button></div>`; }
 function refreshMiniWindow(){
@@ -2530,13 +2541,46 @@ function refreshMiniWindow(){
   $m('mwDocs').textContent=String(state.docs.length); $m('mwBld').textContent=String(st.buildings); $m('mwPct').textContent=String(pct); $m('mwBar').style.width=`${pct}%`;
   const s=$('#statusText')?.textContent||'Prêt'; $m('mwStatus').textContent=s; $m('mwStatus').title=s;
   const a=$('#analyzeBtn'), b=$m('mwAnalyze'); if(a&&b){ b.textContent=a.textContent; b.disabled=a.disabled; }
+  renderMiniCheck(d);
 }
+// v2.20.1 — Contrôle de l'import Salesforce dans la mini-fenêtre : le même aperçu que « Données manuelles » (bâtiment, colonne,
+// valeur, lignes non reconnues), sans revenir sur l'onglet ExtracTerre. Chaque action passe par l'aperçu de la page (mêmes règles).
+function miniCheckHtml(){
+  const fp=freePaste; if(!fp||!$('#manualDataDialog')?.open) return '';
+  const label=k=>FIELD_MAP[k]?.label||k, n=fp.buildings.reduce((t,b)=>t+b.items.filter(i=>i.field).length,0), nb=fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1;
+  const li=(cls,attrs,f,line,v,x)=>`<li class="mw-li ${cls}"><button type="button" class="f" ${attrs} title="Changer de colonne">${escapeHtml(f)}<small>${escapeHtml(line)}</small></button><b>${escapeHtml(v)}</b>${x}</li>`;
+  const blocks=fp.buildings.map((b,bi)=>b.items.length?`<h4>${b.name==='*'?'Toute l’opération':escapeHtml(b.name||'Opération')}</h4><ul>${b.items.map((it,ii)=>li(it.field?'':'off',`data-mw-col="b:${bi}:${ii}"`,it.field?label(it.field):'— ignorée',it.line,formatValue(it.value),it.field?`<button type="button" class="mw-x" data-mw-ign="${bi}:${ii}" title="Ignorer cette ligne" aria-label="Ignorer cette ligne">✕</button>`:`<button type="button" class="mw-x" data-mw-back="${bi}:${ii}" title="Reprendre cette ligne" aria-label="Reprendre cette ligne">↺</button>`)).join('')}</ul>`:'').join('');
+  const un=fp.unmatched.length?`<h4>Non reconnues</h4><ul>${fp.unmatched.map((u,ui)=>li('un',`data-mw-col="u:${ui}"`,'Choisir une colonne…',u.line,'','<span></span>')).join('')}</ul>`:'';
+  return `<div class="mw-check-head"><b>${escapeHtml(fp.sourceLabel||'Import')} reçu</b> · ${n} valeur(s) · ${nb} bât.${fp.unmatched.length?` · <span class="w">${fp.unmatched.length} non reconnue(s)</span>`:''}</div>
+${(fp.notes||[]).map(t=>`<p class="mw-note">⚠ ${escapeHtml(t)}</p>`).join('')}${blocks}${un}
+<div class="mw-row"><button type="button" class="mw-go" data-mw-apply ${n?'':'disabled'}>Intégrer (${n})</button><button type="button" class="mw-go light" data-mw-cancel>Ignorer l’import</button></div>`;
+}
+function renderMiniCheck(d){
+  const box=d.getElementById('mwCheck'); if(!box) return; const html=miniCheckHtml();
+  if(box.dataset.sig!==html){ const top=box.scrollTop; box.innerHTML=html; box.dataset.sig=html; box.scrollTop=top; }
+  box.hidden=!html; d.body.classList.toggle('checking',!!html);
+}
+// Sélecteur de l'aperçu principal correspondant à une ligne de la mini-fenêtre.
+function miniPreviewSelect(ref){ const [k,a,b]=ref.split(':'); const box=$('#manualDataPreview'); return k==='u'?box?.querySelector(`[data-fp-u="${a}"]`):box?.querySelector(`[data-fp-b="${a}"][data-fp-i="${b}"]`); }
+function miniSetColumn(ref,value){ const sel=miniPreviewSelect(ref); if(!sel) return; sel.value=value; sel.dispatchEvent(new Event('change',{bubbles:true})); refreshMiniWindow(); }
+function onMiniCheckClick(e){
+  const t=e.target.closest('button'); if(!t) return; const d=t.ownerDocument;
+  if(t.hasAttribute('data-mw-apply')){ $('#manualDataApply')?.click(); refreshMiniWindow(); return; }
+  if(t.hasAttribute('data-mw-cancel')){ $('#manualDataDialog')?.close(); toast('Import ignoré : rien n’a été intégré.','info'); refreshMiniWindow(); return; }
+  if(t.dataset.mwIgn){ const [bi,ii]=t.dataset.mwIgn.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it) it.mwPrev=it.field; miniSetColumn(`b:${t.dataset.mwIgn}`,''); return; }
+  if(t.dataset.mwBack){ const [bi,ii]=t.dataset.mwBack.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it?.mwPrev) miniSetColumn(`b:${t.dataset.mwBack}`,it.mwPrev); else t.closest('li')?.querySelector('.f')?.click(); return; }
+  if(t.dataset.mwCol){ const li=t.closest('li'); if(li.querySelector('select')) return; const src=miniPreviewSelect(t.dataset.mwCol); if(!src) return;
+    const sel=d.createElement('select'); sel.innerHTML=src.innerHTML; sel.value=src.value; sel.setAttribute('aria-label','Colonne ExtracTerre'); li.appendChild(sel); sel.focus();
+    sel.onchange=()=>miniSetColumn(t.dataset.mwCol,sel.value); sel.onblur=()=>setTimeout(()=>sel.isConnected&&sel.remove(),150); }
+}
+
 function wireMiniWindow(w){
   const d=w.document, $m=s=>d.getElementById(s);
   const take=async fs=>{ if(fs?.length){ addFiles(fs); refreshMiniWindow(); } };
   $m('mwProject').onchange=e=>{ if(e.target.value!==state.activeProjectId) activateProject(e.target.value); refreshMiniWindow(); };
   $m('mwAnalyze').onclick=()=>{ const a=$('#analyzeBtn'); if(a&&!a.disabled) a.click(); };
   $m('mwFile').onchange=e=>{ take([...(e.target.files||[])]); e.target.value=''; };
+  $m('mwCheck').onclick=onMiniCheckClick;
   const z=$m('mwDrop');
   z.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $m('mwFile').click(); } };
   for(const ev of ['dragenter','dragover']) d.addEventListener(ev,e=>{ e.preventDefault(); z.classList.add('drag'); });
@@ -2713,7 +2757,7 @@ function wire(){
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
       addFiles(fs); }catch(err){ toast(`Import impossible : ${err?.message||err}`,'error'); } },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const miniBtn=$('#miniWindowBtn'); if(miniBtn) miniBtn.onclick=openMiniWindow; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); $('#manualDataDialog')?.addEventListener('close',()=>refreshMiniWindow()); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const miniBtn=$('#miniWindowBtn'); if(miniBtn) miniBtn.onclick=openMiniWindow; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };

@@ -6,6 +6,7 @@
 // Une occurrence rejetée ici ne masque plus la bonne valeur lors de la consolidation (la cohérence, elle, n'agit
 // qu'après coup). Les valeurs XML, manuelles et validées ne sont jamais filtrées.
 import {normalizeText} from './utils.js';
+import {cleanRoofStructure} from './plancher-haut.js';
 
 export const EXTRACTION_RANGES=Object.freeze({
   bbio:[5,400], bbio_max:[5,400], cep:[10,1500], cep_max:[30,1500], cepnr:[5,1500], cepnr_max:[20,1500],
@@ -59,7 +60,10 @@ export function numberOnlyGlued(value,excerpt=''){
 export function sanitizeOccurrence(o){
   if(!o) return null;
   const m=String(o.method||'');
-  if(o.userValidated||/^(?:xml:|manual:)/.test(m)||o.structuredXml) return o;
+  if(o.userValidated||/^manual:/.test(m)) return o;
+  // v2.20.2 — « Planchers hauts » : matériau du plancher haut, jamais le seul statut de la toiture (terrasse non accessible…).
+  if(o.field==='roof_structure'){ const c=cleanRoofStructure(o.value); if(!c) return null; if(c!==o.value) o={...o,value:c}; }
+  if(/^xml:/.test(m)||o.structuredXml) return o;
   const f=o.field; let v=o.value;
   if(f==='department'&&typeof v==='string'){ const d=normalizeText(v).match(/^\s*(\d{2,3}|2A|2B)\b/i); if(!d) return null; if(d[1]!==v) return {...o,value:d[1].toUpperCase().padStart(2,'0')}; }
   if(f==='ventilation'&&/^CTA$/i.test(String(v))&&/liens?\s+vers\s+la\s+cta/i.test(o.excerpt||'')&&!/(?:^|[^a-z])cta\s+(?:double|simple|avec|a\s|à\s)/i.test(o.excerpt||'')) return null;

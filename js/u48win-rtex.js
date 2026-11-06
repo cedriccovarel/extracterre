@@ -63,10 +63,11 @@ export function parseU48WinRtex(doc,occ,canonical=(s)=>s){
       if(P.ECLAIRAGE) emit(P.ECLAIRAGE.x||x,B,'cep_lighting',P.ECLAIRAGE.v,'cep-eclairage',0.93,'kWhEP/m².an',note);
       if(P.AUXILIAIRES) emit(P.AUXILIAIRES.x||x,B,'cep_aux_dist',P.AUXILIAIRES.v,'cep-auxiliaires',0.9,'kWhEP/m².an',note);
       if(P.VENT) emit(P.VENT.x,B,'cep_aux_vent',P.VENT.v,'cep-ventilateurs',0.93,'kWhEP/m².an',note);
-      emit(P.REFROIDISSEMENT?.x||x,B,'cep_cooling',P.REFROIDISSEMENT?.v||0,'cep-refroidissement',0.9,'kWhEP/m².an',note); emit(x,B,'cooling',(P.REFROIDISSEMENT?.v||0)>0?'Climatisation active':'Aucun','refroidissement',0.85);
+      // v2.20.2 — ligne « REFROIDISSEMENT » absente : rien (avant : 0 et « Aucun » inventés).
+      if(P.REFROIDISSEMENT&&Number.isFinite(P.REFROIDISSEMENT.v)){ emit(P.REFROIDISSEMENT.x||x,B,'cep_cooling',P.REFROIDISSEMENT.v,'cep-refroidissement',0.9,'kWhEP/m².an',note); emit(P.REFROIDISSEMENT.x||x,B,'cooling',P.REFROIDISSEMENT.v>0?'Climatisation active':'Aucun','refroidissement',0.85); }
       const elec=(P.ECLAIRAGE?.v||0)+(P.AUXILIAIRES?.v||0)+(P.VENT?.v||0)+(P.REFROIDISSEMENT?.v||0); const by={}; for(const u of ['CHAUFFAGE','ECS']) if(P[u]?.e) by[P[u].e]=(by[P[u].e]||0)+(P[u].v||0);
       const r2=v=>Math.round(v*100)/100; by['Électricité']=(by['Électricité']||0)+elec;
-      for(const [e,f] of [['Électricité','cep_electricity'],['Gaz','cep_gas'],['Réseau de chaleur urbain','cep_district'],['Bois / biomasse','cep_biomass']]) emit(x,B,f,r2(by[e]||0),'cep-energie',0.88,'kWhEP/m².an',{provenanceNote:by[e]?`Postes du Cep projet au ${e.toLowerCase()}.`:`Aucun poste du Cep projet au ${e.toLowerCase()}.`}); }
+      for(const [e,f] of [['Électricité','cep_electricity'],['Gaz','cep_gas'],['Réseau de chaleur urbain','cep_district'],['Bois / biomasse','cep_biomass']]) if(by[e]) emit(x,B,f,r2(by[e]),'cep-energie',0.88,'kWhEP/m².an',{provenanceNote:`Postes du Cep projet au ${e.toLowerCase()}.`}); }
   }
   // 2. Résumé par bâtiment (« RESUME de L'ETUDE » / « Batiment n° 01 : A/B ») : Tic, Cep de référence (exigence de la RT
   // existant globale « Cep ≤ Cepref ») et gain imprimé ; le label visé et le CepMax (Ch + Ref + ECS) restent en note.

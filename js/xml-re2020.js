@@ -5,6 +5,7 @@ import {canonicalBuilding} from './buildings.js';
 import {normalizeGlazingType} from './utils.js';
 import {parseFrAddress} from './geocode.js';
 import {vectorFromShares} from './vecteurs.js';
+import {roofStructureFrom} from './plancher-haut.js';
 
 // ---------------------------------------------------------------------------
 // Parseur XML minimal (secours hors navigateur / tests Node). Dans le navigateur,
@@ -360,7 +361,7 @@ export function re2020Occurrences(doc,makeOcc){
       if(p.thicknessCm>0&&p.thicknessCm<100) add(b,`${t}_insulation_thickness`,re20Round(p.thicknessCm*10,0),'dc-paroi-epaisseur','mm',/./,{confidence:0.97,note});
       if(p.rTotal>0&&p.rTotal<25) add(b,`${t}_insulation_r`,re20Round(p.rTotal,2),'dc-paroi-r','m².K/W',/./,{confidence:0.97,note});
       const nm=String(p.name||'').toLowerCase();
-      if(t==='roof'){ const rs=/terrasse/.test(nm)?(/v[ée]g[ée]tal/.test(nm)?'Toiture terrasse végétalisée':/accessible/.test(nm)&&!/non\s+accessible/.test(nm)?'Toiture terrasse accessible':'Toiture terrasse'):/combles?/.test(nm)?'Combles':/rampant|pente|pans?/.test(nm)?'Toiture en pente':null; if(rs) add(b,'roof_structure',rs,'dc-toiture','',/./,{confidence:0.93,note}); }
+      if(t==='roof'){ const rs=roofStructureFrom(`${p.name||''} ${p.nature||''} ${p.system||''}`); if(rs) add(b,'roof_structure',rs,'dc-toiture','',/./,{confidence:0.93,note}); }
       if(t==='floor'){ const fs=/b[ée]ton|dalle/.test(nm)?'Dalle béton':/bois|solive/.test(nm)?'Plancher bois':null; if(fs) add(b,'floor_structure',fs,'dc-plancher','',/./,{confidence:0.93,note}); }
       if(t==='wall'){ const ws=/\b(?:mob|fob|cob)\b|ossature\s+bois/.test(nm)?'Ossature bois':/\bclt\b|bois\s+massif/.test(nm)?'Bois massif':/b[ée]ton/.test(nm)?'Béton':/brique/.test(nm)?'Brique':/parpaing|agglo|bloc/.test(nm)?'Parpaing':/pierre/.test(nm)?'Pierre':null; if(ws){ add(b,'wall_structure',ws,'dc-mur','',/./,{confidence:0.93,note}); add(b,'structure',ws==='Ossature bois'?'Ossature bois':ws==='Béton'?'Béton armé':ws,'dc-mur','',/./,{confidence:0.9,note:`Structure déduite de la paroi verticale dominante. ${note}`}); } }
     }
