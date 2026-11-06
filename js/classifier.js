@@ -63,6 +63,8 @@ export function classifyDocument(fileName, text='', meta={}) {
   if (/\bacv\b|analyse\s+du\s+cycle\s+de\s+vie|ic\s+construction|ic\s+composants/i.test(n+' '+t)) add(DOC_TYPES.CARBON,10);
   if (/etude\s+(?:thermique|energetique|énergétique)|etude\s+reglementaire|thermique\s+reglementaire|rapport\s+(?:d['’])?etude\s+(?:thermique|energetique|énergétique)/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,/(?:rapport|etude|étude)[^\n]{0,30}(?:thermique|energetique|énergétique)/i.test(n)?20:10);
   if (/bao\s*evolution|bao\s*[eé]volution|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|calcul\s+du\s+coefficient\s+ubat/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,18);
+  // v2.20.6 — export CSV d'étude carbone par composant (Designation ; DetailsGES ; NumFiche ; CO2Inies…).
+  if(meta?.kind==='spreadsheet' && /^\[csv\]\s*designation\s*\|\s*valx\s*\|\s*detailsges\s*\|\s*numfiche/.test(t)) return {type:DOC_TYPES.CARBON,confidence:0.97,scores:{[DOC_TYPES.CARBON]:97},reason:[[DOC_TYPES.CARBON,97]],structured:'acv-csv'};
   if(meta?.kind==='spreadsheet' && /(?:code\s+interne|nom\s+operation|maitre\s+d.?ouvrage|referentiel|total\s+logements|surface\s+batiment|ic\s+composants)/i.test(t)) add(DOC_TYPES.MANUAL,11);
 
   // Règles documentaires versionnées (patches) : elles renforcent la classification sans exécuter de code arbitraire.

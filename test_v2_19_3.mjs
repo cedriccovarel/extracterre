@@ -6,7 +6,7 @@ import {APP_VERSION,DOC_TYPES,DEFAULT_SOURCE_RULES} from './js/config.js';
 import {normalizeText} from './js/utils.js';
 import {analyzeDocuments,catchUpDocument} from './js/engine.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.20.4','version');
+eq(APP_VERSION,'2.20.6','version');
 // Normalisation mémoïsée : mêmes résultats, petits et grands textes.
 eq(normalizeText('  Été  “isolé”  R=3,75 '),'Ete “isole” R=3,75','normalisation');
 eq(normalizeText('  Été  “isolé”  R=3,75 '),'Ete “isole” R=3,75','normalisation (cache)');

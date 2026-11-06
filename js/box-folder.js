@@ -4,7 +4,7 @@
 // Les fichiers sont lus sur le poste : rien n'est envoyé.
 
 export const BOX_KINDS=[['cctp','CCTP',/\bcctp\b/],['carbone','Étude carbone',/carbone|\bacv\b/],['thermique','Étude thermique',/thermique/]];
-export const BOX_EXTENSIONS=/\.(pdf|xml|xlsx|xls|json|zip)$/i;
+export const BOX_EXTENSIONS=/\.(pdf|xml|xlsx|xls|csv|json|zip)$/i;
 const bx_norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 // « 00005115 - 34 - MARSEILLAN… » (espace initial toléré) ; contrat comparé sur 8 chiffres.
 export const boxContractOf=name=>{ const m=String(name||'').match(/^\s*0*([1-9]\d{0,7})\s*-/); return m?m[1].padStart(8,'0'):''; }; // « 00 - Dossier type » n'est pas un contrat

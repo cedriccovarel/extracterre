@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.20.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.20.6 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.20.4';
+const APP_VERSION='2.20.6';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -1101,6 +1101,7 @@ function detectBuildings(doc){
   }
   // v2.3.11 — rénovation : « Bâtiment sur cour : » (notice RT-Ex), « 1.1 Batiment 1 » / nom de fichier (Pléiades),
   // plan de repérage des isolants (légende commune).
+  if(isAcvComponentsCsv(doc)){ const n=acvComponentsBuildingName(doc); return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'acv-csv'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'acv-csv',hits:[]}; }
   if(isRecapCarboneRe2020(doc)){ const n=recapCarboneBuildingName(doc); return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'recap-carbone'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'recap-carbone',hits:[]}; }
   if(isRtexStandardFiche(doc)){ const names=rtexStandardBuildingNames(doc).map(canonicalBuilding); if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'rset-rtex',hits:[]}; }
   if(isRtexThermalNotice(doc)||isPleiadesRtexReport(doc)){
@@ -1276,7 +1277,7 @@ function buildingForPosition(doc,pageNo,lineIndex){
 
 function operationNameFromFiles(docs){
   if(!docs.length) return 'Opération';
-  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls|json)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls|csv|json)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
   return s||'Opération';
 }
 
@@ -4146,6 +4147,55 @@ function parseRecapCarboneRe2020(doc,occ,canonical=(s)=>s){
   return out;
 }
 
+/* ---- acv-composants.js ---- */
+// ExtracTerre v2.20.6 — Export CSV d'étude carbone RE2020 « composant par composant » (un fichier par bâtiment,
+// ex. « BATIMENT B.csv ») : en-tête « Designation;Valx;DetailsGES;NumFiche;Quantite;Unite;dureeVie;TypeFiche;CO2Inies;StockC… »,
+// puis quatre contributeurs, chacun fermé par « Total contributeur : » :
+//  • « Composants » : lots « 1-VRD » … « 13-Equipements de production locale d'électricité », total du lot sur « . Total : » ;
+//  • « Energie (CE) » : sections Chauffage, Ecs, Refroidissement, Eclairage, Auxiliaires…, total sur « . Total : » ;
+//  • « Eau (CRE) » et « Chantier (Cha) ».
+// Valeurs lues en kg éq. CO2/m² (colonne EGES), uniquement celles écrites dans le fichier. Un contributeur « Chantier »
+// à 0 avec toutes ses sections à 0 n'est pas un résultat (contributeur non renseigné dans l'export) : rien n'est repris.
+
+const AC_COLS=/^designation$/i;
+const ac_cells=l=>Array.isArray(l?.cells)?l.cells.map(c=>String(c??'').trim()):String(l?.text||'').split(' | ').map(c=>c.trim());
+function isAcvComponentsCsv(doc){
+  const r=doc?.read; if(r?.kind!=='spreadsheet') return false;
+  const c=ac_cells(r.pages?.[0]?.lines?.[0]); return AC_COLS.test(c[0]||'')&&c.some(x=>/^detailsges$/i.test(x))&&c.some(x=>/^numfiche$/i.test(x))&&c.some(x=>/^co2inies$/i.test(x));
+}
+function acvComponentsBuildingName(doc){
+  const m=String(doc?.name||'').replace(/\.[a-z0-9]+$/i,'').match(/\bbat(?:iment)?\.?[\s_-]*([A-Z0-9]{1,4})\b/i);
+  return m?`Bâtiment ${m[1].toUpperCase()}`:'Bâtiment unique';
+}
+const AC_ENERGY=[[/^chauffage$/i,'ic_energy_heating'],[/^ecs$/i,'ic_energy_ecs'],[/^refroidissement$/i,'ic_energy_cooling'],[/^auxiliaires?\s+ventilat/i,'ic_energy_aux_vent'],[/^auxiliaires?\s+distribution/i,'ic_energy_aux_dist']];
+const ac_num=s=>{ const v=parseFrNumber(String(s||'').replace(/\s+/g,'')); return Number.isFinite(v)?v:null; };
+
+function parseAcvComponentsCsv(doc,occ,canonical=s=>s){
+  const out=[], page=doc.read.pages[0], B=canonical(acvComponentsBuildingName(doc));
+  const emit=(line,field,value,method,conf,note)=>{ if(value===null) return; const o=occ(doc,page,line,field,value,`acv-csv:${method}`,conf,'kgCO2e/m²',{building:B,structuredPdf:true,provenanceNote:note,origin:'Export CSV étude carbone RE2020 (composants)'}); if(o) out.push(o); };
+  let contrib='', section=null; const sections=[];
+  for(const line of page.lines||[]){ const c=ac_cells(line), a=c[0]||'', b=c[1]||'';
+    if(/^total\s+contributeur/i.test(b)){ sections.push({contrib,total:true,line,value:ac_num(c[2])}); section=null; continue; }
+    if(/^\.?\s*total\s*:?$/i.test(b)){ if(section){ section.line=line; section.value=ac_num(c[2]); sections.push(section); } section=null; continue; }
+    if(a&&/^eges$/i.test(c[2]||'')){ section={contrib,title:a}; continue; }
+    if(a&&!b&&c.slice(1).every(x=>!x)&&!/^\d+\.\d+\s/.test(a)&&!section) contrib=/^composants?$/i.test(a)?'components':/^energie/i.test(a)?'energy':/^eau/i.test(a)?'water':/^chantier/i.test(a)?'site':contrib;
+  }
+  const of=k=>sections.filter(s=>s.contrib===k);
+  // Composants : 13 lots + total ; contrôle Σ lots = total (sinon à vérifier).
+  const comp=of('components'), lots=comp.filter(s=>!s.total&&/^(1[0-3]|[1-9])\s*-/.test(s.title)), compTotal=comp.find(s=>s.total);
+  const sum=lots.reduce((t,s)=>t+(s.value||0),0), ok=compTotal&&compTotal.value!==null&&Math.abs(sum-compTotal.value)<=0.02*Math.max(1,compTotal.value);
+  for(const s of lots){ const n=s.title.match(/^(\d+)/)[1]; emit(s.line,`ic_lot_${n}`,s.value,'lot',ok?0.95:0.82,`Lot « ${s.title} » : total du lot (colonne EGES).`); }
+  if(compTotal) emit(compTotal.line,'ic_components',compTotal.value,'composants',ok?0.95:0.82,ok?`Total du contributeur Composants (= somme des ${lots.length} lots).`:'Total du contributeur Composants (la somme des lots ne le retrouve pas : à vérifier).');
+  // Énergie : total et postes qui ont une colonne ExtracTerre.
+  const en=of('energy'), enTotal=en.find(s=>s.total);
+  if(enTotal) emit(enTotal.line,'ic_energy',enTotal.value,'energie',0.93,'Total du contributeur Énergie (CE).');
+  for(const s of en.filter(s=>!s.total)){ const f=AC_ENERGY.find(([re])=>re.test(s.title.trim())); if(f) emit(s.line,f[1],s.value,'energie-poste',0.93,`Poste « ${s.title} » du contributeur Énergie.`); }
+  // Chantier : repris seulement s'il est renseigné (au moins une section non nulle).
+  const ch=of('site'), chTotal=ch.find(s=>s.total);
+  if(chTotal&&ch.some(s=>!s.total&&s.value>0)) emit(chTotal.line,'ic_site',chTotal.value,'chantier',0.93,'Total du contributeur Chantier.');
+  return out;
+}
+
 /* ---- notice-thermique.js ---- */
 // v2.3.6 — Notice thermique RE2020 de bureau d'études avec tableaux de synthèse en colonnes par bâtiment :
 //   « POSTE | BATIMENT CENTRAL | BATIMENT NORD | BATIMENT SUD » puis « BBIO 56,40 59,00 62,20 », « CEP_MAX … »,
@@ -4958,6 +5008,8 @@ function classifyDocument(fileName, text='', meta={}) {
   if (/\bacv\b|analyse\s+du\s+cycle\s+de\s+vie|ic\s+construction|ic\s+composants/i.test(n+' '+t)) add(DOC_TYPES.CARBON,10);
   if (/etude\s+(?:thermique|energetique|énergétique)|etude\s+reglementaire|thermique\s+reglementaire|rapport\s+(?:d['’])?etude\s+(?:thermique|energetique|énergétique)/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,/(?:rapport|etude|étude)[^\n]{0,30}(?:thermique|energetique|énergétique)/i.test(n)?20:10);
   if (/bao\s*evolution|bao\s*[eé]volution|catalogue\s+des\s+parois\s+de\s+l['’]?etat\s+initial|calcul\s+du\s+coefficient\s+ubat/i.test(n+' '+t)) add(DOC_TYPES.THERMAL,18);
+  // v2.20.6 — export CSV d'étude carbone par composant (Designation ; DetailsGES ; NumFiche ; CO2Inies…).
+  if(meta?.kind==='spreadsheet' && /^\[csv\]\s*designation\s*\|\s*valx\s*\|\s*detailsges\s*\|\s*numfiche/.test(t)) return {type:DOC_TYPES.CARBON,confidence:0.97,scores:{[DOC_TYPES.CARBON]:97},reason:[[DOC_TYPES.CARBON,97]],structured:'acv-csv'};
   if(meta?.kind==='spreadsheet' && /(?:code\s+interne|nom\s+operation|maitre\s+d.?ouvrage|referentiel|total\s+logements|surface\s+batiment|ic\s+composants)/i.test(t)) add(DOC_TYPES.MANUAL,11);
 
   // Règles documentaires versionnées (patches) : elles renforcent la classification sans exécuter de code arbitraire.
@@ -5531,11 +5583,24 @@ async function readSpreadsheet(file){
   return {kind:'spreadsheet',pages,text:pages.map(p=>`[${p.sheet}]\n${p.text}`).join('\n\f\n'),pageCount:pages.length};
 }
 
+// v2.20.6 — CSV (exports d'études carbone…) : UTF-8, sinon Windows-1252 ; séparateur « ; », tabulation ou « , ».
+async function readCsv(file){
+  const buf=new Uint8Array(await file.arrayBuffer()); let s;
+  try{ s=new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch{ s=new TextDecoder('windows-1252').decode(buf); }
+  s=s.replace(/^﻿/,'').replace(/\u0000/g,'');
+  const rows=s.split(/\r\n|\r|\n/), head=rows.slice(0,20).join('\n'), sep=[';','\t',','].map(c=>[c,(head.match(new RegExp(c==='\t'?'\t':c,'g'))||[]).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const split=r=>{ const out=[]; let cur='',q=false; for(let i=0;i<r.length;i++){ const ch=r[i]; if(q){ if(ch==='"'&&r[i+1]==='"'){ cur+='"'; i++; } else if(ch==='"') q=false; else cur+=ch; } else if(ch==='"') q=true; else if(ch===sep){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out; };
+  const lines=rows.map((r,index)=>{ const cells=split(r); return {index,text:normalizeText(cells.join(' | ')),cells}; }).filter(l=>l.text.replace(/\|/g,'').trim());
+  const page={page:1,sheet:'CSV',text:lines.map(l=>l.text).join('\n'),lines};
+  return {kind:'spreadsheet',csv:true,pages:[page],text:`[CSV]\n${page.text}`,pageCount:1};
+}
+
 async function readFile(file,onProgress=()=>{},options={}){
   throwIfAborted(options.signal); const lower=file.name.toLowerCase();
   if(lower.endsWith('.pdf')) return readPdf(file,onProgress,options);
   if(lower.endsWith('.xml')) return readXml(file);
   if(lower.endsWith('.xlsx')||lower.endsWith('.xls')) return readSpreadsheet(file);
+  if(lower.endsWith('.csv')) return readCsv(file);
   if(lower.endsWith('.json')){
     if(file.size>20*1024*1024) throw new Error(`JSON trop volumineux : ${file.name}`);
     let data; try{ data=JSON.parse(await file.text()); }catch{ throw new Error(`JSON illisible : ${file.name}`); }
@@ -7852,6 +7917,8 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
   if(!doc.__skipDedicated&&isRecapCarboneRe2020(doc)) return parseRecapCarboneDocument(doc);
+  // v2.20.6 — export CSV d'étude carbone par composant : lecteur dédié seulement (pas de lecture générique des 400 lignes de produits).
+  if(isAcvComponentsCsv(doc)) return annotateSemanticHierarchy({...doc,type:doc.type||DOC_TYPES.CARBON},parseAcvComponentsCsv({...doc,type:doc.type||DOC_TYPES.CARBON},occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'acv-csv'}));
   if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
   // v2.3.20 — rapport U48Win (Th-C-E ex) : lu par ses motifs propres. Les heuristiques à fenêtre glissante et la notice
   // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
@@ -11212,7 +11279,7 @@ async function runLlmAssist(doc,{missingFields=null,config=null,fetchImpl=null,i
 // Les fichiers sont lus sur le poste : rien n'est envoyé.
 
 const BOX_KINDS=[['cctp','CCTP',/\bcctp\b/],['carbone','Étude carbone',/carbone|\bacv\b/],['thermique','Étude thermique',/thermique/]];
-const BOX_EXTENSIONS=/\.(pdf|xml|xlsx|xls|json|zip)$/i;
+const BOX_EXTENSIONS=/\.(pdf|xml|xlsx|xls|csv|json|zip)$/i;
 const bx_norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
 // « 00005115 - 34 - MARSEILLAN… » (espace initial toléré) ; contrat comparé sur 8 chiffres.
 const boxContractOf=name=>{ const m=String(name||'').match(/^\s*0*([1-9]\d{0,7})\s*-/); return m?m[1].padStart(8,'0'):''; }; // « 00 - Dossier type » n'est pas un contrat
@@ -11874,7 +11941,7 @@ async function addQuestionnaireZip(file,specializedFamily,opts){
   }catch(err){ toast(`Paquet illisible : ${file.name} (${err?.message||err})`,'error'); }
 }
 function addFiles(fileList,specializedFamily=null,opts={}){
-  const allowed=/\.(pdf|xml|xlsx?|xls|json)$/i; let added=0,rehydrated=0;
+  const allowed=/\.(pdf|xml|xlsx?|xls|csv|json)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(/\.zip$/i.test(file.name)){ addQuestionnaireZip(file,specializedFamily,opts); continue; }
     if(/\.xlsx?$/i.test(file.name)&&!opts.skipOperationCheck){ addSpreadsheetOrOperations(file,specializedFamily,opts); continue; }
@@ -12079,11 +12146,13 @@ function receiveBookmarkletText(){
   history.replaceState(null,'',location.pathname+location.search); if(t) openExternalText(t,'Salesforce');
 }
 // v2.8.1 — le favori ouvre un petit relais (même site qu'ExtracTerre) qui transmet le texte à l'onglet ExtracTerre déjà ouvert.
-function bookmarkletHref(){ const relay=location.origin+location.pathname.replace(/[^/]*$/,'')+'relay.html'; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${relay}#sf='+encodeURIComponent(t),'extracterre_relay','popup,width=480,height=230');})()`; }
+function bookmarkletHref(){ const relay=location.origin+location.pathname.replace(/[^/]*$/,'')+'relay.html'; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${relay}#sf='+encodeURIComponent(t),'extracterre_relay','popup,width=440,height=700');})()`; }
 let importTitle='';
 function listenImportRelay(){
-  if(typeof BroadcastChannel!=='function') return; const bc=new BroadcastChannel('extracterre-import');
-  bc.onmessage=e=>{ const m=e.data; if(m?.type!=='import'||!m.text) return; bc.postMessage({type:'ack',id:m.id});
+  if(typeof BroadcastChannel!=='function') return; const bc=new BroadcastChannel('extracterre-import'); relayBc=bc;
+  bc.onmessage=e=>{ const m=e.data;
+    if(m?.type==='action'&&m.id&&m.id===relayImportId){ miniCheckAction(String(m.kind||''),String(m.ref||''),String(m.value||'')); return; }
+    if(m?.type!=='import'||!m.text) return; bc.postMessage({type:'ack',id:m.id,check:true}); relayImportId=String(m.id||''); relaySig=''; relayOutcome='';
     if(!importTitle){ importTitle=document.title; document.title=`● ${m.source||'Salesforce'} reçu — ${importTitle}`; document.addEventListener('visibilitychange',function back(){ if(document.visibilityState==='visible'){ document.title=importTitle; importTitle=''; document.removeEventListener('visibilitychange',back); } }); }
     openExternalText(m.text,m.source||'Salesforce'); };
 }
@@ -13779,7 +13848,7 @@ const MINI_CSS=`*{box-sizing:border-box}body{margin:0;font:13px/1.35 "IBM Plex S
 .mw-drop{flex:1;min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed #aebdb4;border-radius:10px;background:#fff;text-align:center;padding:8px;cursor:pointer;transition:.15s}
 .mw-drop.drag{border-color:#245947;background:#edf6f1}.mw-drop strong{font-size:13px;color:#173e31}.mw-drop small{color:#6c7b74;font-size:11px}
 .mw-check{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;overflow:auto;border:1px solid #cfe0d6;border-radius:10px;background:#fff;padding:8px}.mw-check[hidden]{display:none}
-.mw-check-head{font-size:12px}.mw-check-head b{color:#173e31}.mw-check-head .w{color:#94610d}.mw-check ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.mw-check-head{font-size:12px}.mw-target{font-size:11.5px;color:#425149;padding:4px 7px;border-radius:7px;background:#edf6f1}.mw-target b{color:#173e31}.mw-check-head b{color:#173e31}.mw-check-head .w{color:#94610d}.mw-check ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .mw-check h4{margin:4px 0 0;font-size:11px;color:#245947;text-transform:uppercase;letter-spacing:.03em}.mw-note{margin:0;font-size:11px;color:#835d18}
 .mw-li{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;gap:6px;align-items:start;padding:3px 0;border-bottom:1px solid #eef2ef;font-size:12px}
 .mw-li .f{border:0;background:none;padding:0;text-align:left;font:inherit;color:#425149;cursor:pointer;text-decoration:underline dotted #9bb0a5}.mw-li .f small{display:block;color:#8a978f;font-size:10px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -13795,9 +13864,10 @@ function miniWindowHtml(){ return `<div class="mw-head"><b>ExtracTerre</b><small
 <div class="mw-stats"><span><b id="mwDocs">0</b> doc.</span><span><b id="mwBld">0</b> bât.</span><span><b id="mwPct">0</b> % complété</span></div><div class="mw-bar"><i id="mwBar"></i></div>
 <div class="mw-status" id="mwStatus" role="status"></div>
 <section class="mw-check" id="mwCheck" aria-label="Contrôle de l’import Salesforce" hidden></section>
-<label class="mw-drop" id="mwDrop" tabindex="0"><strong>Déposer ici PDF, XML, Excel…</strong><small>ou cliquer pour choisir — ajoutés à l’opération active</small><input id="mwFile" type="file" multiple hidden accept=".pdf,.xml,.xls,.xlsx,.json,.zip"></label>
+<label class="mw-drop" id="mwDrop" tabindex="0"><strong>Déposer ici PDF, XML, Excel, CSV…</strong><small>ou cliquer pour choisir — ajoutés à l’opération active</small><input id="mwFile" type="file" multiple hidden accept=".pdf,.xml,.xls,.xlsx,.csv,.json,.zip"></label>
 <button class="mw-go" id="mwAnalyze" type="button"></button></div>`; }
 function refreshMiniWindow(){
+  pushRelayCheck();
   const w=miniWin; if(!w||w.closed) return; const d=w.document, $m=s=>d.getElementById(s); if(!$m('mwProject')) return;
   const p=activeProject(), st=projectResultStats(p), id=projectIdentity(p), pct=projectCompletion(p);
   const sel=$m('mwProject'), opts=state.projects.map(x=>`<option value="${x.id}"${x.id===p.id?' selected':''}>${escapeHtml(projectTitle(x))}</option>`).join('');
@@ -13814,9 +13884,10 @@ function miniCheckHtml(){
   const fp=freePaste; if(!fp||!$('#manualDataDialog')?.open) return '';
   const label=k=>FIELD_MAP[k]?.label||k, n=fp.buildings.reduce((t,b)=>t+b.items.filter(i=>i.field).length,0), nb=fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1;
   const li=(cls,attrs,f,line,v,x)=>`<li class="mw-li ${cls}"><button type="button" class="f" ${attrs} title="Changer de colonne">${escapeHtml(f)}<small>${escapeHtml(line)}</small></button><b>${escapeHtml(v)}</b>${x}</li>`;
-  const blocks=fp.buildings.map((b,bi)=>b.items.length?`<h4>${b.name==='*'?'Toute l’opération':escapeHtml(b.name||'Opération')}</h4><ul>${b.items.map((it,ii)=>li(it.field?'':'off',`data-mw-col="b:${bi}:${ii}"`,it.field?label(it.field):'— ignorée',it.line,formatValue(it.value),it.field?`<button type="button" class="mw-x" data-mw-ign="${bi}:${ii}" title="Ignorer cette ligne" aria-label="Ignorer cette ligne">✕</button>`:`<button type="button" class="mw-x" data-mw-back="${bi}:${ii}" title="Reprendre cette ligne" aria-label="Reprendre cette ligne">↺</button>`)).join('')}</ul>`:'').join('');
+  const blocks=fp.buildings.map((b,bi)=>b.items.length?`<h4>${b.name==='*'?'Toute l’opération':escapeHtml(b.name||'Opération')}</h4><ul>${b.items.map((it,ii)=>li(it.field?'':'off',`data-mw-col="b:${bi}:${ii}" data-mw-cur="${escapeHtml(it.field||'')}"`,it.field?label(it.field):'— ignorée',it.line,formatValue(it.value),it.field?`<button type="button" class="mw-x" data-mw-ign="${bi}:${ii}" title="Ignorer cette ligne" aria-label="Ignorer cette ligne">✕</button>`:`<button type="button" class="mw-x" data-mw-back="${bi}:${ii}" title="Reprendre cette ligne" aria-label="Reprendre cette ligne">↺</button>`)).join('')}</ul>`:'').join('');
   const un=fp.unmatched.length?`<h4>Non reconnues</h4><ul>${fp.unmatched.map((u,ui)=>li('un',`data-mw-col="u:${ui}"`,'Choisir une colonne…',u.line,'','<span></span>')).join('')}</ul>`:'';
   return `<div class="mw-check-head"><b>${escapeHtml(fp.sourceLabel||'Import')} reçu</b> · ${n} valeur(s) · ${nb} bât.${fp.unmatched.length?` · <span class="w">${fp.unmatched.length} non reconnue(s)</span>`:''}</div>
+<div class="mw-target">→ Projet : <b>${escapeHtml(projectTitle(activeProject()))}</b></div>
 ${(fp.notes||[]).map(t=>`<p class="mw-note">⚠ ${escapeHtml(t)}</p>`).join('')}${blocks}${un}
 <div class="mw-row"><button type="button" class="mw-go" data-mw-apply ${n?'':'disabled'}>Intégrer (${n})</button><button type="button" class="mw-go light" data-mw-cancel>Ignorer l’import</button></div>`;
 }
@@ -13828,12 +13899,31 @@ function renderMiniCheck(d){
 // Sélecteur de l'aperçu principal correspondant à une ligne de la mini-fenêtre.
 function miniPreviewSelect(ref){ const [k,a,b]=ref.split(':'); const box=$('#manualDataPreview'); return k==='u'?box?.querySelector(`[data-fp-u="${a}"]`):box?.querySelector(`[data-fp-b="${a}"][data-fp-i="${b}"]`); }
 function miniSetColumn(ref,value){ const sel=miniPreviewSelect(ref); if(!sel) return; sel.value=value; sel.dispatchEvent(new Event('change',{bubbles:true})); refreshMiniWindow(); }
+// v2.20.5 — actions du contrôle, communes à la mini-fenêtre et à la fenêtre d'import Salesforce (relay.html).
+function miniCheckAction(kind,ref='',value=''){
+  if(kind==='apply'){ relayOutcome='integrated'; $('#manualDataApply')?.click(); if($('#manualDataDialog')?.open) relayOutcome=''; refreshMiniWindow(); return true; }
+  if(kind==='cancel'){ relayOutcome='ignored'; $('#manualDataDialog')?.close(); toast('Import ignoré : rien n’a été intégré.','info'); refreshMiniWindow(); return true; }
+  if(kind==='ign'){ const [bi,ii]=ref.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it) it.mwPrev=it.field; miniSetColumn(`b:${ref}`,''); return true; }
+  if(kind==='back'){ const [bi,ii]=ref.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(!it?.mwPrev) return false; miniSetColumn(`b:${ref}`,it.mwPrev); return true; }
+  if(kind==='col'){ miniSetColumn(ref,value); return true; }
+  return false;
+}
+// Fenêtre d'import Salesforce : la petite fenêtre ouverte par le favori (relay.html, même site) affiche le contrôle
+// et renvoie les actions par BroadcastChannel. Rien ne quitte le navigateur.
+var relayBc=null, relayImportId='', relaySig='', relayOutcome='';
+const RELAY_CHECK_CSS=()=>MINI_CSS.split('\n').filter(l=>/mw-check|mw-target|mw-li|mw-x|mw-note|mw-row|mw-go|\*\{box-sizing/.test(l)&&!/body\.checking/.test(l)).join('\n');
+function pushRelayCheck(){
+  if(!relayBc||!relayImportId) return; const html=miniCheckHtml();
+  if(!html){ if(relaySig){ relayBc.postMessage({type:'done',id:relayImportId,outcome:relayOutcome||'closed'}); relayImportId=''; relaySig=''; relayOutcome=''; } return; }
+  if(html===relaySig) return; relaySig=html;
+  relayBc.postMessage({type:'check',id:relayImportId,html,css:RELAY_CHECK_CSS(),options:freeFieldSelect('','').replace(/^<select\s*>|<\/select>$/g,''),version:APP_VERSION});
+}
 function onMiniCheckClick(e){
   const t=e.target.closest('button'); if(!t) return; const d=t.ownerDocument;
-  if(t.hasAttribute('data-mw-apply')){ $('#manualDataApply')?.click(); refreshMiniWindow(); return; }
-  if(t.hasAttribute('data-mw-cancel')){ $('#manualDataDialog')?.close(); toast('Import ignoré : rien n’a été intégré.','info'); refreshMiniWindow(); return; }
-  if(t.dataset.mwIgn){ const [bi,ii]=t.dataset.mwIgn.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it) it.mwPrev=it.field; miniSetColumn(`b:${t.dataset.mwIgn}`,''); return; }
-  if(t.dataset.mwBack){ const [bi,ii]=t.dataset.mwBack.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it?.mwPrev) miniSetColumn(`b:${t.dataset.mwBack}`,it.mwPrev); else t.closest('li')?.querySelector('.f')?.click(); return; }
+  if(t.hasAttribute('data-mw-apply')){ miniCheckAction('apply'); return; }
+  if(t.hasAttribute('data-mw-cancel')){ miniCheckAction('cancel'); return; }
+  if(t.dataset.mwIgn){ miniCheckAction('ign',t.dataset.mwIgn); return; }
+  if(t.dataset.mwBack){ if(!miniCheckAction('back',t.dataset.mwBack)) t.closest('li')?.querySelector('.f')?.click(); return; }
   if(t.dataset.mwCol){ const li=t.closest('li'); if(li.querySelector('select')) return; const src=miniPreviewSelect(t.dataset.mwCol); if(!src) return;
     const sel=d.createElement('select'); sel.innerHTML=src.innerHTML; sel.value=src.value; sel.setAttribute('aria-label','Colonne ExtracTerre'); li.appendChild(sel); sel.focus();
     sel.onchange=()=>miniSetColumn(t.dataset.mwCol,sel.value); sel.onblur=()=>setTimeout(()=>sel.isConnected&&sel.remove(),150); }

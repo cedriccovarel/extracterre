@@ -6,6 +6,7 @@ import {isCarbonNoticeRe2020,carbonNoticeBuildingNames} from './notice-carbone.j
 import {isBbcaCalculette,bbcaBuildingName,isBbcaRenovationCalculette,bbcaRenovationBuildingNames} from './calculette-bbca.js';
 import {isRtexStandardFiche,rtexStandardBuildingNames} from './rset-rtex.js';
 import {isRecapCarboneRe2020,recapCarboneBuildingName} from './recap-carbone.js';
+import {isAcvComponentsCsv,acvComponentsBuildingName} from './acv-composants.js';
 import {isRtexThermalNotice,rtexNoticeBuildingNames,isInsulationMarkupPlan,isPhasedThermalNotice,isClimaWinRtexSynthesis,climaWinRtexBuildingName} from './renovation-thermique.js';
 import {isPleiadesRtexReport,pleiadesRtexBuildingNames} from './pleiades-rtex.js';
 import {isClimaWinRtexStudy,isClimaWinRtexInput,climaWinStudyBuildingNames} from './climawin-etude.js';
@@ -133,6 +134,7 @@ export function detectBuildings(doc){
   }
   // v2.3.11 — rénovation : « Bâtiment sur cour : » (notice RT-Ex), « 1.1 Batiment 1 » / nom de fichier (Pléiades),
   // plan de repérage des isolants (légende commune).
+  if(isAcvComponentsCsv(doc)){ const n=acvComponentsBuildingName(doc); return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'acv-csv'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'acv-csv',hits:[]}; }
   if(isRecapCarboneRe2020(doc)){ const n=recapCarboneBuildingName(doc); return n==='Bâtiment unique'?{names:['Bâtiment unique'],hits:[],expectedCount:0,complete:true,aliases:{},source:'recap-carbone'}:{names:[canonicalBuilding(n)],expectedCount:1,source:'recap-carbone',hits:[]}; }
   if(isRtexStandardFiche(doc)){ const names=rtexStandardBuildingNames(doc).map(canonicalBuilding); if(names.length) return {names:[...new Set(names)],expectedCount:new Set(names).size,source:'rset-rtex',hits:[]}; }
   if(isRtexThermalNotice(doc)||isPleiadesRtexReport(doc)){
@@ -308,6 +310,6 @@ export function buildingForPosition(doc,pageNo,lineIndex){
 
 export function operationNameFromFiles(docs){
   if(!docs.length) return 'Opération';
-  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls|json)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
+  let s=docs[0].name.replace(/\.(pdf|xml|xlsx?|xls|csv|json)$/i,'').replace(/\b(rset|rsee|rt2012|rsee?|dpgf|cctp|rapport|etude|étude)\b/ig,' ').replace(/[_-]+/g,' ').replace(/\s+/g,' ').trim();
   return s||'Opération';
 }

@@ -1,3 +1,24 @@
+# v2.20.6 — Fichiers CSV, export d'étude carbone par composant
+- Les fichiers .csv sont acceptés (dépôt, sélection, dossiers Box, mini-fenêtre). Lecture en UTF-8, sinon Windows-1252 ;
+  séparateur « ; », tabulation ou « , ».
+- Export CSV d'étude carbone RE2020 « composant par composant » (un fichier par bâtiment, ex. « BATIMENT B.csv » ; colonnes
+  Designation / DetailsGES / NumFiche / CO2Inies…) : type « Étude carbone / ACV », bâtiment lu dans le nom du fichier.
+  Repris : IC composants lots 1 à 13 et IC composants (contrôle : somme des lots = total), IC énergie et ses postes
+  chauffage, ECS, refroidissement, auxiliaires ventilation et distribution (kg éq. CO2/m²).
+- Seules les valeurs écrites sont reprises. Un contributeur « Chantier » entièrement à 0 n'est pas renseigné dans l'export :
+  IC chantier n'est pas repris. Les lignes de produits ne sont pas lues une à une.
+- Test : `test_v2_20_6.mjs` (CSV fictif).
+
+# v2.20.5 — Import Salesforce : fenêtre de contrôle
+- Le favori « → ExtracTerre » ouvre une fenêtre qui affiche directement le contrôle des données, au-dessus de Salesforce :
+  projet ExtracTerre visé, nombre de valeurs et de bâtiments, remarques ⚠ de la fiche, puis par bâtiment chaque colonne,
+  la ligne d'origine et la valeur ; ✕ / ↺ pour ignorer ou reprendre une ligne, clic sur la colonne pour la changer, lignes
+  non reconnues à ranger. « Intégrer » ou « Ignorer l'import », puis la fenêtre confirme et se ferme.
+- Les actions passent par l'onglet ExtracTerre ouvert (même navigateur, BroadcastChannel) et son aperçu « Données
+  manuelles » : mêmes règles qu'en plein écran. Rien n'est stocké ni envoyé ailleurs.
+- Favori déjà installé : la fenêtre s'agrandit d'elle-même. La mini-fenêtre affiche aussi le projet visé.
+- Test : `test_v2_20_5.mjs`.
+
 # v2.20.4 — Encart « Compléments » : boutons dans la carte
 - Les boutons « Coller » et « Connexion Cloud » prenaient toute la largeur à côté du texte et sortaient de la carte de ~60 px :
   ils reprennent leur taille, le texte se replie à côté.

@@ -11,7 +11,7 @@ import {readTechnicalData,technicalDataFields} from './js/donnees-techniques.js'
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.20.4','version');
+eq(APP_VERSION, '2.20.6','version');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
@@ -20,7 +20,7 @@ const val=(out,f,b)=>out.find(o=>o.field===f&&(!b||o.building===b))?.value;
 const L=a=>a.map(t=>({t}));
 const f1=technicalDataFields(readTechnicalData(L(['Type de structure principale Ossature','Materiau principal Bois massif',"Nature de l'isolation des",'Laine de bois','parois verticales exterieures',"Nature de l'isolation des",'Polyurethane (PU)','toitures','Type de toiture Terrasse non accessible'])));
 const g=(arr,f)=>arr.find(x=>x.field===f)?.value;
-eq(g(f1,'structure'),'Ossature bois'); eq(g(f1,'wall_insulation'),'Fibre de bois','libellé coupé autour de la valeur'); eq(g(f1,'roof_insulation'),'PUR'); eq(g(f1,'roof_structure'),undefined,'v2.20.4 : statut de toiture écarté');
+eq(g(f1,'structure'),'Ossature bois'); eq(g(f1,'wall_insulation'),'Fibre de bois','libellé coupé autour de la valeur'); eq(g(f1,'roof_insulation'),'PUR'); eq(g(f1,'roof_structure'),undefined,'v2.20.6 : statut de toiture écarté');
 const f2=technicalDataFields(readTechnicalData(L(['Type de structure porteuse Ossature Elements Prefabriques Non',"Nature de l'isolation des planchers Laine de verre (LV) Nature de l'espace sous plancher Parking",'Type de menuiseries PVC','Type de protections mobiles des menuiseries Sans protection mobile','Materiau principal de la structure Bois massif'])));
 eq(g(f2,'floor_insulation'),'Laine de verre','valeur coupée au libellé suivant'); eq(g(f2,'window_material'),'PVC'); eq(g(f2,'window_shading'),'Sans occultation'); eq(g(f2,'structure'),'Ossature bois');
 

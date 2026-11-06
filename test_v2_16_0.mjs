@@ -6,7 +6,7 @@ import {classifyDocument} from './js/classifier.js';
 import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.20.4','version');
+eq(APP_VERSION,'2.20.6','version');
 
 const pagesTxt=[
   ['Etude RE2020 Projet 99999 FICTIVILLE _V2','DOSSIER THERMIQUE ET ENVIRONNEMENTAL','SYNTHESE THERMIQUE & CARBONE','COMPOSITION DU PROJET','Surface Habitable Usage au sens de Typologies *','[m²] la RE2020 T1 T2 T3 T4 T5','Batiment A','1234,5 Immeuble collectif 2 5 6 3 -'],
@@ -38,7 +38,7 @@ const app=fs.readFileSync('./js/app.js','utf8');
 eq([/data-tile-fav=/.test(app),/FAV_GROUP='★ Favoris'/.test(app),/favorite:!!op\.favorite/.test(app)],[true,true,true],'étoile, groupe Favoris, import de session');
 const {HVAC}=await import('./js/config.js'); const {findFirstMatch}=await import('./js/utils.js');
 eq(['Reference : PAC APTAE 40 (2 unites) + Chaudiere gaz VARFREE EVO 120 (2 unites)','Pompe à chaleur hybride','Chaudière gaz à condensation','PAC air/eau'].map(t=>findFirstMatch(t,HVAC.heating)),['Hybride (PAC + gaz)','Hybride (PAC + gaz)','Chaudière condensation','PAC air/eau'],'chauffage hybride PAC + gaz');
-eq(/partial=xs\.filter\(x=>x\.pct>10&&x\.pct<100\)/.test(app)&&/dossier\(s\) partiellement complété\(s\)/.test(app),true,'v2.20.4 — dossiers partiellement complétés (> 10 %) sur les tuiles de maître d’ouvrage');
+eq(/partial=xs\.filter\(x=>x\.pct>10&&x\.pct<100\)/.test(app)&&/dossier\(s\) partiellement complété\(s\)/.test(app),true,'v2.20.6 — dossiers partiellement complétés (> 10 %) sur les tuiles de maître d’ouvrage');
 // v2.17.0 — tri des tuiles par état du dossier (fonctions extraites de app.js).
 const sortSrc=app.slice(app.indexOf('const TILE_SORTS='),app.indexOf('function renderTiles('));
 const sortTileItems=new Function(sortSrc+';return sortTileItems;')();

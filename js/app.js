@@ -609,7 +609,7 @@ async function addQuestionnaireZip(file,specializedFamily,opts){
   }catch(err){ toast(`Paquet illisible : ${file.name} (${err?.message||err})`,'error'); }
 }
 function addFiles(fileList,specializedFamily=null,opts={}){
-  const allowed=/\.(pdf|xml|xlsx?|xls|json)$/i; let added=0,rehydrated=0;
+  const allowed=/\.(pdf|xml|xlsx?|xls|csv|json)$/i; let added=0,rehydrated=0;
   for(const file of fileList){
     if(/\.zip$/i.test(file.name)){ addQuestionnaireZip(file,specializedFamily,opts); continue; }
     if(/\.xlsx?$/i.test(file.name)&&!opts.skipOperationCheck){ addSpreadsheetOrOperations(file,specializedFamily,opts); continue; }
@@ -814,11 +814,13 @@ function receiveBookmarkletText(){
   history.replaceState(null,'',location.pathname+location.search); if(t) openExternalText(t,'Salesforce');
 }
 // v2.8.1 — le favori ouvre un petit relais (même site qu'ExtracTerre) qui transmet le texte à l'onglet ExtracTerre déjà ouvert.
-function bookmarkletHref(){ const relay=location.origin+location.pathname.replace(/[^/]*$/,'')+'relay.html'; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${relay}#sf='+encodeURIComponent(t),'extracterre_relay','popup,width=480,height=230');})()`; }
+function bookmarkletHref(){ const relay=location.origin+location.pathname.replace(/[^/]*$/,'')+'relay.html'; return `javascript:(()=>{const s=String(getSelection()).trim();const t=(s||document.body.innerText).slice(0,150000);window.open('${relay}#sf='+encodeURIComponent(t),'extracterre_relay','popup,width=440,height=700');})()`; }
 let importTitle='';
 function listenImportRelay(){
-  if(typeof BroadcastChannel!=='function') return; const bc=new BroadcastChannel('extracterre-import');
-  bc.onmessage=e=>{ const m=e.data; if(m?.type!=='import'||!m.text) return; bc.postMessage({type:'ack',id:m.id});
+  if(typeof BroadcastChannel!=='function') return; const bc=new BroadcastChannel('extracterre-import'); relayBc=bc;
+  bc.onmessage=e=>{ const m=e.data;
+    if(m?.type==='action'&&m.id&&m.id===relayImportId){ miniCheckAction(String(m.kind||''),String(m.ref||''),String(m.value||'')); return; }
+    if(m?.type!=='import'||!m.text) return; bc.postMessage({type:'ack',id:m.id,check:true}); relayImportId=String(m.id||''); relaySig=''; relayOutcome='';
     if(!importTitle){ importTitle=document.title; document.title=`● ${m.source||'Salesforce'} reçu — ${importTitle}`; document.addEventListener('visibilitychange',function back(){ if(document.visibilityState==='visible'){ document.title=importTitle; importTitle=''; document.removeEventListener('visibilitychange',back); } }); }
     openExternalText(m.text,m.source||'Salesforce'); };
 }
@@ -2514,7 +2516,7 @@ const MINI_CSS=`*{box-sizing:border-box}body{margin:0;font:13px/1.35 "IBM Plex S
 .mw-drop{flex:1;min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed #aebdb4;border-radius:10px;background:#fff;text-align:center;padding:8px;cursor:pointer;transition:.15s}
 .mw-drop.drag{border-color:#245947;background:#edf6f1}.mw-drop strong{font-size:13px;color:#173e31}.mw-drop small{color:#6c7b74;font-size:11px}
 .mw-check{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;overflow:auto;border:1px solid #cfe0d6;border-radius:10px;background:#fff;padding:8px}.mw-check[hidden]{display:none}
-.mw-check-head{font-size:12px}.mw-check-head b{color:#173e31}.mw-check-head .w{color:#94610d}.mw-check ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.mw-check-head{font-size:12px}.mw-target{font-size:11.5px;color:#425149;padding:4px 7px;border-radius:7px;background:#edf6f1}.mw-target b{color:#173e31}.mw-check-head b{color:#173e31}.mw-check-head .w{color:#94610d}.mw-check ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .mw-check h4{margin:4px 0 0;font-size:11px;color:#245947;text-transform:uppercase;letter-spacing:.03em}.mw-note{margin:0;font-size:11px;color:#835d18}
 .mw-li{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;gap:6px;align-items:start;padding:3px 0;border-bottom:1px solid #eef2ef;font-size:12px}
 .mw-li .f{border:0;background:none;padding:0;text-align:left;font:inherit;color:#425149;cursor:pointer;text-decoration:underline dotted #9bb0a5}.mw-li .f small{display:block;color:#8a978f;font-size:10px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -2530,9 +2532,10 @@ function miniWindowHtml(){ return `<div class="mw-head"><b>ExtracTerre</b><small
 <div class="mw-stats"><span><b id="mwDocs">0</b> doc.</span><span><b id="mwBld">0</b> bât.</span><span><b id="mwPct">0</b> % complété</span></div><div class="mw-bar"><i id="mwBar"></i></div>
 <div class="mw-status" id="mwStatus" role="status"></div>
 <section class="mw-check" id="mwCheck" aria-label="Contrôle de l’import Salesforce" hidden></section>
-<label class="mw-drop" id="mwDrop" tabindex="0"><strong>Déposer ici PDF, XML, Excel…</strong><small>ou cliquer pour choisir — ajoutés à l’opération active</small><input id="mwFile" type="file" multiple hidden accept=".pdf,.xml,.xls,.xlsx,.json,.zip"></label>
+<label class="mw-drop" id="mwDrop" tabindex="0"><strong>Déposer ici PDF, XML, Excel, CSV…</strong><small>ou cliquer pour choisir — ajoutés à l’opération active</small><input id="mwFile" type="file" multiple hidden accept=".pdf,.xml,.xls,.xlsx,.csv,.json,.zip"></label>
 <button class="mw-go" id="mwAnalyze" type="button"></button></div>`; }
 function refreshMiniWindow(){
+  pushRelayCheck();
   const w=miniWin; if(!w||w.closed) return; const d=w.document, $m=s=>d.getElementById(s); if(!$m('mwProject')) return;
   const p=activeProject(), st=projectResultStats(p), id=projectIdentity(p), pct=projectCompletion(p);
   const sel=$m('mwProject'), opts=state.projects.map(x=>`<option value="${x.id}"${x.id===p.id?' selected':''}>${escapeHtml(projectTitle(x))}</option>`).join('');
@@ -2549,9 +2552,10 @@ function miniCheckHtml(){
   const fp=freePaste; if(!fp||!$('#manualDataDialog')?.open) return '';
   const label=k=>FIELD_MAP[k]?.label||k, n=fp.buildings.reduce((t,b)=>t+b.items.filter(i=>i.field).length,0), nb=fp.buildings.filter(b=>b.items.length&&b.name!=='*').length||1;
   const li=(cls,attrs,f,line,v,x)=>`<li class="mw-li ${cls}"><button type="button" class="f" ${attrs} title="Changer de colonne">${escapeHtml(f)}<small>${escapeHtml(line)}</small></button><b>${escapeHtml(v)}</b>${x}</li>`;
-  const blocks=fp.buildings.map((b,bi)=>b.items.length?`<h4>${b.name==='*'?'Toute l’opération':escapeHtml(b.name||'Opération')}</h4><ul>${b.items.map((it,ii)=>li(it.field?'':'off',`data-mw-col="b:${bi}:${ii}"`,it.field?label(it.field):'— ignorée',it.line,formatValue(it.value),it.field?`<button type="button" class="mw-x" data-mw-ign="${bi}:${ii}" title="Ignorer cette ligne" aria-label="Ignorer cette ligne">✕</button>`:`<button type="button" class="mw-x" data-mw-back="${bi}:${ii}" title="Reprendre cette ligne" aria-label="Reprendre cette ligne">↺</button>`)).join('')}</ul>`:'').join('');
+  const blocks=fp.buildings.map((b,bi)=>b.items.length?`<h4>${b.name==='*'?'Toute l’opération':escapeHtml(b.name||'Opération')}</h4><ul>${b.items.map((it,ii)=>li(it.field?'':'off',`data-mw-col="b:${bi}:${ii}" data-mw-cur="${escapeHtml(it.field||'')}"`,it.field?label(it.field):'— ignorée',it.line,formatValue(it.value),it.field?`<button type="button" class="mw-x" data-mw-ign="${bi}:${ii}" title="Ignorer cette ligne" aria-label="Ignorer cette ligne">✕</button>`:`<button type="button" class="mw-x" data-mw-back="${bi}:${ii}" title="Reprendre cette ligne" aria-label="Reprendre cette ligne">↺</button>`)).join('')}</ul>`:'').join('');
   const un=fp.unmatched.length?`<h4>Non reconnues</h4><ul>${fp.unmatched.map((u,ui)=>li('un',`data-mw-col="u:${ui}"`,'Choisir une colonne…',u.line,'','<span></span>')).join('')}</ul>`:'';
   return `<div class="mw-check-head"><b>${escapeHtml(fp.sourceLabel||'Import')} reçu</b> · ${n} valeur(s) · ${nb} bât.${fp.unmatched.length?` · <span class="w">${fp.unmatched.length} non reconnue(s)</span>`:''}</div>
+<div class="mw-target">→ Projet : <b>${escapeHtml(projectTitle(activeProject()))}</b></div>
 ${(fp.notes||[]).map(t=>`<p class="mw-note">⚠ ${escapeHtml(t)}</p>`).join('')}${blocks}${un}
 <div class="mw-row"><button type="button" class="mw-go" data-mw-apply ${n?'':'disabled'}>Intégrer (${n})</button><button type="button" class="mw-go light" data-mw-cancel>Ignorer l’import</button></div>`;
 }
@@ -2563,12 +2567,31 @@ function renderMiniCheck(d){
 // Sélecteur de l'aperçu principal correspondant à une ligne de la mini-fenêtre.
 function miniPreviewSelect(ref){ const [k,a,b]=ref.split(':'); const box=$('#manualDataPreview'); return k==='u'?box?.querySelector(`[data-fp-u="${a}"]`):box?.querySelector(`[data-fp-b="${a}"][data-fp-i="${b}"]`); }
 function miniSetColumn(ref,value){ const sel=miniPreviewSelect(ref); if(!sel) return; sel.value=value; sel.dispatchEvent(new Event('change',{bubbles:true})); refreshMiniWindow(); }
+// v2.20.5 — actions du contrôle, communes à la mini-fenêtre et à la fenêtre d'import Salesforce (relay.html).
+function miniCheckAction(kind,ref='',value=''){
+  if(kind==='apply'){ relayOutcome='integrated'; $('#manualDataApply')?.click(); if($('#manualDataDialog')?.open) relayOutcome=''; refreshMiniWindow(); return true; }
+  if(kind==='cancel'){ relayOutcome='ignored'; $('#manualDataDialog')?.close(); toast('Import ignoré : rien n’a été intégré.','info'); refreshMiniWindow(); return true; }
+  if(kind==='ign'){ const [bi,ii]=ref.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it) it.mwPrev=it.field; miniSetColumn(`b:${ref}`,''); return true; }
+  if(kind==='back'){ const [bi,ii]=ref.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(!it?.mwPrev) return false; miniSetColumn(`b:${ref}`,it.mwPrev); return true; }
+  if(kind==='col'){ miniSetColumn(ref,value); return true; }
+  return false;
+}
+// Fenêtre d'import Salesforce : la petite fenêtre ouverte par le favori (relay.html, même site) affiche le contrôle
+// et renvoie les actions par BroadcastChannel. Rien ne quitte le navigateur.
+var relayBc=null, relayImportId='', relaySig='', relayOutcome='';
+const RELAY_CHECK_CSS=()=>MINI_CSS.split('\n').filter(l=>/mw-check|mw-target|mw-li|mw-x|mw-note|mw-row|mw-go|\*\{box-sizing/.test(l)&&!/body\.checking/.test(l)).join('\n');
+function pushRelayCheck(){
+  if(!relayBc||!relayImportId) return; const html=miniCheckHtml();
+  if(!html){ if(relaySig){ relayBc.postMessage({type:'done',id:relayImportId,outcome:relayOutcome||'closed'}); relayImportId=''; relaySig=''; relayOutcome=''; } return; }
+  if(html===relaySig) return; relaySig=html;
+  relayBc.postMessage({type:'check',id:relayImportId,html,css:RELAY_CHECK_CSS(),options:freeFieldSelect('','').replace(/^<select\s*>|<\/select>$/g,''),version:APP_VERSION});
+}
 function onMiniCheckClick(e){
   const t=e.target.closest('button'); if(!t) return; const d=t.ownerDocument;
-  if(t.hasAttribute('data-mw-apply')){ $('#manualDataApply')?.click(); refreshMiniWindow(); return; }
-  if(t.hasAttribute('data-mw-cancel')){ $('#manualDataDialog')?.close(); toast('Import ignoré : rien n’a été intégré.','info'); refreshMiniWindow(); return; }
-  if(t.dataset.mwIgn){ const [bi,ii]=t.dataset.mwIgn.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it) it.mwPrev=it.field; miniSetColumn(`b:${t.dataset.mwIgn}`,''); return; }
-  if(t.dataset.mwBack){ const [bi,ii]=t.dataset.mwBack.split(':'); const it=freePaste?.buildings[bi]?.items[ii]; if(it?.mwPrev) miniSetColumn(`b:${t.dataset.mwBack}`,it.mwPrev); else t.closest('li')?.querySelector('.f')?.click(); return; }
+  if(t.hasAttribute('data-mw-apply')){ miniCheckAction('apply'); return; }
+  if(t.hasAttribute('data-mw-cancel')){ miniCheckAction('cancel'); return; }
+  if(t.dataset.mwIgn){ miniCheckAction('ign',t.dataset.mwIgn); return; }
+  if(t.dataset.mwBack){ if(!miniCheckAction('back',t.dataset.mwBack)) t.closest('li')?.querySelector('.f')?.click(); return; }
   if(t.dataset.mwCol){ const li=t.closest('li'); if(li.querySelector('select')) return; const src=miniPreviewSelect(t.dataset.mwCol); if(!src) return;
     const sel=d.createElement('select'); sel.innerHTML=src.innerHTML; sel.value=src.value; sel.setAttribute('aria-label','Colonne ExtracTerre'); li.appendChild(sel); sel.focus();
     sel.onchange=()=>miniSetColumn(t.dataset.mwCol,sel.value); sel.onblur=()=>setTimeout(()=>sel.isConnected&&sel.remove(),150); }

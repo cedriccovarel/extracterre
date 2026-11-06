@@ -476,11 +476,24 @@ export async function readSpreadsheet(file){
   return {kind:'spreadsheet',pages,text:pages.map(p=>`[${p.sheet}]\n${p.text}`).join('\n\f\n'),pageCount:pages.length};
 }
 
+// v2.20.6 — CSV (exports d'études carbone…) : UTF-8, sinon Windows-1252 ; séparateur « ; », tabulation ou « , ».
+export async function readCsv(file){
+  const buf=new Uint8Array(await file.arrayBuffer()); let s;
+  try{ s=new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch{ s=new TextDecoder('windows-1252').decode(buf); }
+  s=s.replace(/^﻿/,'').replace(/\u0000/g,'');
+  const rows=s.split(/\r\n|\r|\n/), head=rows.slice(0,20).join('\n'), sep=[';','\t',','].map(c=>[c,(head.match(new RegExp(c==='\t'?'\t':c,'g'))||[]).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const split=r=>{ const out=[]; let cur='',q=false; for(let i=0;i<r.length;i++){ const ch=r[i]; if(q){ if(ch==='"'&&r[i+1]==='"'){ cur+='"'; i++; } else if(ch==='"') q=false; else cur+=ch; } else if(ch==='"') q=true; else if(ch===sep){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out; };
+  const lines=rows.map((r,index)=>{ const cells=split(r); return {index,text:normalizeText(cells.join(' | ')),cells}; }).filter(l=>l.text.replace(/\|/g,'').trim());
+  const page={page:1,sheet:'CSV',text:lines.map(l=>l.text).join('\n'),lines};
+  return {kind:'spreadsheet',csv:true,pages:[page],text:`[CSV]\n${page.text}`,pageCount:1};
+}
+
 export async function readFile(file,onProgress=()=>{},options={}){
   throwIfAborted(options.signal); const lower=file.name.toLowerCase();
   if(lower.endsWith('.pdf')) return readPdf(file,onProgress,options);
   if(lower.endsWith('.xml')) return readXml(file);
   if(lower.endsWith('.xlsx')||lower.endsWith('.xls')) return readSpreadsheet(file);
+  if(lower.endsWith('.csv')) return readCsv(file);
   if(lower.endsWith('.json')){
     if(file.size>20*1024*1024) throw new Error(`JSON trop volumineux : ${file.name}`);
     let data; try{ data=JSON.parse(await file.text()); }catch{ throw new Error(`JSON illisible : ${file.name}`); }

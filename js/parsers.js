@@ -13,6 +13,7 @@ import {parseFrAddress} from './geocode.js';
 import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns,isU48WinThcexReport} from './logiciels-thermiques.js';
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
+import {isAcvComponentsCsv,parseAcvComponentsCsv} from './acv-composants.js';
 import {isBbcaCalculette,parseBbcaCalculette,isBbcaRenovationCalculette,parseBbcaRenovationCalculette} from './calculette-bbca.js';
 import {isRtexThermalNotice,parseRtexThermalNotice,isInsulationMarkupPlan,parseInsulationMarkupPlan,isPhasedThermalNotice,parsePhasedThermalNotice,isClimaWinRtexSynthesis,parseClimaWinRtexSynthesis} from './renovation-thermique.js';
 import {isPleiadesRtexReport,parsePleiadesRtexReport} from './pleiades-rtex.js';
@@ -2193,6 +2194,8 @@ function parseDocumentCore(doc){
   if(!doc.__skipDedicated&&isBbcaCalculette(doc)) return parseBbcaCalculetteDocument(doc);
   if(!doc.__skipDedicated&&isBbcaRenovationCalculette(doc)) return parseBbcaRenovationDocument(doc);
   if(!doc.__skipDedicated&&isRecapCarboneRe2020(doc)) return parseRecapCarboneDocument(doc);
+  // v2.20.6 — export CSV d'étude carbone par composant : lecteur dédié seulement (pas de lecture générique des 400 lignes de produits).
+  if(isAcvComponentsCsv(doc)) return annotateSemanticHierarchy({...doc,type:doc.type||DOC_TYPES.CARBON},parseAcvComponentsCsv({...doc,type:doc.type||DOC_TYPES.CARBON},occ,canonicalBuilding).filter(Boolean)).map(o=>({...o,specializedFamily:'acv-csv'}));
   if(!doc.__skipDedicated&&isRtexStandardFiche(doc)) return parseRtexStandardDocument(doc);
   // v2.3.20 — rapport U48Win (Th-C-E ex) : lu par ses motifs propres. Les heuristiques à fenêtre glissante et la notice
   // « par phases » se trompaient de bâtiment (résumé multi-bâtiments) et prenaient l'Ubat de base pour l'Ubat initial.
