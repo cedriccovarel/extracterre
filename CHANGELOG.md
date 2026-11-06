@@ -1,3 +1,11 @@
+# v2.20.4 — Encart « Compléments » : boutons dans la carte
+- Les boutons « Coller » et « Connexion Cloud » prenaient toute la largeur à côté du texte et sortaient de la carte de ~60 px :
+  ils reprennent leur taille, le texte se replie à côté.
+- Colonne de droite (Projet actuel, Compléments, Informations extraites) : entre 961 et 1180 px, une colonne de cartes à côté
+  des résultats (avant : trois colonnes de 88 px illisibles) ; sous 960 px, sous les résultats sur toute la largeur
+  (avant : colonne de 296 px gardée même à 700 px).
+- Test : `test_v2_20_4.mjs`.
+
 # v2.20.3 — Derniers projets ouverts
 - Encart « Projet actuel » : liste cliquable des 5 derniers projets ouverts (hors projet affiché), avec contrat et code
   d'opération ; un clic ouvre le projet. La date d'ouverture est gardée dans la sauvegarde locale du navigateur.

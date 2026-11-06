@@ -1333,3 +1333,10 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .ux-recent ol{list-style:none;margin:0;padding:0;display:grid;gap:4px}.ux-recent button{display:block;width:100%;min-width:0;border:1px solid transparent;border-radius:9px;background:#f6f9f7;padding:7px 9px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
 .ux-recent button:hover{border-color:#cfe0d6;background:var(--mint)}.ux-recent button:focus-visible{outline:2px solid var(--forest2);outline-offset:1px}
 .ux-recent strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ux-recent small{display:block;color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* v2.20.4 — encart « Compléments » : boutons à leur taille, à côté du texte (avant : 100 % de la largeur, hors de la carte).
+   Colonne de droite : une seule colonne de cartes à côté des résultats jusqu'à 961 px (avant : trois colonnes de 88 px),
+   puis sous les résultats, sur toute la largeur. */
+.ux-tools-card .ux-tool-row>div{flex:1 1 auto;min-width:0}.ux-tools-card .ux-tool-row small{overflow-wrap:anywhere}
+.ux-tools-card .ux-tool-row .btn.ux-manual-btn{width:auto;max-width:48%;margin:0;flex:0 0 auto;white-space:nowrap}
+@media(max-width:1180px){.ux-right-rail.ux-right-rail-clean{display:flex}}
+@media(max-width:960px){.ux-dashboard-grid.ux-dashboard-grid-clean{grid-template-columns:minmax(0,1fr)}.ux-right-rail.ux-right-rail-clean{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}}
