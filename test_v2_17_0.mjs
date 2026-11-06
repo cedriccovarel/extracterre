@@ -8,7 +8,7 @@ import {oddValue} from './js/sanity.js';
 import {correspondence} from './ashton/measure.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.20.6','version');
+eq(APP_VERSION,'2.20.7','version');
 
 // Tri des tuiles.
 const app=fs.readFileSync('js/app.js','utf8');
@@ -47,4 +47,4 @@ eq([oddValue('tic',21.5)!=='',oddValue('tic','27,4'),oddValue('dh',3)!=='',oddVa
 eq([oddValue('cep',450)!=='',oddValue('cep',72),oddValue('cep_before',650),oddValue('cep_before',900)!==''],[true,'','',true],'Cep');
 eq([oddValue('heating_vector_after','Fioul domestique')!=='',oddValue('ecs_vector_after','Gaz naturel'),oddValue('heating_vector_before','Fioul')],[true,'',''],'fioul après travaux seulement');
 eq([oddValue('tic',''),oddValue('shab',3)],['',''],'vide et champ sans règle');
-console.log(`v2.20.6 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.20.7 — ${n} vérifications OK (données fictives)`);

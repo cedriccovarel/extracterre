@@ -10,7 +10,7 @@ import {analyzeDocuments} from './js/engine.js';
 import {normalizeText,parseFrNumber} from './js/utils.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.20.6','version');
+eq(APP_VERSION, '2.20.7','version');
 
 // ---------- 1. Nombres : le premier nombre seulement, jamais les chiffres de l'unité ----------
 for(const [s,v] of [['57,3 kWh/m2',57.3],['12,5 / 15',12.5],['0,25 W/m².K',0.25],['1 663,5',1663.5],['1 663,5',1663.5],['−4,6',-4.6],
@@ -72,7 +72,7 @@ eq(fin('cross_ventilated',AB),['Oui'],'zone traversante'); eq(fin('non_cross_ven
 eq(fin('housing_count',AB),[17],'logements'); eq(fin('housing_count',CD),[22],'logements du deuxième bâtiment');
 // Bilans : vecteurs par énergie majoritaire (le convecteur électrique saisi ne compte pas : seul le gaz est consommé).
 eq(fin('heating_vector_before',AB),['Gaz'],'chauffage initial = énergie consommée, pas l\'émetteur'); eq(fin('ecs_vector_before',AB),['Électricité'],'ECS initiale');
-eq(fin('ecs_vector_before',CD),['Hybride Électricité/Gaz'],'ECS mixte : électricité 59 %, gaz 41 % → hybride, principal d’abord (v2.20.6)'); eq(fin('heating_vector_after',AB),['Gaz'],'chauffage projet');
+eq(fin('ecs_vector_before',CD),['Hybride Électricité/Gaz'],'ECS mixte : électricité 59 %, gaz 41 % → hybride, principal d’abord (v2.20.7)'); eq(fin('heating_vector_after',AB),['Gaz'],'chauffage projet');
 eq(fin('cep_lighting',AB),[6.69],'Cep éclairage'); eq(fin('cep_aux_dist',AB),[0.7],'« ,7 » = 0,7'); eq(fin('cep_aux_vent',AB),[5.04],'Cep ventilateurs');
 eq(fin('cep_gas',AB),[33.8],'Cep gaz'); eq(fin('cep_electricity',AB),[100.8],'Cep électricité = ECS + éclairage + auxiliaires + ventilateurs');
 // Ventilation : le champ décrit l'état après travaux ; la phase « ETAT PROJET » vaut pour les pages suivantes.

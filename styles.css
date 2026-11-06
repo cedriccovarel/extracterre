@@ -1340,3 +1340,14 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .ux-tools-card .ux-tool-row .btn.ux-manual-btn{width:auto;max-width:48%;margin:0;flex:0 0 auto;white-space:nowrap}
 @media(max-width:1180px){.ux-right-rail.ux-right-rail-clean{display:flex}}
 @media(max-width:960px){.ux-dashboard-grid.ux-dashboard-grid-clean{grid-template-columns:minmax(0,1fr)}.ux-right-rail.ux-right-rail-clean{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}}
+/* v2.20.7 — bâtiments ajoutés depuis Salesforce (en rouge) ; compteur des opérations et liste « documents seuls ». */
+tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.sf-added>td.building-cell{box-shadow:inset 3px 0 0 #d92d20}
+.sf-tag{display:inline-block;margin-left:4px;padding:1px 6px;border-radius:999px;background:#fee4e2;color:#b42318;font-size:10px;font-weight:800;vertical-align:1px}
+.sf-stats{display:grid;gap:8px;margin:10px 0 4px}.sf-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.sf-kpis>div{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;min-width:0}.sf-kpis b{display:block;font-size:22px;line-height:1.1;color:var(--forest)}.sf-kpis span{display:block;font-size:11.5px;color:var(--muted)}
+.sf-kpis .today b{color:#1f7a4d}.sf-kpis .docs b{color:var(--amber)}
+.sf-short{border:1px solid var(--line);border-radius:12px;background:#fff;padding:8px 12px}.sf-short summary{cursor:pointer;font-weight:700;color:#425149;font-size:12.5px}
+.sf-short ul{list-style:none;margin:8px 0 2px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;max-height:260px;overflow:auto}
+.sf-short button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;width:100%;border:1px solid var(--line);border-radius:9px;background:#fbfcfb;padding:7px 9px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.sf-short button:hover{background:var(--mint)}.sf-short button:focus-visible{outline:2px solid var(--forest2);outline-offset:1px}.sf-short button strong{font-size:12px}.sf-short button span{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sf-short button small{color:var(--muted);font-size:11px}
+@media(max-width:760px){.sf-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}

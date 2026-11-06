@@ -1,3 +1,12 @@
+# v2.20.7 — Salesforce : bâtiments en rouge, compteur, opérations sans import
+- Tableau des bâtiments : un bâtiment qui n'existe que par un import Salesforce (aucune donnée des documents ni d'un tableau
+  collé) apparaît en rouge, avec l'étiquette « Salesforce ».
+- Accueil : compteur des opérations dans ExtracTerre, remplies aujourd'hui, remplies (au moins un import Salesforce intégré)
+  et remplies par les documents seuls. Chaque import Salesforce intégré est daté (sauvegarde locale) ; un import d'avant
+  cette version est reconnu à sa source « Salesforce » mais n'a pas de date (compté dans « remplies », pas « aujourd'hui »).
+- Liste dépliable et cliquable des opérations avec documents mais sans import Salesforce.
+- Test : `test_v2_20_7.mjs`.
+
 # v2.20.6 — Fichiers CSV, export d'étude carbone par composant
 - Les fichiers .csv sont acceptés (dépôt, sélection, dossiers Box, mini-fenêtre). Lecture en UTF-8, sinon Windows-1252 ;
   séparateur « ; », tabulation ou « , ».
