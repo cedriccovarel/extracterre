@@ -1,3 +1,8 @@
+# v2.20.3 — Derniers projets ouverts
+- Encart « Projet actuel » : liste cliquable des 5 derniers projets ouverts (hors projet affiché), avec contrat et code
+  d'opération ; un clic ouvre le projet. La date d'ouverture est gardée dans la sauvegarde locale du navigateur.
+- Test : `test_v2_20_3.mjs`.
+
 # v2.20.2 — « Planchers hauts » : le matériau, plus le statut de la toiture
 - « Planchers hauts » donne la structure / le matériau du plancher haut : Dalle béton, Poutrelles-hourdis, Prédalle,
   Plancher bois, Charpente bois, Charpente métallique, Bac acier (collaborant). Sans matériau écrit dans le document,

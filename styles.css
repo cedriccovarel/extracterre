@@ -1328,3 +1328,8 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 @media(max-width:820px){.ux-sidebar{position:sticky;top:0;z-index:30;padding:6px 8px;scrollbar-width:thin}.ux-nav-item{padding:8px 10px;font-size:13px;gap:8px}}
 @media(max-width:600px),(max-width:820px) and (max-height:600px){.ux-side-nav .ux-nav-item>span:last-child{display:none}.ux-nav-item{padding:8px 11px}.ux-mini-btn span{display:none}}
 @media(max-width:600px){.ux-header-actions-clean{gap:6px}}
+/* v2.20.3 — encart « Projet actuel » : derniers projets ouverts. */
+.ux-recent{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}.ux-recent-title{display:block;margin-bottom:6px;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.ux-recent ol{list-style:none;margin:0;padding:0;display:grid;gap:4px}.ux-recent button{display:block;width:100%;min-width:0;border:1px solid transparent;border-radius:9px;background:#f6f9f7;padding:7px 9px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.ux-recent button:hover{border-color:#cfe0d6;background:var(--mint)}.ux-recent button:focus-visible{outline:2px solid var(--forest2);outline-offset:1px}
+.ux-recent strong{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ux-recent small{display:block;color:var(--muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

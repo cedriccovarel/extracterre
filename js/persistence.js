@@ -133,6 +133,7 @@ function serializeProject(project={}){
     label:project.label||'Projet',
     customTitle:project.customTitle||'',
     operationName:project.operationName||'',
+    lastOpenedAt:Number(project.lastOpenedAt)||0, // v2.20.3 — « Derniers projets ouverts »
     docs:(project.docs||[]).map(serializeDocMeta),
     // Le résultat consolidé est recalculé à la restauration depuis les occurrences checkpointées.
     // Ne pas le dupliquer ici évite une copie mémoire potentiellement massive à chaque sauvegarde.

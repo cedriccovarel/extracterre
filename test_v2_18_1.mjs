@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {salesforceEvaluationToPaste,parseFreePaste,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.20.2','version');
+eq(APP_VERSION,'2.20.3','version');
 
 const FICHE=`OPE-009001
 Résidence Fictive des Essais
