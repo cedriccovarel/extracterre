@@ -1,9 +1,12 @@
 import {APP_VERSION} from './config.js';
 
 const DB_NAME='extracterre-local-workspace';
-const DB_VERSION=2;
+const DB_VERSION=3;
 const WORKSPACE_STORE='workspaces';
 const DOCUMENT_STORE='documents';
+// v2.20.7 — texte des documents rangé à part : le démarrage ne charge plus le texte de toutes les opérations.
+const READ_STORE='documentReads';
+const READS_MIGRATED_KEY='reads-split-v1';
 const JOURNAL_STORE='learningJournal';
 const WORKSPACE_KEY='current';
 const SNAPSHOT_SCHEMA=1;
@@ -19,6 +22,7 @@ function openDb(){
         const store=db.createObjectStore(DOCUMENT_STORE,{keyPath:'id'});
         store.createIndex('projectId','projectId',{unique:false});
       }
+      if(!db.objectStoreNames.contains(READ_STORE)) db.createObjectStore(READ_STORE,{keyPath:'id'});
       if(!db.objectStoreNames.contains(JOURNAL_STORE)){
         const journal=db.createObjectStore(JOURNAL_STORE,{keyPath:'id'});
         journal.createIndex('createdAt','createdAt',{unique:false});
@@ -117,12 +121,23 @@ function serializeDocMeta(doc={}){
 }
 // v2.19.2 — texte des documents préparé à la première lecture seulement (recherches, relecture) : au démarrage, 280 opérations
 // ne découpent plus des milliers de pages en lignes. La valeur enregistrée reste brute jusque-là.
-function lazyRead(doc,raw){
-  let value, done=!raw;
+// v2.20.7 — texte d'un document : chargé (valeur brute préparée à la première lecture), ou seulement enregistré
+// (magasin documentReads) et rechargé à la demande par loadDocumentReads. Toute affectation de doc.read marque le
+// texte comme à réenregistrer : il n'est jamais déchargé avant d'avoir été écrit.
+const readSlots=new WeakMap();
+function installRead(doc,slot){
+  readSlots.set(doc,slot);
   Object.defineProperty(doc,'read',{configurable:true,enumerable:true,
-    get(){ if(!done){ value=hydrateRead(raw); done=true; raw=null; } return value; },
-    set(v){ value=v; done=true; raw=null; }});
+    get(){ if(slot.raw){ slot.value=hydrateRead(slot.raw); slot.raw=null; } return slot.value; },
+    set(v){ slot.value=v; slot.raw=null; slot.loaded=true; slot.stored=false; slot.gen=(slot.gen||0)+1; }});
 }
+function lazyRead(doc,raw,stored=false){ installRead(doc,{value:null,raw:raw||null,loaded:true,stored}); }
+// Document dont le texte est enregistré mais pas chargé.
+function storedRead(doc){ installRead(doc,{value:null,raw:null,loaded:false,stored:true}); }
+export function docReadLoaded(doc){ const s=doc&&readSlots.get(doc); return !s||s.loaded; }
+export function docReadStored(doc){ return !!(doc&&readSlots.get(doc)?.stored); }
+// Libère le texte d'un document déjà enregistré ; sans effet s'il reste à écrire.
+export function unloadDocumentRead(doc){ const s=doc&&readSlots.get(doc); if(!s||!s.stored||!s.loaded) return false; s.value=null; s.raw=null; s.loaded=false; return true; }
 function hydrateDocMeta(meta={}){
   return {...meta,file:null,read:null,cachedOccurrences:null,status:meta.status||'missing'};
 }
@@ -135,6 +150,7 @@ function serializeProject(project={}){
     operationName:project.operationName||'',
     lastOpenedAt:Number(project.lastOpenedAt)||0,
     salesforceImports:Array.isArray(project.salesforceImports)?project.salesforceImports.slice(-50).map(i=>({at:Number(i?.at)||0,values:Number(i?.values)||0})):[], // v2.20.7 // v2.20.3 — « Derniers projets ouverts »
+    analysisRuns:Array.isArray(project.analysisRuns)?project.analysisRuns.slice(-50).map(r=>({at:Number(r?.at)||0,docs:Number(r?.docs)||0,newDocs:Number(r?.newDocs)||0})):[], // v2.21.0
     docs:(project.docs||[]).map(serializeDocMeta),
     // Le résultat consolidé est recalculé à la restauration depuis les occurrences checkpointées.
     // Ne pas le dupliquer ici évite une copie mémoire potentiellement massive à chaque sauvegarde.
@@ -217,11 +233,12 @@ function serializeDocAnalysis(projectId,doc,compact=false,minimal=false){
     storageMode:minimal?'results-only':compact?'compact':'full-index'
   };
 }
-async function putDocumentRecord(record){
+async function putDocumentRecord(record,read){
   const db=await openDb();
   try{
-    const tx=db.transaction(DOCUMENT_STORE,'readwrite');
+    const tx=db.transaction([DOCUMENT_STORE,READ_STORE],'readwrite');
     tx.objectStore(DOCUMENT_STORE).put(record);
+    if(read!==undefined) tx.objectStore(READ_STORE).put({id:record.id,read});
     await transactionDone(tx);
   } finally { db.close(); }
 }
@@ -230,14 +247,25 @@ export async function saveDocumentCheckpoint(projectId,doc){
   try{
     // Toujours écrire l'index compact : les objets géométriques PDF.js/OCR ne doivent jamais
     // être clonés vers IndexedDB, car la sérialisation peut doubler brutalement la RAM.
-    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,false));
+    // v2.20.7 — le texte va dans documentReads ; s'il n'est pas chargé (opération fermée), celui enregistré reste en place.
+    // Un texte réaffecté pendant l'écriture (génération changée) reste « à écrire ».
+    const loaded=docReadLoaded(doc), slot=loaded?trackRead(doc):null, gen=slot?.gen, read=loaded?serializeRead(doc.read):undefined;
+    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,true),read);
+    if(slot&&slot.gen===gen) slot.stored=read!==null;
     return {saved:true,mode:'compact'};
   }catch(err){
     const quota=err?.name==='QuotaExceededError'||/quota/i.test(String(err?.message||''));
     if(!quota) throw err;
-    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,true));
+    // Quota dépassé : résultats seuls ; le texte reste en mémoire (jamais déchargé, puisqu'il n'est pas enregistré).
+    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,true),null);
+    if(docReadLoaded(doc)) trackRead(doc).stored=false;
     return {saved:true,mode:'results-only'};
   }
+}
+// Texte suivi par un accesseur (un document lu dans cette session a une simple propriété read).
+function trackRead(doc){
+  const cur=readSlots.get(doc); if(cur) return cur;
+  const slot={value:doc.read,raw:null,loaded:true,stored:false,gen:0}; installRead(doc,slot); return slot;
 }
 
 async function getDocumentRecord(db,id){
@@ -253,9 +281,38 @@ async function getDocumentRecords(db,ids,onProgress){
   let n=0; await Promise.all(ids.map(id=>requestPromise(store.get(id)).then(r=>{ if(r) out.set(id,r); n++; if(onProgress&&(n%25===0||n===ids.length)) onProgress(n,ids.length); })));
   await done; return out;
 }
+// v2.20.7 — une fois : le texte des documents déjà enregistrés passe de « documents » à « documentReads », document par
+// document (curseur), sans rien perdre. Un enregistrement d'une version plus ancienne (texte dans « documents ») est
+// déplacé de la même façon au démarrage suivant.
+async function migrateReadsOut(db){
+  const tx=db.transaction([DOCUMENT_STORE,READ_STORE,WORKSPACE_STORE],'readwrite'), done=transactionDone(tx);
+  const docs=tx.objectStore(DOCUMENT_STORE), reads=tx.objectStore(READ_STORE), ws=tx.objectStore(WORKSPACE_STORE);
+  let moved=0;
+  await new Promise((resolve,reject)=>{ const req=docs.openCursor(); req.onerror=()=>reject(req.error);
+    req.onsuccess=()=>{ const c=req.result; if(!c){ resolve(); return; } const r=c.value;
+      if(r&&r.read){ reads.put({id:r.id,read:r.read}); c.update({...r,read:null}); moved++; }
+      c.continue(); }; });
+  ws.put({key:READS_MIGRATED_KEY,at:Date.now(),moved});
+  await done; return moved;
+}
+// Textes enregistrés des documents demandés (ceux qui ne sont pas chargés), en une transaction ; renvoie le nombre chargé.
+export async function loadDocumentReads(docs){
+  const todo=(docs||[]).filter(d=>d&&!docReadLoaded(d)); if(!todo.length) return 0;
+  const db=await openDb();
+  try{
+    const tx=db.transaction(READ_STORE,'readonly'), store=tx.objectStore(READ_STORE), done=transactionDone(tx);
+    const recs=await Promise.all(todo.map(d=>requestPromise(store.get(d.id))));
+    await done;
+    let n=0; todo.forEach((d,i)=>{ const s=readSlots.get(d); if(!s||s.loaded) return; s.raw=recs[i]?.read||null; s.value=null; s.loaded=true; s.stored=!!recs[i]?.read; n++; });
+    return n;
+  } finally { db.close(); }
+}
 export async function loadWorkspaceSnapshot(onProgress=null){
   const db=await openDb();
   try{
+    { const tx=db.transaction(WORKSPACE_STORE,'readonly'), done=transactionDone(tx); const flag=await requestPromise(tx.objectStore(WORKSPACE_STORE).get(READS_MIGRATED_KEY)); await done;
+      // Après la migration, un document écrit par une version antérieure (onglet resté ouvert) peut encore porter son texte : repris ci-dessous.
+      if(!flag) await migrateReadsOut(db); }
     const tx=db.transaction(WORKSPACE_STORE,'readonly');
     const done=transactionDone(tx);
     const record=await requestPromise(tx.objectStore(WORKSPACE_STORE).get(WORKSPACE_KEY));
@@ -265,6 +322,11 @@ export async function loadWorkspaceSnapshot(onProgress=null){
     // v2.19.2 — tous les documents enregistrés lus dans une seule transaction (avant : une transaction attendue par document).
     const ids=record.projects.flatMap(p=>(p.docs||[]).filter(m=>m.persistedAnalysis).map(m=>m.id));
     const savedById=await getDocumentRecords(db,ids,onProgress);
+    const legacy=[...savedById.values()].filter(r=>r.read);
+    if(legacy.length){ const tx=db.transaction([DOCUMENT_STORE,READ_STORE],'readwrite'), done=transactionDone(tx);
+      for(const r of legacy){ tx.objectStore(READ_STORE).put({id:r.id,read:r.read}); tx.objectStore(DOCUMENT_STORE).put({...r,read:null}); }
+      await done; for(const r of legacy) r.read=null; }
+    let storedIds; { const tx=db.transaction(READ_STORE,'readonly'), done=transactionDone(tx); storedIds=new Set(await requestPromise(tx.objectStore(READ_STORE).getAllKeys())); await done; }
     for(const rawProject of record.projects){
       const project={...rawProject,docs:[]};
       for(const meta of rawProject.docs||[]){
@@ -272,7 +334,8 @@ export async function loadWorkspaceSnapshot(onProgress=null){
         if(meta.persistedAnalysis){
           const saved=savedById.get(meta.id);
           if(saved){
-            lazyRead(doc,saved.read);
+            // v2.20.7 — texte laissé sur le disque : chargé à l'ouverture de l'opération (loadDocumentReads).
+            if(storedIds.has(meta.id)) storedRead(doc); else lazyRead(doc,null);
             doc.cachedOccurrences=Array.isArray(saved.cachedOccurrences)?saved.cachedOccurrences:[];
             doc.buildings=saved.buildings||doc.buildings;
             doc.specializedFamily=saved.specializedFamily||doc.specializedFamily||'annex';
@@ -296,8 +359,9 @@ export async function deleteDocumentCheckpoint(docId){
   if(!docId) return;
   const db=await openDb();
   try{
-    const tx=db.transaction(DOCUMENT_STORE,'readwrite');
+    const tx=db.transaction([DOCUMENT_STORE,READ_STORE],'readwrite');
     tx.objectStore(DOCUMENT_STORE).delete(docId);
+    tx.objectStore(READ_STORE).delete(docId);
     await transactionDone(tx);
   } finally { db.close(); }
 }
@@ -305,9 +369,10 @@ export async function deleteDocumentCheckpoint(docId){
 export async function clearWorkspaceSnapshot(){
   const db=await openDb();
   try{
-    const tx=db.transaction([WORKSPACE_STORE,DOCUMENT_STORE],'readwrite');
+    const tx=db.transaction([WORKSPACE_STORE,DOCUMENT_STORE,READ_STORE],'readwrite');
     tx.objectStore(WORKSPACE_STORE).delete(WORKSPACE_KEY);
     tx.objectStore(DOCUMENT_STORE).clear();
+    tx.objectStore(READ_STORE).clear();
     await transactionDone(tx);
   } finally { db.close(); }
 }

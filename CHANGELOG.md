@@ -1,3 +1,17 @@
+# v2.21.0 — Mémoire allégée ; analyses horodatées
+- Le texte des documents est rangé à part dans la base locale du navigateur (magasin `documentReads`). Il n'est chargé que
+  pour l'opération ouverte, ou le temps d'un calcul ou d'un export sur une autre opération, puis il est libéré. Rien n'est
+  supprimé ni résumé : le texte reste enregistré tel quel et revient à l'identique à la réouverture.
+- Migration automatique au premier démarrage, document par document. Un texte n'est jamais libéré avant d'avoir été
+  enregistré ; un calcul ne se fait jamais sur un texte non chargé (il est rechargé d'abord).
+- Le résultat consolidé ne garde plus la copie « occurrences », que « detailed » contient déjà avec son statut.
+- Export de session écrit opération par opération (même contenu JSON).
+- Base fictive de 280 opérations × 4 documents de 30 pages : mémoire JavaScript de 496 Mo à 80 Mo, démarrage de 15 s à
+  5 s, résultats identiques pour les 280 opérations ; l'export de session contient toujours le texte de tous les documents.
+- Chaque analyse est horodatée (sauvegarde locale). Accueil : « traitée(s) aujourd'hui » compte les opérations analysées
+  ou importées depuis Salesforce dans la journée. Pas de date inventée pour les analyses d'avant cette version.
+- Test : `test_v2_21_0.mjs` ; `test_v2_19_2.mjs` et `test_v2_20_7.mjs` mis à jour.
+
 # v2.20.7 — Salesforce : bâtiments en rouge, compteur, opérations sans import
 - Tableau des bâtiments : un bâtiment qui n'existe que par un import Salesforce (aucune donnée des documents ni d'un tableau
   collé) apparaît en rouge, avec l'étiquette « Salesforce ».

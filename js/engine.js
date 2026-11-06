@@ -362,7 +362,8 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
   alerts.push(...coherence.alerts);
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
   const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
-  return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
+  // v2.20.7 — « occurrences » n'est plus gardé dans le résultat : « detailed » en contient chacune (avec son statut).
+  return {...consolidated,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
 }
 
 // v2.4.0 — référence de comparaison des gains : en rénovation l'état initial (Cep / Ubat / GES avant travaux) quand il

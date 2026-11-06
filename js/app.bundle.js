@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.20.7 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.21.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.20.7';
+const APP_VERSION='2.21.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -8598,7 +8598,8 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
   alerts.push(...coherence.alerts);
   const completeness=buildCompleteness(docs,consolidated.finals,grouping);
   const uncertain=[...coherence.demoted,...buildUncertain(consolidated.detailed)];
-  return {...consolidated,occurrences,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
+  // v2.20.7 — « occurrences » n'est plus gardé dans le résultat : « detailed » en contient chacune (avec son statut).
+  return {...consolidated,alerts,grouping,completeness,uncertain,coherence:coherence.checks,newlyParsedCount,reusedParsedCount};
 }
 
 // v2.4.0 — référence de comparaison des gains : en rénovation l'état initial (Cep / Ubat / GES avant travaux) quand il
@@ -10251,9 +10252,12 @@ function exportExcel(result,rules,economic=null){ return exportProjectsExcel([{r
 
 /* ---- persistence.js ---- */
 const DB_NAME='extracterre-local-workspace';
-const DB_VERSION=2;
+const DB_VERSION=3;
 const WORKSPACE_STORE='workspaces';
 const DOCUMENT_STORE='documents';
+// v2.20.7 — texte des documents rangé à part : le démarrage ne charge plus le texte de toutes les opérations.
+const READ_STORE='documentReads';
+const READS_MIGRATED_KEY='reads-split-v1';
 const JOURNAL_STORE='learningJournal';
 const WORKSPACE_KEY='current';
 const SNAPSHOT_SCHEMA=1;
@@ -10269,6 +10273,7 @@ function openDb(){
         const store=db.createObjectStore(DOCUMENT_STORE,{keyPath:'id'});
         store.createIndex('projectId','projectId',{unique:false});
       }
+      if(!db.objectStoreNames.contains(READ_STORE)) db.createObjectStore(READ_STORE,{keyPath:'id'});
       if(!db.objectStoreNames.contains(JOURNAL_STORE)){
         const journal=db.createObjectStore(JOURNAL_STORE,{keyPath:'id'});
         journal.createIndex('createdAt','createdAt',{unique:false});
@@ -10367,12 +10372,23 @@ function serializeDocMeta(doc={}){
 }
 // v2.19.2 — texte des documents préparé à la première lecture seulement (recherches, relecture) : au démarrage, 280 opérations
 // ne découpent plus des milliers de pages en lignes. La valeur enregistrée reste brute jusque-là.
-function lazyRead(doc,raw){
-  let value, done=!raw;
+// v2.20.7 — texte d'un document : chargé (valeur brute préparée à la première lecture), ou seulement enregistré
+// (magasin documentReads) et rechargé à la demande par loadDocumentReads. Toute affectation de doc.read marque le
+// texte comme à réenregistrer : il n'est jamais déchargé avant d'avoir été écrit.
+const readSlots=new WeakMap();
+function installRead(doc,slot){
+  readSlots.set(doc,slot);
   Object.defineProperty(doc,'read',{configurable:true,enumerable:true,
-    get(){ if(!done){ value=hydrateRead(raw); done=true; raw=null; } return value; },
-    set(v){ value=v; done=true; raw=null; }});
+    get(){ if(slot.raw){ slot.value=hydrateRead(slot.raw); slot.raw=null; } return slot.value; },
+    set(v){ slot.value=v; slot.raw=null; slot.loaded=true; slot.stored=false; slot.gen=(slot.gen||0)+1; }});
 }
+function lazyRead(doc,raw,stored=false){ installRead(doc,{value:null,raw:raw||null,loaded:true,stored}); }
+// Document dont le texte est enregistré mais pas chargé.
+function storedRead(doc){ installRead(doc,{value:null,raw:null,loaded:false,stored:true}); }
+function docReadLoaded(doc){ const s=doc&&readSlots.get(doc); return !s||s.loaded; }
+function docReadStored(doc){ return !!(doc&&readSlots.get(doc)?.stored); }
+// Libère le texte d'un document déjà enregistré ; sans effet s'il reste à écrire.
+function unloadDocumentRead(doc){ const s=doc&&readSlots.get(doc); if(!s||!s.stored||!s.loaded) return false; s.value=null; s.raw=null; s.loaded=false; return true; }
 function hydrateDocMeta(meta={}){
   return {...meta,file:null,read:null,cachedOccurrences:null,status:meta.status||'missing'};
 }
@@ -10385,6 +10401,7 @@ function serializeProject(project={}){
     operationName:project.operationName||'',
     lastOpenedAt:Number(project.lastOpenedAt)||0,
     salesforceImports:Array.isArray(project.salesforceImports)?project.salesforceImports.slice(-50).map(i=>({at:Number(i?.at)||0,values:Number(i?.values)||0})):[], // v2.20.7 // v2.20.3 — « Derniers projets ouverts »
+    analysisRuns:Array.isArray(project.analysisRuns)?project.analysisRuns.slice(-50).map(r=>({at:Number(r?.at)||0,docs:Number(r?.docs)||0,newDocs:Number(r?.newDocs)||0})):[], // v2.21.0
     docs:(project.docs||[]).map(serializeDocMeta),
     // Le résultat consolidé est recalculé à la restauration depuis les occurrences checkpointées.
     // Ne pas le dupliquer ici évite une copie mémoire potentiellement massive à chaque sauvegarde.
@@ -10467,11 +10484,12 @@ function serializeDocAnalysis(projectId,doc,compact=false,minimal=false){
     storageMode:minimal?'results-only':compact?'compact':'full-index'
   };
 }
-async function putDocumentRecord(record){
+async function putDocumentRecord(record,read){
   const db=await openDb();
   try{
-    const tx=db.transaction(DOCUMENT_STORE,'readwrite');
+    const tx=db.transaction([DOCUMENT_STORE,READ_STORE],'readwrite');
     tx.objectStore(DOCUMENT_STORE).put(record);
+    if(read!==undefined) tx.objectStore(READ_STORE).put({id:record.id,read});
     await transactionDone(tx);
   } finally { db.close(); }
 }
@@ -10480,14 +10498,25 @@ async function saveDocumentCheckpoint(projectId,doc){
   try{
     // Toujours écrire l'index compact : les objets géométriques PDF.js/OCR ne doivent jamais
     // être clonés vers IndexedDB, car la sérialisation peut doubler brutalement la RAM.
-    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,false));
+    // v2.20.7 — le texte va dans documentReads ; s'il n'est pas chargé (opération fermée), celui enregistré reste en place.
+    // Un texte réaffecté pendant l'écriture (génération changée) reste « à écrire ».
+    const loaded=docReadLoaded(doc), slot=loaded?trackRead(doc):null, gen=slot?.gen, read=loaded?serializeRead(doc.read):undefined;
+    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,true),read);
+    if(slot&&slot.gen===gen) slot.stored=read!==null;
     return {saved:true,mode:'compact'};
   }catch(err){
     const quota=err?.name==='QuotaExceededError'||/quota/i.test(String(err?.message||''));
     if(!quota) throw err;
-    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,true));
+    // Quota dépassé : résultats seuls ; le texte reste en mémoire (jamais déchargé, puisqu'il n'est pas enregistré).
+    await putDocumentRecord(serializeDocAnalysis(projectId,doc,true,true),null);
+    if(docReadLoaded(doc)) trackRead(doc).stored=false;
     return {saved:true,mode:'results-only'};
   }
+}
+// Texte suivi par un accesseur (un document lu dans cette session a une simple propriété read).
+function trackRead(doc){
+  const cur=readSlots.get(doc); if(cur) return cur;
+  const slot={value:doc.read,raw:null,loaded:true,stored:false,gen:0}; installRead(doc,slot); return slot;
 }
 
 async function getDocumentRecord(db,id){
@@ -10503,9 +10532,38 @@ async function getDocumentRecords(db,ids,onProgress){
   let n=0; await Promise.all(ids.map(id=>requestPromise(store.get(id)).then(r=>{ if(r) out.set(id,r); n++; if(onProgress&&(n%25===0||n===ids.length)) onProgress(n,ids.length); })));
   await done; return out;
 }
+// v2.20.7 — une fois : le texte des documents déjà enregistrés passe de « documents » à « documentReads », document par
+// document (curseur), sans rien perdre. Un enregistrement d'une version plus ancienne (texte dans « documents ») est
+// déplacé de la même façon au démarrage suivant.
+async function migrateReadsOut(db){
+  const tx=db.transaction([DOCUMENT_STORE,READ_STORE,WORKSPACE_STORE],'readwrite'), done=transactionDone(tx);
+  const docs=tx.objectStore(DOCUMENT_STORE), reads=tx.objectStore(READ_STORE), ws=tx.objectStore(WORKSPACE_STORE);
+  let moved=0;
+  await new Promise((resolve,reject)=>{ const req=docs.openCursor(); req.onerror=()=>reject(req.error);
+    req.onsuccess=()=>{ const c=req.result; if(!c){ resolve(); return; } const r=c.value;
+      if(r&&r.read){ reads.put({id:r.id,read:r.read}); c.update({...r,read:null}); moved++; }
+      c.continue(); }; });
+  ws.put({key:READS_MIGRATED_KEY,at:Date.now(),moved});
+  await done; return moved;
+}
+// Textes enregistrés des documents demandés (ceux qui ne sont pas chargés), en une transaction ; renvoie le nombre chargé.
+async function loadDocumentReads(docs){
+  const todo=(docs||[]).filter(d=>d&&!docReadLoaded(d)); if(!todo.length) return 0;
+  const db=await openDb();
+  try{
+    const tx=db.transaction(READ_STORE,'readonly'), store=tx.objectStore(READ_STORE), done=transactionDone(tx);
+    const recs=await Promise.all(todo.map(d=>requestPromise(store.get(d.id))));
+    await done;
+    let n=0; todo.forEach((d,i)=>{ const s=readSlots.get(d); if(!s||s.loaded) return; s.raw=recs[i]?.read||null; s.value=null; s.loaded=true; s.stored=!!recs[i]?.read; n++; });
+    return n;
+  } finally { db.close(); }
+}
 async function loadWorkspaceSnapshot(onProgress=null){
   const db=await openDb();
   try{
+    { const tx=db.transaction(WORKSPACE_STORE,'readonly'), done=transactionDone(tx); const flag=await requestPromise(tx.objectStore(WORKSPACE_STORE).get(READS_MIGRATED_KEY)); await done;
+      // Après la migration, un document écrit par une version antérieure (onglet resté ouvert) peut encore porter son texte : repris ci-dessous.
+      if(!flag) await migrateReadsOut(db); }
     const tx=db.transaction(WORKSPACE_STORE,'readonly');
     const done=transactionDone(tx);
     const record=await requestPromise(tx.objectStore(WORKSPACE_STORE).get(WORKSPACE_KEY));
@@ -10515,6 +10573,11 @@ async function loadWorkspaceSnapshot(onProgress=null){
     // v2.19.2 — tous les documents enregistrés lus dans une seule transaction (avant : une transaction attendue par document).
     const ids=record.projects.flatMap(p=>(p.docs||[]).filter(m=>m.persistedAnalysis).map(m=>m.id));
     const savedById=await getDocumentRecords(db,ids,onProgress);
+    const legacy=[...savedById.values()].filter(r=>r.read);
+    if(legacy.length){ const tx=db.transaction([DOCUMENT_STORE,READ_STORE],'readwrite'), done=transactionDone(tx);
+      for(const r of legacy){ tx.objectStore(READ_STORE).put({id:r.id,read:r.read}); tx.objectStore(DOCUMENT_STORE).put({...r,read:null}); }
+      await done; for(const r of legacy) r.read=null; }
+    let storedIds; { const tx=db.transaction(READ_STORE,'readonly'), done=transactionDone(tx); storedIds=new Set(await requestPromise(tx.objectStore(READ_STORE).getAllKeys())); await done; }
     for(const rawProject of record.projects){
       const project={...rawProject,docs:[]};
       for(const meta of rawProject.docs||[]){
@@ -10522,7 +10585,8 @@ async function loadWorkspaceSnapshot(onProgress=null){
         if(meta.persistedAnalysis){
           const saved=savedById.get(meta.id);
           if(saved){
-            lazyRead(doc,saved.read);
+            // v2.20.7 — texte laissé sur le disque : chargé à l'ouverture de l'opération (loadDocumentReads).
+            if(storedIds.has(meta.id)) storedRead(doc); else lazyRead(doc,null);
             doc.cachedOccurrences=Array.isArray(saved.cachedOccurrences)?saved.cachedOccurrences:[];
             doc.buildings=saved.buildings||doc.buildings;
             doc.specializedFamily=saved.specializedFamily||doc.specializedFamily||'annex';
@@ -10546,8 +10610,9 @@ async function deleteDocumentCheckpoint(docId){
   if(!docId) return;
   const db=await openDb();
   try{
-    const tx=db.transaction(DOCUMENT_STORE,'readwrite');
+    const tx=db.transaction([DOCUMENT_STORE,READ_STORE],'readwrite');
     tx.objectStore(DOCUMENT_STORE).delete(docId);
+    tx.objectStore(READ_STORE).delete(docId);
     await transactionDone(tx);
   } finally { db.close(); }
 }
@@ -10555,9 +10620,10 @@ async function deleteDocumentCheckpoint(docId){
 async function clearWorkspaceSnapshot(){
   const db=await openDb();
   try{
-    const tx=db.transaction([WORKSPACE_STORE,DOCUMENT_STORE],'readwrite');
+    const tx=db.transaction([WORKSPACE_STORE,DOCUMENT_STORE,READ_STORE],'readwrite');
     tx.objectStore(WORKSPACE_STORE).delete(WORKSPACE_KEY);
     tx.objectStore(DOCUMENT_STORE).clear();
+    tx.objectStore(READ_STORE).clear();
     await transactionDone(tx);
   } finally { db.close(); }
 }
@@ -11606,13 +11672,15 @@ const sfDayKey=t=>{ const d=new Date(t); return `${d.getFullYear()}-${d.getMonth
 function sfAddedBuildings(p){
   const r=p?.result; if(!r?.rows?.length) return new Set();
   // Bâtiment connu par une autre source (documents, tableau collé) : pas « ajouté depuis Salesforce ».
-  const fromDocs=new Set((r.occurrences||[]).filter(o=>o?.docId&&!String(o.docId).startsWith('free-paste-')).map(o=>o.building));
+  const fromDocs=new Set((r.detailed||[]).filter(o=>o?.docId&&!String(o.docId).startsWith('free-paste-')).map(o=>o.building));
   const src=Object.entries(p.manualSources||{}).filter(([,m])=>SF_SRC.test(m?.fileName||'')).map(([k])=>k.slice(0,k.lastIndexOf('|')));
   return new Set(r.rows.map(x=>x.building).filter(b=>!fromDocs.has(b)&&src.includes(b)));
 }
 function sfStats(){
   const ops=state.projects.filter(p=>!projectIsEmpty(p)), today=sfDayKey(Date.now());
-  const filled=ops.filter(p=>sfImports(p).length), todayOps=ops.filter(p=>sfImports(p).some(i=>i.at&&sfDayKey(i.at)===today));
+  // v2.20.7 — « traitées aujourd'hui » : un import Salesforce ou une analyse horodatée ce jour.
+  const isToday=t=>t&&sfDayKey(t)===today;
+  const filled=ops.filter(p=>sfImports(p).length), todayOps=ops.filter(p=>sfImports(p).some(i=>isToday(i.at))||(p.analysisRuns||[]).some(r=>isToday(r.at)));
   const docsOnly=ops.filter(p=>!sfImports(p).length&&(p.docs||[]).length);
   return {total:ops.length,filled:filled.length,today:todayOps.length,docsOnly};
 }
@@ -11620,7 +11688,7 @@ function sfStatsHtml(){
   const s=sfStats(); if(!s.total) return '';
   const item=p=>{ const id=projectIdentity(p); return `<li><button type="button" data-sf-open="${escapeHtml(p.id)}"><strong>${escapeHtml(id.contract||id.code||projectTitle(p))}</strong><span>${escapeHtml(id.name||projectTitle(p))}</span><small>${(p.docs||[]).length} doc.</small></button></li>`; };
   return `<section class="sf-stats" aria-label="Compteur des opérations">
-<div class="sf-kpis"><div><b>${s.total}</b><span>opération(s) dans ExtracTerre</span></div><div class="today"><b>${s.today}</b><span>remplie(s) aujourd’hui</span></div><div class="filled"><b>${s.filled}</b><span>remplie(s) (import Salesforce)</span></div><div class="docs"><b>${s.docsOnly.length}</b><span>documents seuls, sans Salesforce</span></div></div>
+<div class="sf-kpis"><div><b>${s.total}</b><span>opération(s) dans ExtracTerre</span></div><div class="today"><b>${s.today}</b><span>traitée(s) aujourd’hui</span><small>analyse ou import Salesforce</small></div><div class="filled"><b>${s.filled}</b><span>remplie(s) (import Salesforce)</span></div><div class="docs"><b>${s.docsOnly.length}</b><span>documents seuls, sans Salesforce</span></div></div>
 ${s.docsOnly.length?`<details class="sf-short"${state.sfShortOpen?' open':''}><summary>Opérations remplies par les documents seuls, sans import Salesforce (${s.docsOnly.length})</summary><ul>${s.docsOnly.map(item).join('')}</ul></details>`:''}</section>`;
 }
 function renderTiles(wrap,{home=false}={}){
@@ -12041,7 +12109,9 @@ function addNewProject(){
   const current=activeProject(); current.operationName=$('#operationName').value.trim()||current.result?.operation||current.operationName||current.label; current.expanded=false; unloadProjectFiles(current);
   const p=createProject(state.projects.length+1); state.projects.push(p); state.activeProjectId=p.id; setHomeMode(false); syncProjectInput(); renderAll(); switchTab('summary'); toast(`${projectTitle(current)} conservé. Nouveau projet prêt à recevoir ses documents.`,'success'); scheduleWorkspaceCheckpoint('nouveau projet',80);
 }
-function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.lastOpenedAt=Date.now(); setHomeMode(false); window.scrollTo?.(0,0); activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif'); }
+function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.lastOpenedAt=Date.now(); setHomeMode(false); window.scrollTo?.(0,0); activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result||p.pendingRebuild) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif');
+  // v2.20.7 — texte de l'opération ouverte rechargé (recherches, relecture, surlignage) ; celui de la précédente est libéré.
+  if(!projectReadsLoaded(p)) ensureProjectReads(p).then(()=>{ if(state.activeProjectId===p.id) renderAll(); }); }
 function toggleProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.expanded=!p.expanded; renderSummary(); scheduleWorkspaceCheckpoint('affichage projet'); }
 async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const title=projectTitle(p); const docs=(p.docs||[]).length;
   if(!confirm(`Supprimer le projet « ${title} » de la liste ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}\nLe journal d’amélioration et les règles de sources sont conservés.`)) return;
@@ -12617,6 +12687,8 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Lecture terminée · consolidation des données…';
       setStatus('Extraction métier et consolidation…',72); await yieldToBrowser();
       const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
+      // v2.20.7 — horodatage de l'analyse : compte dans « traitées aujourd'hui ».
+      { const ap=activeProject(); ap.analysisRuns=[...(ap.analysisRuns||[]),{at:Date.now(),docs:valid.length,newDocs:pendingDocs.length}].slice(-50); }
       setStatus('Contrôles de cohérence…',92); await yieldToBrowser();
     }
     renderAll();
@@ -13458,8 +13530,32 @@ function flushDocCheckpoints(){ if(docCheckpointTimer) return; docCheckpointTime
   while(pendingDocCheckpoints.length){ const [p,d]=pendingDocCheckpoints.shift(); try{ await saveDocumentCheckpoint(p.id,d); }catch(err){ console.warn('Sauvegarde du document après rattrapage impossible',err); } }
   scheduleWorkspaceCheckpoint('rattrapages enregistrés',1500); },1000); }
 // v2.19.2 — exports, observatoire, session : tous les projets doivent être recalculés (ceux encore en attente le sont ici).
-function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild) rebuildProjectFromCheckpoints(p); }
+// v2.20.7 — mémoire : le texte des documents (enregistré en local) n'est chargé que pour l'opération ouverte, ou le temps
+// d'un calcul sur une autre opération, puis libéré. Aucun calcul ne se fait sur un texte non chargé : il est rechargé avant.
+function projectReadsLoaded(p){ return (p?.docs||[]).every(docReadLoaded); }
+async function ensureProjectReads(p){
+  if(!p||projectReadsLoaded(p)) return true;
+  try{ await loadDocumentReads(p.docs); return true; }
+  catch(err){ console.warn('Texte des documents non rechargé',err); p.readsLoadFailed=true; return false; }
+}
+function releaseProjectReads(p){
+  if(!p||p.id===state.activeProjectId||analysisControl.running) return 0;
+  let n=0; for(const d of p.docs||[]) if(unloadDocumentRead(d)) n++; return n;
+}
+function releaseInactiveReads(){ if(analysisControl.running) return; for(const p of state.projects) if(p.id!==state.activeProjectId) releaseProjectReads(p); }
+// Exécute fn quand le texte de l'opération est chargé : tout de suite s'il l'est déjà, sinon après rechargement.
+function withProjectReads(p,fn){
+  if(projectReadsLoaded(p)||p.readsLoadFailed){ fn(); return; }
+  ensureProjectReads(p).then(()=>{ fn(); releaseProjectReads(p); });
+}
+async function rebuildProject(p){ await ensureProjectReads(p); if(p.pendingRebuild||!p.result) rebuildProjectFromCheckpoints(p); }
+async function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild){ await rebuildProject(p); releaseProjectReads(p); } }
 function rebuildProjectFromCheckpoints(project){
+  if(!projectReadsLoaded(project)&&!project.readsLoadFailed){
+    project.pendingRebuild=true;
+    ensureProjectReads(project).then(()=>{ if(!project.pendingRebuild) return; rebuildProjectFromCheckpoints(project); releaseProjectReads(project); renderAll(); });
+    return;
+  }
   project.pendingRebuild=false;
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
   if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
@@ -13592,7 +13688,7 @@ window.addEventListener('message',e=>{ const mt=ashtonFrame; if(!mt||e.origin!==
   if(m.type==='ashton:table'&&p&&m.docId===mt.docId){ const prev=(p.planTables||{})[m.docId]||{};
     p.planTables={...(p.planTables||{}),[m.docId]:{docName:m.docName||d?.name||'Plan',rows:Array.isArray(m.rows)?m.rows:[],uncalibratedPages:m.uncalibratedPages||[],sentAt:m.sentAt||Date.now(),building:prev.building||defaultPlanBuilding(d),refs:prev.refs||{}}};
     mt.received=true; recomputePlans(p,`Plan « ${m.docName||'plan'} » : ${(m.rows||[]).length} ligne(s) reçue(s) de Ashton.`); } });
-function recomputePlans(p,msg){ if(p===activeProject()&&(state.docs.some(d=>d.status==='ready')||p.result)) recomputeProject(msg); else { computeProjectResult(p); renderAll(); if(msg) toast(msg,'success'); } scheduleWorkspaceCheckpoint('plans Ashton',80); }
+function recomputePlans(p,msg){ if(p===activeProject()&&(state.docs.some(d=>d.status==='ready')||p.result)) recomputeProject(msg); else withProjectReads(p,()=>{ computeProjectResult(p); renderAll(); if(msg) toast(msg,'success'); }); scheduleWorkspaceCheckpoint('plans Ashton',80); }
 function renderPlans(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(), plans=(p.docs||[]).filter(isPlanDoc), tables=p.planTables||{};
   const ids=[...new Set([...plans.map(d=>d.id),...Object.keys(tables)])], buildings=[...new Set((p.result?.rows||[]).map(r=>r.building).filter(b=>b&&b!=='Bâtiment unique'))];
@@ -13688,22 +13784,29 @@ function feedSearches(p,grids){ const out={};
     else if(c){ const {sig:_s,cachedAt:_c,...v}=c; out[g.id]=v; }
     else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
   return out; }
-function sessionSnapshot({details=true}={}){
-  ensureAllRebuilt(); const grids=loadGrids();
-  return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
-    operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
+// v2.20.7 — une opération à la fois : son texte est rechargé pour ses recherches, puis libéré.
+async function sessionSnapshot({details=true}={}){
+  await ensureAllRebuilt(); const grids=loadGrids(), operations=[];
+  for(const p of state.projects.filter(p=>!projectIsEmpty(p))){ await ensureProjectReads(p); operations.push(sessionOperation(p,grids,details)); releaseProjectReads(p); }
+  return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
+}
+function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
         searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
-        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; }
 }
-function exportSessionJson(){
-  ensureAllRebuilt();
-  const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
+async function exportSessionJson(){
+  setLocalSaveUi('Export de la session…');
+  const snap=await sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
   // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
-  snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
-  downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
+  // v2.20.7 — écrits projet par projet dans le fichier (même contenu JSON) : le texte de toutes les opérations n'est plus
+  // en mémoire en même temps.
+  const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspace": {"projects": ['];
+  let n=0; for(const p of state.projects.filter(p=>!projectIsEmpty(p))){ await ensureProjectReads(p); parts.push(new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p),null,1)])); releaseProjectReads(p); }
+  parts.push(']}\n}');
+  downloadBlob(new Blob(parts,{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`); setLocalSaveUi('Session restaurée',lastLocalSaveAt);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
@@ -13773,8 +13876,8 @@ async function exportObservatoryJson(){
   try{
     const grids=loadGrids(), list=state.projects.filter(p=>!projectIsEmpty(p)), operations=[];
     for(let k=0;k<list.length;k++){ const p=list[k];
-      if(p.pendingRebuild) rebuildProjectFromCheckpoints(p);
-      const r=feedSearches(p,grids);
+      if(p.pendingRebuild||grids.some(g=>p.searchCache?.[g.id]?.sig!==searchSignature(p,g))) await rebuildProject(p);
+      const r=feedSearches(p,grids); releaseProjectReads(p);
       const id=projectIdentity(p);
       operations.push({id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,status:d.status})),searches:r});
       if(k%3===2||k===list.length-1){ setLocalSaveUi(`Export observatoire… ${k+1} / ${list.length}`); await new Promise(res=>setTimeout(res,0)); } }
@@ -13790,8 +13893,8 @@ async function exportObservatoryJson(){
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
-function openExportDialog(){
-  ensureAllRebuilt();
+async function openExportDialog(){
+  await ensureAllRebuilt();
   let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
   const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
   const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
@@ -13995,7 +14098,7 @@ function renderRecentProjects(){
   if(list.dataset.sig!==html){ list.innerHTML=html; list.dataset.sig=html; }
 }
 function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount){ const free=(activeProject().freePasteRows||[]).length; manualCount.textContent=`${state.manualPasteRows.length} ligne(s) de tableau${free?` · ${free} bâtiment(s) en collage libre`:''}`; } const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; refreshMiniWindow(); renderRecentProjects(); }
-function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
+function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors();  releaseInactiveReads(); }
 function switchTab(name){ state.activeTab=name; if(name!=='summary'&&state.homeView) setHomeMode(false); $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
 function renderPatchUi(){
@@ -14212,11 +14315,13 @@ async function rebuildInBackground(){
   let last=performance.now();
   while(todo().length){ const t0=performance.now();
     for(const p of todo()){
+      // v2.20.7 — texte rechargé le temps du recalcul de l'opération, puis libéré (sauf l'opération ouverte).
+      if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
       for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
-      rebuildProjectFromCheckpoints(p); if(performance.now()-t0>40) break; }
+      rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);
     if(performance.now()-last>1500||!left){ last=performance.now(); if(state.homeView||state.resultWorkspaceMode==='overview') renderHome(); }
     await new Promise(r=>setTimeout(r,0)); }
@@ -14245,7 +14350,7 @@ async function initializeApp(){
       lastLocalSaveAt=restored.savedAt||null;
       for(const p of state.projects) p.pendingRebuild=true;
       const first=activeProject(); restoreUi.set('Préparation du projet ouvert…'); await new Promise(r=>setTimeout(r,0));
-      if(first) rebuildProjectFromCheckpoints(first);
+      if(first){ await ensureProjectReads(first); rebuildProjectFromCheckpoints(first); }
       restoreUi.done();
       rebuildInBackground();
     }else{ restoreUi.done(); setLocalSaveUi('Prêt',restored?.savedAt||null); }

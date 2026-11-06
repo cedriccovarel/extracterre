@@ -19,7 +19,7 @@ import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForT
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
 import {normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
-import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
+import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,loadDocumentReads,unloadDocumentRead,docReadLoaded,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
 import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
 import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud,invokeLlmCloudFunction} from './cloud.js';
@@ -273,13 +273,15 @@ const sfDayKey=t=>{ const d=new Date(t); return `${d.getFullYear()}-${d.getMonth
 function sfAddedBuildings(p){
   const r=p?.result; if(!r?.rows?.length) return new Set();
   // Bâtiment connu par une autre source (documents, tableau collé) : pas « ajouté depuis Salesforce ».
-  const fromDocs=new Set((r.occurrences||[]).filter(o=>o?.docId&&!String(o.docId).startsWith('free-paste-')).map(o=>o.building));
+  const fromDocs=new Set((r.detailed||[]).filter(o=>o?.docId&&!String(o.docId).startsWith('free-paste-')).map(o=>o.building));
   const src=Object.entries(p.manualSources||{}).filter(([,m])=>SF_SRC.test(m?.fileName||'')).map(([k])=>k.slice(0,k.lastIndexOf('|')));
   return new Set(r.rows.map(x=>x.building).filter(b=>!fromDocs.has(b)&&src.includes(b)));
 }
 function sfStats(){
   const ops=state.projects.filter(p=>!projectIsEmpty(p)), today=sfDayKey(Date.now());
-  const filled=ops.filter(p=>sfImports(p).length), todayOps=ops.filter(p=>sfImports(p).some(i=>i.at&&sfDayKey(i.at)===today));
+  // v2.20.7 — « traitées aujourd'hui » : un import Salesforce ou une analyse horodatée ce jour.
+  const isToday=t=>t&&sfDayKey(t)===today;
+  const filled=ops.filter(p=>sfImports(p).length), todayOps=ops.filter(p=>sfImports(p).some(i=>isToday(i.at))||(p.analysisRuns||[]).some(r=>isToday(r.at)));
   const docsOnly=ops.filter(p=>!sfImports(p).length&&(p.docs||[]).length);
   return {total:ops.length,filled:filled.length,today:todayOps.length,docsOnly};
 }
@@ -287,7 +289,7 @@ function sfStatsHtml(){
   const s=sfStats(); if(!s.total) return '';
   const item=p=>{ const id=projectIdentity(p); return `<li><button type="button" data-sf-open="${escapeHtml(p.id)}"><strong>${escapeHtml(id.contract||id.code||projectTitle(p))}</strong><span>${escapeHtml(id.name||projectTitle(p))}</span><small>${(p.docs||[]).length} doc.</small></button></li>`; };
   return `<section class="sf-stats" aria-label="Compteur des opérations">
-<div class="sf-kpis"><div><b>${s.total}</b><span>opération(s) dans ExtracTerre</span></div><div class="today"><b>${s.today}</b><span>remplie(s) aujourd’hui</span></div><div class="filled"><b>${s.filled}</b><span>remplie(s) (import Salesforce)</span></div><div class="docs"><b>${s.docsOnly.length}</b><span>documents seuls, sans Salesforce</span></div></div>
+<div class="sf-kpis"><div><b>${s.total}</b><span>opération(s) dans ExtracTerre</span></div><div class="today"><b>${s.today}</b><span>traitée(s) aujourd’hui</span><small>analyse ou import Salesforce</small></div><div class="filled"><b>${s.filled}</b><span>remplie(s) (import Salesforce)</span></div><div class="docs"><b>${s.docsOnly.length}</b><span>documents seuls, sans Salesforce</span></div></div>
 ${s.docsOnly.length?`<details class="sf-short"${state.sfShortOpen?' open':''}><summary>Opérations remplies par les documents seuls, sans import Salesforce (${s.docsOnly.length})</summary><ul>${s.docsOnly.map(item).join('')}</ul></details>`:''}</section>`;
 }
 function renderTiles(wrap,{home=false}={}){
@@ -708,7 +710,9 @@ function addNewProject(){
   const current=activeProject(); current.operationName=$('#operationName').value.trim()||current.result?.operation||current.operationName||current.label; current.expanded=false; unloadProjectFiles(current);
   const p=createProject(state.projects.length+1); state.projects.push(p); state.activeProjectId=p.id; setHomeMode(false); syncProjectInput(); renderAll(); switchTab('summary'); toast(`${projectTitle(current)} conservé. Nouveau projet prêt à recevoir ses documents.`,'success'); scheduleWorkspaceCheckpoint('nouveau projet',80);
 }
-function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.lastOpenedAt=Date.now(); setHomeMode(false); window.scrollTo?.(0,0); activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif'); }
+function activateProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.lastOpenedAt=Date.now(); setHomeMode(false); window.scrollTo?.(0,0); activeProject().operationName=$('#operationName').value.trim(); state.activeProjectId=id; state.resultWorkspaceMode='detail'; if(!p.result||p.pendingRebuild) rebuildProjectFromCheckpoints(p); p.expanded=true; syncProjectInput(); switchTab('summary'); renderAll(); scheduleWorkspaceCheckpoint('projet actif');
+  // v2.20.7 — texte de l'opération ouverte rechargé (recherches, relecture, surlignage) ; celui de la précédente est libéré.
+  if(!projectReadsLoaded(p)) ensureProjectReads(p).then(()=>{ if(state.activeProjectId===p.id) renderAll(); }); }
 function toggleProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; p.expanded=!p.expanded; renderSummary(); scheduleWorkspaceCheckpoint('affichage projet'); }
 async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const title=projectTitle(p); const docs=(p.docs||[]).length;
   if(!confirm(`Supprimer le projet « ${title} » de la liste ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}\nLe journal d’amélioration et les règles de sources sont conservés.`)) return;
@@ -1284,6 +1288,8 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Lecture terminée · consolidation des données…';
       setStatus('Extraction métier et consolidation…',72); await yieldToBrowser();
       const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
+      // v2.20.7 — horodatage de l'analyse : compte dans « traitées aujourd'hui ».
+      { const ap=activeProject(); ap.analysisRuns=[...(ap.analysisRuns||[]),{at:Date.now(),docs:valid.length,newDocs:pendingDocs.length}].slice(-50); }
       setStatus('Contrôles de cohérence…',92); await yieldToBrowser();
     }
     renderAll();
@@ -2125,8 +2131,32 @@ function flushDocCheckpoints(){ if(docCheckpointTimer) return; docCheckpointTime
   while(pendingDocCheckpoints.length){ const [p,d]=pendingDocCheckpoints.shift(); try{ await saveDocumentCheckpoint(p.id,d); }catch(err){ console.warn('Sauvegarde du document après rattrapage impossible',err); } }
   scheduleWorkspaceCheckpoint('rattrapages enregistrés',1500); },1000); }
 // v2.19.2 — exports, observatoire, session : tous les projets doivent être recalculés (ceux encore en attente le sont ici).
-function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild) rebuildProjectFromCheckpoints(p); }
+// v2.20.7 — mémoire : le texte des documents (enregistré en local) n'est chargé que pour l'opération ouverte, ou le temps
+// d'un calcul sur une autre opération, puis libéré. Aucun calcul ne se fait sur un texte non chargé : il est rechargé avant.
+function projectReadsLoaded(p){ return (p?.docs||[]).every(docReadLoaded); }
+async function ensureProjectReads(p){
+  if(!p||projectReadsLoaded(p)) return true;
+  try{ await loadDocumentReads(p.docs); return true; }
+  catch(err){ console.warn('Texte des documents non rechargé',err); p.readsLoadFailed=true; return false; }
+}
+function releaseProjectReads(p){
+  if(!p||p.id===state.activeProjectId||analysisControl.running) return 0;
+  let n=0; for(const d of p.docs||[]) if(unloadDocumentRead(d)) n++; return n;
+}
+function releaseInactiveReads(){ if(analysisControl.running) return; for(const p of state.projects) if(p.id!==state.activeProjectId) releaseProjectReads(p); }
+// Exécute fn quand le texte de l'opération est chargé : tout de suite s'il l'est déjà, sinon après rechargement.
+function withProjectReads(p,fn){
+  if(projectReadsLoaded(p)||p.readsLoadFailed){ fn(); return; }
+  ensureProjectReads(p).then(()=>{ fn(); releaseProjectReads(p); });
+}
+async function rebuildProject(p){ await ensureProjectReads(p); if(p.pendingRebuild||!p.result) rebuildProjectFromCheckpoints(p); }
+async function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild){ await rebuildProject(p); releaseProjectReads(p); } }
 function rebuildProjectFromCheckpoints(project){
+  if(!projectReadsLoaded(project)&&!project.readsLoadFailed){
+    project.pendingRebuild=true;
+    ensureProjectReads(project).then(()=>{ if(!project.pendingRebuild) return; rebuildProjectFromCheckpoints(project); releaseProjectReads(project); renderAll(); });
+    return;
+  }
   project.pendingRebuild=false;
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
   if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
@@ -2259,7 +2289,7 @@ window.addEventListener('message',e=>{ const mt=ashtonFrame; if(!mt||e.origin!==
   if(m.type==='ashton:table'&&p&&m.docId===mt.docId){ const prev=(p.planTables||{})[m.docId]||{};
     p.planTables={...(p.planTables||{}),[m.docId]:{docName:m.docName||d?.name||'Plan',rows:Array.isArray(m.rows)?m.rows:[],uncalibratedPages:m.uncalibratedPages||[],sentAt:m.sentAt||Date.now(),building:prev.building||defaultPlanBuilding(d),refs:prev.refs||{}}};
     mt.received=true; recomputePlans(p,`Plan « ${m.docName||'plan'} » : ${(m.rows||[]).length} ligne(s) reçue(s) de Ashton.`); } });
-function recomputePlans(p,msg){ if(p===activeProject()&&(state.docs.some(d=>d.status==='ready')||p.result)) recomputeProject(msg); else { computeProjectResult(p); renderAll(); if(msg) toast(msg,'success'); } scheduleWorkspaceCheckpoint('plans Ashton',80); }
+function recomputePlans(p,msg){ if(p===activeProject()&&(state.docs.some(d=>d.status==='ready')||p.result)) recomputeProject(msg); else withProjectReads(p,()=>{ computeProjectResult(p); renderAll(); if(msg) toast(msg,'success'); }); scheduleWorkspaceCheckpoint('plans Ashton',80); }
 function renderPlans(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(), plans=(p.docs||[]).filter(isPlanDoc), tables=p.planTables||{};
   const ids=[...new Set([...plans.map(d=>d.id),...Object.keys(tables)])], buildings=[...new Set((p.result?.rows||[]).map(r=>r.building).filter(b=>b&&b!=='Bâtiment unique'))];
@@ -2355,22 +2385,29 @@ function feedSearches(p,grids){ const out={};
     else if(c){ const {sig:_s,cachedAt:_c,...v}=c; out[g.id]=v; }
     else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
   return out; }
-function sessionSnapshot({details=true}={}){
-  ensureAllRebuilt(); const grids=loadGrids();
-  return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,
-    operations:state.projects.filter(p=>!projectIsEmpty(p)).map(p=>{ const id=projectIdentity(p);
+// v2.20.7 — une opération à la fois : son texte est rechargé pour ses recherches, puis libéré.
+async function sessionSnapshot({details=true}={}){
+  await ensureAllRebuilt(); const grids=loadGrids(), operations=[];
+  for(const p of state.projects.filter(p=>!projectIsEmpty(p))){ await ensureProjectReads(p); operations.push(sessionOperation(p,grids,details)); releaseProjectReads(p); }
+  return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
+}
+function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
         searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
-        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; })};
+        manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; }
 }
-function exportSessionJson(){
-  ensureAllRebuilt();
-  const snap=sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); return; }
+async function exportSessionJson(){
+  setLocalSaveUi('Export de la session…');
+  const snap=await sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
   // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
-  snap.workspace={projects:state.projects.filter(p=>!projectIsEmpty(p)).map(serializeProjectFull)};
-  downloadBlob(new Blob([JSON.stringify(snap,null,1)],{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
+  // v2.20.7 — écrits projet par projet dans le fichier (même contenu JSON) : le texte de toutes les opérations n'est plus
+  // en mémoire en même temps.
+  const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspace": {"projects": ['];
+  let n=0; for(const p of state.projects.filter(p=>!projectIsEmpty(p))){ await ensureProjectReads(p); parts.push(new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p),null,1)])); releaseProjectReads(p); }
+  parts.push(']}\n}');
+  downloadBlob(new Blob(parts,{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`); setLocalSaveUi('Session restaurée',lastLocalSaveAt);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
@@ -2440,8 +2477,8 @@ async function exportObservatoryJson(){
   try{
     const grids=loadGrids(), list=state.projects.filter(p=>!projectIsEmpty(p)), operations=[];
     for(let k=0;k<list.length;k++){ const p=list[k];
-      if(p.pendingRebuild) rebuildProjectFromCheckpoints(p);
-      const r=feedSearches(p,grids);
+      if(p.pendingRebuild||grids.some(g=>p.searchCache?.[g.id]?.sig!==searchSignature(p,g))) await rebuildProject(p);
+      const r=feedSearches(p,grids); releaseProjectReads(p);
       const id=projectIdentity(p);
       operations.push({id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,status:d.status})),searches:r});
       if(k%3===2||k===list.length-1){ setLocalSaveUi(`Export observatoire… ${k+1} / ${list.length}`); await new Promise(res=>setTimeout(res,0)); } }
@@ -2457,8 +2494,8 @@ async function exportObservatoryJson(){
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
-function openExportDialog(){
-  ensureAllRebuilt();
+async function openExportDialog(){
+  await ensureAllRebuilt();
   let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
   const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
   const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
@@ -2662,7 +2699,7 @@ function renderRecentProjects(){
   if(list.dataset.sig!==html){ list.innerHTML=html; list.dataset.sig=html; }
 }
 function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount){ const free=(activeProject().freePasteRows||[]).length; manualCount.textContent=`${state.manualPasteRows.length} ligne(s) de tableau${free?` · ${free} bâtiment(s) en collage libre`:''}`; } const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; refreshMiniWindow(); renderRecentProjects(); }
-function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
+function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors();  releaseInactiveReads(); }
 function switchTab(name){ state.activeTab=name; if(name!=='summary'&&state.homeView) setHomeMode(false); $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
 function renderPatchUi(){
@@ -2879,11 +2916,13 @@ async function rebuildInBackground(){
   let last=performance.now();
   while(todo().length){ const t0=performance.now();
     for(const p of todo()){
+      // v2.20.7 — texte rechargé le temps du recalcul de l'opération, puis libéré (sauf l'opération ouverte).
+      if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
       for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
-      rebuildProjectFromCheckpoints(p); if(performance.now()-t0>40) break; }
+      rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);
     if(performance.now()-last>1500||!left){ last=performance.now(); if(state.homeView||state.resultWorkspaceMode==='overview') renderHome(); }
     await new Promise(r=>setTimeout(r,0)); }
@@ -2912,7 +2951,7 @@ async function initializeApp(){
       lastLocalSaveAt=restored.savedAt||null;
       for(const p of state.projects) p.pendingRebuild=true;
       const first=activeProject(); restoreUi.set('Préparation du projet ouvert…'); await new Promise(r=>setTimeout(r,0));
-      if(first) rebuildProjectFromCheckpoints(first);
+      if(first){ await ensureProjectReads(first); rebuildProjectFromCheckpoints(first); }
       restoreUi.done();
       rebuildInBackground();
     }else{ restoreUi.done(); setLocalSaveUi('Prêt',restored?.savedAt||null); }

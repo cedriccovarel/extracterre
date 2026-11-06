@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.20.7','version');
+eq(APP_VERSION,'2.21.0','version');
 const app=readFileSync('js/app.js','utf8'), css=readFileSync('styles.css','utf8');
 // Fonctions de l'accueil évaluées sur des projets fictifs (même code que l'application).
 const src=app.slice(app.indexOf('const SF_SRC='),app.indexOf('function sfStatsHtml()'));
@@ -13,10 +13,10 @@ const {sfImports,sfAddedBuildings,sfStats}=new Function('state','projectIsEmpty'
 const now=Date.now(), yesterday=now-36*3600e3, SF='Collage libre — Salesforce';
 const occ=(b,docId)=>({building:b,docId,method:docId.startsWith('free-paste-')?'manual:free-paste':'rset'});
 const pSF={id:'a',docs:[{}],manualValues:{x:1},salesforceImports:[{at:now,values:12}],manualSources:{'Bâtiment 10|bbio':{fileName:SF},'Bâtiment 1|bbio':{fileName:SF}},
-  result:{rows:[{building:'Bâtiment 1'},{building:'Bâtiment 10'}],occurrences:[occ('Bâtiment 1','d1'),occ('Bâtiment 10','free-paste-a')]}};
-const pOld={id:'b',docs:[{}],manualValues:{x:1},manualSources:{'Bâtiment A|cep':{fileName:SF}},result:{rows:[{building:'Bâtiment A'}],occurrences:[occ('Bâtiment A','d2')]}};
+  result:{rows:[{building:'Bâtiment 1'},{building:'Bâtiment 10'}],detailed:[occ('Bâtiment 1','d1'),occ('Bâtiment 10','free-paste-a')]}};
+const pOld={id:'b',docs:[{}],manualValues:{x:1},manualSources:{'Bâtiment A|cep':{fileName:SF}},result:{rows:[{building:'Bâtiment A'}],detailed:[occ('Bâtiment A','d2')]}};
 const pYest={id:'c',docs:[],manualValues:{x:1},salesforceImports:[{at:yesterday,values:3}]};
-const pDocs={id:'d',docs:[{},{}],result:{rows:[{building:'Bâtiment Z'}],occurrences:[occ('Bâtiment Z','d3')]}};
+const pDocs={id:'d',docs:[{},{}],result:{rows:[{building:'Bâtiment Z'}],detailed:[occ('Bâtiment Z','d3')]}};
 const pEmpty={id:'e',docs:[]};
 state.projects.push(pSF,pOld,pYest,pDocs,pEmpty);
 eq([...sfAddedBuildings(pSF)],['Bâtiment 10'],'rouge : bâtiment connu seulement par Salesforce');
