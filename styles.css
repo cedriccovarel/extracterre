@@ -1318,3 +1318,13 @@ body.home-mode .ux-dashboard-grid,body.home-mode #workspaceSection{display:none!
 .srch-ashton .btn{padding:4px 10px;font-size:.8rem;min-height:0}
 .srch-ashton .srch-ashton-clear{padding:4px 8px}
 .ashton-pick form{display:flex;flex-direction:column;gap:8px;min-width:320px}
+/* v2.20.0 — fenêtre étroite ou basse : tuiles sans débordement, menu compact et toujours accessible ; bouton de la mini-fenêtre flottante. */
+.ux-mini-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;color:var(--forest);border-radius:999px;padding:5px 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.ux-mini-btn:hover,.ux-mini-btn.active{background:var(--mint)}.ux-mini-btn:focus-visible{outline:2px solid var(--forest2);outline-offset:2px}
+.ux-header-actions-clean{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.op-tiles{grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr))}
+.result-overview-intro{flex-wrap:wrap}.result-overview-intro>*{min-width:0}.home-view .op-search{flex:1 1 220px;min-width:0;max-width:340px}
+@media(min-width:821px) and (max-height:720px){.ux-nav-item{padding:8px 12px;font-size:13px}.ux-sidebar{padding-top:8px;padding-bottom:8px}.ux-sidebar-brand{display:none}}
+@media(min-width:821px) and (max-height:520px){.ux-nav-item{padding:5px 10px}}
+@media(max-width:820px){.ux-sidebar{position:sticky;top:0;z-index:30;padding:6px 8px;scrollbar-width:thin}.ux-nav-item{padding:8px 10px;font-size:13px;gap:8px}}
+@media(max-width:600px),(max-width:820px) and (max-height:600px){.ux-side-nav .ux-nav-item>span:last-child{display:none}.ux-nav-item{padding:8px 11px}.ux-mini-btn span{display:none}}
+@media(max-width:600px){.ux-header-actions-clean{gap:6px}}

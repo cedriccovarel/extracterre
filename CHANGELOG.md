@@ -1,3 +1,14 @@
+# v2.20.0 — Fenêtre étroite ou basse, mini-fenêtre flottante
+- Mini-fenêtre (bouton « ⧉ Mini-fenêtre » en haut) : petite fenêtre qui reste au premier plan quand on passe sur un autre
+  onglet (Salesforce…), avec le strict minimum : opération active (sélecteur), contrat / code, documents, bâtiments,
+  complétude, état de l'analyse, zone de dépôt (PDF, XML, Excel…, ou clic pour choisir) et bouton d'analyse. Les fichiers
+  déposés vont dans l'opération active, comme sur la page. Chrome / Edge (Picture-in-Picture de document) ; ailleurs, simple
+  petite fenêtre séparée. Même page, même mémoire : rien n'est stocké ni envoyé.
+- Fenêtre étroite : tuiles d'opérations qui tiennent dans la largeur (plus de débordement à 390 px), en-tête des opérations
+  qui passe à la ligne ; menu collé en haut et compact (icônes seules sous 600 px, infobulle sur chaque entrée).
+- Fenêtre basse : menu latéral resserré (logo du bas masqué) pour que toutes les entrées restent visibles.
+- Test : `test_v2_20_0.mjs`.
+
 # v2.19.4 — Observatoire des recherches : export .json, page qui le charge
 - Nouveau bouton « Exporter l'observatoire des recherches (.json) » : calcule les recherches de chaque opération, une à la
   fois en rendant la main (progression dans l'indicateur de sauvegarde), et télécharge `ExtracTerre_observatoire_AAAA-MM-JJ.json`

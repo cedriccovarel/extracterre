@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.19.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.20.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.19.4';
+const APP_VERSION='2.20.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11731,7 +11731,7 @@ async function checkpointDocument(project,doc){
   }catch(err){ console.warn('IndexedDB document checkpoint failed',err); setLocalSaveUi('Sauvegarde partielle'); toast(`Checkpoint local impossible pour ${doc.name} : ${err?.message||err}`,'warn'); return null; }
 }
 
-function setStatus(text,pct=null){ const status=$('#statusText'); if(status){status.textContent=text;status.title=text;} const mirrorStatus=$('#projectMirrorStatus'); if(mirrorStatus){mirrorStatus.textContent=text;mirrorStatus.title=text;} if(pct!==null){ const safe=Math.max(0,Math.min(100,pct)); $('#progress').hidden=false; $('#progressBar').style.width=`${safe}%`; const pctEl=$('#projectMirrorPct'); if(pctEl) pctEl.textContent=`${Math.round(safe)}%`; const ring=$('#projectMirrorRing'); if(ring) ring.style.setProperty('--pct',`${safe*3.6}deg`); } }
+function setStatus(text,pct=null){ const status=$('#statusText'); if(status){status.textContent=text;status.title=text;} const mirrorStatus=$('#projectMirrorStatus'); if(mirrorStatus){mirrorStatus.textContent=text;mirrorStatus.title=text;} if(pct!==null){ const safe=Math.max(0,Math.min(100,pct)); $('#progress').hidden=false; $('#progressBar').style.width=`${safe}%`; const pctEl=$('#projectMirrorPct'); if(pctEl) pctEl.textContent=`${Math.round(safe)}%`; const ring=$('#projectMirrorRing'); if(ring) ring.style.setProperty('--pct',`${safe*3.6}deg`); } refreshMiniWindow(); }
 function toast(msg,type='info'){ const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=msg; $('#toasts').appendChild(el); setTimeout(()=>el.remove(),4200); }
 function libraryCheck(){ const issues=[]; if(!globalThis.pdfjsLib) issues.push('PDF.js'); if(!globalThis.XLSX) issues.push('SheetJS'); const ocrMissing=!globalThis.Tesseract; if(issues.length){ $('#libWarning').hidden=false; $('#libWarning').innerHTML=`<strong>Bibliothèque non chargée :</strong> ${issues.join(', ')}. Rechargez la page avec une connexion internet.`; } else if(ocrMissing){ $('#libWarning').hidden=false; $('#libWarning').innerHTML="<strong>OCR indisponible :</strong> Tesseract.js n'a pas pu être chargé. La lecture PDF classique reste disponible, mais les pages scannées ne bénéficieront pas du secours OCR."; } else $('#libWarning').hidden=true; }
 
@@ -13730,7 +13730,63 @@ function renderSearchResults(){
 }
 
 
-function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount){ const free=(activeProject().freePasteRows||[]).length; manualCount.textContent=`${state.manualPasteRows.length} ligne(s) de tableau${free?` · ${free} bâtiment(s) en collage libre`:''}`; } const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; }
+// v2.20.0 — Mini-fenêtre flottante : reste au premier plan quand on passe sur Salesforce (Document Picture-in-Picture,
+// Chrome / Edge). Strict minimum : opération active, avancement, état, dépôt de fichiers et bouton d'analyse.
+// Même page, même mémoire : rien n'est stocké ni envoyé ailleurs. Sans cette API, petite fenêtre séparée (pas au premier plan).
+var miniWin=null;
+const MINI_CSS=`*{box-sizing:border-box}body{margin:0;font:13px/1.35 "IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18201d;background:#f5f7f5;display:flex;flex-direction:column;min-height:100vh}
+.mw-head{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#076246;color:#fff}.mw-head b{font-size:14px}.mw-head small{margin-left:auto;opacity:.75;font-size:11px}
+.mw-body{flex:1;display:flex;flex-direction:column;gap:8px;padding:10px}select{width:100%;padding:6px 8px;border:1px solid #cfd8d3;border-radius:8px;font:inherit;background:#fff;color:inherit}
+.mw-id{color:#6c7b74;font-size:11px;min-height:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mw-stats{display:flex;gap:10px;font-size:12px;flex-wrap:wrap}.mw-stats b{color:#173e31}
+.mw-bar{height:5px;border-radius:99px;background:#e2eae5;overflow:hidden}.mw-bar i{display:block;height:100%;width:0;background:#245947;transition:width .25s}
+.mw-status{font-size:11px;color:#425149;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mw-drop{flex:1;min-height:70px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed #aebdb4;border-radius:10px;background:#fff;text-align:center;padding:8px;cursor:pointer;transition:.15s}
+.mw-drop.drag{border-color:#245947;background:#edf6f1}.mw-drop strong{font-size:13px;color:#173e31}.mw-drop small{color:#6c7b74;font-size:11px}
+.mw-go{border:0;border-radius:9px;padding:9px 10px;font:inherit;font-weight:700;background:#173e31;color:#fff;cursor:pointer}.mw-go:disabled{opacity:.45;cursor:not-allowed}
+.mw-go:focus-visible,select:focus-visible,.mw-drop:focus-visible{outline:2px solid #2e8a5f;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.mw-bar i,.mw-drop{transition:none}}`;
+function miniWindowHtml(){ return `<div class="mw-head"><b>ExtracTerre</b><small>v${APP_VERSION}</small></div>
+<div class="mw-body"><select id="mwProject" aria-label="Opération active"></select><div class="mw-id" id="mwId"></div>
+<div class="mw-stats"><span><b id="mwDocs">0</b> doc.</span><span><b id="mwBld">0</b> bât.</span><span><b id="mwPct">0</b> % complété</span></div><div class="mw-bar"><i id="mwBar"></i></div>
+<div class="mw-status" id="mwStatus" role="status"></div>
+<label class="mw-drop" id="mwDrop" tabindex="0"><strong>Déposer ici PDF, XML, Excel…</strong><small>ou cliquer pour choisir — ajoutés à l’opération active</small><input id="mwFile" type="file" multiple hidden accept=".pdf,.xml,.xls,.xlsx,.json,.zip"></label>
+<button class="mw-go" id="mwAnalyze" type="button"></button></div>`; }
+function refreshMiniWindow(){
+  const w=miniWin; if(!w||w.closed) return; const d=w.document, $m=s=>d.getElementById(s); if(!$m('mwProject')) return;
+  const p=activeProject(), st=projectResultStats(p), id=projectIdentity(p), pct=projectCompletion(p);
+  const sel=$m('mwProject'), opts=state.projects.map(x=>`<option value="${x.id}"${x.id===p.id?' selected':''}>${escapeHtml(projectTitle(x))}</option>`).join('');
+  if(sel.dataset.sig!==opts){ sel.innerHTML=opts; sel.dataset.sig=opts; } sel.value=p.id;
+  $m('mwId').textContent=[id.contract&&`Contrat ${id.contract}`,id.code].filter(Boolean).join(' · ');
+  $m('mwDocs').textContent=String(state.docs.length); $m('mwBld').textContent=String(st.buildings); $m('mwPct').textContent=String(pct); $m('mwBar').style.width=`${pct}%`;
+  const s=$('#statusText')?.textContent||'Prêt'; $m('mwStatus').textContent=s; $m('mwStatus').title=s;
+  const a=$('#analyzeBtn'), b=$m('mwAnalyze'); if(a&&b){ b.textContent=a.textContent; b.disabled=a.disabled; }
+}
+function wireMiniWindow(w){
+  const d=w.document, $m=s=>d.getElementById(s);
+  const take=async fs=>{ if(fs?.length){ addFiles(fs); refreshMiniWindow(); } };
+  $m('mwProject').onchange=e=>{ if(e.target.value!==state.activeProjectId) activateProject(e.target.value); refreshMiniWindow(); };
+  $m('mwAnalyze').onclick=()=>{ const a=$('#analyzeBtn'); if(a&&!a.disabled) a.click(); };
+  $m('mwFile').onchange=e=>{ take([...(e.target.files||[])]); e.target.value=''; };
+  const z=$m('mwDrop');
+  z.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $m('mwFile').click(); } };
+  for(const ev of ['dragenter','dragover']) d.addEventListener(ev,e=>{ e.preventDefault(); z.classList.add('drag'); });
+  d.addEventListener('dragleave',e=>{ if(!e.relatedTarget) z.classList.remove('drag'); });
+  d.addEventListener('drop',async e=>{ e.preventDefault(); z.classList.remove('drag'); try{ await take(await filesFromDrop(e.dataTransfer)); }catch(err){ toast(`Import impossible : ${err?.message||err}`,'error'); } });
+  w.addEventListener('pagehide',()=>{ if(miniWin===w) miniWin=null; $('#miniWindowBtn')?.classList.remove('active'); });
+}
+async function openMiniWindow(){
+  if(miniWin&&!miniWin.closed){ try{ miniWin.focus(); }catch{} return; }
+  let w=null;
+  try{ if(globalThis.documentPictureInPicture?.requestWindow) w=await documentPictureInPicture.requestWindow({width:320,height:330}); }catch{ w=null; }
+  if(!w){
+    w=window.open('','extracterre-mini','popup,width=340,height=380');
+    if(!w){ toast('Mini-fenêtre bloquée par le navigateur : autorisez les fenêtres surgissantes pour ExtracTerre.','warn'); return; }
+    toast('Ce navigateur ne garde pas la mini-fenêtre au premier plan : utilisez Chrome ou Edge pour qu’elle reste au-dessus de Salesforce.','info');
+  }
+  const d=w.document; d.title='ExtracTerre'; d.head.innerHTML=`<meta charset="utf-8"><title>ExtracTerre</title><style>${MINI_CSS}</style>`; d.body.innerHTML=miniWindowHtml();
+  miniWin=w; wireMiniWindow(w); refreshMiniWindow(); $('#miniWindowBtn')?.classList.add('active');
+}
+function updateUxMirrors(){ const manualCount=$('#manualDataCount'); if(manualCount){ const free=(activeProject().freePasteRows||[]).length; manualCount.textContent=`${state.manualPasteRows.length} ligne(s) de tableau${free?` · ${free} bâtiment(s) en collage libre`:''}`; } const docs=$('#projectMirrorDocs'); if(docs) docs.textContent=String(state.docs.length); const r=state.result; const values=$('#projectMirrorValues'); if(values) values.textContent=String(r?.finals?.length||0); const buildings=$('#projectMirrorBuildings'); if(buildings) buildings.textContent=String(r?.buildings?.length||r?.rows?.length||0); const alerts=$('#projectMirrorAlerts'); if(alerts) alerts.textContent=String(r?.alerts?.length||0); const status=$('#projectMirrorStatus'); if(status) status.textContent=$('#statusText')?.textContent||'Prêt'; refreshMiniWindow(); }
 function renderAll(){ renderFiles(); renderSummary(); renderHome(); renderResultWorkspaceControls(); renderOccurrences(); renderDiagnostics(); if(state.activeTab==='rules') renderRules(); $('#exportBtn').disabled=!state.projects.some(p=>p.result); const pending=state.docs.filter(d=>!!d.file&&!Array.isArray(d.cachedOccurrences)&&!['error','timeout'].includes(d.status)).length; const missing=state.docs.filter(d=>!d.file&&!Array.isArray(d.cachedOccurrences)&&d.status==='missing').length; const manualRows=state.manualPasteRows.length; const timedOut=state.docs.filter(d=>d.status==='timeout').length; $('#analyzeBtn').textContent=state.result?(pending?`▶ Analyser ${pending} nouveau${pending>1?'x':''} document${pending>1?'s':''} et compléter`:'↻ Recalculer la consolidation'):(manualRows?'▶ Consolider les données manuelles':missing&&!pending?`＋ Redéposer ${missing} fichier${missing>1?'s':''}`:'▶ Lancer l’analyse'); if(timedOut&&!pending&&state.result) $('#analyzeBtn').textContent='↻ Recalculer la consolidation'; $('#analyzeBtn').disabled=!state.result&&!pending&&!manualRows&&missing>0; updateUxMirrors(); }
 function switchTab(name){ state.activeTab=name; if(name!=='summary'&&state.homeView) setHomeMode(false); $$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name)); $$('.view').forEach(v=>v.hidden=v.id!==`${name}Panel`); const resultTabs=$('#resultTabsWrap'); if(resultTabs) resultTabs.hidden=name!=='summary'; const rulesWrap=$('#rulesActionWrap'); if(rulesWrap) rulesWrap.hidden=name!=='rules'; if(name==='rules') renderRules(); scheduleWorkspaceCheckpoint('onglet actif'); }
 
@@ -13887,7 +13943,7 @@ function wire(){
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
       addFiles(fs); }catch(err){ toast(`Import impossible : ${err?.message||err}`,'error'); } },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const miniBtn=$('#miniWindowBtn'); if(miniBtn) miniBtn.onclick=openMiniWindow; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };
