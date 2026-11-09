@@ -1,3 +1,18 @@
+# v2.22.3 — Favori Salesforce : règles du prompt de mise en forme RE2020
+- Texte « libellé = valeur » au format du prompt (fiche Salesforce ou collage dans Données manuelles) : l'enveloppe est
+  maintenant lue. « <Paroi> après travaux = structure + isolant épaisseur » et « R isolant <paroi> après travaux = R »
+  remplissent structure, isolant, épaisseur et R (murs, planchers bas, planchers hauts / toiture terrasse / rampants) ; une seule
+  paroi par famille, la première écrite ; ITI / ITE reconnus. Avant, toutes ces lignes restaient « non reconnues ».
+- Libellés ajoutés : « ICC / ICE max 2025 (2028) », « Perméabilité Q4Pa-surf », « Menuiseries après travaux ».
+- Isolants abrégés : LDB (laine de bois), LdV, LR, LM, PU (→ PUR). R absent mais épaisseur et λ écrits : R = e / λ arrondi à
+  0,05, signalé dans les points à vérifier.
+- Fiche Salesforce : « 6 MI » = 6 logements ; maison individuelle : un DH sans type de zone = zones traversantes ; vecteurs
+  chauffage / ECS après travaux remplis à partir du générateur (PAC, thermodynamique, effet Joule → Électricité). Le mode de
+  chauffage et l'ECS gardent le texte de la fiche (modèle compris), comme avant.
+- Points à vérifier ajoutés : écart de gain recalculé > 0,1 point (avant 0,6), Bbio < 40 en collectif, eaux grises, chaudière
+  murale dans un collectif, mentions « NC », « PS », « à justifier » des sections techniques (5 au plus).
+- Rien n'est inventé : pas de colonne nouvelle, une ligne absente reste vide.
+
 # v2.22.2 — Accueil : recherche par liste de contrats
 - Le champ « Rechercher une opération » accepte une liste collée (une valeur par ligne depuis Excel ou un texte, ou séparée par
   des virgules / points-virgules) : elle devient « 4794, 4808, … » et les tuiles de tous les éléments trouvés s'affichent.

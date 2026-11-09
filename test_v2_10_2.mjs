@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.22.2','version');
+eq(APP_VERSION,'2.22.3','version');
 const page=`Opération
 OPE-009001
 Prévisualiser
@@ -67,5 +67,5 @@ eq([c.roof_insulation,c.roof_insulation_thickness,c.roof_insulation_r,c.wall_str
 eq([c.window_material,c.window_shading,c.ventilation,c.heating_mode_after],['PVC','Volet roulant','VMC Hygro B','Pompe à chaleur air/eau FICTIVE 6 kW'],'systèmes, notes ignorées');
 eq([b['Maison 1'].housing_count,b['Maison 1'].bbio_gain,b['Maison 1'].cep_max,b['Maison 1'].cep_gain,b['Maison 1'].shab,b['Maison 1'].q4pa_surf,b['Maison 1'].ic_construction],[1,25,90,10,90,0.5,700],'bâtiment : alias Salesforce, gains positifs');
 eq(b['Maisons 2/3'].housing_count,2,'« Maisons 2/3 » = 2 logements');
-eq(fp.notes.length,1,'gain incohérent signalé');
+eq(fp.notes.length,2,'gain incohérent signalé + mentions NC (v2.22.3)');
 console.log(`v2.10.2 — ${n} vérifications OK (données fictives)`);
