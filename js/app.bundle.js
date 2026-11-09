@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.22.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.22.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.22.1';
+const APP_VERSION='2.22.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11728,7 +11728,13 @@ function renderTiles(wrap,{home=false}={}){
   const dups=contractDuplicates(); warnContractDuplicates(dups); const isDup=id=>dups.has(contractKey(id.contract));
   // Accueil : la recherche (contrat, nom, code, maître d'ouvrage ; sans accents) liste à plat les tuiles qui correspondent.
   const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(), q=home?fold(state.homeQuery).trim():'';
-  const found=q?items.filter(x=>fold([x.id.contract,x.id.name,projectTitle(x.p),x.id.code,x.id.owner].join(' ')).includes(q)):null;
+  // v2.22.2 — liste collée (« 4794, 4808 … » ; virgules, points-virgules ou retours à la ligne) : une tuile par élément trouvé.
+  // Un nombre = numéro de contrat exact (zéros de tête ignorés) ; un autre terme = recherche dans contrat, nom, code, MOA.
+  const blob=x=>fold([x.id.contract,x.id.name,projectTitle(x.p),x.id.code,x.id.owner].join(' '));
+  const terms=/[,;]/.test(q)?[...new Set(q.split(/[,;\s]+/).filter(Boolean))]:null;
+  const hit=(x,t)=>/^\d+$/.test(t)?contractKey(x.id.contract)===(t.replace(/^0+/,'')||'0'):blob(x).includes(t);
+  const found=!q?null:terms?items.filter(x=>terms.some(t=>hit(x,t))):items.filter(x=>blob(x).includes(q));
+  const missing=terms?terms.filter(t=>!items.some(x=>hit(x,t))):[];
   const grouped=!q&&items.some(x=>x.id.owner); const ownerOf=x=>x.id.owner||NO_OWNER;
   if(state.overviewOwner&&!(state.overviewOwner===FAV_GROUP?favs.length:items.some(x=>ownerOf(x)===state.overviewOwner))) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
@@ -11744,7 +11750,7 @@ function renderTiles(wrap,{home=false}={}){
   } else {
     const xs=sortTileItems(found||(grouped?(state.overviewOwner===FAV_GROUP?favs:items.filter(x=>ownerOf(x)===state.overviewOwner)):items),state.tileSort);
     sortCtl=xs.length>1?`<select class="op-sort" data-tile-sort aria-label="Trier les opérations">${Object.entries(TILE_SORTS).map(([k,l])=>`<option value="${k}"${(state.tileSort||'')===k?' selected':''}>${l}</option>`).join('')}</select>`:'';
-    if(found){ sub=`${xs.length} opération(s) trouvée(s) sur ${items.length}`; shown=xs.length; }
+    if(found){ sub=terms?`${xs.length} opération(s) trouvée(s) pour ${terms.length} élément(s) de la liste`:`${xs.length} opération(s) trouvée(s) sur ${items.length}`; shown=xs.length; }
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
     body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
@@ -11757,9 +11763,12 @@ function renderTiles(wrap,{home=false}={}){
     <button type="button" class="op-tile action" data-home-act="paste"><span class="op-tile-plus" aria-hidden="true">⌨</span><strong>Coller un tableau</strong><span class="op-tile-meta">Zone Excel copiée avec ses en-têtes (contrat, n° d’opération, maître d’ouvrage…)</span></button>
     <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
   if(home&&!items.length) sub='Aucune opération pour le moment';
-  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA)" aria-label="Rechercher une opération" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}</div>${sfStatsHtml()}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}</div>${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
   const search=wrap.querySelector('[data-home-search]');
-  if(search){ search.oninput=()=>{ state.homeQuery=search.value; rerender(); const s=wrap.querySelector('[data-home-search]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); }; search.onkeydown=e=>{ if(e.key==='Escape'&&search.value){ search.value=''; search.oninput(); } }; }
+  if(search){ search.oninput=()=>{ state.homeQuery=search.value; rerender(); const s=wrap.querySelector('[data-home-search]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); }; search.onkeydown=e=>{ if(e.key==='Escape'&&search.value){ search.value=''; search.oninput(); } };
+    // Liste collée depuis Excel ou un texte (une valeur par ligne) : les retours à la ligne deviennent des virgules.
+    search.onpaste=e=>{ const t=e.clipboardData?.getData('text')||''; const parts=t.split(/[\r\n\t,;]+/).map(v=>v.trim()).filter(Boolean); if(parts.length<2) return;
+      e.preventDefault(); search.value=parts.join(', '); search.oninput(); }; }
   const sortSel=wrap.querySelector('[data-tile-sort]'); if(sortSel) sortSel.onchange=()=>{ state.tileSort=sortSel.value; rerender(); };
   wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; rerender(); });
   wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });

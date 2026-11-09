@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.22.1','version');
+eq(APP_VERSION,'2.22.2','version');
 const app=readFileSync('js/app.js','utf8'), css=readFileSync('styles.css','utf8');
 // Fonctions de l'accueil évaluées sur des projets fictifs (même code que l'application).
 const src=app.slice(app.indexOf('const SF_SRC='),app.indexOf('function sfStatsHtml()'));
@@ -26,6 +26,6 @@ const s=sfStats(); eq([s.total,s.today,s.filled,s.docsOnly.map(p=>p.id)],[4,1,3,
 // Import Salesforce daté à l'intégration ; gardé dans la sauvegarde locale.
 eq(/if\(\/salesforce\/i\.test\(freePaste\.sourceLabel\|\|''\)&&\(n\|\|nAll\)\) p\.salesforceImports=/.test(app),true,'import daté');
 eq(serializeProjectFull({id:'p',docs:[],salesforceImports:[{at:123,values:4}]}).salesforceImports,[{at:123,values:4}],'sauvegardé');
-eq(/\$\{sfStatsHtml\(\)\}<div class="op-tiles">/.test(app)&&/data-sf-open/.test(app),true,'compteur et liste cliquable à l’accueil');
+eq(/\$\{sfStatsHtml\(\)\}(?:\$\{missing[^\n]*?)?<div class="op-tiles">/.test(app)&&/data-sf-open/.test(app),true,'compteur et liste cliquable à l’accueil');
 eq(/tr\.sf-added>td\.building-cell/.test(css)&&/sf-added/.test(app),true,'ligne en rouge');
 console.log(`test_v2_20_7 : ${n}/${n} OK`);

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.22.1','version');
+eq(APP_VERSION,'2.22.2','version');
 const html=readFileSync('index.html','utf8'), app=readFileSync('js/app.js','utf8');
 eq(/id="recentProjectsBox"[^>]*hidden/.test(html)&&/<ol id="recentProjects">/.test(html),true,'liste dans l’encart');
 eq(/function activateProject\(id\)\{ const p=state\.projects\.find\(x=>x\.id===id\); if\(!p\)return; p\.lastOpenedAt=Date\.now\(\);/.test(app),true,'date d’ouverture notée à chaque ouverture');

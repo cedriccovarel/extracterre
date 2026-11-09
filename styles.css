@@ -1363,3 +1363,6 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .aq-row .box-name{flex:1;min-width:0;overflow-wrap:anywhere}
 .aq-stage.paused{color:#9a6700;font-weight:600}
 .aq-remove{flex:none}
+
+/* v2.22.2 — recherche par liste de contrats */
+.op-missing{margin:6px 0 10px;padding:8px 12px;border-radius:8px;background:#fff4d6;color:#7a5200;font-size:.88rem;overflow-wrap:anywhere}

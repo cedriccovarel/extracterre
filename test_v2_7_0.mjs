@@ -8,7 +8,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {buildBuildingGrouping,analyzeDocuments} from './js/engine.js';
 import {DEFAULT_SOURCE_RULES,DOC_TYPES} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION, '2.22.1','version');
+eq(APP_VERSION, '2.22.2','version');
 const TXT=`Bâtiment X :
 Nombre de logements = 30
 Sref (ou Srt) = 2000,5
@@ -53,7 +53,7 @@ eq([sanitizeOccurrence({field:'q4pa_surf',value:45,method:'generic:label',excerp
 const app=fs.readFileSync('./js/app.js','utf8'), html=fs.readFileSync('./index.html','utf8'), obs=fs.readFileSync('./observatoire.html','utf8');
 ok(/method:'manual:free-paste'/.test(app)&&/state\.manualValues\[key\]=value/.test(app),'collage libre appliqué comme correction manuelle (prioritaire)');
 ok(/function sessionSnapshot\(/.test(app)&&/format:'extracterre-session'/.test(app)&&/id="exportSessionBtn"/.test(html),'export JSON de session');
-ok(/id="observatoryBtn"/.test(html)&&/id="observatoryExportBtn"/.test(html)&&/function merge\(snap\)/.test(obs),'observatoire alimenté par ExtracTerre (fichier exporté depuis v2.22.1)');
+ok(/id="observatoryBtn"/.test(html)&&/id="observatoryExportBtn"/.test(html)&&/function merge\(snap\)/.test(obs),'observatoire alimenté par ExtracTerre (fichier exporté depuis v2.22.2)');
 ok(/const esc=/.test(obs)&&!/innerHTML=[^;]*\$\{o\.identity\.name\}/.test(obs),'observatoire : textes échappés');
 // v2.7.1 — fiche de synthèse : en-têtes « Maison 1-01 : », partie descriptive (enveloppe, systèmes) pour toutes les maisons.
 const FICHE=`Maison 1-01 :

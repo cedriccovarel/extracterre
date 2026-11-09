@@ -1,3 +1,11 @@
+# v2.22.2 — Accueil : recherche par liste de contrats
+- Le champ « Rechercher une opération » accepte une liste collée (une valeur par ligne depuis Excel ou un texte, ou séparée par
+  des virgules / points-virgules) : elle devient « 4794, 4808, … » et les tuiles de tous les éléments trouvés s'affichent.
+- Un nombre = numéro de contrat exact, zéros de tête ignorés (4794 → 00004794, mais pas 00047940) ; un autre terme (OPE-…,
+  nom) cherche comme avant dans contrat, nom, code et maître d'ouvrage.
+- Les éléments de la liste sans tuile sont affichés : « Non trouvé(s) (2) : 5868, 5990 ».
+- Vérifié dans Chrome avec 25 opérations fictives et une liste de 22 contrats.
+
 # v2.22.1 — Export / import de session pour les grosses sessions
 - Export : progression « Export de la session… n / N », la page rend la main entre deux opérations (avant : ~2 min figée
   sans indication sur 351 opérations), message d'erreur si l'export échoue.
