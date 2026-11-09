@@ -2477,17 +2477,47 @@ async function exportSessionJson(){
   // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   // v2.20.7 — écrits projet par projet dans le fichier (même contenu JSON) : le texte de toutes les opérations n'est plus
   // en mémoire en même temps.
-  const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspace": {"projects": ['];
-  let n=0; for(const p of state.projects.filter(p=>!projectIsEmpty(p))){ await ensureProjectReads(p); parts.push(new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p),null,1)])); releaseProjectReads(p); }
-  parts.push(']}\n}');
+  // v2.22.1 — une opération par ligne, sans mise en forme (« workspaceFormat »: "lines-v1") : fichier ~15 % plus léger, et
+  // relu ligne par ligne à l'import (une session peut dépasser la taille maximale d'une chaîne de Chrome, ~537 M caractères).
+  // Le fichier reste un JSON valide. Progression affichée, la page rend la main entre deux opérations.
+  const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n'];
+  const list=state.projects.filter(p=>!projectIsEmpty(p));
+  let n=0; for(const p of list){ setLocalSaveUi(`Export de la session… ${n+1}/${list.length}`); await yieldToBrowser();
+    await ensureProjectReads(p); parts.push(new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p))+'\n'])); releaseProjectReads(p); }
+  parts.push(']}\n}\n');
   downloadBlob(new Blob(parts,{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`); setLocalSaveUi('Session restaurée',lastLocalSaveAt);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
 // les saisies, les collages et l'économie, sans le texte des documents.
+// v2.22.1 — lecture en flux, ligne par ligne : la tête (jusqu'à « "projects": [ »), puis une opération à la fois. Format
+// "lines-v1" : une opération par ligne ; ancien format (indenté) : une opération va de « {» à « } » en début de ligne. Aucune
+// chaîne ne contient tout le fichier, quelle que soit sa taille.
+async function readSessionFile(file){
+  const MARK=/"projects":\s*\[(\{?)\s*$/; const head=[]; let o=null, projects=null, buf=null, done=false, carry=[], count=0;
+  const push=p=>{ projects.push(p); count++; if(count%20===0) setLocalSaveUi(`Import de la session… ${count} opération(s)`); };
+  const onLine=line=>{
+    if(done) return;
+    if(projects===null){ const m=line.match(MARK); if(!m){ head.push(line); return; }
+      head.push(line.replace(/\{\s*$/,'')); o=JSON.parse(head.join('\n').replace(/^\uFEFF?[^{]*/,'')+']}}'); head.length=0; projects=[]; if(m[1]) buf=['{']; return; }
+    if(buf){ const end=/^\}(,\{|\]\}\s*)?$/.exec(line); if(!end){ buf.push(line); return; } buf.push('}'); push(JSON.parse(buf.join('\n'))); buf=end[1]===',{'?['{']:null; if(end[1]&&end[1]!==',{') done=true; return; }
+    const t=line.replace(/^,/,'').trim(); if(!t) return; if(t.startsWith(']')){ done=true; return; }
+    if(t==='{'){ buf=['{']; return; }
+    push(JSON.parse(t));
+  };
+  const reader=file.stream().pipeThrough(new TextDecoderStream()).getReader();
+  while(!done){ const {value,done:end}=await reader.read(); if(end) break;
+    let i=0, j; while((j=value.indexOf('\n',i))>=0){ carry.push(value.slice(i,j)); const line=carry.join(''); carry=[]; onLine(line); if(done) break; i=j+1; }
+    if(!done&&i<value.length) carry.push(value.slice(i)); }
+  try{ reader.cancel(); }catch{}
+  if(carry.length&&!done) onLine(carry.join(''));
+  if(o){ o.workspace={...(o.workspace||{}),projects}; return o; }
+  // Pas de liste d'opérations complètes (export sans « workspace ») : fichier lu d'un bloc.
+  return JSON.parse(head.join('\n').replace(/^\uFEFF?[^{]*/,''));
+}
 async function importSessionJson(file){
-  let o; try{ const t=await file.text(); o=JSON.parse(t.slice(Math.max(0,t.indexOf('{')))); }catch(err){ toast(`Session illisible : ${err?.message||err}`,'error'); return; }
+  let o; try{ setLocalSaveUi('Import de la session…'); o=await readSessionFile(file); }catch(err){ toast(`Session illisible : ${err?.message||err}`,'error'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
   if(o?.format!=='extracterre-session'||!Array.isArray(o.operations)){ toast('Ce fichier n’est pas une session ExtracTerre.','error'); return; }
   const date=String(o.exportedAt||'').slice(0,10)||'date inconnue', used=new Set(state.projects.map(p=>p.id)), fresh=()=>createProject(state.projects.length+1).id;
   const projects=o.workspace?.projects?.length?o.workspace.projects.map(hydrateProjectFull):o.operations.map(op=>{ const p=createProject(state.projects.length+1);
@@ -2946,7 +2976,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',exportSessionJson); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory); $('#observatoryExportBtn')?.addEventListener('click',exportObservatoryJson);
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',()=>exportSessionJson().catch(err=>{ console.error(err); toast(`Export de la session impossible : ${err?.message||err}`,'error'); setLocalSaveUi('Prêt',lastLocalSaveAt); })); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory); $('#observatoryExportBtn')?.addEventListener('click',exportObservatoryJson);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};

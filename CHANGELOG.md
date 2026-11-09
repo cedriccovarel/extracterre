@@ -1,3 +1,14 @@
+# v2.22.1 — Export / import de session pour les grosses sessions
+- Export : progression « Export de la session… n / N », la page rend la main entre deux opérations (avant : ~2 min figée
+  sans indication sur 351 opérations), message d'erreur si l'export échoue.
+- Fichier : une opération par ligne, sans mise en forme (`"workspaceFormat": "lines-v1"`), ~15 % plus léger, toujours un
+  JSON valide. L'import le relit en flux, ligne par ligne : une session n'est plus limitée par la taille maximale d'une
+  chaîne de Chrome (~537 millions de caractères ; la session du 09/11, 351 opérations, en faisait 546 millions et ne pouvait
+  plus être réimportée).
+- Les anciens fichiers de session (indentés) sont aussi relus en flux, opération par opération, quelle que soit leur taille
+  (l'export du 09/11, 550 Mo, devient importable).
+- Test : `test_v2_22_1.mjs`.
+
 # v2.22.0 — File d'analyse ; boutons pause et arrêt
 - Carte « Analyse du projet » : bouton « ☰ File d'analyse » (avec le nombre de documents). La fenêtre liste les documents en
   cours d'analyse (étape : lecture, OCR, extraction, en pause…) et ceux en attente ; chaque document peut être retiré (✕) ou

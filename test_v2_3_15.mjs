@@ -8,7 +8,7 @@ import {parseDocument} from './js/parsers.js';
 import {analyzeDocuments} from './js/engine.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-eq(APP_VERSION, '2.22.0','version');
+eq(APP_VERSION, '2.22.1','version');
 
 const po=(type,nature,name,s,ep,r)=>`<parois_opaques type_paroi="${type}"><nature>${nature}</nature><name>${name}</name><surface_totale>${s}</surface_totale><U_paroi>0.2</U_paroi><epaisseur_isolant>${ep}</epaisseur_isolant><resistance_thermique_isolant>${r}</resistance_thermique_isolant></parois_opaques>`;
 const pv=(name,t,s)=>`<parois_vitrees orientation="S"><name>${name}</name><type_vitrage>${t}</type_vitrage><surface_totale>${s}</surface_totale></parois_vitrees>`;
@@ -47,7 +47,7 @@ eq(v('wall_structure'),'Ossature bois','structure murs MOB');
 eq(v('structure'),'Ossature bois','structure principale');
 eq(v('roof_insulation_thickness'),300,'épaisseur toiture dominante');
 eq(v('roof_insulation_r'),11,'R toiture');
-eq(v('roof_structure'),undefined,'v2.22.0 : statut « toiture terrasse végétalisée » sans matériau → rien');
+eq(v('roof_structure'),undefined,'v2.22.1 : statut « toiture terrasse végétalisée » sans matériau → rien');
 // type_paroi 400 / nature 401 : plancher bas, jamais un mur.
 eq(v('floor_insulation_thickness'),120,'épaisseur plancher bas');
 eq(v('floor_insulation_r'),5.4,'R plancher bas');
