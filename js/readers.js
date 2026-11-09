@@ -348,6 +348,8 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
     if(opts.detectPlan||opts.forcePlan){ const p1=await pdf.getPage(1); const [x0,y0,x1,y1]=p1.view; const format=planFormatOf(file.name,x1-x0,y1-y0)||(opts.forcePlan?'choisi manuellement':null); p1.cleanup?.();
       if(format){ onProgress(1,{stage:'plan',page:1,totalPages}); return {kind:'pdf',plan:{format,width:Math.round(x1-x0),height:Math.round(y1-y0)},pages:[],text:'',pageCount:pdf.numPages}; } }
     for(let p=1;p<=pdf.numPages;p++){
+      // v2.22.0 — pause / arrêt entre deux pages (un long PDF n'attend plus la fin de sa lecture).
+      if(opts.pauseGate) await opts.pauseGate();
       throwIfAborted(opts.signal);
       let page=null, content=null, canvas=null;
       try{

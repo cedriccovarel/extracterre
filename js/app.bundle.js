@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.21.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.22.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.21.0';
+const APP_VERSION='2.22.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -4829,7 +4829,28 @@ function validPatch(p){
     validateRegex(r.sectionStartRegex,`${r.id||r.field}: sectionStartRegex`);
     validateRegex(r.sectionEndRegex,`${r.id||r.field}: sectionEndRegex`);
   }
+  // v2.21.0 — réécriture du texte collé (données manuelles) avant lecture : « rechercher / remplacer » par expression régulière.
+  const rw=safeArray(p.pasteRewrites); if(rw.length>60) throw new Error('Patch refusé : trop de réécritures de collage.');
+  for(const r of rw){
+    validateRegex(r?.find,`${r?.id||'réécriture'}: find`,900);
+    if(typeof r.find!=='string'||typeof (r.replace??'')!=='string'||String(r.replace??'').length>2000) throw new Error(`Réécriture de collage invalide : ${r?.id||'—'}`);
+    if(r.flags!=null&&!/^[gimsu]{0,5}$/.test(String(r.flags))) throw new Error(`Options invalides : ${r.id||'réécriture'}`);
+    validateRegex(r.when,`${r.id||'réécriture'}: when`,900);
+  }
   return true;
+}
+// Texte collé réécrit par les patchs chargés (règles dans l'ordre ; « when » limite une règle aux textes qui le contiennent).
+function applyPasteRewrites(text){
+  let out=String(text??''); const applied=[];
+  for(const p of registry) for(const r of safeArray(p.pasteRewrites)){
+    try{
+      if(r.when&&!new RegExp(r.when,'im').test(out)) continue;
+      const flags=[...new Set(`g${r.flags==null?'im':r.flags}`)].join('');
+      const next=out.replace(new RegExp(r.find,flags),String(r.replace??''));
+      if(next!==out){ out=next; applied.push(`${p.id}:${r.id||'réécriture'}`); }
+    }catch{}
+  }
+  return {text:out,applied};
 }
 function uniqueById(items){ const m=new Map(); for(const x of items){ if(x?.id) m.set(x.id,x); } return [...m.values()]; }
 function readLocal(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return []} }
@@ -5455,6 +5476,8 @@ async function readPdf(file, onProgress=()=>{}, options={}) {
     if(opts.detectPlan||opts.forcePlan){ const p1=await pdf.getPage(1); const [x0,y0,x1,y1]=p1.view; const format=planFormatOf(file.name,x1-x0,y1-y0)||(opts.forcePlan?'choisi manuellement':null); p1.cleanup?.();
       if(format){ onProgress(1,{stage:'plan',page:1,totalPages}); return {kind:'pdf',plan:{format,width:Math.round(x1-x0),height:Math.round(y1-y0)},pages:[],text:'',pageCount:pdf.numPages}; } }
     for(let p=1;p<=pdf.numPages;p++){
+      // v2.22.0 — pause / arrêt entre deux pages (un long PDF n'attend plus la fin de sa lecture).
+      if(opts.pauseGate) await opts.pauseGate();
       throwIfAborted(opts.signal);
       let page=null, content=null, canvas=null;
       try{
@@ -9268,6 +9291,7 @@ Groupe Refroidissement Categorie Tic Tic Ref.
 
 
 
+
 const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
 // Libellé sans unité finale : « DH des zones traversantes (en °C.h) » → « DH des zones traversantes ».
@@ -9313,6 +9337,8 @@ function unstackLabels(text){
 // → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}],descriptive:[lignes de texte]}
 function parseFreePaste(text){
   // v2.10.2 — fiche Évaluation Salesforce (favori) : d'abord réécrite en « libellé = valeur » par bâtiment.
+  // v2.21.0 — patchs d'amélioration (FAQ) : réécritures du texte collé, avant toute lecture.
+  const pr=applyPasteRewrites(text); const patched=pr.applied.length?pr:null; if(patched) text=pr.text;
   let sfNotes=null; if(looksLikeSalesforceEvaluation(text)){ const c=salesforceEvaluationToPaste(text); text=c.text; sfNotes=c.notes; }
   // Fiche Salesforce : le reste de la page (menus, listes associées) n'est pas lu comme un CCTP.
   const st=unstackLabels(text); text=st.text; const stacked=st.pairs>0;
@@ -9341,7 +9367,7 @@ function parseFreePaste(text){
     if(!sec&&/\d/.test(l)&&!/^\s*[>*-]|\bpage\s+\d/i.test(l)) unmatched.push({building:descBld[i],line:l,label:'',raw:l}); });
   const desc=stacked?[]:descriptiveItems(descriptive);
   if(desc.length) out.push({name:'*',items:desc});
-  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked,...(sfNotes?{salesforce:true,notes:sfNotes,text}:{})};
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked,...(patched?{text,patchRewrites:patched.applied}:{}),...(sfNotes?{salesforce:true,notes:sfNotes,text}:{})};
 }
 // « Cep : 35,2 » (libellé court reconnu) est une paire ; « PRODUCTION : Pompe à chaleur… » reste du texte descriptif.
 function fp_shortPair(line){ const m=line.match(fp_PAIR); return !!m&&!!matchFreeLabel(m[1]); }
@@ -11504,10 +11530,12 @@ async function changeDocumentFamily(id,value){
 
 // v1.1.20 — contrôle coopératif de l'analyse + remplissage progressif
 const analysisControl={running:false,paused:false,stopRequested:false,controllers:new Map(),pauseWaiters:[]};
+// v2.22.0 — tous les boutons pause / arrêt (barre des résultats, carte « Analyse du projet », file d'analyse) sont reliés.
 function syncAnalysisControlUi(){
-  const pause=$('#analysisPauseBtn'), stop=$('#analysisStopBtn');
-  if(pause){ pause.hidden=!analysisControl.running; pause.textContent=analysisControl.paused?'▶':'⏸'; pause.title=analysisControl.paused?'Reprendre l’analyse':'Mettre l’analyse en pause'; pause.classList.toggle('active',analysisControl.paused); }
-  if(stop){ stop.hidden=!analysisControl.running; stop.disabled=!analysisControl.running; }
+  const run=analysisControl.running, paused=analysisControl.paused, stopping=analysisControl.stopRequested;
+  $$('[data-analysis-pause]').forEach(b=>{ const long=b.classList.contains('btn'); b.hidden=!run; b.disabled=!run||stopping;
+    b.textContent=paused?(long?'▶ Reprendre':'▶'):(long?'⏸ Pause':'⏸'); b.title=paused?'Reprendre l’analyse':'Mettre l’analyse en pause'; b.classList.toggle('active',paused); });
+  $$('[data-analysis-stop]').forEach(b=>{ b.hidden=!run; b.disabled=!run||stopping; });
 }
 function resolveAnalysisPause(){ const waits=analysisControl.pauseWaiters.splice(0); for(const r of waits) try{r();}catch{} }
 async function waitForAnalysisGate(){
@@ -11520,16 +11548,17 @@ async function waitForAnalysisGate(){
 function toggleAnalysisPause(){
   if(!analysisControl.running) return;
   analysisControl.paused=!analysisControl.paused;
-  if(!analysisControl.paused){ resolveAnalysisPause(); toast('Analyse reprise.','info'); }
-  else toast('Pause demandée : les étapes en cours se figent au prochain point sûr.','info');
-  syncAnalysisControlUi();
+  if(!analysisControl.paused){ resolveAnalysisPause(); toast('Analyse reprise.','info'); setStatus('Analyse reprise'); }
+  else { toast('Pause : chaque document s’arrête à la fin de la page en cours.','info'); setStatus('Pause demandée — fin de la page en cours'); }
+  syncAnalysisControlUi(); renderAnalysisQueue();
 }
 function stopAnalysis(){
   if(!analysisControl.running) return;
   analysisControl.stopRequested=true; analysisControl.paused=false; resolveAnalysisPause();
   for(const c of analysisControl.controllers.values()) try{c.abort('analysis-stop');}catch{}
-  setStatus('Arrêt demandé — conservation des résultats déjà trouvés'); syncAnalysisControlUi();
+  setStatus('Arrêt demandé — conservation des résultats déjà trouvés'); syncAnalysisControlUi(); renderAnalysisQueue();
 }
+const analysisStoppedError=()=>{ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; return e; };
 
 state.projects.push(createProject(1)); state.activeProjectId=state.projects[0].id;
 function activeProject(){ return state.projects.find(p=>p.id===state.activeProjectId)||state.projects[0]; }
@@ -11999,22 +12028,77 @@ function renderFiles(){
     const unloaded=d.status==='ready'&&!d.file?' · restauré localement — redéposez le fichier seulement pour une nouvelle lecture/OCR':d.status==='missing'?' · fichier à redéposer':'';
     const cloudMeta=d.remoteAnalysis?.status==='completed'?' · ☁ distant':d.cloudFallback?' · ☁ indisponible → local':String(d.liveStage||'').startsWith('cloud-')?' · ☁ traitement distant':'';
     const isManualFree=d.familyMode==='manual'&&(d.families||[]).includes('annex'); const spec=(d.read?.re2020?'<span class="file-specialized-badge xml">XML structuré</span>':'')+(isManualFree?'<span class="file-specialized-badge manual" title="Moteur libre : tous les parseurs pertinents, sans liste blanche de champs">🛠 Moteur libre</span>':''); const completeness=documentCompleteness(d); const comp=completeness?`<span class="file-completeness ${completeness.ratio>=.75?'ok':'warn'}" title="Manquants : ${escapeHtml(completeness.missing.join(', ')||'aucun')}">${completeness.hits}/${completeness.total} attendus</span>`:''; const famSel=familySelectHtml(d); const mismatch=d.familyMode==='manual'&&!(d.families||[]).includes('annex')&&d.classification&&!(autoFamiliesForType(d.classification.automaticType).includes('annex'))&&(Number(d.classification.confidence)||0)>=.75&&!autoFamiliesForType(d.classification.automaticType).some(f=>(d.families||[]).includes(f))?`<span class="file-family-warning" title="Type détecté : ${escapeHtml(d.classification.automaticType||'')}">⚠ ≠ détection</span>`:''; const canLlm=d.status==='ready'&&!!d.read?.pages?.length&&!d.read?.re2020&&!!state.result; const llmBtn=d.status==='ready'&&!d.read?.re2020&&!plan?`<button class="btn light llm-file" data-id="${d.id}" ${canLlm&&d.llmStatus!=='running'?'':'disabled'} title="Proposer les champs manquants avec l’IA ; chaque proposition est vérifiée mot pour mot puis soumise à ✓ / ✕">${d.llmStatus==='running'?'IA…':'🤖 IA'}</button>`:'';
-    const liveLabel=d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
+    const liveLabel=d.status==='reading'&&d.liveStage==='paused'?'En pause':d.status==='reading'&&String(d.liveStage||'').startsWith('cloud-')?'Cloud…':d.status==='reading'?'Lecture parallèle…':null;
     return `<div class="file-row"><div class="file-icon">${d.name.split('.').pop().toUpperCase().slice(0,4)}</div><div class="file-main"><div class="file-name" title="${escapeHtml(d.relativePath||d.name)}">${escapeHtml(d.name)}</div><div class="file-meta">${(d.size/1024/1024).toFixed(2)} Mo · ${escapeHtml(d.status==='ready'?d.type:d.status==='missing'?'À redéposer':d.status==='error'?'Erreur':d.status==='timeout'?'À relancer · délai dépassé':liveLabel||'En attente')}${d.status==='ready'&&d.buildings?` · ${d.buildings.expectedCount?`${d.buildings.names.length}/${d.buildings.expectedCount}`:d.buildings.names.length} bâtiment(s)`:''}${d.read?.ocr?.used?` · OCR ${d.read.ocr.pages.length} p.`:''}${Array.isArray(d.cachedOccurrences)?(isPlanDoc(d)?' · non analysé (plan à mesurer dans Ashton)':' · analysé'):''}${escapeHtml(cloudMeta)}${escapeHtml(targetedMeta)}${escapeHtml(unloaded)}</div></div><div class="file-tags">${d.classification?`<span class="badge doc">${escapeHtml(d.type)}</span>`:''}${spec}${famSel}${mismatch}${comp}</div><div class="file-actions">${isPlanDoc(d)?`<button class="btn light ashton-file" data-id="${d.id}" ${d.file?'':'disabled'} title="${d.file?'Mesurer ce plan dans Ashton : longueurs, largeurs, surfaces et quantités, renvoyées dans l’onglet Plans':'Redéposez ce plan pour l’ouvrir dans Ashton'}">Ashton ${KUTCH_ICON}</button>`:''}<button class="btn light preview-file" ${plan?'hidden':''} data-id="${d.id}" ${canPreview?'':'disabled'} title="${canPreview?'Afficher ce fichier dans ExtracTerre sans ouvrir de nouvel onglet':'Redéposez ce fichier pour afficher son aperçu'}">👁 Aperçu</button>${llmBtn}${showTarget||targetedRunning?`<button class="btn light targeted-file" data-id="${d.id}" ${targetedRunning||!canTarget?'disabled':''} title="${!d.file?'Redéposez ce PDF pour réactiver le crible fin ; les résultats déjà sauvegardés seront conservés.':!state.result?'Terminez d’abord la première consolidation du projet.':'Repasser ce PDF au crible fin avec OCR maximal, sans retraiter les autres documents'}">${targetedRunning?'Crible fin…':'🔎 Crible fin'}</button>`:''}${d.status==='timeout'?`<button class="btn light retry-file" data-id="${d.id}">↻ Relancer sans limite</button>`:''}<button class="icon-btn remove-file" data-id="${d.id}" aria-label="Supprimer">×</button></div></div>`;
   }).join('');
-  $$('.remove-file').forEach(b=>b.onclick=async()=>{
-    // v2.3.7 — retirer un document ne supprime plus les données qu'il a déjà fournies : elles restent dans la consolidation.
-    const id=b.dataset.id; const doc=state.docs.find(d=>d.id===id); const kept=retainRemovedDocument(activeProject(),doc);
-    state.docs=state.docs.filter(d=>d.id!==id); try{await deleteDocumentCheckpoint(id);}catch{}
-    if(state.result&&(state.docs.some(d=>d.status==='ready')||hasRetainedData()||state.manualPasteRows.length)) recomputeProject(kept?`${doc?.name||'Document'} retiré de la liste : ${kept} valeur(s) extraite(s) conservée(s).`:'Document retiré de la liste.');
-    else { renderAll(); if(kept) toast(`${doc?.name||'Document'} retiré : ${kept} valeur(s) extraite(s) conservée(s) pour la prochaine consolidation.`,'success'); }
-    scheduleWorkspaceCheckpoint('suppression document',50); });
+  $$('.remove-file').forEach(b=>b.onclick=()=>removeDocuments([b.dataset.id]));
   $$('.retry-file').forEach(b=>b.onclick=()=>retryTimedOutDocument(b.dataset.id));
   $$('.targeted-file').forEach(b=>b.onclick=()=>targetedReanalysis(b.dataset.id));
   $$('.family-select').forEach(sel=>{ sel.onchange=()=>changeDocumentFamily(sel.dataset.id,sel.value); sel.onclick=e=>e.stopPropagation(); });
   $$('.llm-file').forEach(b=>b.onclick=()=>llmAssistDocument(b.dataset.id));
   $$('.preview-file').forEach(b=>b.onclick=()=>openFilePreview(b.dataset.id));
   $$('.ashton-file').forEach(b=>b.onclick=()=>openAshton(b.dataset.id));
+  renderAnalysisQueue();
+}
+// v2.3.7 — retirer un document ne supprime plus les données qu'il a déjà fournies : elles restent dans la consolidation.
+// v2.22.0 — plusieurs à la fois ; pendant une analyse, un document en cours est interrompu, un document en attente est sauté
+// (la consolidation de fin d'analyse tient compte du retrait).
+async function removeDocuments(ids){
+  const docs=ids.map(id=>state.docs.find(d=>d.id===id)).filter(Boolean); if(!docs.length) return;
+  let kept=0;
+  for(const doc of docs){
+    if(analysisControl.running){ doc.removed=true; const c=analysisControl.controllers.get(doc.id); if(c) try{c.abort('analysis-remove');}catch{} }
+    if(analysisControl.running) resolveAnalysisPause();
+    kept+=retainRemovedDocument(activeProject(),doc)||0;
+    state.docs=state.docs.filter(d=>d!==doc); try{await deleteDocumentCheckpoint(doc.id);}catch{}
+  }
+  const label=docs.length===1?(docs[0].name||'Document'):`${docs.length} documents`;
+  const msg=kept?`${label} retiré(s) de la liste : ${kept} valeur(s) extraite(s) conservée(s).`:`${label} retiré(s) de la liste.`;
+  if(analysisControl.running){ renderFiles(); toast(msg,'info'); }
+  else if(state.result&&(state.docs.some(d=>d.status==='ready')||hasRetainedData()||state.manualPasteRows.length)) recomputeProject(msg);
+  else { renderAll(); if(kept) toast(msg,'success'); }
+  scheduleWorkspaceCheckpoint('suppression document',50);
+}
+// v2.22.0 — file d'analyse : documents en cours de lecture et en attente, retrait individuel ou groupé, pause / arrêt.
+const QUEUE_SKIP=new Set(['ready','timeout','reading','missing']);
+function analysisQueueDocs(){
+  const active=state.docs.filter(d=>d.status==='reading');
+  const waiting=state.docs.filter(d=>!!d.file&&!QUEUE_SKIP.has(d.status));
+  return {active,waiting};
+}
+const queueSelection=new Set();
+const QUEUE_STAGES={paused:'en pause',reading:'lecture',pdf:'lecture PDF','page-done':'lecture PDF',ocr:'OCR','ocr-wait':'attente OCR','ocr-init':'initialisation OCR',classification:'classement',parsing:'extraction',checkpoint:'enregistrement'};
+function renderAnalysisQueue(){
+  const {active,waiting}=analysisQueueDocs(), n=active.length+waiting.length;
+  const count=$('#analysisQueueCount'); if(count){ count.hidden=!n; count.textContent=String(n); }
+  const dlg=$('#analysisQueueDialog'); if(!dlg?.open) return;
+  const ids=new Set([...active,...waiting].map(d=>d.id)); for(const id of [...queueSelection]) if(!ids.has(id)) queueSelection.delete(id);
+  const run=analysisControl.running, st=!run?'Aucune analyse en cours':analysisControl.stopRequested?'Arrêt en cours…':analysisControl.paused?'Analyse en pause':'Analyse en cours';
+  const row=(d,isActive)=>{ const stage=isActive?(QUEUE_STAGES[d.liveStage]||(String(d.liveStage||'').startsWith('cloud')?'Cloud':'lecture')):d.status==='error'?'erreur précédente, sera relu':'en attente';
+    return `<label class="box-row aq-row"><input type="checkbox" data-aq-pick="${d.id}"${queueSelection.has(d.id)?' checked':''}><span class="box-name">${escapeHtml(d.name)}<small>${((d.size||0)/1024/1024).toFixed(2)} Mo · <span class="aq-stage${d.liveStage==='paused'?' paused':''}">${escapeHtml(stage)}</span></small></span><button type="button" class="icon-btn aq-remove" data-aq-remove="${d.id}" title="Retirer ce document de la liste">✕</button></label>`; };
+  const group=(title,list,isActive,empty)=>`<h4>${title}<small>${list.length}</small></h4>${list.length?list.map(d=>row(d,isActive)).join(''):`<div class="empty-small">${empty}</div>`}`;
+  const scroll=dlg.querySelector('.box-list')?.scrollTop||0;
+  dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Analyse du projet</span><h3>File d’analyse</h3><p>${escapeHtml(st)} · ${n} document(s). Retirer un document en cours l’interrompt ; les valeurs déjà extraites d’un document sont conservées.</p></div><button class="icon-btn" type="button" data-aq="close" aria-label="Fermer">×</button></div>
+    <div class="box-list aq-list">${group('En cours d’analyse',active,true,run?'Aucun document en lecture en ce moment.':'Aucune analyse en cours.')}${group('En attente d’analyse',waiting,false,'Aucun document en attente.')}</div>
+    <div class="search-integrate-foot box-foot"><span data-aq="msg">${queueSelection.size?`${queueSelection.size} sélectionné(s)`:''}</span>
+      <button class="btn light" type="button" data-analysis-pause hidden>⏸ Pause</button><button class="btn light danger" type="button" data-analysis-stop hidden>⏹ Arrêter</button>
+      <button class="btn light" type="button" data-aq="all"${n?'':' disabled'}>${n&&queueSelection.size===n?'Tout décocher':'Tout cocher'}</button>
+      <button class="btn primary" type="button" data-aq="remove"${queueSelection.size?'':' disabled'}>Retirer la sélection</button></div></div>`;
+  const list=dlg.querySelector('.box-list'); if(list) list.scrollTop=scroll;
+  dlg.querySelectorAll('[data-aq-pick]').forEach(b=>b.onchange=()=>{ if(b.checked) queueSelection.add(b.dataset.aqPick); else queueSelection.delete(b.dataset.aqPick); renderAnalysisQueue(); });
+  dlg.querySelectorAll('[data-aq-remove]').forEach(b=>b.onclick=e=>{ e.preventDefault(); queueSelection.delete(b.dataset.aqRemove); removeDocuments([b.dataset.aqRemove]); });
+  dlg.querySelector('[data-aq="close"]').onclick=()=>dlg.close();
+  dlg.querySelector('[data-aq="all"]').onclick=()=>{ const all=[...active,...waiting].map(d=>d.id); if(queueSelection.size===all.length) queueSelection.clear(); else all.forEach(id=>queueSelection.add(id)); renderAnalysisQueue(); };
+  dlg.querySelector('[data-aq="remove"]').onclick=()=>{ const sel=[...queueSelection]; queueSelection.clear(); removeDocuments(sel); };
+  dlg.querySelectorAll('[data-analysis-pause]').forEach(b=>b.onclick=toggleAnalysisPause);
+  dlg.querySelectorAll('[data-analysis-stop]').forEach(b=>b.onclick=stopAnalysis);
+  syncAnalysisControlUi();
+}
+function openAnalysisQueue(){
+  let dlg=$('#analysisQueueDialog');
+  if(!dlg){ dlg=document.createElement('dialog'); dlg.id='analysisQueueDialog'; dlg.className='search-integrate-dialog box-dialog analysis-queue-dialog'; document.body.appendChild(dlg);
+    dlg.addEventListener('close',()=>queueSelection.clear()); }
+  if(!dlg.open) dlg.showModal(); renderAnalysisQueue();
 }
 
 // v2.5.0 — paquet complet du questionnaire financier (.zip) : seul l'export « _questionnaire.json » est importé (il reprend
@@ -12587,6 +12671,17 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       // (un document en file derrière un long OCR n'est plus interrompu sans avoir travaillé).
       let rejectTimeout=null;
       const armTimeout=(ms)=>{ if(timeoutId) clearTimeout(timeoutId); timeoutId=ms&&rejectTimeout?setTimeout(()=>{ timeoutTriggered=true; controller.abort('analysis-timeout'); const e=new Error(`Analyse interrompue : aucune avancée pendant ${d.analysisTimeoutMinutes} minutes.`); e.name='TimeoutError'; rejectTimeout(e); },ms):null; };
+      // v2.22.0 — point de pause : délai d'inactivité suspendu pendant la pause ; document retiré ou arrêt → sortie.
+      let reading=true;
+      const gate=async()=>{
+        if(d.removed||analysisControl.stopRequested) throw analysisStoppedError();
+        if(!analysisControl.paused) return;
+        armTimeout(0); const stage=d.liveStage; d.liveStage='paused'; renderFiles();
+        setStatus('Analyse en pause — résultats déjà trouvés conservés');
+        while(analysisControl.paused&&!analysisControl.stopRequested&&!d.removed) await new Promise(r=>analysisControl.pauseWaiters.push(r));
+        if(analysisControl.stopRequested||d.removed) throw analysisStoppedError();
+        d.liveStage=stage; renderFiles(); if(reading&&rejectTimeout) armTimeout(d.analysisTimeoutMinutes*60*1000);
+      };
       const progress=(p,meta)=>{
         if(rejectTimeout) armTimeout(meta?.stage==='ocr-wait'?0:d.analysisTimeoutMinutes*60*1000);
         progressByDoc.set(d.id,Math.max(0,Math.min(1,p||0)));
@@ -12616,19 +12711,20 @@ async function analyze(onlyIds=null,manualUnlimited=false){
           }
         }
         d.processingLocation=d.processingLocation||'local';
-        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal,detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&(d.families||[]).includes('plan')});
+        return readFile(d.file,progress,{mode:ocrMode,lang:'fra+eng',signal:controller.signal,pauseGate:gate,detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&(d.families||[]).includes('plan')});
       })();
       const timeoutMinutes=remotePlanned?30:5; d.analysisTimeoutMinutes=timeoutMinutes;
       if(noLimit) d.read=await readPromise;
       else d.read=await Promise.race([readPromise,new Promise((_,reject)=>{ rejectTimeout=reject; armTimeout(timeoutMinutes*60*1000); })]);
+      reading=false; if(timeoutId){ clearTimeout(timeoutId); timeoutId=null; }
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.86));
-      if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
+      await gate();
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
       d.classification=classifyForSelectedFamily(d);
       d.type=d.classification.type;
       d.buildings=detectBuildings(d);
       await yieldToBrowser();
-      if(!(await waitForAnalysisGate())){ const e=new Error('Analyse arrêtée par l’utilisateur.'); e.name='AnalysisStopped'; throw e; }
+      await gate();
       d.status='ready'; d.retryUnlimited=false;
       if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
       try{
@@ -12642,6 +12738,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       d.analysisDurationMs=Math.round(performance.now()-started);
       progressByDoc.set(d.id,Math.max(progressByDoc.get(d.id)||0,.97));
       d.liveStage='checkpoint'; updateParallelStatus(d,{stage:'checkpoint'},true); await yieldToBrowser();
+      if(d.removed) throw analysisStoppedError();
       await checkpointDocument(activeProject(),d);
       const extractedFields=[...new Set((d.cachedOccurrences||[]).map(o=>o.field).filter(Boolean))];
       const structuredThermalEvidence=(d.cachedOccurrences||[]).filter(o=>o.baoBreakdown||o.baoGes).map(o=>({field:o.field,value:o.value,page:o.page,breakdown:o.baoBreakdown||null,ges:o.baoGes||null,checks:o.baoChecks||null})).slice(0,12);
@@ -12649,7 +12746,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       // Les champs de ce document sont visibles immédiatement pendant que les autres continuent.
       await refreshProgressiveResults(d.name);
     }catch(e){
-      const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||analysisControl.stopRequested;
+      const stopped=e?.name==='AnalysisStopped'||controller.signal.reason==='analysis-stop'||controller.signal.reason==='analysis-remove'||analysisControl.stopRequested||d.removed;
       const timedOut=!stopped&&(timeoutTriggered||(controller.signal.aborted&&controller.signal.reason==='analysis-timeout'));
       if(stopped){ d.status=Array.isArray(d.cachedOccurrences)?'ready':'pending'; d.error=null; }
       else if(timedOut){ d.status='timeout'; d.error=`Analyse interrompue : aucune avancée pendant ${d.analysisTimeoutMinutes||5} minutes. Relance manuelle disponible sans limite de temps.`; d.retryUnlimited=false; }
@@ -12659,7 +12756,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       if(timeoutId) clearTimeout(timeoutId);
       analysisControl.controllers.delete(d.id);
       progressByDoc.set(d.id,1); delete d.liveStage; activeIds.delete(d.id); done++; renderFiles();
-      if(d.status!=='ready') await checkpointWorkspace(`état ${d.name}`,true);
+      if(d.status!=='ready'&&!d.removed) await checkpointWorkspace(`état ${d.name}`,true);
       updateParallelStatus(d,{stage:d.status==='ready'?'done':'error'},true);
       // Petit créneau pour permettre au navigateur de récupérer les canvases/ArrayBuffer détruits.
       await new Promise(r=>setTimeout(r,30));
@@ -12675,6 +12772,8 @@ async function analyze(onlyIds=null,manualUnlimited=false){
           if(!(await waitForAnalysisGate())) return;
           const i=cursor++;
           if(i>=pendingDocs.length||analysisControl.stopRequested) return;
+          // v2.22.0 — document retiré de la file pendant l'analyse : sauté.
+          if(pendingDocs[i].removed){ progressByDoc.set(pendingDocs[i].id,1); done++; updateParallelStatus(); continue; }
           await processDocument(pendingDocs[i]);
         }
       };
@@ -12703,7 +12802,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     const timedOut=state.docs.filter(d=>d.status==='timeout').length;
     toast(`${state.result?.newlyParsedCount||0} nouveau${state.result?.newlyParsedCount===1?'':'x'} document${state.result?.newlyParsedCount===1?'':'s'} analysé${state.result?.newlyParsedCount===1?'':'s'} ; ${state.result?.reusedParsedCount||previouslyAnalyzed} document(s) réutilisé(s)${timedOut?` ; ${timedOut} fichier(s) mis de côté après 5 min`:''}.`,timedOut?'warn':'success');
   }catch(e){ toast(e.message||String(e),'error'); setStatus('Analyse interrompue'); const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Estimation interrompue'; }
-  finally{ analysisControl.running=false; analysisControl.paused=false; resolveAnalysisPause(); analysisControl.controllers.clear(); syncAnalysisControlUi(); $('#analyzeBtn').disabled=false; }
+  finally{ analysisControl.running=false; analysisControl.paused=false; resolveAnalysisPause(); analysisControl.controllers.clear(); syncAnalysisControlUi(); renderAnalysisQueue(); $('#analyzeBtn').disabled=false; }
 }
 
 function retryTimedOutDocument(id){ const d=state.docs.find(x=>x.id===id); if(!d)return; d.status='pending'; d.error=null; d.retryUnlimited=true; toast(`Relance sans limite : ${d.name}`,'info'); analyze([id],true); }
@@ -14144,6 +14243,7 @@ async function handlePatchFile(file){
     const p=await importImprovementPatchFile(file);
     renderPatchUi();
     const reapplied=await reapplyPatchesToReadyDocuments();
+    if(p.pasteRewrites?.length&&!p.extractionRules?.length){ toast(`Patch « ${p.title||p.id} » chargé : il s'applique au prochain collage de données manuelles.`,'success'); return; }
     toast(reapplied?`Patch « ${p.title||p.id} » chargé et appliqué immédiatement à ${reapplied} document(s) déjà analysé(s).`:`Patch « ${p.title||p.id} » chargé. Il sera utilisé à la prochaine analyse.`,'success');
   }catch(err){toast(`Patch refusé : ${err.message||err}`,'error');}
 }
@@ -14254,7 +14354,9 @@ function wire(){
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
       if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
       addFiles(fs); }catch(err){ toast(`Import impossible : ${err?.message||err}`,'error'); } },true);
-  $('#analyzeBtn').onclick=()=>analyze(); const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); $('#manualDataDialog')?.addEventListener('close',()=>refreshMiniWindow()); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const miniBtn=$('#miniWindowBtn'); if(miniBtn) miniBtn.onclick=openMiniWindow; const recent=$('#recentProjects'); if(recent) recent.onclick=e=>{ const b=e.target.closest('[data-recent-project]'); if(b) activateProject(b.dataset.recentProject); }; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
+  $('#analyzeBtn').onclick=()=>analyze();
+  $$('[data-analysis-pause]').forEach(b=>b.onclick=toggleAnalysisPause); $$('[data-analysis-stop]').forEach(b=>b.onclick=stopAnalysis);
+  { const q=$('#analysisQueueBtn'); if(q) q.onclick=openAnalysisQueue; } const manualAnalysisBtn=$('#manualAnalysisBtn'); if(manualAnalysisBtn) manualAnalysisBtn.onclick=openManualAnalysisDialog; const manualOpen=$('#manualDataBtn'); if(manualOpen) manualOpen.onclick=openManualDataDialog; const manualPaste=$('#manualDataPaste'); if(manualPaste) manualPaste.oninput=onManualPasteInput; const manualApply=$('#manualDataApply'); if(manualApply) manualApply.onclick=applyManualPaste; const sfLink=$('#sfBookmarklet'); if(sfLink){ sfLink.href=bookmarkletHref(); sfLink.onclick=e=>{ e.preventDefault(); toast('Glissez ce bouton dans la barre de favoris de Chrome, puis cliquez-le depuis une fiche Salesforce.','info'); }; } const capBtn=$('#captureOcrBtn'); if(capBtn) capBtn.onclick=captureTabOcr; if(manualPaste) manualPaste.addEventListener('paste',e=>{ const f=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'))?.getAsFile(); if(f){ e.preventDefault(); ocrToFreePaste(f); } }); window.addEventListener('hashchange',receiveBookmarkletText); listenImportRelay(); try{ window.name='extracterre'; }catch{} const manualClear=$('#manualDataClear'); if(manualClear) manualClear.onclick=clearManualPaste; const manualClose=$('#manualDataClose'); if(manualClose) manualClose.onclick=()=>$('#manualDataDialog')?.close(); $('#manualDataDialog')?.addEventListener('close',()=>refreshMiniWindow()); const previewDlg=$('#filePreviewDialog'); const previewClose=$('#filePreviewClose'); if(previewClose) previewClose.onclick=()=>previewDlg?.close(); if(previewDlg){ previewDlg.addEventListener('close',closeFilePreview); previewDlg.addEventListener('cancel',()=>setTimeout(closeFilePreview,0)); } $('#newProjectBtn').onclick=addNewProject; const miniBtn=$('#miniWindowBtn'); if(miniBtn) miniBtn.onclick=openMiniWindow; const recent=$('#recentProjects'); if(recent) recent.onclick=e=>{ const b=e.target.closest('[data-recent-project]'); if(b) activateProject(b.dataset.recentProject); }; const lockBtn=$('#lockBtn'); if(lockBtn) lockBtn.onclick=async()=>{ try{await checkpointWorkspace('verrouillage',true);await syncLearningJournalNow(false);}catch{} globalThis.__lockExtracterre?.(); }; $('#clearBtn').onclick=async()=>{ if(!confirm('Effacer la session locale ExtracTerre ? Les résultats et checkpoints du projet seront supprimés. Le journal d’amélioration et les règles de sources seront conservés.')) return; try{await clearWorkspaceSnapshot();}catch(err){toast(`Impossible d’effacer complètement la sauvegarde locale : ${err?.message||err}`,'warn');} state.projects=[createProject(1)];state.activeProjectId=state.projects[0].id;syncProjectInput();renderAll();lastLocalSaveAt=null;setLocalSaveUi('Session vide',null);await refreshJournalUi();toast('Session locale effacée. Le journal d’amélioration est conservé.','success');};
   const journalSync=$('#journalSyncBtn'); if(journalSync) journalSync.onclick=()=>syncLearningJournalNow(true);
   const learningRefresh=$('#learningMemoryRefresh'); if(learningRefresh) learningRefresh.onclick=()=>syncLearningMemoryFromRemote(true);
   const learningClear=$('#learningMemoryClear'); if(learningClear) learningClear.onclick=async()=>{ if(!confirm('Effacer toute la mémoire d’apprentissage locale de ce navigateur ? Le journal d’amélioration restera intact.')) return; await clearLearningMemory(); await renderLearningMemoryUi(); toast('Mémoire d’apprentissage locale effacée.','success'); };

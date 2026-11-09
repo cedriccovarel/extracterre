@@ -11,16 +11,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=2.21.0">
-  <script defer src="js/journal-config.js?v=2.21.0"></script>
-  <script defer src="js/security.js?v=2.21.0"></script>
+  <link rel="stylesheet" href="styles.css?v=2.22.0">
+  <script defer src="js/journal-config.js?v=2.22.0"></script>
+  <script defer src="js/security.js?v=2.22.0"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script defer src="js/cloud-config.js?v=2.21.0"></script>
-  <script defer src="js/app.bundle.js?v=2.21.0"></script>
+  <script defer src="js/cloud-config.js?v=2.22.0"></script>
+  <script defer src="js/app.bundle.js?v=2.22.0"></script>
 </head>
 <body class="auth-locked">
 <noscript><div class="auth-noscript">JavaScript est nécessaire pour ouvrir ExtracTerre.</div></noscript>
@@ -42,7 +42,7 @@
     <div class="ux-header-actions ux-header-actions-clean">
       <span class="ux-app-label">Analyse documentaire bâtiment</span>
       <button class="ux-mini-btn" id="miniWindowBtn" type="button" title="Mini-fenêtre flottante qui reste au premier plan (ex. au-dessus de Salesforce) : opération active, état, dépôt de fichiers" aria-label="Ouvrir la mini-fenêtre flottante">⧉ <span>Mini-fenêtre</span></button>
-      <span class="ux-version-chip" id="version">v2.21.0</span>
+      <span class="ux-version-chip" id="version">v2.22.0</span>
     </div>
   </header>
 
@@ -142,6 +142,9 @@
                 </div>
                 </details>
                 <span id="statusText" class="badge doc stable-status" title="Prêt">Prêt</span>
+                <button id="analysisQueueBtn" class="btn light analysis-queue-btn" type="button" title="Documents en cours et en attente d’analyse : retirer des documents, pause, arrêt">☰ File d’analyse <span id="analysisQueueCount" class="analysis-queue-count" hidden></span></button>
+                <button id="analysisCardPauseBtn" class="btn light analysis-card-control" data-analysis-pause type="button" hidden>⏸ Pause</button>
+                <button id="analysisCardStopBtn" class="btn light analysis-card-control danger" data-analysis-stop type="button" title="Arrêter l’analyse et conserver les résultats déjà trouvés" hidden>⏹ Arrêter</button>
                 <button id="manualAnalysisBtn" class="btn secondary stable-manual-analysis-btn" type="button">✦ Analyse manuelle</button>
                 <button id="analyzeBtn" class="btn primary stable-analyze-btn" type="button">▶ Lancer l’analyse</button>
               </div>
@@ -257,8 +260,8 @@
           <div id="profileSwitch" class="profile-switch" role="group" aria-label="Type d’opération"></div>
           <div class="sticky-result-actions">
             <label class="sticky-file-add" for="fileInput" title="Ajouter des fichiers">＋ Fichiers</label>
-            <button id="analysisPauseBtn" class="sticky-control-icon" type="button" title="Mettre l’analyse en pause" hidden>⏸</button>
-            <button id="analysisStopBtn" class="sticky-control-icon danger" type="button" title="Arrêter l’analyse et conserver les résultats déjà trouvés" hidden>⏹</button>
+            <button id="analysisPauseBtn" class="sticky-control-icon" data-analysis-pause type="button" title="Mettre l’analyse en pause" hidden>⏸</button>
+            <button id="analysisStopBtn" class="sticky-control-icon danger" data-analysis-stop type="button" title="Arrêter l’analyse et conserver les résultats déjà trouvés" hidden>⏹</button>
             <button id="stickyAnalyzeBtn" class="sticky-analyze-btn" type="button" title="Lancer ou compléter l’analyse">▶ Analyser</button>
           </div>
         </div>
@@ -499,7 +502,7 @@
 
 <dialog id="cloudDialog" class="search-integrate-dialog cloud-dialog">
   <div class="search-integrate-shell">
-    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.21.0</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
+    <div class="search-integrate-head"><div><span class="ux-eyebrow">ExtracTerre v2.22.0</span><h3>Connexion au traitement Cloud</h3></div><button id="cloudDialogClose" class="icon-btn" type="button">×</button></div>
     <div class="search-integrate-body cloud-dialog-body">
       <p>Cette connexion sert uniquement à autoriser l’envoi temporaire des PDF vers le bucket privé Supabase et le worker GitHub.</p>
       <label>Adresse e-mail<input id="cloudEmail" type="email" autocomplete="username" placeholder="prenom.nom@prestaterre.eu"></label>
@@ -530,7 +533,7 @@
       <div><strong>Confidentialité locale & Cloud</strong><p>Les PDF bruts ne sont pas enregistrés dans IndexedDB. En mode Cloud, ils transitent par un bucket Supabase privé puis sont supprimés après traitement ; seul l’index texte compact revient dans le navigateur. « Effacer la session » supprime les checkpoints et résultats du projet, sans modifier le journal d’amélioration.</p></div>
       <div class="ux-help-patches ux-patch-card">
         <div class="ux-side-card-head"><span>🧩</span><h3>Patchs d’amélioration</h3></div>
-        <p>Chargez un patch JSON ExtracTerre pour enrichir la bibliothèque documentaire sans remplacer le site. Les patchs sont déclaratifs : aucun JavaScript externe n’est exécuté.</p>
+        <p>Chargez un patch JSON ExtracTerre pour enrichir la bibliothèque documentaire, ou la lecture des données manuelles collées, sans remplacer le site. Les patchs sont déclaratifs : aucun JavaScript externe n’est exécuté.</p>
         <div class="ux-meta-row"><span>Bibliothèque active</span><strong id="patchStatus">0 patch actif</strong></div>
         <div id="patchList" class="patch-list"><div class="patch-empty">Chargement…</div></div>
         <div class="ux-journal-actions"><button id="patchLoadBtn" class="btn primary" type="button">＋ Charger un patch</button><input id="patchFileInput" type="file" accept="application/json,.json" hidden></div>

@@ -29,7 +29,28 @@ function validPatch(p){
     validateRegex(r.sectionStartRegex,`${r.id||r.field}: sectionStartRegex`);
     validateRegex(r.sectionEndRegex,`${r.id||r.field}: sectionEndRegex`);
   }
+  // v2.21.0 — réécriture du texte collé (données manuelles) avant lecture : « rechercher / remplacer » par expression régulière.
+  const rw=safeArray(p.pasteRewrites); if(rw.length>60) throw new Error('Patch refusé : trop de réécritures de collage.');
+  for(const r of rw){
+    validateRegex(r?.find,`${r?.id||'réécriture'}: find`,900);
+    if(typeof r.find!=='string'||typeof (r.replace??'')!=='string'||String(r.replace??'').length>2000) throw new Error(`Réécriture de collage invalide : ${r?.id||'—'}`);
+    if(r.flags!=null&&!/^[gimsu]{0,5}$/.test(String(r.flags))) throw new Error(`Options invalides : ${r.id||'réécriture'}`);
+    validateRegex(r.when,`${r.id||'réécriture'}: when`,900);
+  }
   return true;
+}
+// Texte collé réécrit par les patchs chargés (règles dans l'ordre ; « when » limite une règle aux textes qui le contiennent).
+export function applyPasteRewrites(text){
+  let out=String(text??''); const applied=[];
+  for(const p of registry) for(const r of safeArray(p.pasteRewrites)){
+    try{
+      if(r.when&&!new RegExp(r.when,'im').test(out)) continue;
+      const flags=[...new Set(`g${r.flags==null?'im':r.flags}`)].join('');
+      const next=out.replace(new RegExp(r.find,flags),String(r.replace??''));
+      if(next!==out){ out=next; applied.push(`${p.id}:${r.id||'réécriture'}`); }
+    }catch{}
+  }
+  return {text:out,applied};
 }
 function uniqueById(items){ const m=new Map(); for(const x of items){ if(x?.id) m.set(x.id,x); } return [...m.values()]; }
 function readLocal(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return []} }

@@ -6,6 +6,7 @@ import {wallInsulationSide} from './engine.js';
 import {normLower,parseFrNumber,normalizeText,findFirstMatch,normalizeGlazingType} from './utils.js';
 import {parseDocument} from './parsers.js';
 import {EXTRACTION_RANGES} from './sanity.js';
+import {applyPasteRewrites} from './patches.js';
 
 const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
@@ -52,6 +53,8 @@ export function unstackLabels(text){
 // → {buildings:[{name,items:[{line,label,raw,field,value,auto}]}],unmatched:[{building,line,label,raw}],descriptive:[lignes de texte]}
 export function parseFreePaste(text){
   // v2.10.2 — fiche Évaluation Salesforce (favori) : d'abord réécrite en « libellé = valeur » par bâtiment.
+  // v2.21.0 — patchs d'amélioration (FAQ) : réécritures du texte collé, avant toute lecture.
+  const pr=applyPasteRewrites(text); const patched=pr.applied.length?pr:null; if(patched) text=pr.text;
   let sfNotes=null; if(looksLikeSalesforceEvaluation(text)){ const c=salesforceEvaluationToPaste(text); text=c.text; sfNotes=c.notes; }
   // Fiche Salesforce : le reste de la page (menus, listes associées) n'est pas lu comme un CCTP.
   const st=unstackLabels(text); text=st.text; const stacked=st.pairs>0;
@@ -80,7 +83,7 @@ export function parseFreePaste(text){
     if(!sec&&/\d/.test(l)&&!/^\s*[>*-]|\bpage\s+\d/i.test(l)) unmatched.push({building:descBld[i],line:l,label:'',raw:l}); });
   const desc=stacked?[]:descriptiveItems(descriptive);
   if(desc.length) out.push({name:'*',items:desc});
-  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked,...(sfNotes?{salesforce:true,notes:sfNotes,text}:{})};
+  return {buildings:out.filter(b=>b.items.length||unmatched.some(u=>u.building===b.name)),unmatched,descriptive,stacked,...(patched?{text,patchRewrites:patched.applied}:{}),...(sfNotes?{salesforce:true,notes:sfNotes,text}:{})};
 }
 // « Cep : 35,2 » (libellé court reconnu) est une paire ; « PRODUCTION : Pompe à chaleur… » reste du texte descriptif.
 function fp_shortPair(line){ const m=line.match(fp_PAIR); return !!m&&!!matchFreeLabel(m[1]); }

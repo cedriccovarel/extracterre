@@ -1,3 +1,25 @@
+# v2.22.0 — File d'analyse ; boutons pause et arrêt
+- Carte « Analyse du projet » : bouton « ☰ File d'analyse » (avec le nombre de documents). La fenêtre liste les documents en
+  cours d'analyse (étape : lecture, OCR, extraction, en pause…) et ceux en attente ; chaque document peut être retiré (✕) ou
+  plusieurs à la fois (cases à cocher, « Retirer la sélection »). Un document en cours retiré est interrompu, un document en
+  attente est sauté ; les valeurs déjà extraites d'un document restent conservées (comme le ✕ de la liste des fichiers).
+- Pause et arrêt fonctionnent : les boutons ⏸ / ⏹ n'étaient reliés à rien. Ils apparaissent pendant l'analyse dans la carte,
+  la barre des résultats et la file d'analyse. La pause agit entre deux pages d'un PDF (avant : seulement à la fin du document),
+  le délai de 5 min est suspendu pendant la pause. L'arrêt interrompt les lectures en cours (documents remis « En attente »),
+  garde les documents déjà lus et consolide leurs résultats.
+- Vérifié dans Chrome avec 10 PDF fictifs de 300 pages : pause figée, retrait d'un document en cours et d'un en attente,
+  reprise, arrêt à la page 6/300 du document en cours.
+- Test : `test_v2_22_0.mjs`.
+
+# v2.21.1 — Patchs d'amélioration pour les données manuelles collées
+- Un patch JSON (Aide / FAQ › Patchs d'amélioration) peut contenir des règles `pasteRewrites` : « rechercher / remplacer »
+  par expression régulière (`find`, `replace` avec $1, $2…, options `flags`, condition `when`), appliquées dans l'ordre au
+  texte collé dans les données manuelles avant sa lecture. Patch déclaratif, expressions vérifiées au chargement, 60 règles max.
+- Patch fourni à part : `ExtracTerre_PATCH_COLLAGE_PLOTS_RE2020_v1.json`. « PLOT A : BAT A1 : 1 MI » devient une section par plot
+  (maisons accolées → Individuel groupé, maison seule → Individuel diffus) ; « Bbio : 78 / Bbiomax 78,8 (gain 1 %) » →
+  valeur, max et gain (Bbio, Cep, Cep nr) ; « Ic construction : 689,76 / 735,3 max » → valeur et max. Aucune valeur ajoutée.
+- Test : `test_v2_21_1.mjs`.
+
 # v2.21.0 — Mémoire allégée ; analyses horodatées
 - Le texte des documents est rangé à part dans la base locale du navigateur (magasin `documentReads`). Il n'est chargé que
   pour l'opération ouverte, ou le temps d'un calcul ou d'un export sur une autre opération, puis il est libéré. Rien n'est

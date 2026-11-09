@@ -1351,3 +1351,15 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .sf-short button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:baseline;width:100%;border:1px solid var(--line);border-radius:9px;background:#fbfcfb;padding:7px 9px;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
 .sf-short button:hover{background:var(--mint)}.sf-short button:focus-visible{outline:2px solid var(--forest2);outline-offset:1px}.sf-short button strong{font-size:12px}.sf-short button span{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sf-short button small{color:var(--muted);font-size:11px}
 @media(max-width:760px){.sf-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* v2.22.0 — file d'analyse (carte « Analyse du projet ») */
+.analysis-queue-btn{display:inline-flex;align-items:center;gap:6px}
+.analysis-queue-count{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:#1f6f4a;color:#fff;font-size:12px;font-weight:700;text-align:center}
+.analysis-queue-count[hidden],[data-analysis-pause][hidden],[data-analysis-stop][hidden]{display:none!important}
+.analysis-card-control.active{background:#fff4d6;border-color:#e0b44a}
+.btn.danger{color:#b42318;border-color:#f0b4ad}
+.aq-list h4{display:flex;justify-content:space-between;align-items:baseline;margin:12px 0 6px}
+.aq-row{display:flex;align-items:center;gap:10px}
+.aq-row .box-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.aq-stage.paused{color:#9a6700;font-weight:600}
+.aq-remove{flex:none}
