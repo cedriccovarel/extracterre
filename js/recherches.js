@@ -4,7 +4,9 @@
 // (Ollama en local), seule la description du critère lui est envoyée.
 import {normLower,parseFrNumber,stripUnitExponents} from './utils.js';
 
-export const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques'};
+export const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques',field:'Rappel de colonne'};
+// v2.23.0 — « Rappel de colonne » : reprend la valeur retenue d'une colonne (onglet Thermique, Enveloppe…) pour chaque bâtiment,
+// avec sa source (document, page, extrait) ; aucun mot-clé, aucune valeur nouvelle.
 // v2.8.2 — critère « Statistiques » (tableaux de surfaces) : une valeur par ligne trouvée, puis effectif, min, moyenne, max et centiles.
 export const STAT_KEYS=[['n','Nombre'],['min','Min'],['mean','Moyenne'],['max','Max'],['p10','P10'],['p25','P25'],['p50','Médiane'],['p75','P75'],['p90','P90']];
 const srch_pct=(sorted,q)=>{ const h=(sorted.length-1)*q, lo=Math.floor(h); return sorted[lo]+(sorted[Math.min(lo+1,sorted.length-1)]-sorted[lo])*(h-lo); }; /* interpolation linéaire, comme CENTILE.INCLURE d'Excel */
@@ -29,7 +31,7 @@ export function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   if(g.id==='securite-logements') srch_migrateSecurity(criteria);
   return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
@@ -99,14 +101,21 @@ export const ASHTON_CHECKS=Object.freeze({
 export const hasAshtonCheck=id=>Object.prototype.hasOwnProperty.call(ASHTON_CHECKS,id);
 
 // Applique une grille aux documents prêts d'un projet : {criteria:{id:{found,values,evidence}}, themes:{name:{found,min,ok,applicable}}}.
-export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
+// v2.23.0 — result (facultatif) = résultat du projet ({rows, finals}) pour les critères « Rappel de colonne ».
+const srch_fmt=v=>typeof v==='number'?v.toLocaleString('fr-FR',{maximumFractionDigits:2}):String(v).trim();
+export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={},result=null){
   const g=normalizeGrid(grid); const filter=g.docFilter?srch_list(g.docFilter):[];
   const pool=(docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length&&!d.read?.financialQuestionnaire&&(!filter.length||filter.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))));
   const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
   const criteria={}, plan=srchPlanFacts(planTables);
   for(const c of g.criteria){
     const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
-    if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
+    if(c.kind==='field'&&c.field) for(const row of result?.rows||[]){ const v=row?.[c.field]; if(v===undefined||v===null||String(v).trim()==='') continue;
+      const o=(result.finals||[]).find(x=>x.field===c.field&&(x.building===row.building||x.building==='Bâtiment unique'));
+      const n=typeof v==='number'?v:parseFrNumber(String(v)), bounded=c.min!==null||c.max!==null;
+      const ok=!bounded||(Number.isFinite(n)&&(c.min===null||n>=c.min)&&(c.max===null||n<=c.max));
+      ev.push({doc:o?.fileName||'Valeur retenue (sans document)',docId:o?.docId||'',page:o?.page??'',line:`${row.building} : ${srch_fmt(v)}${c.unit?` ${c.unit}`:''}`,context:String(o?.excerpt||o?.provenanceNote||'').trim().slice(0,600),values:[v],ok,building:row.building,fromField:true}); values.push(v); }
+    else if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
       for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k];
         // « weak » : terme insuffisant à lui seul (« A2P » sans BP ni étoile) — trouvé, il compte comme indice contraire.
         const strong=srch_anyTerm(c.keywords,L.t), weak=!strong&&srch_anyTerm(c.weak,L.t); if((!strong&&!weak)||srch_anyTerm(c.exclude,L.t)) continue;
@@ -132,7 +141,7 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
     if(pf){ const textOk=ev.some(e=>e.ok); ev.unshift(...pf.ev); detail=pf.detail;
       const ok=c.id==='hall_vitrage'?pf.ok&&textOk:pf.ok; if(c.id==='hall_vitrage'&&pf.ok&&!textOk) detail=`À vérifier : ${pf.detail}, 44.2 non trouvé dans les documents`;
       if(!manual){ found=ok; contrary=!pf.ok; } }
-    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
+    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):c.kind==='field'?srch_fieldText(ev):''};
   }
   // v2.19.1 — statut « Partiel » du sas sécurisé : Vigik (ou badge) + visiophone trouvés, mais pas de platine IK08.
   // Partiel ne compte pas comme trouvé pour le thème ; la décision manuelle « Partiel » donne le même statut.
@@ -150,13 +159,17 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
     const found=opt.filter(c=>criteria[c.id]?.found).length, reqOk=req.every(c=>criteria[c.id]?.found);
     themes[t.name]={applicable,found,min:t.min,required:req.length,requiredOk:reqOk,ok:applicable?(reqOk&&found>=t.min):null};
   }
-  return {grid:g,criteria,themes,documents:pool.map(d=>d.name)};
+  const fieldHits=g.criteria.filter(c=>c.kind==='field').reduce((n,c)=>n+criteria[c.id].evidence.length,0);
+  return {grid:g,criteria,themes,documents:pool.map(d=>d.name),fieldHits};
 }
 
+// Rappel de colonne : « Bâtiment A : 345 ; Bâtiment B : 410 » (la valeur seule pour un bâtiment unique).
+function srch_fieldText(ev){ if(ev.length===1&&ev[0].building==='Bâtiment unique') return ev[0].line.replace(/^Bâtiment unique : /,''); return ev.map(e=>e.line).join(' ; '); }
 // Valeur d'un critère dans le tableau / l'export.
 export function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
+  if(c.kind==='field') return x.contrary?`Hors seuil (${x.text})`:x.text;
   if(x.partial) return `Partiel (${x.detail})`;
   if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;

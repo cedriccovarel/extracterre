@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-assert.equal(APP_VERSION,'2.22.3'); n++;
+assert.equal(APP_VERSION,'2.23.0'); n++;
 const app=readFileSync('js/app.js','utf8'), html=readFileSync('index.html','utf8'), rd=readFileSync('js/readers.js','utf8');
 ok(/\[data-analysis-pause\]'\)\.forEach\(b=>b\.onclick=toggleAnalysisPause\)/.test(app),'pause reliée');
 ok(/\[data-analysis-stop\]'\)\.forEach\(b=>b\.onclick=stopAnalysis\)/.test(app),'arrêt relié');
@@ -21,4 +21,4 @@ const state={docs:[{id:'a',file:{},status:'reading'},{id:'b',file:{},status:'pen
 const q=new Function('state',`${src}; return analysisQueueDocs();`)(state);
 assert.deepEqual(q.active.map(d=>d.id),['a']); n++;
 assert.deepEqual(q.waiting.map(d=>d.id),['b','f']); n++;
-console.log(`v2.22.3 — ${n} vérifications OK`);
+console.log(`v2.23.0 — ${n} vérifications OK`);

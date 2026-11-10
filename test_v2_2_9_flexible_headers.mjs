@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {APP_VERSION,matchFieldByHeaderDetailed} from './js/config.js';
-assert.equal(APP_VERSION, '2.22.3');
+assert.equal(APP_VERSION, '2.23.0');
 const expected={
   'Numéro du contrat':'contract_number',
   'Opération: Code interne':'internal_code',

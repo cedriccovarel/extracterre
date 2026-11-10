@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.22.3','version');
+eq(APP_VERSION,'2.23.0','version');
 const page=`Opération
 OPE-009002
 Évaluateur
@@ -44,10 +44,10 @@ eq(Object.keys(b),['','BEG-1/2','M1'],'en-têtes à puce');
 const g=b['BEG-1/2'];
 eq([g.housing_count,g.bbio,g.bbio_max,g.bbio_gain,g.cep,g.cep_max,g.cep_gain,g.dh,g.shab,g.ic_construction,g.ic_construction_max],[2,84.4,91.8,8.1,52,87.5,40.6,713.9,118.6,767.85,780.02],'valeur / max / gain, DH le plus défavorable');
 eq(b.M1.housing_count,1,'x1 lgt');
-eq(fp.notes.length,2,'Cepnr 650 incohérent signalé + mentions NC (v2.22.3)');
+eq(fp.notes.length,2,'Cepnr 650 incohérent signalé + mentions NC (v2.23.0)');
 const c=b[''];
 eq([c.internal_code,c.operation_name,c.postcode,c.cep_level],['OPE-009002','Résidence Fictive','59000','RE 2020 - 5%'],'en-tête : le bloc OPE suivi de l’adresse, pas « Évaluateur »');
 eq([c.wall_insulation,c.wall_insulation_thickness,c.wall_insulation_r],['PSE',120,4.1],'R de la brique non pris pour l’isolant ; 120+10 mm = 120 mm d’isolant');
 eq([c.heating_mode_after,c.window_shading],['PAC air/eau indiv FICTIVE AI 5 (250L)','Volet roulant'],'générateur sans émetteurs ; VR manuel');
 eq(fp.unmatched,[],'rien de non reconnu');
-console.log(`v2.22.3 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.23.0 — ${n} vérifications OK (données fictives)`);

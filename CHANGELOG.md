@@ -1,3 +1,20 @@
+# v2.23.0 — Recherches : « Rappel de colonne »
+- Nouveau type de critère **Rappel de colonne** dans les Recherches : il reprend la valeur retenue d'une colonne (onglet Thermique,
+  Enveloppe, Systèmes…) pour chaque bâtiment, avec sa source (document, page, extrait ; « Collage libre » ou « Valeur retenue (sans
+  document) » le cas échéant). Aucun mot-clé, aucune valeur nouvelle : une colonne vide l'est aussi dans la recherche (« Colonne … vide
+  pour ce projet »). Unité, Min et Max facultatifs (hors bornes → « Hors seuil »). La décision manuelle (Oui / Non / Sans objet) reste prioritaire.
+- Éditeur : choix de la colonne dans la liste des données ExtracTerre ; mots-clés, contexte et exclusions masqués pour ce type.
+- Les rappels fonctionnent aussi pour une opération sans document lu (valeurs collées depuis Salesforce) ; ils suivent l'export Excel
+  (feuille de la grille + citations), l'export de session et l'observatoire des recherches (empreinte de cache recalculée quand une valeur change).
+- Lecture « Refroidissement » corrigée (révélée par les rappels) : « Climatisation Non » donnait « Climatisation active » (→ « Aucun ») ;
+  la définition du DH (« … l'on retire le système de climatisation. Le DH max est de 1250 °C.h »), les intitulés de lot
+  (« Chauffage – ventilation – climatisation »), les indicateurs (besoins, consommations, IC, points, kWhEP), la régulation générique
+  et les composants ACV sont écartés ; un mode de chauffage (« Poêle », « Chauffage électrique direct ») n'est plus pris comme
+  refroidissement sans mention de réversibilité / mode froid. Mesuré sur une session réelle de 148 opérations.
+- Lecture « Structure » : composants ACV, fondations et semelles, terrassements, stabilité au feu, interfaces entre lots (« joints …
+  en liaison avec le Gros-Œuvre et ossature bois » d'un lot menuiseries), fourreaux, incorporations, liaisons de terre, escaliers,
+  huisseries, protection des façades et sommaires ne donnent plus de structure (8 048 → 6 625 occurrences sur la même session).
+
 # v2.22.3 — Favori Salesforce : règles du prompt de mise en forme RE2020
 - Texte « libellé = valeur » au format du prompt (fiche Salesforce ou collage dans Données manuelles) : l'enveloppe est
   maintenant lue. « <Paroi> après travaux = structure + isolant épaisseur » et « R isolant <paroi> après travaux = R »

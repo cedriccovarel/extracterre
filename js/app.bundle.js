@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.22.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.23.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.22.3';
+const APP_VERSION='2.23.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -7001,7 +7001,11 @@ function parseEnvelope(doc){
     const mat=productMatch?.material||baseMat||findFirstMatch(ctx,MATERIALS), struct=baseStruct||findFirstMatch(ctx,STRUCTURES);
     const hasEnvelope=/isol|thermi|paroi|mur|facade|toiture|plancher|dalle|combles|rampant|ite|iti|sarking|bardage|doublage|contre[- ]cloison|solive/i.test(ctx);
     // v2.15.0 — pack du 02/11 : ouvrage provisoire de chantier (« tunnel de protection provisoire… structure métallique »).
-    if(struct && hasEnvelope && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; push(out,occ(doc,page,line,field,struct,'envelope:structure-context',target?0.91:0.87,'',{excerpt:ctx.slice(0,420)})); }
+    // v2.23.0 — pas la structure du bâtiment : composants ACV, fondations / terrassements, stabilité au feu, interfaces entre lots
+    // (« joints … en liaison avec le Gros-Œuvre et ossature bois » d'un lot menuiseries), fourreaux, incorporations, liaisons de
+    // terre, escaliers, huisseries, protection des façades, sommaire, cas conditionnels.
+    const structNoise=/composant\s+pce|contributors|sous-lot|donnee\s+environnementale|\binies\b|\bsemelles?\b|fondations?|terrassements?|surconsommation|stabilite\s+au\s+feu|coupe[- ]feu|en\s+liaison\s+avec|coordination\s+avec|incorporations?|fourreaux?|traversees?\s+de\s+parois|conducteurs?\s+de\s+protection|collecteur\s+de\s+terre|escaliers?|limons?|huisseries?|ebrasements?|protection\s+des\s+facades|\.{5,}|dans\s+le\s+cas\s+de/i;
+    if(struct && hasEnvelope && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; push(out,occ(doc,page,line,field,struct,'envelope:structure-context',target?0.91:0.87,'',{excerpt:ctx.slice(0,420)})); }
     if(mat && target && hasEnvelope){
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
       push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',productMatch?0.96:0.93,'',{excerpt:ctx.slice(0,420),...productExtra}));
@@ -7047,7 +7051,15 @@ function parseSystems(doc){
 
     let vent=findFirstMatch(base,HVAC.ventilation), ventCtx=base; if(!vent && !cctpLineNoise(doc,next) && /ventil|vmc|cta|air\s+neuf|extraction|hygro/i.test(baseLow)){ ventCtx=normalizeText(`${base} | ${next}`); vent=findFirstMatch(ventCtx,HVAC.ventilation); } const ventPhase=resolvedPhase(ventCtx); if(vent) push(out,occ(doc,page,line,ventPhase==='before'?'ventilation_before':'ventilation',vent,'systems:ventilation-context',ventPhase==='after'?0.96:0.94,'',{excerpt:ventCtx.slice(0,420)}));
 
-    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){ let cool=findFirstMatch(base,COOLING)||findFirstMatch(base,HVAC.heating), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=findFirstMatch(coolCtx,COOLING)||findFirstMatch(coolCtx,HVAC.heating); } const coolLow=normLower(coolCtx); if(envInventoryNoise||/degres?[- ]?heures?|si\s+l.?on\s+retire|groupes?\s+climatises?,|chauffage,?\s+ventilation,?\s+(?:et\s+)?climatisation|\bcvcd?\b/i.test(coolLow)||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|pas\s+de\s+climatisation\s+active|absence\s+de\s+climatisation/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
+    if(/refroid|rafraich|clim|froid|eau\s+glacee/i.test(baseLow)){
+      // v2.23.0 — un mode de chauffage n'est retenu comme refroidissement que si la ligne parle de réversibilité / mode froid
+      // (avant : « Poêle », « Chauffage électrique direct » lus sur « non climatisé … convecteur »).
+      const coolOf=t=>findFirstMatch(t,COOLING)||(/reversib|mode\s+(?:froid|rafraich)|rafraichissement\s+(?:par|via)|production\s+de\s+froid/i.test(normLower(t))?findFirstMatch(t,HVAC.heating):null);
+      let cool=coolOf(base), coolCtx=base; if(!cool){ coolCtx=normalizeText(`${base} | ${next}`); cool=coolOf(coolCtx); } const coolLow=normLower(coolCtx);
+      // v2.23.0 — intitulés de lot, indicateurs (besoins, consommations, IC, points, kWhEP), définition du DH (« … l'on retire le
+      // système de climatisation. Le DH max est de 1250 °C.h »), composants ACV : pas une description du système installé.
+      if(/\blot\s*(?:n\W{0,2}\s*\d+\s*)?:|chauffage\s*[-–,\/]+\s*ventilation\s*[-–,\/]+\s*(?:et\s+)?climatisation|(?:en|de|du)\s+chauffage\s+et\s+(?:de\s+)?climatisation|besoins?\s+(?:de\s+|en\s+)?(?:climatisation|refroidissement|froid)|consommations?\s+(?:de\s+|en\s+)?(?:climatisation|refroidissement)|\bic\s+climatisation|kwh\s*ep|kwh\s*\/\s*m|\(\s*\d+(?:[.,]\d+)?\s*pts|reprise\s+climatisation|relance\s+en\s+(?:climatisation|refroidissement)|\bplomberie\b|d.?etudes\s+de\s+climatisation|chauffage,?\s+(?:de\s+l.?)?ecs\s+et\s+(?:de\s+)?climatisation|chauffage\s+climatisation\s+eau\s+chaude|\blorsque\b|^\W*(?:[\d.]+\W*)?(?:climatisation|refroidissement|rafraichissement)\W*(?:\||$)|\bdh\s*max\b|l.?on\s+retire|donnee\s+environnementale|composant\s+pce|contributors|sous-lot|mise\s+a\s+disposition\s+d.?un\s+kwh/i.test(coolLow)) cool=null;
+      if(envInventoryNoise||/degres?[- ]?heures?|si\s+l.?on\s+retire|groupes?\s+climatises?,|chauffage,?\s+ventilation,?\s+(?:et\s+)?climatisation|\bcvcd?\b/i.test(coolLow)||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|espace\s+non\s+refroidi|pas\s+de\s+climatisation(?:\s+active)?|absence\s+de\s+climatisation|sans\s+climatisation|\bclimatisation\s*:?\s*non\b|\brefroidissement\s*:?\s*non\b/i.test(coolLow)&&!/\bnon\s+(?:climatis|refroidi)\w*\s*(?:,|et|\/)\s*(?:\w+\s+)?climatis/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
     let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
@@ -10053,7 +10065,9 @@ function analyzeEconomicData(docs,operation='',manual={}){
 // la ligne : une recherche ne produit jamais de valeur absente des documents. Les mots-clés peuvent être proposés par l'IA
 // (Ollama en local), seule la description du critère lui est envoyée.
 
-const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques'};
+const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques',field:'Rappel de colonne'};
+// v2.23.0 — « Rappel de colonne » : reprend la valeur retenue d'une colonne (onglet Thermique, Enveloppe…) pour chaque bâtiment,
+// avec sa source (document, page, extrait) ; aucun mot-clé, aucune valeur nouvelle.
 // v2.8.2 — critère « Statistiques » (tableaux de surfaces) : une valeur par ligne trouvée, puis effectif, min, moyenne, max et centiles.
 const STAT_KEYS=[['n','Nombre'],['min','Min'],['mean','Moyenne'],['max','Max'],['p10','P10'],['p25','P25'],['p50','Médiane'],['p75','P75'],['p90','P90']];
 const srch_pct=(sorted,q)=>{ const h=(sorted.length-1)*q, lo=Math.floor(h); return sorted[lo]+(sorted[Math.min(lo+1,sorted.length-1)]-sorted[lo])*(h-lo); }; /* interpolation linéaire, comme CENTILE.INCLURE d'Excel */
@@ -10078,7 +10092,7 @@ function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   if(g.id==='securite-logements') srch_migrateSecurity(criteria);
   return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
@@ -10148,14 +10162,21 @@ const ASHTON_CHECKS=Object.freeze({
 const hasAshtonCheck=id=>Object.prototype.hasOwnProperty.call(ASHTON_CHECKS,id);
 
 // Applique une grille aux documents prêts d'un projet : {criteria:{id:{found,values,evidence}}, themes:{name:{found,min,ok,applicable}}}.
-function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
+// v2.23.0 — result (facultatif) = résultat du projet ({rows, finals}) pour les critères « Rappel de colonne ».
+const srch_fmt=v=>typeof v==='number'?v.toLocaleString('fr-FR',{maximumFractionDigits:2}):String(v).trim();
+function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={},result=null){
   const g=normalizeGrid(grid); const filter=g.docFilter?srch_list(g.docFilter):[];
   const pool=(docs||[]).filter(d=>d.status==='ready'&&d.read?.pages?.length&&!d.read?.financialQuestionnaire&&(!filter.length||filter.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))));
   const corpus=pool.map(d=>({d,lines:srch_docLines(d)}));
   const criteria={}, plan=srchPlanFacts(planTables);
   for(const c of g.criteria){
     const ev=[]; const values=[]; const cap=c.kind==='stats'?2000:5;
-    if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
+    if(c.kind==='field'&&c.field) for(const row of result?.rows||[]){ const v=row?.[c.field]; if(v===undefined||v===null||String(v).trim()==='') continue;
+      const o=(result.finals||[]).find(x=>x.field===c.field&&(x.building===row.building||x.building==='Bâtiment unique'));
+      const n=typeof v==='number'?v:parseFrNumber(String(v)), bounded=c.min!==null||c.max!==null;
+      const ok=!bounded||(Number.isFinite(n)&&(c.min===null||n>=c.min)&&(c.max===null||n<=c.max));
+      ev.push({doc:o?.fileName||'Valeur retenue (sans document)',docId:o?.docId||'',page:o?.page??'',line:`${row.building} : ${srch_fmt(v)}${c.unit?` ${c.unit}`:''}`,context:String(o?.excerpt||o?.provenanceNote||'').trim().slice(0,600),values:[v],ok,building:row.building,fromField:true}); values.push(v); }
+    else if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
       for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k];
         // « weak » : terme insuffisant à lui seul (« A2P » sans BP ni étoile) — trouvé, il compte comme indice contraire.
         const strong=srch_anyTerm(c.keywords,L.t), weak=!strong&&srch_anyTerm(c.weak,L.t); if((!strong&&!weak)||srch_anyTerm(c.exclude,L.t)) continue;
@@ -10181,7 +10202,7 @@ function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
     if(pf){ const textOk=ev.some(e=>e.ok); ev.unshift(...pf.ev); detail=pf.detail;
       const ok=c.id==='hall_vitrage'?pf.ok&&textOk:pf.ok; if(c.id==='hall_vitrage'&&pf.ok&&!textOk) detail=`À vérifier : ${pf.detail}, 44.2 non trouvé dans les documents`;
       if(!manual){ found=ok; contrary=!pf.ok; } }
-    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):''};
+    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):c.kind==='field'?srch_fieldText(ev):''};
   }
   // v2.19.1 — statut « Partiel » du sas sécurisé : Vigik (ou badge) + visiophone trouvés, mais pas de platine IK08.
   // Partiel ne compte pas comme trouvé pour le thème ; la décision manuelle « Partiel » donne le même statut.
@@ -10199,13 +10220,17 @@ function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}){
     const found=opt.filter(c=>criteria[c.id]?.found).length, reqOk=req.every(c=>criteria[c.id]?.found);
     themes[t.name]={applicable,found,min:t.min,required:req.length,requiredOk:reqOk,ok:applicable?(reqOk&&found>=t.min):null};
   }
-  return {grid:g,criteria,themes,documents:pool.map(d=>d.name)};
+  const fieldHits=g.criteria.filter(c=>c.kind==='field').reduce((n,c)=>n+criteria[c.id].evidence.length,0);
+  return {grid:g,criteria,themes,documents:pool.map(d=>d.name),fieldHits};
 }
 
+// Rappel de colonne : « Bâtiment A : 345 ; Bâtiment B : 410 » (la valeur seule pour un bâtiment unique).
+function srch_fieldText(ev){ if(ev.length===1&&ev[0].building==='Bâtiment unique') return ev[0].line.replace(/^Bâtiment unique : /,''); return ev.map(e=>e.line).join(' ; '); }
 // Valeur d'un critère dans le tableau / l'export.
 function searchCellValue(c,x){
   if(!x) return '';
   if(x.manual) return x.manual;
+  if(c.kind==='field') return x.contrary?`Hors seuil (${x.text})`:x.text;
   if(x.partial) return `Partiel (${x.detail})`;
   if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
@@ -10310,7 +10335,7 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   // v2.6.0 — recherches personnalisées : une feuille par grille ayant au moins un résultat, puis les citations.
   const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
   for(const grid of grids||[]){
-    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables,x.p.planChecks)}));
+    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables,x.p.planChecks,x.p.result)}));
     if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
     const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
     const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
@@ -13782,8 +13807,8 @@ function renderSearchEditor(g){
   <h5>Critères <small>mots-clés séparés par des virgules ; sans accents ni majuscules obligatoires ; « re: » = expression régulière</small></h5>
   <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
     <button type="button" class="btn light" data-srch-ai="${i}" title="Proposer des mots-clés, du contexte et des exclusions avec l’IA">${searchUi.busy===`c${i}`?'…':'✨ Mots-clés IA'}</button><button type="button" class="icon-btn" data-srch-del="${i}" title="Supprimer le critère" aria-label="Supprimer le critère">×</button></div>
-    <div class="srch-crit-body"><label>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
-    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'||c.kind==='stats'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
+    <div class="srch-crit-body">${c.kind==='field'?`<label class="wide">Colonne rappelée <small>(valeur retenue de chaque bâtiment, avec sa source)</small><select data-c="field">${opt('',c.field)}— choisir —</option>${FIELD_DEFS.map(f=>`${opt(f.key,c.field)}${escapeHtml(`${f.family} — ${f.label}`)}</option>`).join('')}</select></label>`:''}<label${c.kind==='field'?' hidden':''}>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label${c.kind==='field'?' hidden':''}>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label${c.kind==='field'?' hidden':''}>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
+    <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'||c.kind==='stats'||c.kind==='field'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
     <label>Précisions pour l’IA<input data-c="description" value="${escapeHtml(c.description)}" placeholder="ce que le critère doit couvrir, ce qu’il ne doit pas confondre"></label></div></div>`).join('')}</div>
   <datalist id="srchThemes">${themes.map(t=>`<option value="${escapeHtml(t.name)}">`).join('')}</datalist>
   <div class="srch-actions"><button type="button" class="btn secondary" data-srch="add-crit">+ Critère</button></div>
@@ -13797,7 +13822,7 @@ function collectGridFromEditor(root,g){
   // Renommage d'un thème : les critères suivent.
   g.themes.forEach((t,i)=>{ if(themes[i]&&themes[i].name&&themes[i].name!==t.name) for(const c of g.criteria) if(c.theme===t.name) c.theme=themes[i].name; });
   const crits=[...root.querySelectorAll('[data-crit-row]')].map(r=>{ const i=Number(r.dataset.critRow), c=g.criteria[i], f=k=>r.querySelector(`[data-c="${k}"]`);
-    return {...c,theme:f('theme').value.trim()||c.theme,label:f('label').value,kind:f('kind').value,keywords:f('keywords').value,context:f('context').value,exclude:f('exclude').value,window:f('window').value,unit:f('unit')?.value??c.unit,min:f('min')?f('min').value:c.min,max:f('max')?f('max').value:c.max,inverse:f('inverse').checked,description:f('description').value,_req:f('required').checked}; });
+    return {...c,theme:f('theme').value.trim()||c.theme,label:f('label').value,kind:f('kind').value,field:f('field')?.value??c.field,keywords:f('keywords').value,context:f('context').value,exclude:f('exclude').value,window:f('window').value,unit:f('unit')?.value??c.unit,min:f('min')?f('min').value:c.min,max:f('max')?f('max').value:c.max,inverse:f('inverse').checked,description:f('description').value,_req:f('required').checked}; });
   for(const t of themes) t.required=crits.filter(c=>c._req&&c.theme===t.name).map(c=>c.id);
   return normalizeGrid({...next,themes,criteria:crits});
 }
@@ -13893,13 +13918,13 @@ function openAshtonCheck(id,g){ const p=activeProject(), c=g.criteria.find(x=>x.
 const SRCH_PARTIAL_IDS=new Set(['hall_sas']);
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
-  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables,p.planChecks);
+  const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables,p.planChecks,p.result);
   const themeHtml=t=>{ const s=r.themes[t.name]||{}; const crits=g.criteria.filter(c=>c.theme===t.name);
     const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
     ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual&&!x.partial?'manual':x.partial?'partial':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎',partial:'◐'}[cls];
       return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
-      ${x.evidence.length?`<details><summary>${x.evidence.length} citation(s)</summary><ul>${x.evidence.slice(0,80).map(e=>`<li><b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`).join('')}</ul></details>`:''}</div>
+      ${x.evidence.length?`<details><summary>${x.evidence.length} ${c.kind==='field'?`bâtiment${x.evidence.length>1?'s':''} · source${x.evidence.length>1?'s':''}`:'citation(s)'}</summary><ul>${x.evidence.slice(0,80).map(e=>`<li>${e.fromField?`<b>${escapeHtml(e.building)}</b> · ${escapeHtml(e.doc)}${e.page!==''&&e.page!==undefined?` · p. ${escapeHtml(String(e.page))}`:''}${e.ok?'':' (hors seuil)'}<br>${escapeHtml(e.line)}${e.context?`<small>${escapeHtml(e.context)}</small>`:''}</li>`:`<b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`}`).join('')}</ul></details>`:c.kind==='field'?`<small class="srch-field-note">${FIELD_MAP[c.field]?`Colonne « ${escapeHtml(FIELD_MAP[c.field].label)} » vide pour ce projet.`:`Colonne inconnue : « ${escapeHtml(c.field||'?')} ».`}</small>`:''}</div>
       <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${(SRCH_PARTIAL_IDS.has(c.id)?['Oui','Partiel','Non','Sans objet']:['Oui','Non','Sans objet']).map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="srch-bar"><label>Grille <select id="srchGrid">${gs.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===g.id?'selected':''}>${escapeHtml(x.name)}</option>`).join('')}</select></label>
@@ -13907,7 +13932,7 @@ function renderSearches(wrap=$('#summaryView')){
     <button type="button" class="btn light" data-srch="export">Exporter (.json)</button><label class="btn light" for="srchImport">Importer</label><input id="srchImport" type="file" accept=".json,application/json" hidden><button type="button" class="btn light danger" data-srch="delete">Supprimer</button></section>
   ${g.description?`<p class="srch-desc">${escapeHtml(g.description)}</p>`:''}
   ${searchUi.editing?renderSearchEditor(g):''}
-  ${!r.documents.length?`<div class="empty-state"><h3>Aucun document à lire</h3><p>Ajoutez et analysez des documents (CCTP, tableaux de surfaces…) dans ce projet${g.docFilter?`, dont le nom ou le type contient « ${escapeHtml(g.docFilter)} »`:''}.</p></div>`:''}
+  ${!r.documents.length&&!r.fieldHits?`<div class="empty-state"><h3>Aucun document à lire</h3><p>Ajoutez et analysez des documents (CCTP, tableaux de surfaces…) dans ce projet${g.docFilter?`, dont le nom ou le type contient « ${escapeHtml(g.docFilter)} »`:''}.</p></div>`:''}
   ${g.themes.map(themeHtml).join('')}
   <small class="llm-hint">Chaque résultat cite le document, la page et la ligne. Les indices relevés ne valent pas conformité : vérifiez les citations ; « Auto » peut être remplacé par votre décision.</small>`;
   $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
@@ -13939,12 +13964,12 @@ function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.m
 function feedSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:(x.values||[]).slice(0,c.kind==='stats'?400:20)}]; })),themes:r.themes,docCount:r.documents.length}; }
 // Empreinte de ce dont dépend une recherche : grille, documents lus (et leur date d'analyse), décisions, plans Ashton.
 const srchHash=s=>{ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36); };
-function searchSignature(p,g){ return srchHash(JSON.stringify([g,(p.docs||[]).filter(d=>d.status==='ready').map(d=>[d.id,d.analysisCachedAt||0,d.persistenceMode||'']),p.searchOverrides?.[g.id]||{},p.planTables||{},p.planChecks||{}])); }
+function searchSignature(p,g){ const fields=g.criteria.filter(c=>c.kind==='field').map(c=>c.field); return srchHash(JSON.stringify([fields.length?(p.result?.rows||[]).map(r=>[r.building,...fields.map(f=>r[f]??null)]):0,g,(p.docs||[]).filter(d=>d.status==='ready').map(d=>[d.id,d.analysisCachedAt||0,d.persistenceMode||'']),p.searchOverrides?.[g.id]||{},p.planTables||{},p.planChecks||{}])); }
 function feedSearches(p,grids){ const out={};
   for(const g of grids){ const sig=searchSignature(p,g), c=p.searchCache?.[g.id];
     if(c&&c.sig===sig){ const {sig:_s,cachedAt:_c,...v}=c; out[g.id]=v; continue; }
-    const r=runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks);
-    if(r.documents.length){ out[g.id]=feedSearch(r); p.searchCache={...(p.searchCache||{}),[g.id]:{...out[g.id],sig,cachedAt:new Date().toISOString()}}; }
+    const r=runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks,p.result);
+    if(r.documents.length||r.fieldHits){ out[g.id]=feedSearch(r); p.searchCache={...(p.searchCache||{}),[g.id]:{...out[g.id],sig,cachedAt:new Date().toISOString()}}; }
     else if(c){ const {sig:_s,cachedAt:_c,...v}=c; out[g.id]=v; }
     else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
   return out; }
@@ -13956,7 +13981,7 @@ async function sessionSnapshot({details=true}={}){
 }
 function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
-        searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks)]).filter(([,r])=>r.documents.length||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
+        searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks,p.result)]).filter(([,r])=>r.documents.length||r.fieldHits||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; }
