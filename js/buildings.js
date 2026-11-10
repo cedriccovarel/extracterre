@@ -111,6 +111,26 @@ function looksLikeBuildingId(raw){
   return /\d|[a-zà-ÿ]/i.test(s);
 }
 
+// v2.23.3 — suite de phrase coupée en fin de ligne (« … les ouvrages du | bâtiment réalisés sur chantiers. », « bâtiment à charge du
+// VRD », « bâtiment compte de la perméabilité », « bâtiment existant conservé ») : pas un titre de bâtiment. Seuls les titres sans
+// deux-points sont concernés ; « Bâtiment : X » reste lu tel quel.
+const BLD_TABLE=/\b(?:batiments?|quantites?|positionnement|type\s+de|numero\s+de|famille|seuil|econome|energivore|emissions?|soumis|logements?\s+concernes|zones?\s+du)\b/;
+const BLD_VERB=/\b(?:sont|sera|seront|devra|doivent|permet|realises?|realisees?|a\s+charge|charge\s+du|compte\s+de|ainsi\s+que|conformement|datant|separes|depuis|via)\b/;
+// line : texte de la ligne (casse d'origine) ; raw : ce qui suit « bâtiment ».
+const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'').trim(), words=t.split(/\s+/).filter(Boolean).length;
+  // suite de phrase : « … du | bâtiment réalisés sur chantiers. » ; « bâtiment A » / « bâtiment 1 » seuls restent des identifiants.
+  if(/^\s*b[aâ]t/.test(String(line))&&!/^[A-Z0-9][A-Z0-9._\/-]{0,4}$/.test(String(raw).trim())) return true;
+  if(words>=2&&/[.;!?]\s*$/.test(String(raw).trim())) return true;
+  return BLD_TABLE.test(t)||BLD_VERB.test(t); };
+// v2.23.3 — nom déjà enregistré (« Bâtiment ET DES TRAVAUX PUBLICS », « Bâtiment REALISES SUR CHANTIERS. ») : faux bâtiment tiré d'une
+// phrase ou d'un en-tête de tableau ? Sert au rattrapage des opérations existantes (la casse d'origine n'est plus connue).
+export function isGarbageBuildingName(name){
+  if(!name||name==='Bâtiment unique') return false;
+  const raw=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), t=normLower(raw).replace(/[.,;:!?]+\s*$/,'').trim(), words=t.split(/\s+/).filter(Boolean).length;
+  if(words>=2&&/[.;!?]\s*$/.test(raw)) return true;
+  if(/^(?:et|de|du|des|d|pour|par|avec|dans|sur|ou|en|ainsi|sera|seront|sont|ne|non|qui|dont|que|vers|depuis|via|a\s+(?:charge|demolir|habitation|plusieurs))\b/.test(t)&&words>=2) return true;
+  return BLD_TABLE.test(t)||BLD_VERB.test(t);
+}
 export function detectBuildings(doc){
   // v2.3.3 — synthèse ClimaWin : les bâtiments sont les titres de section « N. Bâtiment X » (jamais les lignes de tableau).
   if(isClimaWinSynthesis(doc)){
@@ -210,7 +230,7 @@ export function detectBuildings(doc){
       // Les rapports logiciels utilisent souvent « 1.1. Bâtiment : BÂTIMENT A ».
       if(!raw){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s*:\s*(.+)$/i); if(m){raw=m[1];quality='building-heading';} }
       // Synthèses ACV (ClimaWin notamment) : « 1. Bâtiment A », « 2. Bâtiment B - 1 » sans deux-points.
-      if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m){raw=m[1];quality='building-heading';} }
+      if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m&&!bldProse(m[1],text)){raw=m[1];quality='building-heading';} }
       if(!raw) continue;
       raw=cleanCandidate(raw);
       if(isGenericBuildingHeading(raw)){ genericSingleHeadingSeen=true; continue; }
@@ -236,7 +256,7 @@ export function detectBuildings(doc){
     for(const page of doc.read?.pages||[]){ for(const line of page.lines||[]){
       const text=normalizeText(line.text);
       const m=text.match(/^bat(?:iment)?\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80}?)(?:\s*\(\s*\d+\s+zones?\s*\))?$/i);
-      if(m){ const building=canonicalBuilding(`Bat ${m[1]}`); if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
+      if(m&&!bldProse(m[1],text)){ const building=canonicalBuilding(`Bat ${m[1]}`); if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
     }}
     const counts=new Map(); for(const h of candidates) counts.set(h.building,(counts.get(h.building)||0)+1);
     const reliable=unique(candidates.filter(h=>(counts.get(h.building)||0)>=2).map(h=>h.building));

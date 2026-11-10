@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.23.2','version');
+eq(APP_VERSION,'2.23.3','version');
 const app=readFileSync('js/app.js','utf8'), css=readFileSync('styles.css','utf8');
 // Fonctions de l'accueil évaluées sur des projets fictifs (même code que l'application).
 const src=app.slice(app.indexOf('const SF_SRC='),app.indexOf('function sfStatsHtml()'));

@@ -3062,7 +3062,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!d.fanRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!d.bldRead)){ catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.23.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.23.3 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.23.2';
+const APP_VERSION='2.23.3';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -1078,6 +1078,26 @@ function looksLikeBuildingId(raw){
   return /\d|[a-zà-ÿ]/i.test(s);
 }
 
+// v2.23.3 — suite de phrase coupée en fin de ligne (« … les ouvrages du | bâtiment réalisés sur chantiers. », « bâtiment à charge du
+// VRD », « bâtiment compte de la perméabilité », « bâtiment existant conservé ») : pas un titre de bâtiment. Seuls les titres sans
+// deux-points sont concernés ; « Bâtiment : X » reste lu tel quel.
+const BLD_TABLE=/\b(?:batiments?|quantites?|positionnement|type\s+de|numero\s+de|famille|seuil|econome|energivore|emissions?|soumis|logements?\s+concernes|zones?\s+du)\b/;
+const BLD_VERB=/\b(?:sont|sera|seront|devra|doivent|permet|realises?|realisees?|a\s+charge|charge\s+du|compte\s+de|ainsi\s+que|conformement|datant|separes|depuis|via)\b/;
+// line : texte de la ligne (casse d'origine) ; raw : ce qui suit « bâtiment ».
+const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'').trim(), words=t.split(/\s+/).filter(Boolean).length;
+  // suite de phrase : « … du | bâtiment réalisés sur chantiers. » ; « bâtiment A » / « bâtiment 1 » seuls restent des identifiants.
+  if(/^\s*b[aâ]t/.test(String(line))&&!/^[A-Z0-9][A-Z0-9._\/-]{0,4}$/.test(String(raw).trim())) return true;
+  if(words>=2&&/[.;!?]\s*$/.test(String(raw).trim())) return true;
+  return BLD_TABLE.test(t)||BLD_VERB.test(t); };
+// v2.23.3 — nom déjà enregistré (« Bâtiment ET DES TRAVAUX PUBLICS », « Bâtiment REALISES SUR CHANTIERS. ») : faux bâtiment tiré d'une
+// phrase ou d'un en-tête de tableau ? Sert au rattrapage des opérations existantes (la casse d'origine n'est plus connue).
+function isGarbageBuildingName(name){
+  if(!name||name==='Bâtiment unique') return false;
+  const raw=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), t=normLower(raw).replace(/[.,;:!?]+\s*$/,'').trim(), words=t.split(/\s+/).filter(Boolean).length;
+  if(words>=2&&/[.;!?]\s*$/.test(raw)) return true;
+  if(/^(?:et|de|du|des|d|pour|par|avec|dans|sur|ou|en|ainsi|sera|seront|sont|ne|non|qui|dont|que|vers|depuis|via|a\s+(?:charge|demolir|habitation|plusieurs))\b/.test(t)&&words>=2) return true;
+  return BLD_TABLE.test(t)||BLD_VERB.test(t);
+}
 function detectBuildings(doc){
   // v2.3.3 — synthèse ClimaWin : les bâtiments sont les titres de section « N. Bâtiment X » (jamais les lignes de tableau).
   if(isClimaWinSynthesis(doc)){
@@ -1177,7 +1197,7 @@ function detectBuildings(doc){
       // Les rapports logiciels utilisent souvent « 1.1. Bâtiment : BÂTIMENT A ».
       if(!raw){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s*:\s*(.+)$/i); if(m){raw=m[1];quality='building-heading';} }
       // Synthèses ACV (ClimaWin notamment) : « 1. Bâtiment A », « 2. Bâtiment B - 1 » sans deux-points.
-      if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m){raw=m[1];quality='building-heading';} }
+      if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m&&!bldProse(m[1],text)){raw=m[1];quality='building-heading';} }
       if(!raw) continue;
       raw=cleanCandidate(raw);
       if(isGenericBuildingHeading(raw)){ genericSingleHeadingSeen=true; continue; }
@@ -1203,7 +1223,7 @@ function detectBuildings(doc){
     for(const page of doc.read?.pages||[]){ for(const line of page.lines||[]){
       const text=normalizeText(line.text);
       const m=text.match(/^bat(?:iment)?\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80}?)(?:\s*\(\s*\d+\s+zones?\s*\))?$/i);
-      if(m){ const building=canonicalBuilding(`Bat ${m[1]}`); if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
+      if(m&&!bldProse(m[1],text)){ const building=canonicalBuilding(`Bat ${m[1]}`); if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
     }}
     const counts=new Map(); for(const h of candidates) counts.set(h.building,(counts.get(h.building)||0)+1);
     const reliable=unique(candidates.filter(h=>(counts.get(h.building)||0)>=2).map(h=>h.building));
@@ -7075,7 +7095,10 @@ function parseSystems(doc){
     const fanZone=fanLow.match(/nombre\s+(?:total\s+)?(?:de\s+)?brasseurs?\s+d\W?\s?air(?:\s+de\s+la\s+zone)?\s*[:=]\s*(\d+)\b/);
     if(fanZone){ const n=parseInt(fanZone[1],10); if(n>0){ push(out,occ(doc,page,line,'fan_type','Brasseur d’air plafonnier','comfort:fan-type',0.94,'',{excerpt:base.slice(0,420)})); push(out,occ(doc,page,line,'fan_count',n,'comfort:fan-count',0.95,'',{excerpt:base.slice(0,420)})); }
       else push(out,occ(doc,page,line,'fan_count',0,'comfort:fan-count',0.9,'',{excerpt:base.slice(0,420)})); fan=null; }
-    if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
+    // v2.23.3 — une installation décrite (« fourniture et pose », « mise en œuvre », « seront équipés de brasseurs »…) est acceptée
+    // aussi d'un document hors liste (CCTP classé Contrat, descriptif du projet) ; une simple mention ne l'est pas.
+    const fanInstall=/\bfourniture\b|\bpose\b|\bf\s*&\s*p\b|mise\s+en\s+(?:place|oeuvre|œuvre)|\binstall|\bseront?\s+(?:mis|pose|prevu|equip|install)|\bequipee?s?\s+(?:de|d.un|d.une)\s+brasseur|\bprevu|\bchaque\s+brasseur/i.test(normLower(fanCtx));
+    if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420),...(fanInstall?{secondarySourceOk:true}:{})})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
 }
 
@@ -8297,6 +8320,9 @@ function applyCoherenceChecks(result){
 const BUILDING_SCOPED_FAMILIES=new Set(['confort d\'ete','performance energetique','carbone','dpe']);
 function isBuildingScopedField(field){
   if(['shab','housing_count','construction_year'].includes(field)) return true;
+  // v2.23.3 — un CCTP / descriptif d'opération qui prévoit des brasseurs vaut pour chaque bâtiment sans valeur propre (type et
+  // présence) ; le nombre reste propre à chaque bâtiment.
+  if(field==='fan_type'||field==='fan_presence') return false;
   const fam=normLower(FIELD_MAP[field]?.family||'');
   return BUILDING_SCOPED_FAMILIES.has(fam);
 }
@@ -8604,7 +8630,7 @@ function familyMismatchAlerts(docs=[]){
 }
 // v2.19.3 — rattrapages d'un document (exporté : l'application les fait document par document, en rendant la main entre deux).
 // Un document à relire (DH sans zone) l'est tout de suite, une seule fois.
-function catchUpDocument(d){
+function catchUpDocument(d,buildingOverrides={}){
   // v2.19.3 — les rattrapages ne tournent qu'une fois par document : la marque est enregistrée avec le document
   // (avant, elle était perdue au redémarrage : le texte était relu à chaque recalcul, jusqu'à 15 s par opération).
   // La marque part avec la sauvegarde de l'espace de travail ; un document modifié par un rattrapage est sauvegardé
@@ -8614,24 +8640,40 @@ function catchUpDocument(d){
   if(!d.rsetAddressRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.rsetAddressRead=true; if(!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length){ d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; d.needsCheckpoint=true; } } }
   // v2.12.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
   if(!d.dhZonesRead&&Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(o=>o?.field==='dh')&&d.read){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')){ d.cachedOccurrences=null; d.needsCheckpoint=true; } }
+  // v2.23.3 — faux bâtiments enregistrés (suite de phrase, en-tête de tableau : « Bâtiment REALISES SUR CHANTIERS. ») retirés de la
+  // liste du document, les autres noms gardés tels quels ; les lectures qui y étaient rattachées passent en « Bâtiment unique »
+  // (sans bâtiment précisé). Aucune relecture du texte ; une valeur validée par l'utilisateur garde son bâtiment.
+  if(!d.bldRead){ d.bldRead=1;
+    // Garde-fous : un nom utilisé dans un regroupement manuel de bâtiments n'est jamais touché ; un document dont le seul bâtiment
+    // a un faux nom le garde (c'est l'identité de son bâtiment, ses valeurs y restent rattachées).
+    const manual=new Set(Object.entries(buildingOverrides||{}).flat().map(String));
+    const garbage=n=>isGarbageBuildingName(n)&&!manual.has(String(n));
+    const names=d.buildings?.names||[], bad=names.length===1&&garbage(names[0])?[]:names.filter(garbage);
+    if(bad.length){ const keep=names.filter(n=>!bad.includes(n)); d.buildings={...d.buildings,names:keep.length?keep:['Bâtiment unique'],hits:(d.buildings.hits||[]).filter(h=>!bad.includes(h.building))}; d.needsCheckpoint=true; }
+    // Toute lecture rattachée à un faux nom (même si ce nom vient d'ailleurs que la liste du document).
+    const own=new Set((d.buildings?.names||[]).map(String)), moved=o=>o&&!o.userValidated&&garbage(o.building)&&!own.has(String(o.building));
+    if(Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(moved)){ d.cachedOccurrences=d.cachedOccurrences.map(o=>moved(o)?{...o,building:'Bâtiment unique'}:o); d.needsCheckpoint=true; } }
   // v2.23.2 — brasseurs d'air : les lectures d'avant (titre de rubrique RSET, sommaire, PSE, suppression lus comme une présence)
   // sont refaites une fois avec les règles actuelles ; seules les lectures « brasseur » du document changent. Un document sans
   // lecture « brasseur » est marqué sans relire son texte (les règles corrigées n'ajoutent une lecture que sur une ligne qui en
   // donnait déjà une).
   const fanOcc=o=>/^comfort:fan/.test(String(o?.method||''));
-  if(!d.fanRead&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=true;
-  if(!d.fanRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=true; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=true; }
+  // v2.23.3 — marque numérotée (2) : les documents déjà rattrapés en 2.23.2 sont relus une fois de plus (installation décrite
+  // dans un document Contrat / Descriptif acceptée). Un document sans lecture « brasseur » n'est toujours pas relu.
+  const FAN_READ=2, fanDone=()=>Number(d.fanRead)>=FAN_READ;
+  if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=FAN_READ;
+  if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; }
 }
 const engRoofClean=o=>{ if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
-    catchUpDocument(d);
+    catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=true; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -8692,7 +8734,12 @@ function applyComparisonBases(result){
     for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
       if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }
     const fc=numOrNull(row.fan_count);
-    if(fc>0||!empty('fan_type')) derive('fan_presence','Oui',fc>0?'fan_count':'fan_type','Brasseurs d’air lus dans le document.'); else if(fc===0) derive('fan_presence','Non','fan_count','Nombre de brasseurs d’air = 0.');
+    // v2.23.3 — « 0 brasseur » lu pour le bâtiment (RSET) prime sur un type lu pour toute l'opération.
+    if(fc===0) derive('fan_presence','Non','fan_count','Nombre de brasseurs d’air = 0.');
+    else if(fc>0) derive('fan_presence','Oui','fan_count','Brasseurs d’air lus dans le document.');
+    else if(!empty('fan_type')&&empty('fan_presence')){ // type lu pour le bâtiment, ou pour toute l'opération (CCTP) et appliqué au bâtiment
+      const src=fin('fan_type')||result.finals.find(o=>o.field==='fan_type'&&o.appliedFromUnattributed&&String(o.value)===String(row.fan_type));
+      if(src){ result.finals.push({...src,building:b,field:'fan_presence',value:'Oui',unit:'',method:'derive:fan_presence',derivedFromDocument:true,provenanceNote:src.building===b?'Brasseurs d’air lus dans le document.':'Brasseurs d’air prévus pour toute l’opération (document sans bâtiment précisé).'}); row.fan_presence='Oui'; } }
     if(!empty('cooling')) derive('cooling_active',/^(?:aucun|non|sans)\b/i.test(String(row.cooling))?'Non':'Oui','cooling',`Refroidissement : ${row.cooling}.`);
   }
   return result;
@@ -10476,7 +10523,8 @@ function serializeDocMeta(doc={}){
     // v2.19.3 — rattrapages déjà faits (voir analyzeDocuments).
     rsetAddressRead:!!doc.rsetAddressRead,
     dhZonesRead:!!doc.dhZonesRead,
-    fanRead:!!doc.fanRead,
+    fanRead:Number(doc.fanRead)||0,
+    bldRead:Number(doc.bldRead)||0,
     lowText:typeof doc.lowText==='boolean'?doc.lowText:undefined,
     climaWinInput:typeof doc.climaWinInput==='boolean'?doc.climaWinInput:undefined,
     ocrWarnings:safeJsonClone(doc.ocrWarnings,[]),
@@ -14586,7 +14634,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!d.fanRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!d.bldRead)){ catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);

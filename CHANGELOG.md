@@ -1,3 +1,24 @@
+# v2.23.3 — Brasseur d'air : vraies présences retenues
+- Opération à plusieurs bâtiments : un CCTP / descriptif qui prévoit des brasseurs pour toute l'opération (document sans bâtiment
+  précisé) donne « Brasseur d'air : Oui » et le type à chaque bâtiment sans valeur propre ; le nombre n'est pas recopié.
+  Avant : valeur « à attribuer manuellement », colonne vide.
+- Installation décrite (« fourniture et pose », « F&P », « mise en œuvre / en place », « seront mis en œuvre / équipés »,
+  « installation », « prévu ») acceptée aussi d'un document classé Contrat ou Descriptif du projet (CCTP ou notice mal classés) ;
+  une simple mention ne l'est pas.
+- « 0 brasseur » lu pour le bâtiment (RSET) prime sur un type lu pour toute l'opération.
+- Rattrapage relancé une fois (marque `fanRead` = 2), y compris pour les documents déjà rattrapés en 2.23.2.
+- Détection des bâtiments : une suite de phrase coupée en fin de ligne (« … les ouvrages du | bâtiment réalisés sur chantiers. »,
+  « bâtiment à charge du VRD ») ou un en-tête de tableau (« Bâtiment Type de VMC Type de caisson Quantité », « Batiment A Batiment B
+  Batiment C ») n'est plus un bâtiment. Les vrais titres restent : « Bâtiment A », « 1. Bâtiment B », « Bâtiment 1 Est »,
+  « BATIMENT A - LA JOUGARELLE », « Batiment A2 et B », identifiant court en minuscules (« bâtiment A »).
+- Rattrapage des opérations existantes (marque `bldRead`), sans relire le texte : les faux noms sont retirés de la liste des bâtiments
+  du document et leurs lectures passent en « sans bâtiment précisé ». Jamais touchés : un nom utilisé dans un regroupement manuel de
+  bâtiments, le seul bâtiment d'un document (identité de son bâtiment, ex. RSET), une valeur validée par l'utilisateur.
+  Session réelle : 32 faux bâtiments retirés de 42 opérations, aucun identifiant court perdu, aucune valeur validée perdue ;
+  784 des 785 valeurs portées par ces faux bâtiments existent déjà sur un vrai bâtiment de l'opération.
+- Session réelle (simulation complète rattrapage + calcul) : 22 opérations « Oui » (51 avant 2.23.2, dont 42 fausses), 45 bâtiments,
+  chaque « Oui » appuyé sur une installation décrite ou un nombre RSET. Une valeur validée par l'utilisateur (OCR ciblé) est gardée.
+
 # v2.23.2 — Brasseur d'air : fin des faux « Oui » des RSET
 - Le titre de rubrique « Brasseurs d'air » du RSET n'est plus lu comme une présence. Sur une session réelle (148 opérations),
   il apparaissait dans 76 RSET de 57 opérations et la rubrique était vide dans 249 cas sur 256 (suivie de « Données sur

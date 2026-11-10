@@ -6,7 +6,7 @@ import {APP_VERSION,DOC_TYPES,DEFAULT_SOURCE_RULES} from './js/config.js';
 import {normalizeText} from './js/utils.js';
 import {analyzeDocuments,catchUpDocument} from './js/engine.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.23.2','version');
+eq(APP_VERSION,'2.23.3','version');
 // Normalisation mémoïsée : mêmes résultats, petits et grands textes.
 eq(normalizeText('  Été  “isolé”  R=3,75 '),'Ete “isole” R=3,75','normalisation');
 eq(normalizeText('  Été  “isolé”  R=3,75 '),'Ete “isole” R=3,75','normalisation (cache)');
@@ -22,5 +22,5 @@ eq(reads-r1,0,'2e recalcul : texte du document jamais relu (détections enregist
 const per=readFileSync('js/persistence.js','utf8');
 eq(/rsetAddressRead:!!doc\.rsetAddressRead/.test(per)&&/dhZonesRead:!!doc\.dhZonesRead/.test(per)&&/lowText:/.test(per),true,'marques enregistrées');
 const app=readFileSync('js/app.js','utf8');
-eq(/pendingDocCheckpoints\.push/.test(app)&&/catchUpDocument\(d\); await new Promise/.test(app),true,'document modifié sauvegardé ; rattrapages un document à la fois');
+eq(/pendingDocCheckpoints\.push/.test(app)&&/catchUpDocument\(d(?:,[^)]*)?\); await new Promise/.test(app),true,'document modifié sauvegardé ; rattrapages un document à la fois');
 console.log(`test_v2_19_3 : ${n}/${n} OK`);

@@ -1329,7 +1329,10 @@ function parseSystems(doc){
     const fanZone=fanLow.match(/nombre\s+(?:total\s+)?(?:de\s+)?brasseurs?\s+d\W?\s?air(?:\s+de\s+la\s+zone)?\s*[:=]\s*(\d+)\b/);
     if(fanZone){ const n=parseInt(fanZone[1],10); if(n>0){ push(out,occ(doc,page,line,'fan_type','Brasseur d’air plafonnier','comfort:fan-type',0.94,'',{excerpt:base.slice(0,420)})); push(out,occ(doc,page,line,'fan_count',n,'comfort:fan-count',0.95,'',{excerpt:base.slice(0,420)})); }
       else push(out,occ(doc,page,line,'fan_count',0,'comfort:fan-count',0.9,'',{excerpt:base.slice(0,420)})); fan=null; }
-    if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
+    // v2.23.3 — une installation décrite (« fourniture et pose », « mise en œuvre », « seront équipés de brasseurs »…) est acceptée
+    // aussi d'un document hors liste (CCTP classé Contrat, descriptif du projet) ; une simple mention ne l'est pas.
+    const fanInstall=/\bfourniture\b|\bpose\b|\bf\s*&\s*p\b|mise\s+en\s+(?:place|oeuvre|œuvre)|\binstall|\bseront?\s+(?:mis|pose|prevu|equip|install)|\bequipee?s?\s+(?:de|d.un|d.une)\s+brasseur|\bprevu|\bchaque\s+brasseur/i.test(normLower(fanCtx));
+    if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420),...(fanInstall?{secondarySourceOk:true}:{})})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
 }
 
