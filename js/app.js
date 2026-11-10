@@ -2232,7 +2232,7 @@ function withProjectReads(p,fn){
   ensureProjectReads(p).then(()=>{ fn(); releaseProjectReads(p); });
 }
 async function rebuildProject(p){ await ensureProjectReads(p); if(p.pendingRebuild||!p.result) rebuildProjectFromCheckpoints(p); }
-async function ensureAllRebuilt(){ for(const p of state.projects) if(p.pendingRebuild){ await rebuildProject(p); releaseProjectReads(p); } }
+async function ensureAllRebuilt(onStep=null){ const todo=state.projects.filter(p=>p.pendingRebuild); let i=0; for(const p of todo){ if(onStep){ onStep(i++,todo.length,p); await yieldToBrowser(); } if(p.pendingRebuild){ await rebuildProject(p); releaseProjectReads(p); } } }
 function rebuildProjectFromCheckpoints(project){
   if(!projectReadsLoaded(project)&&!project.readsLoadFailed){
     project.pendingRebuild=true;
@@ -2468,9 +2468,9 @@ function feedSearches(p,grids){ const out={};
     else if(Object.keys(p.searchOverrides?.[g.id]||{}).length) out[g.id]=feedSearch(r); }
   return out; }
 // v2.20.7 — une opération à la fois : son texte est rechargé pour ses recherches, puis libéré.
-async function sessionSnapshot({details=true}={}){
-  await ensureAllRebuilt(); const grids=loadGrids(), operations=[];
-  for(const p of state.projects.filter(p=>!projectIsEmpty(p))){ await ensureProjectReads(p); operations.push(sessionOperation(p,grids,details)); releaseProjectReads(p); }
+async function sessionSnapshot({details=true,onRebuild=null,onStep=null}={}){
+  await ensureAllRebuilt(onRebuild); const grids=loadGrids(), operations=[], list=state.projects.filter(p=>!projectIsEmpty(p));
+  for(const [i,p] of list.entries()){ if(onStep){ onStep(i,list.length,p); await yieldToBrowser(); } await ensureProjectReads(p); operations.push(sessionOperation(p,grids,details)); releaseProjectReads(p); }
   return {format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
 }
 function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
@@ -2480,9 +2480,33 @@ function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
       return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; }
 }
+// v2.23.1 — témoin d'avancement de l'export de session : carte flottante (étape, opération en cours, %, taille écrite).
+// Trois étapes pesées : recalcul des opérations en attente, recherches de chaque opération, écriture de chaque opération.
+function exportProgress(title){
+  const el=document.createElement('div'); el.className='export-progress indeterminate'; el.setAttribute('role','status'); el.setAttribute('aria-live','polite');
+  el.innerHTML=`<div class="startup-card"><strong>${escapeHtml(title)}</strong><span class="startup-msg">Préparation…</span><span class="startup-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i></i></span><small class="export-detail"></small></div>`;
+  document.body.append(el);
+  const set=(msg,ratio=null,detail='')=>{ const pct=ratio===null?null:Math.round(Math.max(0,Math.min(1,ratio))*100);
+    el.querySelector('.startup-msg').textContent=pct===null?msg:`${msg} · ${pct} %`; el.querySelector('.startup-bar i').style.width=pct===null?'':`${pct}%`;
+    el.querySelector('.startup-bar').setAttribute('aria-valuenow',pct===null?'':String(pct)); el.querySelector('.export-detail').textContent=detail; el.classList.toggle('indeterminate',pct===null); };
+  return {set,done(msg,detail=''){ set(msg,1,detail); el.classList.add('ok'); setTimeout(()=>el.remove(),3500); },close(){ el.remove(); }};
+}
+let sessionExportRunning=false;
 async function exportSessionJson(){
+  if(sessionExportRunning){ toast('Export de la session déjà en cours.','warn'); return; }
+  sessionExportRunning=true; const btn=$('#exportSessionBtn'); if(btn) btn.disabled=true;
+  const ui=exportProgress('Export de la session');
+  try{ await exportSessionRun(ui); }
+  catch(err){ ui.close(); throw err; }
+  finally{ sessionExportRunning=false; if(btn) btn.disabled=false; }
+}
+async function exportSessionRun(ui){
   setLocalSaveUi('Export de la session…');
-  const snap=await sessionSnapshot(); if(!snap.operations.length){ toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
+  const list=state.projects.filter(p=>!projectIsEmpty(p)), N=list.length, R=state.projects.filter(p=>p.pendingRebuild).length, total=R+2*N+1;
+  const name=p=>projectTitle(p)||'';
+  const snap=await sessionSnapshot({onRebuild:(i,n,p)=>ui.set(`Recalcul des opérations ${i+1}/${n}`,i/total,name(p)),
+    onStep:(i,n,p)=>ui.set(`Préparation des recherches ${i+1}/${n}`,(R+i)/total,name(p))});
+  if(!snap.operations.length){ ui.close(); toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
   // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
   // v2.20.7 — écrits projet par projet dans le fichier (même contenu JSON) : le texte de toutes les opérations n'est plus
   // en mémoire en même temps.
@@ -2490,11 +2514,14 @@ async function exportSessionJson(){
   // relu ligne par ligne à l'import (une session peut dépasser la taille maximale d'une chaîne de Chrome, ~537 M caractères).
   // Le fichier reste un JSON valide. Progression affichée, la page rend la main entre deux opérations.
   const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n'];
-  const list=state.projects.filter(p=>!projectIsEmpty(p));
-  let n=0; for(const p of list){ setLocalSaveUi(`Export de la session… ${n+1}/${list.length}`); await yieldToBrowser();
-    await ensureProjectReads(p); parts.push(new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p))+'\n'])); releaseProjectReads(p); }
+  let n=0, bytes=new Blob([parts[0]]).size; for(const p of list){ setLocalSaveUi(`Export de la session… ${n+1}/${N}`);
+    ui.set(`Écriture des opérations ${n+1}/${N}`,(R+N+n)/total,`${name(p)} — ${formatBytes(bytes)} écrits`); await yieldToBrowser();
+    await ensureProjectReads(p); const b=new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p))+'\n']); bytes+=b.size; parts.push(b); releaseProjectReads(p); }
   parts.push(']}\n}\n');
-  downloadBlob(new Blob(parts,{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`); setLocalSaveUi('Session restaurée',lastLocalSaveAt);
+  ui.set('Création du fichier…',(total-1)/total,formatBytes(bytes)); await yieldToBrowser();
+  const file=new Blob(parts,{type:'application/json'});
+  downloadBlob(file,`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`); setLocalSaveUi('Session restaurée',lastLocalSaveAt);
+  ui.done('Session exportée',`${snap.operations.length} opération(s) · ${formatBytes(file.size)}`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)

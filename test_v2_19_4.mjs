@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.23.0','version');
+eq(APP_VERSION,'2.23.1','version');
 const app=readFileSync('js/app.js','utf8'), html=readFileSync('index.html','utf8'), obs=readFileSync('observatoire.html','utf8');
 eq(/id="observatoryExportBtn"/.test(html)&&/id="observatoryBtn"/.test(html),true,'deux boutons');
 eq(/function openSearchObservatory\(\)\{ window\.open\('observatoire\.html','extracterre-observatoire'\); \}/.test(app),true,'ouvrir = page seule, aucun calcul');

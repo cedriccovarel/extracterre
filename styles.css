@@ -1366,3 +1366,6 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 
 /* v2.22.2 — recherche par liste de contrats */
 .op-missing{margin:6px 0 10px;padding:8px 12px;border-radius:8px;background:#fff4d6;color:#7a5200;font-size:.88rem;overflow-wrap:anywhere}
+
+/* v2.23.1 — témoin d'avancement de l'export de session */
+.export-progress{position:fixed;right:18px;bottom:18px;z-index:9998;max-width:calc(100vw - 32px)}.export-progress .startup-card{gap:8px;padding:16px 18px}.export-progress .startup-card strong{font-size:15px}.export-detail{color:var(--muted,#5d6f66);font-size:12px;overflow-wrap:anywhere;min-height:1em}.export-progress.ok .startup-bar i{background:#2f8a5b}.export-progress.indeterminate .startup-bar i{width:35%;animation:startupSlide 1.2s ease-in-out infinite}@media(prefers-reduced-motion:reduce){.export-progress.indeterminate .startup-bar i{animation:none;width:100%;opacity:.4}}

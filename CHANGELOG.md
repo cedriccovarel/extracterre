@@ -1,3 +1,9 @@
+# v2.23.1 — Export de la session : témoin d'avancement
+- « Exporter la session (.json) » affiche une carte d'avancement en bas à droite : étape (recalcul des opérations en attente,
+  préparation des recherches, écriture des opérations, création du fichier), numéro de l'opération en cours et son nom,
+  pourcentage, taille déjà écrite ; à la fin, nombre d'opérations et taille du fichier. Mouvement réduit respecté.
+- Le bouton est désactivé pendant l'export (un second clic ne lance plus un second export).
+
 # v2.23.0 — Recherches : « Rappel de colonne »
 - Nouveau type de critère **Rappel de colonne** dans les Recherches : il reprend la valeur retenue d'une colonne (onglet Thermique,
   Enveloppe, Systèmes…) pour chaque bâtiment, avec sa source (document, page, extrait ; « Collage libre » ou « Valeur retenue (sans
