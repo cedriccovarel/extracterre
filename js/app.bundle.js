@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.23.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.23.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.23.1';
+const APP_VERSION='2.23.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -7065,6 +7065,16 @@ function parseSystems(doc){
 
     let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } // CCTP : une attente, une option ou « sans objet » ne signifie pas que des brasseurs sont posés.
     if(fan&&/\b(?:attentes?|r[eé]servations?|en\s+option|options?|sans\s+objet|non\s+pr[eé]vus?|pas\s+de\s+brasseurs?|aucun\s+brasseur|[eé]ventuels?|ult[eé]rieur)/i.test(fanCtx)) fan=null;
+    // v2.23.2 — un titre seul n'est pas une présence : rubrique « Brasseurs d'air » du RSET (vide dans 249 cas sur 256 d'une
+    // session réelle, suivie de « Données sur l'éclairage »), ligne de sommaire (« 5.5. BRASSEUR D'AIR ……… 29 », « 11.9.17
+    // Brasseurs d'air 321 »). Ni une PSE (prestation supplémentaire éventuelle), une variante ou une suppression.
+    const fanLow=normLower(base);
+    if(fan&&(/^\W*(?:[\divx]+(?:\W+[\divx]+)*\W*\s)?(?:pse\W+)?brasseurs?\s+d\W?\s?air\s*(?:\+\s*telecommande)?\W*(?:\d+\W*)?$/i.test(fanLow)||/\.{5,}|…{2,}/.test(base)||/\bpse\b|prestations?\s+supplementaires?|\bvariantes?\b|\bsuppression\b|\bsupprime/i.test(normLower(fanCtx)))) fan=null;
+    // RSET : « Nombre total de brasseurs d'air de la zone : 4 » (0 → pas de brasseur dans la zone, confiance plus basse : une
+    // autre zone du même bâtiment peut en avoir).
+    const fanZone=fanLow.match(/nombre\s+(?:total\s+)?(?:de\s+)?brasseurs?\s+d\W?\s?air(?:\s+de\s+la\s+zone)?\s*[:=]\s*(\d+)\b/);
+    if(fanZone){ const n=parseInt(fanZone[1],10); if(n>0){ push(out,occ(doc,page,line,'fan_type','Brasseur d’air plafonnier','comfort:fan-type',0.94,'',{excerpt:base.slice(0,420)})); push(out,occ(doc,page,line,'fan_count',n,'comfort:fan-count',0.95,'',{excerpt:base.slice(0,420)})); }
+      else push(out,occ(doc,page,line,'fan_count',0,'comfort:fan-count',0.9,'',{excerpt:base.slice(0,420)})); fan=null; }
     if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
 }
@@ -8604,7 +8614,14 @@ function catchUpDocument(d){
   if(!d.rsetAddressRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.rsetAddressRead=true; if(!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length){ d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; d.needsCheckpoint=true; } } }
   // v2.12.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
   if(!d.dhZonesRead&&Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(o=>o?.field==='dh')&&d.read){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')){ d.cachedOccurrences=null; d.needsCheckpoint=true; } }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; }
+  // v2.23.2 — brasseurs d'air : les lectures d'avant (titre de rubrique RSET, sommaire, PSE, suppression lus comme une présence)
+  // sont refaites une fois avec les règles actuelles ; seules les lectures « brasseur » du document changent. Un document sans
+  // lecture « brasseur » est marqué sans relire son texte (les règles corrigées n'ajoutent une lecture que sur une ligne qui en
+  // donnait déjà une).
+  const fanOcc=o=>/^comfort:fan/.test(String(o?.method||''));
+  if(!d.fanRead&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=true;
+  if(!d.fanRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=true; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=true; }
 }
 const engRoofClean=o=>{ if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
@@ -8614,7 +8631,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
     catchUpDocument(d);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=true; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -10459,6 +10476,7 @@ function serializeDocMeta(doc={}){
     // v2.19.3 — rattrapages déjà faits (voir analyzeDocuments).
     rsetAddressRead:!!doc.rsetAddressRead,
     dhZonesRead:!!doc.dhZonesRead,
+    fanRead:!!doc.fanRead,
     lowText:typeof doc.lowText==='boolean'?doc.lowText:undefined,
     climaWinInput:typeof doc.climaWinInput==='boolean'?doc.climaWinInput:undefined,
     ocrWarnings:safeJsonClone(doc.ocrWarnings,[]),
@@ -14568,7 +14586,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!d.fanRead)){ catchUpDocument(d); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);

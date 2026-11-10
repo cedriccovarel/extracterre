@@ -101,6 +101,7 @@ function serializeDocMeta(doc={}){
     // v2.19.3 — rattrapages déjà faits (voir analyzeDocuments).
     rsetAddressRead:!!doc.rsetAddressRead,
     dhZonesRead:!!doc.dhZonesRead,
+    fanRead:!!doc.fanRead,
     lowText:typeof doc.lowText==='boolean'?doc.lowText:undefined,
     climaWinInput:typeof doc.climaWinInput==='boolean'?doc.climaWinInput:undefined,
     ocrWarnings:safeJsonClone(doc.ocrWarnings,[]),

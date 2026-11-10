@@ -333,7 +333,14 @@ export function catchUpDocument(d){
   if(!d.rsetAddressRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.rsetAddressRead=true; if(!d.cachedOccurrences.some(o=>o?.method==='rset:operation-address')){ const a=parseRsetOperationAddress(d); if(a.length){ d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!['address','postcode','city'].includes(o?.field)),...a]; d.needsCheckpoint=true; } } }
   // v2.12.1 — rattrapage : un DH lu avant cette version n'a pas son type de zone ; le document est relu une fois.
   if(!d.dhZonesRead&&Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(o=>o?.field==='dh')&&d.read){ d.dhZonesRead=true; if(!d.cachedOccurrences.some(o=>o?.dhZone||o?.field==='dh_zt'||o?.field==='dh_znt')){ d.cachedOccurrences=null; d.needsCheckpoint=true; } }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; }
+  // v2.23.2 — brasseurs d'air : les lectures d'avant (titre de rubrique RSET, sommaire, PSE, suppression lus comme une présence)
+  // sont refaites une fois avec les règles actuelles ; seules les lectures « brasseur » du document changent. Un document sans
+  // lecture « brasseur » est marqué sans relire son texte (les règles corrigées n'ajoutent une lecture que sur une ligne qui en
+  // donnait déjà une).
+  const fanOcc=o=>/^comfort:fan/.test(String(o?.method||''));
+  if(!d.fanRead&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=true;
+  if(!d.fanRead&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=true; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=true; }
 }
 const engRoofClean=o=>{ if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
@@ -343,7 +350,7 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     catchUpDocument(d);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=true; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

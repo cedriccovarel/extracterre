@@ -1319,6 +1319,16 @@ function parseSystems(doc){
 
     let fan=findFirstMatch(base,FAN_TYPES), fanCtx=base; if(!fan && /brasseur|ventilateur\s+de\s+plafond|hvls/i.test(baseLow)){ fanCtx=normalizeText(`${base} | ${next}`); fan=findFirstMatch(fanCtx,FAN_TYPES); } // CCTP : une attente, une option ou « sans objet » ne signifie pas que des brasseurs sont posés.
     if(fan&&/\b(?:attentes?|r[eé]servations?|en\s+option|options?|sans\s+objet|non\s+pr[eé]vus?|pas\s+de\s+brasseurs?|aucun\s+brasseur|[eé]ventuels?|ult[eé]rieur)/i.test(fanCtx)) fan=null;
+    // v2.23.2 — un titre seul n'est pas une présence : rubrique « Brasseurs d'air » du RSET (vide dans 249 cas sur 256 d'une
+    // session réelle, suivie de « Données sur l'éclairage »), ligne de sommaire (« 5.5. BRASSEUR D'AIR ……… 29 », « 11.9.17
+    // Brasseurs d'air 321 »). Ni une PSE (prestation supplémentaire éventuelle), une variante ou une suppression.
+    const fanLow=normLower(base);
+    if(fan&&(/^\W*(?:[\divx]+(?:\W+[\divx]+)*\W*\s)?(?:pse\W+)?brasseurs?\s+d\W?\s?air\s*(?:\+\s*telecommande)?\W*(?:\d+\W*)?$/i.test(fanLow)||/\.{5,}|…{2,}/.test(base)||/\bpse\b|prestations?\s+supplementaires?|\bvariantes?\b|\bsuppression\b|\bsupprime/i.test(normLower(fanCtx)))) fan=null;
+    // RSET : « Nombre total de brasseurs d'air de la zone : 4 » (0 → pas de brasseur dans la zone, confiance plus basse : une
+    // autre zone du même bâtiment peut en avoir).
+    const fanZone=fanLow.match(/nombre\s+(?:total\s+)?(?:de\s+)?brasseurs?\s+d\W?\s?air(?:\s+de\s+la\s+zone)?\s*[:=]\s*(\d+)\b/);
+    if(fanZone){ const n=parseInt(fanZone[1],10); if(n>0){ push(out,occ(doc,page,line,'fan_type','Brasseur d’air plafonnier','comfort:fan-type',0.94,'',{excerpt:base.slice(0,420)})); push(out,occ(doc,page,line,'fan_count',n,'comfort:fan-count',0.95,'',{excerpt:base.slice(0,420)})); }
+      else push(out,occ(doc,page,line,'fan_count',0,'comfort:fan-count',0.9,'',{excerpt:base.slice(0,420)})); fan=null; }
     if(fan){ push(out,occ(doc,page,line,'fan_type',fan,'comfort:fan-type',0.94,'',{excerpt:fanCtx.slice(0,420)})); const m=fanCtx.match(/(?:nombre|nb\.?)\s*(?:de\s+)?(?:brasseurs?|ventilateurs?\s+de\s+plafond)\s*[:=\-]?\s*(\d+)/i)||fanCtx.match(/(?<![\d.,])(\d+)\s+(?:brasseurs?|ventilateurs?\s+de\s+plafond)/i); if(m) push(out,occ(doc,page,line,'fan_count',parseInt(m[1],10),'comfort:fan-count',0.94,'',{excerpt:fanCtx.slice(0,420)})); }
   }} return out;
 }

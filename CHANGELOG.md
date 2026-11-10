@@ -1,3 +1,17 @@
+# v2.23.2 — Brasseur d'air : fin des faux « Oui » des RSET
+- Le titre de rubrique « Brasseurs d'air » du RSET n'est plus lu comme une présence. Sur une session réelle (148 opérations),
+  il apparaissait dans 76 RSET de 57 opérations et la rubrique était vide dans 249 cas sur 256 (suivie de « Données sur
+  l'éclairage ») ; 50 des 59 bâtiments marqués « Brasseur d'air : Oui » l'étaient pour cette seule raison.
+- « Nombre total de brasseurs d'air de la zone : N » (RSET) est lu : N > 0 → nombre et « Oui » ; 0 → « Non » (une autre zone du
+  même bâtiment avec des brasseurs l'emporte).
+- Ne sont plus une présence non plus : lignes de sommaire (« 5.5. BRASSEUR D'AIR ……… 29 », « 11.9.17 Brasseurs d'air 321 »),
+  titres numérotés seuls, PSE (prestation supplémentaire éventuelle), variantes, suppressions (« BRASSEUR D'AIR + TELECOMMANDE
+  (SUPPRESSION) » donnait aussi un nombre de 8).
+- Rattrapage automatique des opérations déjà analysées (marque `fanRead` enregistrée avec le document) : au prochain démarrage,
+  chaque document qui avait une lecture « brasseur » est relu une fois avec ces règles, seules ses lectures « brasseur » sont
+  remplacées (autres colonnes et corrections manuelles inchangées). Simulé sur la session réelle : 106 documents relus (< 1 s
+  chacun), 2 935 marqués sans relecture, aucune autre lecture modifiée ; opérations « Brasseur d'air : Oui » 51 → 9.
+
 # v2.23.1 — Export de la session : témoin d'avancement
 - « Exporter la session (.json) » affiche une carte d'avancement en bas à droite : étape (recalcul des opérations en attente,
   préparation des recherches, écriture des opérations, création du fichier), numéro de l'opération en cours et son nom,
