@@ -12,7 +12,7 @@ async function ss_store(mode,fn){ const db=await ss_db(); return new Promise((re
 export const ssSupported=()=>typeof globalThis.showDirectoryPicker==='function';
 export async function ssSavedWorkDir(){ try{ return await ss_store('readonly',s=>s.get('work'))||null; }catch{ return null; } }
 export async function ssPickWorkDir(){ const h=await globalThis.showDirectoryPicker({id:'extracterre-import-work',mode:'readwrite'}); try{ await ss_store('readwrite',s=>s.put(h,'work')); }catch{} return h; }
-export async function ssEnsure(h,mode='read'){ if(!h) return false; if(await h.queryPermission?.({mode})==='granted') return true; return await h.requestPermission?.({mode})==='granted'; }
+export async function ssEnsure(h,mode='read'){ if(!h) return false; if(await h.queryPermission?.({mode})==='granted') return true; try{ return await h.requestPermission?.({mode})==='granted'; }catch{ return false; } }
 
 async function ss_file(dir,rel){
   const parts=String(rel).split('/').filter(Boolean); let d=dir;

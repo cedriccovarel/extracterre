@@ -1,3 +1,10 @@
+# v2.24.4 — Suivi des sources : plus d'erreur « Failed to execute » à l'ouverture
+
+- Après un rechargement de la page, Chrome redemande l'accès au dossier de travail. Cette demande doit venir d'un clic : elle était lancée
+  automatiquement à l'ouverture de « Suivi des sources », et Chrome la refusait avec « Failed to execute 'requestPermission' ». Un bouton
+  « Autoriser l'accès à « ExtracTerre-import » » s'affiche maintenant ; un seul clic suffit.
+- Dossier Box (⟳ Box, Charger depuis Box) : un accès refusé ne provoque plus d'erreur. Le choix du dossier est proposé à la place.
+
 # v2.24.3 — Économie : fichiers sources déchargeables ou supprimables
 
 - Onglet Économie, encart « Fichiers sources » : questionnaire financier ou DPGF utilisés, avec deux boutons par fichier.

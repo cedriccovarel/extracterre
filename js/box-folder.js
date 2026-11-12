@@ -33,7 +33,7 @@ export const boxSupported=()=>typeof globalThis.showDirectoryPicker==='function'
 export async function boxSavedRoot(){ try{ return await boxStore('readonly',s=>s.get('root'))||null; }catch{ return null; } }
 export async function boxPickRoot(){ const h=await globalThis.showDirectoryPicker({id:'extracterre-box',mode:'read'}); try{ await boxStore('readwrite',s=>s.put(h,'root')); }catch(err){ console.warn('Dossier Box non mémorisé',err); } return h; }
 // À appeler pendant un clic : Chrome redemande l'accès à chaque session.
-export async function boxEnsureAccess(h){ if(!h) return false; if(await h.queryPermission?.({mode:'read'})==='granted') return true; return await h.requestPermission?.({mode:'read'})==='granted'; }
+export async function boxEnsureAccess(h){ if(!h) return false; if(await h.queryPermission?.({mode:'read'})==='granted') return true; try{ return await h.requestPermission?.({mode:'read'})==='granted'; }catch{ return false; } } // sans clic récent, Chrome refuse la demande : on renvoie « non » au lieu de lever une erreur
 
 export async function boxFindOperation(root,contract){
   const key=boxContractKey(contract); if(!key) return null;

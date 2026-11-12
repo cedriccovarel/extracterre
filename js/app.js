@@ -3201,6 +3201,7 @@ function renderSourcesView(){
   const body=dlg.querySelector('[data-ss-body]'), info=dlg.querySelector('[data-ss-info]');
   dlg.querySelectorAll('[data-ss-tab]').forEach(b=>b.classList.toggle('active',b.dataset.ssTab===ss.tab));
   const nReview=ss.registry?ssReviewItems().length:0; const tabReview=dlg.querySelector('[data-ss-tab="review"]'); if(tabReview) tabReview.textContent=`À vérifier${nReview?` (${nReview})`:''}`;
+  if(!ss.registry&&ss.pendingDir){ info.textContent=''; body.innerHTML=`<div class="ss-start"><p>Chrome redemande l’accès au dossier de travail <b>${escapeHtml(ss.pendingDir.name)}</b> après chaque rechargement de la page.</p><button class="btn primary" data-ss-grant>Autoriser l’accès à « ${escapeHtml(ss.pendingDir.name)} »</button> <button class="btn light" data-ss-pick>Choisir un autre dossier</button></div>`; return; }
   if(!ss.registry){ info.textContent=''; body.innerHTML=`<div class="ss-start"><p>Choisissez le <b>dossier de travail</b> du script d’import (par défaut <code>ExtracTerre-import</code> dans votre dossier personnel). ExtracTerre y lit le registre et les résultats ; vos dossiers Box ne sont jamais modifiés.</p>${ssSupported()?'<button class="btn primary" data-ss-pick>Choisir le dossier de travail</button>':'<p class="ss-bad">Ce navigateur ne permet pas d’ouvrir un dossier local : utilisez Chrome ou Edge.</p>'}</div>`; return; }
   const ops=ssOperations(ss.registry);
   info.textContent=`${ss.dir?.name||''} · registre du ${ss.registry.updatedAt?new Date(ss.registry.updatedAt).toLocaleString('fr-FR'):'—'} · ${ops.length} opération(s)`;
@@ -3218,14 +3219,20 @@ async function openSourcesView(){
     dlg.addEventListener('change',e=>ssChange(e).catch(err=>toast(err?.message||String(err),'error')));
   }
   if(!dlg.open) dlg.showModal();
-  if(!ss.registry&&await ssSavedWorkDir()){ try{ await ssLoadDir(false); }catch(err){ toast(err?.message||String(err),'warn'); } }
+  if(!ss.registry){ const saved=await ssSavedWorkDir();
+    if(saved){ let perm='prompt'; try{ perm=await saved.queryPermission({mode:'readwrite'}); }catch{}
+      if(perm==='granted'){ try{ await ssLoadDir(false); }catch(err){ toast(err?.message||String(err),'warn'); } }
+      else ss.pendingDir=saved; } }
   renderSourcesView();
 }
 function ssStatus(t){ const el=$('#sourcesDialog [data-ss-status]'); if(el) el.textContent=t||''; }
 async function ssClick(e){
   const t=e.target.closest('button'); if(!t||ss.busy) return;
   if(t.matches('[data-ss-close]')){ $('#sourcesDialog').close(); return; }
-  if(t.matches('[data-ss-pick]')){ await ssLoadDir(true); renderSourcesView(); return; }
+  if(t.matches('[data-ss-grant]')){ const dir=ss.pendingDir; let ok=false; try{ ok=await dir.requestPermission({mode:'readwrite'})==='granted'; }catch{}
+    if(!ok){ toast('Accès refusé : choisissez le dossier de travail.','warn'); return; }
+    ss.pendingDir=null; await ssLoadDir(false); renderSourcesView(); return; }
+  if(t.matches('[data-ss-pick]')){ ss.pendingDir=null; await ssLoadDir(true); renderSourcesView(); return; }
   if(t.matches('[data-ss-refresh]')){ await ssLoadDir(false); renderSourcesView(); toast('Registre relu.','success'); return; }
   if(t.dataset.ssTab){ ss.tab=t.dataset.ssTab; renderSourcesView(); return; }
   if(t.dataset.ssLaunch){ await ssLaunch(t.dataset.ssLaunch); return; }

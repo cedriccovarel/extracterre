@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.3','version');
+eq(APP_VERSION,'2.24.4','version');
 // 1. Texte au format du prompt : enveloppe par paroi, alias ICC / ICE / Perméabilité, menuiseries.
 const txt=`BATIMENT A :
 Nombre de logements = 32
