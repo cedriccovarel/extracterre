@@ -1,0 +1,4 @@
+# Import massif : secrets et dépendances locales (jamais versionnés)
+tools/import/.env
+tools/import/node_modules/
+.DS_Store

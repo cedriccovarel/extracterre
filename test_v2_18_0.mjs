@@ -9,7 +9,7 @@ import {SECURITY_GRID,runSearchGrid,searchCellValue,ASHTON_CHECKS,hasAshtonCheck
 import {CHECKS,evaluateCheck} from './ashton/measure.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.23.3','version');
+eq(APP_VERSION,'2.24.0','version');
 
 // 1. Famille « Plan »
 eq(normalizeFamilyKey('plan'),'plan','famille plan reconnue');
@@ -69,4 +69,4 @@ eq(fs.readFileSync('js/persistence.js','utf8').includes('planChecks:safeJsonClon
 const ash=fs.readFileSync('ashton/app.js','utf8');
 eq(ash.includes("key:`ashton:${CHECK?`check:${CHECK_ID}:`:''}${file.name}:${file.size}`"),true,'mesures de l’outil dédié gardées à part');
 eq(/body\.check-mode \.rail \.tool\[data-tool\]:not\(\[data-tool=pan\]\)/.test(fs.readFileSync('ashton/styles.css','utf8')),true,'outil dédié : les autres outils sont masqués');
-console.log(`v2.23.3 : ${n}/${n} OK`);
+console.log(`v2.24.0 : ${n}/${n} OK`);

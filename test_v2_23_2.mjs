@@ -7,7 +7,7 @@ import {classifyDocument} from './js/classifier.js';
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.23.3','version');
+eq(APP_VERSION,'2.24.0','version');
 const prep=(d,type)=>{ const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind}); d.classification={...c,automaticType:c.type}; d.type=type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
 const row=(txt,type=DOC_TYPES.RSET_RE2020,name='RSET FICTIF.pdf')=>{ const r=analyzeDocuments([prep(textDoc('d1',name,type,txt),type)],structuredClone(DEFAULT_SOURCE_RULES),'Op').rows[0]||{}; return [r.fan_presence,r.fan_count,r.fan_type]; };
 const none=[undefined,undefined,undefined];
@@ -37,4 +37,4 @@ eq(row('Suivant plans, un brasseur d\'air dans chaque séjour et chambre des log
   catchUpDocument(d); eq(d.cachedOccurrences.find(o=>o.field==='fan_count')?.value,3,'rattrapage : nombre de la zone ajouté'); }
 { const d=prep(textDoc('old3','Notice FICTIVE.pdf',DOC_TYPES.CCTP,'Brasseurs d\'air'),DOC_TYPES.CCTP); const before=[{field:'shab',value:10,method:'x',building:'Bâtiment unique',confidence:0.95,page:1}]; d.cachedOccurrences=before;
   catchUpDocument(d); eq([d.fanRead>=1,d.cachedOccurrences===before,!!d.needsCheckpoint],[true,true,false],'sans lecture « brasseur » : marqué sans relecture'); }
-console.log(`v2.23.3 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.24.0 — ${n} vérifications OK (données fictives)`);

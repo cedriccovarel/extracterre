@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull,docReadLoaded,unloadDocumentRead} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.23.3','version');
+eq(APP_VERSION,'2.24.0','version');
 const app=readFileSync('js/app.js','utf8'), per=readFileSync('js/persistence.js','utf8'), eng=readFileSync('js/engine.js','utf8');
 
 // Compteur : une analyse horodatée aujourd'hui compte comme un import Salesforce du jour ; hier ne compte pas.

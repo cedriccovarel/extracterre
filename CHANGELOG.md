@@ -1,3 +1,19 @@
+# v2.24.0 — Import massif & suivi des sources
+
+- **Écran d'accueil** à deux entrées : « Version actuelle » (inchangée : session, opérations, options) et « Import massif & suivi des
+  sources » (`?espace=import`), qui a sa **propre base locale** : la session actuelle n'est jamais touchée. Bouton « ⇄ Espaces » pour revenir au choix.
+- **Script `tools/import`** (Node, lecture seule sur Box) : sélection par numéros de contrat (`--contrats`, `--operation`), sous-dossiers
+  CCTP / thermique / carbone à tout niveau, rapport de correspondance (`--check-only`), simulation (`--dry-run`), classement (dossier → XML →
+  nom → 1re page), versions (indice, date, date de modification ; historique), extraction par **les parseurs de l'appli** (même code que le
+  glisser-déposer), reprise après interruption, opérations inchangées sautées, fichiers connus (SHA-256) jamais relus, disparus marqués,
+  option `--with-ai` (Ollama, propositions à valider). Configuration lisible `import.config.json`, README en français.
+- **Registre Supabase chiffré** (migration `supabase/migrations/20261112_import_massif.sql`) : contenu AES-256-GCM avec une clé tirée de la
+  phrase secrète de l'utilisateur, identifiants en HMAC, tables fermées aux clés publiques. Clé de service uniquement dans `tools/import/.env`.
+- **Vue « Suivi des sources »** (espace import) : opérations, documents par famille, versions antérieures, disparus, comparaison avec le
+  dossier Box (⟳ Box), liste « À vérifier » filtrable (corriger le type, valider, choisir la version, relancer, ignorer, propositions IA) ;
+  choix enregistrés dans `decisions.json`, appliqués par le script. Les documents ajoutés à la main et les saisies restent prioritaires.
+- `js/doc-pipeline.js` : classement d'un document lu partagé entre l'appli et le script (code déplacé, non modifié).
+
 # v2.23.3 — Brasseur d'air : vraies présences retenues
 - Opération à plusieurs bâtiments : un CCTP / descriptif qui prévoit des brasseurs pour toute l'opération (document sans bâtiment
   précisé) donne « Brasseur d'air : Oui » et le type à chaque bâtiment sans valeur propre ; le nombre n'est pas recopié.

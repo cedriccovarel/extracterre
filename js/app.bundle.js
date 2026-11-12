@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.23.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.24.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.23.3';
+const APP_VERSION='2.24.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -9358,6 +9358,41 @@ Groupe Refroidissement Categorie Tic Tic Ref.
   return {tests,passed:tests.filter(t=>t.ok).length,total:tests.length,ok:tests.every(t=>t.ok)};
 }
 
+/* ---- doc-pipeline.js ---- */
+// ExtracTerre v2.24.0 — étapes communes « document lu → document prêt », partagées par l'appli (glisser-déposer)
+// et par l'import massif (tools/import) : même classement, même détection des bâtiments, mêmes parseurs.
+
+
+
+
+
+function classifyForSelectedFamily(doc){
+  const auto0=classifyDocument(doc.name,doc.read?.text||'',{kind:doc.read?.kind,re2020:doc.read?.re2020||null});
+  const auto=doc.read?.plan?{...auto0,type:DOC_TYPES.PLAN,confidence:.95,planFormat:doc.read.plan.format}:auto0;
+  const families=resolveDocumentFamilies({...doc,classification:{...auto,automaticType:auto.type},type:auto.type});
+  const forcedManual=doc.familyMode==='manual';
+  // Le type affiché suit la famille choisie manuellement ; la détection automatique reste mémorisée pour le contrôle.
+  const primary=families.find(f=>f!=='annex');
+  const forcedType=forcedManual&&primary&&!autoFamiliesForType(auto.type).includes(primary)?DOCUMENT_FAMILIES[primary]?.type:null;
+  return {...auto,automaticType:auto.type,type:forcedType||auto.type,families,familyMode:doc.familyMode||'auto',forcedByUser:!!forcedType};
+}
+
+// Après readFile : classement, bâtiments, pré-extraction (cachedOccurrences) puis lecture compactée, comme l'appli.
+// Les drapeaux de rattrapage sont posés : le document vient d'être lu par les parseurs actuels.
+function prepareReadDocument(d){
+  d.classification=classifyForSelectedFamily(d);
+  d.type=d.classification.type;
+  d.buildings=detectBuildings(d);
+  d.status='ready';
+  if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
+  try{
+    d.cachedOccurrences=d.read?.plan?[]:parseDocument(d); d.analysisCachedAt=Date.now();
+    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
+    d.read=compactReadForRetention(d.read);
+  }catch(parseErr){ d.cachedOccurrences=null; d.parseError=parseErr?.message||String(parseErr); }
+  return d;
+}
+
 /* ---- collage-libre.js ---- */
 // v2.7.0 — collage libre : texte « libellé = valeur » (ou « : », tabulation), regroupé par bâtiment (« Bâtiment G : »).
 // Chaque libellé est rapproché d'une colonne ExtracTerre ; les libellés inconnus peuvent être rangés par l'IA, qui ne
@@ -10422,7 +10457,8 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
 function exportExcel(result,rules,economic=null){ return exportProjectsExcel([{result,economic,operationName:result?.operation||''}],rules); }
 
 /* ---- persistence.js ---- */
-const DB_NAME='extracterre-local-workspace';
+// v2.24.0 — l'espace « Import massif » (?espace=import) a sa propre base : la session actuelle n'est jamais touchée.
+const DB_NAME=(()=>{ try{ return new URLSearchParams(globalThis.location?.search||'').get('espace')==='import'?'extracterre-import-workspace':'extracterre-local-workspace'; }catch{ return 'extracterre-local-workspace'; } })();
 const DB_VERSION=3;
 const WORKSPACE_STORE='workspaces';
 const DOCUMENT_STORE='documents';
@@ -10540,6 +10576,9 @@ function serializeDocMeta(doc={}){
     specializedLabel:doc.specializedLabel||'',
     families:safeJsonClone(doc.families,null),
     familyMode:doc.familyMode||'auto',
+    importKey:doc.importKey||'',
+    importSha:doc.importSha||'',
+    llmProposals:safeJsonClone(doc.llmProposals,null),
     persistedAnalysis:hasAnalysis
   };
 }
@@ -10601,6 +10640,10 @@ function serializeProject(project={}){
     planChecks:safeJsonClone(project.planChecks,{}),
     favorite:!!project.favorite,
     ownerName:project.ownerName||'',
+    // v2.24.0 — opération alimentée par l'import massif (contrat, dossier, dernière mise à jour).
+    importContract:project.importContract||'',
+    importFolder:project.importFolder||'',
+    importSyncedAt:project.importSyncedAt||null,
     expanded:project.expanded!==false
   };
 }
@@ -11572,6 +11615,109 @@ async function boxListEvaluation(opDir){
   return {evaluation:ev.name,items:boxPrecheck(items).sort((a,b)=>BOX_KINDS.findIndex(k=>k[0]===a.kind)-BOX_KINDS.findIndex(k=>k[0]===b.kind)||b.lastModified-a.lastModified)};
 }
 
+/* ---- suivi-sources.js ---- */
+// ExtracTerre v2.24.0 — espace « Import massif & suivi des sources ».
+// Lit le dossier de travail du script tools/import (registre.json, resultats/*.json.gz) choisi par l'utilisateur
+// (File System Access) et y écrit decisions.json (choix faits dans « À vérifier »). Les dossiers Box ne sont jamais modifiés.
+
+const IMPORT_SPACE=(()=>{ try{ return new URLSearchParams(globalThis.location?.search||'').get('espace')==='import'; }catch{ return false; } })();
+const SS_STATUS_ORDER=['à vérifier','erreur','à traiter','nouveau','traité','ignoré'];
+
+const SS_DB='extracterre-import-ui', SS_STORE='handles';
+function ss_db(){ return new Promise((res,rej)=>{ const r=indexedDB.open(SS_DB,1); r.onupgradeneeded=()=>r.result.createObjectStore(SS_STORE); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function ss_store(mode,fn){ const db=await ss_db(); return new Promise((res,rej)=>{ const tx=db.transaction(SS_STORE,mode); const req=fn(tx.objectStore(SS_STORE)); tx.oncomplete=()=>{ db.close(); res(req?.result); }; tx.onerror=()=>{ db.close(); rej(tx.error); }; }); }
+
+const ssSupported=()=>typeof globalThis.showDirectoryPicker==='function';
+async function ssSavedWorkDir(){ try{ return await ss_store('readonly',s=>s.get('work'))||null; }catch{ return null; } }
+async function ssPickWorkDir(){ const h=await globalThis.showDirectoryPicker({id:'extracterre-import-work',mode:'readwrite'}); try{ await ss_store('readwrite',s=>s.put(h,'work')); }catch{} return h; }
+async function ssEnsure(h,mode='read'){ if(!h) return false; if(await h.queryPermission?.({mode})==='granted') return true; return await h.requestPermission?.({mode})==='granted'; }
+
+async function ss_file(dir,rel){
+  const parts=String(rel).split('/').filter(Boolean); let d=dir;
+  for(const p of parts.slice(0,-1)) d=await d.getDirectoryHandle(p);
+  return (await d.getFileHandle(parts.at(-1))).getFile();
+}
+async function ssReadRegistry(dir){
+  let f; try{ f=await ss_file(dir,'registre.json'); }catch{ throw new Error('registre.json absent : choisissez le dossier de travail du script (par défaut ExtracTerre-import dans votre dossier personnel), après un premier traitement.'); }
+  const r=JSON.parse(await f.text());
+  if(r?.format!=='extracterre-import-registry') throw new Error('Ce fichier n’est pas un registre d’import ExtracTerre.');
+  return r;
+}
+async function ssReadResult(dir,rel){
+  const f=await ss_file(dir,rel);
+  const stream=f.stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(stream).text());
+}
+async function ssReadDecisions(dir){ try{ const f=await ss_file(dir,'decisions.json'); return JSON.parse(await f.text())||{files:{}}; }catch{ return {format:'extracterre-import-decisions',files:{}}; } }
+async function ssWriteDecisions(dir,obj){
+  const h=await dir.getFileHandle('decisions.json',{create:true}); const w=await h.createWritable();
+  await w.write(JSON.stringify({format:'extracterre-import-decisions',updatedAt:new Date().toISOString(),files:obj.files||{}},null,1)); await w.close();
+}
+
+// Motif « À vérifier » regroupé pour le filtre.
+function ssReasonCategory(reason=''){
+  const r=String(reason).toLowerCase();
+  if(/scan|ocr/.test(r)) return 'PDF sans texte (scan)';
+  if(/contradictoire/.test(r)) return 'Indices contradictoires';
+  if(/version/.test(r)) return 'Ordre des versions ambigu';
+  if(/incomplet/.test(r)) return 'Résultat incomplet';
+  if(/aucune donnée/.test(r)) return 'Aucune donnée extraite';
+  if(/xml/.test(r)) return 'XML non reconnu';
+  if(/aucun indice/.test(r)) return 'Type inconnu';
+  if(/parseur|lecture/.test(r)) return 'Erreur de lecture';
+  return 'Autre';
+}
+
+// Vue par opération : documents courants par famille, historique, disparus, compteurs.
+function ssOperations(registry){
+  const files=Object.values(registry?.files||{}), byOp=new Map();
+  for(const op of Object.values(registry?.operations||{})) byOp.set(op.contract,{...op,files:[]});
+  for(const f of files){ if(!byOp.has(f.contract)) byOp.set(f.contract,{contract:f.contract,folder:f.folder,files:[]}); byOp.get(f.contract).files.push(f); }
+  return [...byOp.values()].map(op=>{
+    const c={total:0,traite:0,review:0,errors:0,ignored:0,missing:0,history:0,todo:0};
+    for(const f of op.files){
+      if(f.missing){ c.missing++; continue; }
+      c.total++;
+      if(f.status==='traité') c.traite++; else if(f.status==='à vérifier') c.review++; else if(f.status==='erreur') c.errors++;
+      else if(f.status==='ignoré'){ if(f.versionGroup&&!f.isCurrent) c.history++; else c.ignored++; } else c.todo++;
+    }
+    return {...op,counts:c};
+  }).sort((a,b)=>String(a.contract).localeCompare(String(b.contract)));
+}
+
+// Fichiers à charger dans l'opération : version courante, extraite, et validée (traité, ou acceptée dans l'appli).
+function ssLoadableFiles(registry,contract,decisions={}){
+  return Object.values(registry?.files||{}).filter(f=>f.contract===contract&&!f.missing&&f.isCurrent&&f.resultFile&&
+    (f.status==='traité'||(f.status==='à vérifier'&&decisions[`${f.contract}|${f.relPath}`]?.accept)));
+}
+
+// Nom d'opération lisible tiré du nom de dossier : « 00001234 - 59 - LILLE - LES TILLEULS » → « LILLE - LES TILLEULS ».
+function ssOperationName(folder=''){
+  return String(folder).replace(/^\s*(?:annul[ée]e?\s*-\s*)?[\d\s,;+&\/._–-]*(?:(?:et|and)\b[\d\s,;+&\/._–-]*)*/i,'').replace(/^(?:\d{2}|2a|2b)\s*-\s*/i,'').trim()||String(folder).trim();
+}
+
+// Dossier lié : compare le dossier d'opération (poignée Box) au registre — nouveaux, modifiés, disparus.
+async function ssCompareLinked(opHandle,registry,contract){
+  const known=new Map(Object.values(registry?.files||{}).filter(f=>f.contract===contract&&!f.missing).map(f=>[f.relPath,f]));
+  const op=(registry?.operations||{})[contract]; const dirs=(op?.families||[]).map(x=>x.relDir);
+  const seen=new Set(), added=[], changed=[];
+  async function walk(dir,rel,depth,directOnly){
+    for await (const [name,h] of dir.entries()){
+      const r=rel?`${rel}/${name}`:name;
+      if(h.kind==='directory'){ if(!directOnly&&depth<8) await walk(h,r,depth+1,false); continue; }
+      const f=await h.getFile(); seen.add(r); const k=known.get(r);
+      if(!k){ if(!/^(~\$|\._|\.)/.test(name)) added.push({relPath:r,size:f.size,lastModified:f.lastModified}); }
+      else if(k.size!==f.size||Math.abs((k.mtimeMs||0)-f.lastModified)>2000) changed.push({relPath:r,size:f.size,lastModified:f.lastModified});
+    }
+  }
+  for(const fam of op?.families||[]){
+    let d=opHandle; try{ for(const p of fam.relDir.split('/')) d=await d.getDirectoryHandle(p); }catch{ continue; }
+    await walk(d,fam.relDir,0,!!fam.container);
+  }
+  const gone=[...known.values()].filter(f=>dirs.some(d=>f.relPath.startsWith(`${d}/`))&&!seen.has(f.relPath)&&f.status!=='ignoré');
+  return {added,changed,gone};
+}
+
 /* ---- plans.js ---- */
 // v2.15.0 — plans mesurés dans Ashton : la table de correspondance reçue (par document) devient, pour les quantités
 // reliées à une colonne, des occurrences de type Plan. Longueurs, largeurs et surfaces restent dans l'onglet Plans.
@@ -11615,16 +11761,6 @@ const FAMILY_CHOICES=Object.freeze([
 ]);
 function familiesLabel(list){ return (list||[]).map(f=>DOCUMENT_FAMILIES[f]?.short||f).join(' + '); }
 function specializedConfig(family){ const k=normalizeFamilyKey(family)||'annex'; return {label:DOCUMENT_FAMILIES[k]?.label||'Annexe',type:DOCUMENT_FAMILIES[k]?.type||null}; }
-function classifyForSelectedFamily(doc){
-  const auto0=classifyDocument(doc.name,doc.read?.text||'',{kind:doc.read?.kind,re2020:doc.read?.re2020||null});
-  const auto=doc.read?.plan?{...auto0,type:DOC_TYPES.PLAN,confidence:.95,planFormat:doc.read.plan.format}:auto0;
-  const families=resolveDocumentFamilies({...doc,classification:{...auto,automaticType:auto.type},type:auto.type});
-  const forcedManual=doc.familyMode==='manual';
-  // Le type affiché suit la famille choisie manuellement ; la détection automatique reste mémorisée pour le contrôle.
-  const primary=families.find(f=>f!=='annex');
-  const forcedType=forcedManual&&primary&&!autoFamiliesForType(auto.type).includes(primary)?DOCUMENT_FAMILIES[primary]?.type:null;
-  return {...auto,automaticType:auto.type,type:forcedType||auto.type,families,familyMode:doc.familyMode||'auto',forcedByUser:!!forcedType};
-}
 function documentCompleteness(doc){
   if(!Array.isArray(doc.cachedOccurrences)||isPlanDoc(doc)) return null;
   const expected=documentExpectedFields(doc); if(!expected.length) return null;
@@ -11817,7 +11953,7 @@ function projectIdentity(p){
   if(p?.pendingRebuild&&p.tileCache?.identity) return {...p.tileCache.identity,name:p.tileCache.identity.name||p.operationName||'',owner:String(p.ownerName||p.tileCache.identity.owner||'').trim()};
   const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
   const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
-  return {contract:pick('contract_number')||ev.fin_contract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
+  return {contract:pick('contract_number')||ev.fin_contract||p?.importContract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
 }
 function projectCompletion(p){
   if(p?.pendingRebuild&&p.tileCache) return p.tileCache.completion||0;
@@ -14649,6 +14785,7 @@ function restoredToast(){ const docs=state.projects.reduce((n,p)=>n+(p.docs||[])
 async function initializeApp(){
   if(!globalThis.__extracterreAccessPromise) throw new Error('Le contrôle d’accès ExtracTerre n’a pas été initialisé.');
   await globalThis.__extracterreAccessPromise;
+  initSpaceChooser();
   try{await initializeLearningMemory();}catch(err){console.warn('Learning memory init failed',err);}
   await initializeImprovementPatches();
   wire(); setLocalSaveUi('Recherche de session…');
@@ -14677,6 +14814,183 @@ async function initializeApp(){
   warnContractDuplicates(contractDuplicates()); dupWatch=true;
   syncProjectInput(); renderAll(); switchTab(state.activeTab||'summary'); setHomeMode(true); receiveBookmarkletText(); refreshLocalStorageInfo(); await refreshCloudUi(false); await refreshJournalUi(); await renderLearningMemoryUi(); if(getRemoteJournalConfig().configured) syncLearningJournalNow(false); window.__prestaterreExtractReady=true;
 }
+// ---------- v2.24.0 — écran d'accueil (choix de l'espace) et espace « Import massif & suivi des sources » ----------
+function initSpaceChooser(){
+  const chooser=$('#spaceChooser');
+  if(IMPORT_SPACE){ document.body.classList.add('import-space'); document.title='ExtracTerre — Import massif'; $('#spaceBadge')?.removeAttribute('hidden'); $('#sourcesBtn')?.removeAttribute('hidden'); }
+  else { let chosen=false; try{ chosen=sessionStorage.getItem('extracterre.space.chosen')==='1'; }catch{} if(chooser&&!chosen) chooser.hidden=false; }
+  chooser?.addEventListener('click',e=>{
+    const b=e.target.closest('[data-space]'); if(!b) return;
+    if(b.dataset.space==='current'){ try{ sessionStorage.setItem('extracterre.space.chosen','1'); }catch{} if(IMPORT_SPACE) location.href=location.pathname; else chooser.hidden=true; }
+    else if(b.dataset.space==='import'){ if(IMPORT_SPACE) chooser.hidden=true; else location.href=`${location.pathname}?espace=import`; }
+  });
+  $('#homeChoiceBtn')?.addEventListener('click',()=>{ if(chooser) chooser.hidden=false; });
+  $('#sourcesBtn')?.addEventListener('click',()=>openSourcesView());
+}
+
+const ss={dir:null,registry:null,decisions:{files:{}},tab:'ops',filter:'',open:null,busy:false,linked:{}};
+const SS_FAMILY_LABEL={cctp:'CCTP',thermique:'Note ou étude thermique',carbone:'Carbone / ACV / RSEE'};
+async function ssLoadDir(pick=false){
+  if(!ssSupported()) throw new Error('Ce navigateur ne permet pas d’ouvrir un dossier : utilisez Chrome ou Edge.');
+  let dir=pick?null:await ssSavedWorkDir();
+  if(!dir) dir=await ssPickWorkDir();
+  if(!await ssEnsure(dir,'readwrite')) throw new Error('Accès au dossier de travail refusé.');
+  ss.dir=dir; ss.registry=await ssReadRegistry(dir); ss.decisions=await ssReadDecisions(dir);
+}
+async function ssDecide(key,patch){
+  const cur=ss.decisions.files[key]||{};
+  const next={...cur,...patch,at:new Date().toISOString()};
+  for(const k of Object.keys(next)) if(next[k]==null||next[k]===false) delete next[k];
+  if(Object.keys(next).length>1) ss.decisions.files[key]=next; else delete ss.decisions.files[key];
+  await ssWriteDecisions(ss.dir,ss.decisions);
+}
+function ssStatusChip(f){
+  const st=f.missing?'disparu':(f.status==='ignoré'&&f.versionGroup&&!f.isCurrent)?'historique':f.status;
+  const cls={'traité':'ok','à vérifier':'warn','erreur':'bad','disparu':'bad','historique':'muted','ignoré':'muted'}[st]||'';
+  return `<span class="ss-chip ${cls}">${escapeHtml(st)}</span>`;
+}
+function ssRenderOps(){
+  const ops=ssOperations(ss.registry);
+  if(!ops.length) return '<p class="ss-empty">Aucune opération dans le registre : lancez d’abord le script d’import (voir l’aide).</p>';
+  return `<table class="ss-table"><thead><tr><th>Contrat</th><th>Dossier</th><th>Dernier passage</th><th>Traités</th><th>À vérifier</th><th>Erreurs</th><th>Historique</th><th>Disparus</th><th></th></tr></thead><tbody>${ops.map(op=>{
+    const p=state.projects.find(x=>x.importContract===op.contract), c=op.counts, open=ss.open===op.contract;
+    const linked=ss.linked[op.contract];
+    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
+      <td class="ss-actions"><button class="btn light" data-ss-open="${escapeHtml(op.contract)}">${open?'Fermer':'Détail'}</button><button class="btn light" data-ss-load="${escapeHtml(op.contract)}" title="Créer ou mettre à jour l’opération dans ExtracTerre avec les documents traités">${p?'Mettre à jour':'Charger'}</button>${p?`<button class="btn light" data-ss-go="${escapeHtml(p.id)}">Ouvrir</button>`:''}<button class="btn light" data-ss-linked="${escapeHtml(op.contract)}" title="Comparer avec le dossier Box (nouveaux, modifiés, disparus)">⟳ Box</button></td></tr>
+      ${linked?`<tr class="ss-detail"><td colspan="9">${linked.error?`<p class="ss-bad">${escapeHtml(linked.error)}</p>`:`<p><b>Depuis le dernier passage du script :</b> ${linked.added.length} nouveau(x), ${linked.changed.length} modifié(s), ${linked.gone.length} disparu(s).${linked.added.length||linked.changed.length||linked.gone.length?` Relancez <code>node extracterre-import.mjs --operation ${escapeHtml(op.contract)}</code> pour les traiter.`:''}</p>${[...linked.added.map(x=>['nouveau',x]),...linked.changed.map(x=>['modifié',x]),...linked.gone.map(x=>['disparu',x])].slice(0,40).map(([k,x])=>`<div class="ss-line"><span class="ss-chip ${k==='disparu'?'bad':'warn'}">${k}</span> ${escapeHtml(x.relPath)}</div>`).join('')}`}</td></tr>`:''}
+      ${open?`<tr class="ss-detail"><td colspan="9">${ssRenderOpDetail(op)}</td></tr>`:''}`; }).join('')}</tbody></table>`;
+}
+function ssRenderOpDetail(op){
+  const fams=[...new Set(op.files.map(f=>f.family||'autre'))];
+  return fams.map(fam=>{
+    const files=op.files.filter(f=>(f.family||'autre')===fam&&f.status!=='ignoré'||((f.family||'autre')===fam&&f.versionGroup&&!f.isCurrent));
+    const groups=new Map(); for(const f of files){ const k=f.versionGroup||f.relPath; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(f); }
+    return `<h4>${escapeHtml(SS_FAMILY_LABEL[fam]||fam)}</h4>${[...groups.values()].map(g=>{ g.sort((a,b)=>(a.missing-b.missing)||((a.versionRank||9)-(b.versionRank||9))); const [cur,...hist]=g;
+      const line=(f,h)=>`<div class="ss-line ${h?'ss-hist':''}">${ssStatusChip(f)} <span class="ss-name">${escapeHtml(f.name)}</span> <small>${escapeHtml(f.relDir||'')}${f.versionLabel?` · ${escapeHtml(f.versionLabel)}`:''}${f.docType?` · ${escapeHtml(f.docType)}`:''}${f.completeness?` · ${f.completeness.found}/${f.completeness.expected} champs attendus`:''}</small>${f.reason?`<small class="ss-reason">${escapeHtml(f.reason)}</small>`:''}</div>`;
+      return line(cur,false)+(hist.length?`<details class="ss-history"><summary>${hist.length} version(s) antérieure(s) ou disparue(s)</summary>${hist.map(f=>line(f,true)).join('')}</details>`:''); }).join('')}`;
+  }).join('')||'<p class="ss-empty">Aucun document retenu.</p>';
+}
+function ssReviewItems(){ return Object.values(ss.registry?.files||{}).filter(f=>!f.missing&&(f.status==='à vérifier'||f.status==='erreur')); }
+function ssRenderReview(){
+  const items=ssReviewItems(); const cats=[...new Set(items.map(f=>ssReasonCategory(f.reason)))].sort();
+  const shown=items.filter(f=>!ss.filter||ssReasonCategory(f.reason)===ss.filter);
+  const famOpts=Object.entries(DOCUMENT_FAMILIES).filter(([k])=>k!=='annex').map(([k,v])=>`<option value="${k}">${escapeHtml(v.label)}</option>`).join('');
+  return `<div class="ss-filter"><label>Motif <select data-ss-filter><option value="">Tous (${items.length})</option>${cats.map(c=>`<option ${c===ss.filter?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></label><span>Les choix sont enregistrés dans <code>decisions.json</code> du dossier de travail ; le script les applique au prochain passage.</span></div>
+    ${shown.length?shown.map(f=>{ const key=`${f.contract}|${f.relPath}`, dec=ss.decisions.files[key]||{};
+      return `<div class="ss-review" data-ss-key="${escapeHtml(key)}"><div class="ss-review-main">${ssStatusChip(f)} <b>${escapeHtml(f.contract)}</b> · <span class="ss-name">${escapeHtml(f.name)}</span><small>${escapeHtml(f.relDir||'')} · ${escapeHtml(f.docType||f.importType||'type inconnu')}${f.versionLabel?` · ${escapeHtml(f.versionLabel)}`:''}</small><small class="ss-reason">${escapeHtml(f.reason||ssReasonCategory(f.reason))}</small>
+        ${Object.keys(dec).length>1?`<small class="ss-decided">Choix enregistré : ${escapeHtml([dec.family?`type ${DOCUMENT_FAMILIES[dec.family]?.short||dec.family}`:'',dec.accept?'validé tel quel':'',dec.current?'version choisie':'',dec.ignore?'ignoré':'',dec.reprocess?'à relire':''].filter(Boolean).join(', '))}</small>`:''}</div>
+        <div class="ss-review-actions"><select data-ss-family><option value="">Corriger le type…</option>${famOpts}</select>
+          <button class="btn light" data-ss-act="accept" title="Garder le type et le résultat : le document est chargé dans l’opération">Valider tel quel</button>
+          ${f.versionCount>1?'<button class="btn light" data-ss-act="current" title="Cette version devient la version courante">Choisir cette version</button>':''}
+          <button class="btn light" data-ss-act="reprocess" title="Relire au prochain passage du script">Relancer</button>
+          ${f.status==='à vérifier'&&f.resultFile?'<button class="btn light" data-ss-act="ai" title="Valider, charger dans l’opération et ouvrir les propositions de l’IA locale (✓ / ✕)">🤖 IA</button>':''}
+          <button class="btn light" data-ss-act="ignore">Ignorer</button><button class="btn light" data-ss-act="clear" title="Annuler le choix">↺</button></div></div>`; }).join(''):'<p class="ss-empty">Rien à vérifier.</p>'}`;
+}
+function renderSourcesView(){
+  const dlg=$('#sourcesDialog'); if(!dlg) return;
+  const body=dlg.querySelector('[data-ss-body]'), info=dlg.querySelector('[data-ss-info]');
+  dlg.querySelectorAll('[data-ss-tab]').forEach(b=>b.classList.toggle('active',b.dataset.ssTab===ss.tab));
+  const nReview=ss.registry?ssReviewItems().length:0; const tabReview=dlg.querySelector('[data-ss-tab="review"]'); if(tabReview) tabReview.textContent=`À vérifier${nReview?` (${nReview})`:''}`;
+  if(!ss.registry){ info.textContent=''; body.innerHTML=`<div class="ss-start"><p>Choisissez le <b>dossier de travail</b> du script d’import (par défaut <code>ExtracTerre-import</code> dans votre dossier personnel). ExtracTerre y lit le registre et les résultats ; vos dossiers Box ne sont jamais modifiés.</p>${ssSupported()?'<button class="btn primary" data-ss-pick>Choisir le dossier de travail</button>':'<p class="ss-bad">Ce navigateur ne permet pas d’ouvrir un dossier local : utilisez Chrome ou Edge.</p>'}</div>`; return; }
+  const ops=ssOperations(ss.registry);
+  info.textContent=`${ss.dir?.name||''} · registre du ${ss.registry.updatedAt?new Date(ss.registry.updatedAt).toLocaleString('fr-FR'):'—'} · ${ops.length} opération(s)`;
+  body.innerHTML=ss.tab==='review'?ssRenderReview():ssRenderOps();
+}
+async function openSourcesView(){
+  let dlg=$('#sourcesDialog');
+  if(!dlg){
+    dlg=document.createElement('dialog'); dlg.id='sourcesDialog'; dlg.className='search-integrate-dialog sources-dialog';
+    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Import massif</span><h3>Suivi des sources</h3><p data-ss-info></p></div><div class="ss-head-actions"><button class="btn light" data-ss-pick title="Changer de dossier de travail">Dossier…</button><button class="btn light" data-ss-refresh>Actualiser</button><button class="btn primary" data-ss-loadall title="Créer ou mettre à jour toutes les opérations du registre">Charger toutes les opérations</button><button class="icon-btn" type="button" data-ss-close aria-label="Fermer">×</button></div></div>
+      <div class="ss-tabs"><button class="ss-tab" data-ss-tab="ops">Opérations</button><button class="ss-tab" data-ss-tab="review">À vérifier</button></div><div class="ss-body" data-ss-body></div><div class="ss-status" data-ss-status></div></div>`;
+    document.body.appendChild(dlg);
+    dlg.addEventListener('click',e=>ssClick(e).catch(err=>toast(err?.message||String(err),'error')));
+    dlg.addEventListener('change',e=>ssChange(e).catch(err=>toast(err?.message||String(err),'error')));
+  }
+  if(!dlg.open) dlg.showModal();
+  if(!ss.registry&&await ssSavedWorkDir()){ try{ await ssLoadDir(false); }catch(err){ toast(err?.message||String(err),'warn'); } }
+  renderSourcesView();
+}
+function ssStatus(t){ const el=$('#sourcesDialog [data-ss-status]'); if(el) el.textContent=t||''; }
+async function ssClick(e){
+  const t=e.target.closest('button'); if(!t||ss.busy) return;
+  if(t.matches('[data-ss-close]')){ $('#sourcesDialog').close(); return; }
+  if(t.matches('[data-ss-pick]')){ await ssLoadDir(true); renderSourcesView(); return; }
+  if(t.matches('[data-ss-refresh]')){ await ssLoadDir(false); renderSourcesView(); toast('Registre relu.','success'); return; }
+  if(t.dataset.ssTab){ ss.tab=t.dataset.ssTab; renderSourcesView(); return; }
+  if(t.dataset.ssOpen){ ss.open=ss.open===t.dataset.ssOpen?null:t.dataset.ssOpen; renderSourcesView(); return; }
+  if(t.dataset.ssGo){ $('#sourcesDialog').close(); activateProject(t.dataset.ssGo); return; }
+  if(t.dataset.ssLoad){ await ssRun(()=>loadImportOperations([t.dataset.ssLoad])); return; }
+  if(t.matches('[data-ss-loadall]')){ await ssRun(()=>loadImportOperations(ssOperations(ss.registry).map(o=>o.contract))); return; }
+  if(t.dataset.ssLinked){ await ssRun(()=>ssLinkedCheck(t.dataset.ssLinked)); return; }
+  const act=t.dataset.ssAct; const row=t.closest('[data-ss-key]'); if(!act||!row) return;
+  const key=row.dataset.ssKey;
+  if(act==='clear'){ delete ss.decisions.files[key]; await ssWriteDecisions(ss.dir,ss.decisions); }
+  else if(act==='accept') await ssDecide(key,{accept:true,ignore:null});
+  else if(act==='current') await ssDecide(key,{current:true});
+  else if(act==='reprocess') await ssDecide(key,{reprocess:true});
+  else if(act==='ignore') await ssDecide(key,{ignore:true,accept:null});
+  else if(act==='ai'){ await ssDecide(key,{accept:true}); const contract=key.slice(0,key.indexOf('|')); await ssRun(()=>loadImportOperations([contract])); await ssOpenAiProposals(key); return; }
+  renderSourcesView();
+}
+async function ssChange(e){
+  if(e.target.matches('[data-ss-filter]')){ ss.filter=e.target.value; renderSourcesView(); return; }
+  if(e.target.matches('[data-ss-family]')&&e.target.value){ const key=e.target.closest('[data-ss-key]').dataset.ssKey; await ssDecide(key,{family:e.target.value,reprocess:true}); toast(`Type enregistré : ${DOCUMENT_FAMILIES[e.target.value]?.label}. Relancez le script pour relire ce document.`,'success'); renderSourcesView(); }
+}
+async function ssRun(fn){ ss.busy=true; $('#sourcesDialog')?.classList.add('busy'); try{ await fn(); } finally { ss.busy=false; $('#sourcesDialog')?.classList.remove('busy'); ssStatus(''); renderSourcesView(); } }
+async function ssLinkedCheck(contract){
+  const op=(ss.registry.operations||{})[contract]||ssOperations(ss.registry).find(o=>o.contract===contract);
+  try{
+    if(!boxSupported()) throw new Error('Ce navigateur ne permet pas de lier un dossier : utilisez Chrome ou Edge.');
+    let root=await boxSavedRoot(); if(!root) root=await boxPickRoot();
+    if(!await boxEnsureAccess(root)) throw new Error('Accès au dossier Box refusé.');
+    let h; try{ h=await root.getDirectoryHandle(op.folder); }catch{ throw new Error(`Dossier « ${op.folder} » introuvable dans « ${root.name} » : choisissez le dossier racine des contrats (1 BEE Contrats).`); }
+    ssStatus(`Comparaison avec Box — ${op.folder}…`);
+    ss.linked[contract]=await ssCompareLinked(h,ss.registry,contract);
+  }catch(err){ ss.linked[contract]={error:err?.message||String(err)}; }
+}
+// Crée ou met à jour une opération par contrat : documents traités (et validés) du registre ; les documents ajoutés à la main,
+// les saisies et collages restent intacts et gardent leur priorité.
+async function loadImportOperations(contracts){
+  const reg=ss.registry; let created=0,updated=0,added=0,removed=0,kept=0,failed=0;
+  for(let i=0;i<contracts.length;i++){
+    const contract=contracts[i]; const op=(reg.operations||{})[contract]||{contract,folder:''};
+    ssStatus(`Chargement ${i+1}/${contracts.length} — ${contract} ${op.folder||''}`); await yieldToBrowser();
+    const files=ssLoadableFiles(reg,contract,ss.decisions.files);
+    let p=state.projects.find(x=>x.importContract===contract);
+    if(!p){ if(!files.length) continue; p=createProject(state.projects.length+1); p.importContract=contract; p.importFolder=op.folder||''; p.customTitle=op.folder||contract; p.operationName=ssOperationName(op.folder||''); p.expanded=false; state.projects.push(p); created++; }
+    else updated++;
+    const want=new Map(files.map(f=>[`${f.contract}|${f.relPath}`,f]));
+    const before=p.docs.length;
+    p.docs=p.docs.filter(d=>!d.importKey||(want.has(d.importKey)&&want.get(d.importKey).sha256===d.importSha));
+    removed+=before-p.docs.length;
+    const fresh=[];
+    for(const [key,f] of want){
+      if(p.docs.some(d=>d.importKey===key)){ kept++; continue; }
+      try{
+        const r=await ssReadResult(ss.dir,f.resultFile);
+        const d={...r.doc,id:`doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`,file:null,status:'ready',error:null,importKey:key,importSha:f.sha256};
+        p.docs.push(d); fresh.push(d); added++;
+      }catch(err){ failed++; console.warn('Résultat illisible',f.resultFile,err); }
+    }
+    p.importFolder=op.folder||p.importFolder; p.importSyncedAt=Date.now();
+    rebuildProjectFromCheckpoints(p);
+    if(persistenceReady) for(const d of fresh){ try{ const info=await saveDocumentCheckpoint(p.id,d); d.persistenceMode=info?.mode||null; }catch(err){ console.warn('Sauvegarde document',err); } }
+    await checkpointWorkspace(`import ${contract}`,true);
+    releaseProjectReads(p);
+  }
+  renderAll();
+  toast(`Import : ${created} opération(s) créée(s), ${updated} mise(s) à jour · ${added} document(s) ajouté(s), ${removed} retiré(s), ${kept} inchangé(s)${failed?` · ${failed} résultat(s) illisible(s)`:''}.`,failed?'warn':'success');
+}
+async function ssOpenAiProposals(key){
+  const p=state.projects.find(x=>x.docs?.some(d=>d.importKey===key)); const d=p?.docs.find(x=>x.importKey===key);
+  if(!p||!d){ toast('Document non chargé dans l’opération.','warn'); return; }
+  if(!d.llmProposals?.length){ toast('Aucune proposition de l’IA pour ce document (relancez le script avec --with-ai).','info'); return; }
+  $('#sourcesDialog')?.close(); activateProject(p.id); await ensureProjectReads(p); if(p.pendingRebuild||!p.result) rebuildProjectFromCheckpoints(p);
+  const candidates=buildTargetedCandidates(d,d,d.llmProposals);
+  if(!candidates.length){ toast('Les propositions de l’IA ne complètent aucune case vide de l’opération.','info'); return; }
+  showTargetedReview(d,candidates,{pages:[]},{title:`IA locale — ${d.name}`,sub:`${candidates.length} proposition(s) vérifiée(s) mot pour mot dans le document. Confiance plafonnée à 85 % : chaque valeur doit être validée ✓ / ✕.`});
+}
+
 initializeApp();
 
 })();
