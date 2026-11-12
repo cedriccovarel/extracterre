@@ -163,7 +163,7 @@ export function ssDuration(ms){
 }
 export function ssProgressModel(st,now=Date.now()){
   const done=ssRequestDone(st);
-  const step=!st?'attente':done?'fin':st.etape==='extraction'?'extraction':st.etape==='correspondance'?'correspondance':'lecture';
+  const step=!st||st.etat==='en attente'?'attente':done?'fin':st.etape==='extraction'?'extraction':st.etape==='correspondance'?'correspondance':'lecture';
   const o=st?.operations||{}, f=st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
   // Part de l'opération en cours comptée via ses documents : la barre avance aussi pendant une longue opération.
   const docShare=!done&&total&&fait<total&&f.total?Math.min(1,(f.fait||0)/f.total):0;

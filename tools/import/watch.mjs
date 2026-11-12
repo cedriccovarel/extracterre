@@ -82,4 +82,17 @@ async function tick(){
 }
 console.log(`ExtracTerre — service d'import démarré · ${dir}`);
 fs.mkdirSync(dir,{recursive:true});
+// v2.31.1 — reprise : une analyse marquée « en cours » au démarrage du service a été coupée (redémarrage, mise à jour, Mac
+// éteint). Elle repasse en attente et sera relancée : les opérations déjà traitées et inchangées sont sautées.
+function resumeOrphans(){
+  let names=[]; try{ names=fs.readdirSync(dir); }catch{ return; }
+  for(const n of names.filter(n=>/^demande-[\w-]+\.statut\.json$/.test(n))){
+    const f=path.join(dir,n), st=readJson(f); if(st?.etat!=='en cours') continue;
+    const id=n.replace(/\.statut\.json$/,'');
+    if(fs.existsSync(stopFile(id))){ writeJson(f,{...st,etat:'interrompu',etape:'arrêté à la demande',finA:new Date().toISOString()}); try{ fs.unlinkSync(stopFile(id)); }catch{} continue; }
+    writeJson(f,{etat:'en attente',etape:'attente',reprise:true,coupeeA:st.majA||null});
+    console.log(`${id} : analyse coupée au redémarrage, remise en attente (reprise).`);
+  }
+}
+resumeOrphans();
 tick(); setInterval(tick,5000);

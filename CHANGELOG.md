@@ -1,3 +1,11 @@
+# v2.31.1 — Service d'import : reprise automatique d'une analyse coupée
+
+- Une analyse coupée par un redémarrage du service est reprise automatiquement au démarrage suivant. Cela couvre une mise à jour,
+  une réinstallation et un Mac éteint. Les opérations déjà traitées et inchangées sont sautées. Avant, elle restait « en cours » sans avancer
+  et bloquait les nouvelles demandes.
+- Une analyse dont l'arrêt avait été demandé passe en « interrompu ».
+- Pendant ce temps, Suivi des sources et l'indicateur du haut affichent « reprise ».
+
 # v2.31.0 — Import massif : suivi visuel de l'analyse en cours
 
 - **Indicateur permanent dans la barre du haut** (espace Import massif). Il affiche le nombre d'opérations faites sur le total,

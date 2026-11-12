@@ -3447,7 +3447,7 @@ async function ssRenderQueue(){
   if(!list.length){ box.innerHTML=''; return; }
   const label=r=>{ const st=r.status; if(r.stopAsked&&!ssRequestDone(st)) return ['warn','arrêt demandé…']; if(!st) return ['muted','en attente']; return [{terminé:'ok',erreur:'bad',interrompu:'warn',annulé:'muted'}[st.etat]||'warn',st.etat==='en cours'?`en cours · ${st.operations?.fait??0}/${st.operations?.total??'?'}`:st.etat]; };
   const done=list.filter(r=>ssRequestDone(r.status));
-  box.innerHTML=`<div class="ss-queue-head"><b>File des analyses</b>${done.length?`<button class="btn light" type="button" data-ss-qclear>Vider l’historique (${done.length})</button>`:''}</div>${list.slice(0,30).map(r=>{ const [cls,txt]=label(r), running=r.status?.etat==='en cours', waiting=!r.status;
+  box.innerHTML=`<div class="ss-queue-head"><b>File des analyses</b>${done.length?`<button class="btn light" type="button" data-ss-qclear>Vider l’historique (${done.length})</button>`:''}</div>${list.slice(0,30).map(r=>{ const [cls,txt]=label(r), running=r.status?.etat==='en cours', waiting=!r.status||r.status.etat==='en attente';
     return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}</span>
       ${running&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}" title="Termine le document en cours, enregistre, puis s’arrête">Arrêter</button>`:''}${running&&r.stopAsked?`<button class="btn light" type="button" data-ss-qkill="${escapeHtml(r.id)}">Arrêt immédiat</button>`:''}${waiting&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}">Annuler</button>`:''}${ssRequestDone(r.status)?`<button class="icon-btn" type="button" data-ss-qdel="${escapeHtml(r.id)}" title="Supprimer de l’historique" aria-label="Supprimer">×</button>`:''}</div>`; }).join('')}`;
 }
@@ -3479,6 +3479,7 @@ function ssProgressHtml(id,st){
   const bad=st?.etat==='erreur', stopped=['interrompu','annulé'].includes(st?.etat);
   const steps=`<ol class="ss-steps">${SS_STEPS.map(([k,label],i)=>`<li class="${i<stepIdx||(m.done&&st?.etat==='terminé')?'done':i===stepIdx?(bad?'bad':stopped?'warn':'now'):''}"><i>${i<stepIdx||(m.done&&st?.etat==='terminé')?'✓':i+1}</i><span>${escapeHtml(k==='fin'&&m.done?({terminé:'Terminé',erreur:'Erreur',interrompu:'Interrompu',annulé:'Annulé'}[st.etat]||label):label)}</span></li>`).join('')}</ol>`;
   if(!st) return `<div class="ss-progress">${steps}<p class="ss-wait">Demande ${escapeHtml(id)} déposée : en attente du service d’import…</p></div>`;
+  if(st.etat==='en attente') return `<div class="ss-progress">${steps}<p class="ss-wait">${st.reprise?'Analyse coupée (redémarrage du service) : elle reprend où elle s’était arrêtée…':'En attente du service d’import…'}</p></div>`;
   const c=st.correspondance, t=st.totaux;
   const list=(label,xs)=>xs?.length?`<div><b>${label} (${xs.length})</b> : ${escapeHtml(xs.slice(0,30).join(', '))}${xs.length>30?'…':''}</div>`:'';
   const pctTxt=`${String(m.pct).replace('.',',')} %`;
@@ -3530,9 +3531,9 @@ async function ssTrackerTick(){
     if(dir==='locked'){ if(cur){ html='<b>Analyse</b> · cliquer pour suivre'; cls='muted'; title='Chrome demande l’accès au dossier de travail pour afficher l’avancement.'; } }
     else if(dir){
       const reqs=await ssListRequests(dir).catch(()=>[]);
-      const r=reqs.find(x=>x.id===cur)||reqs.find(x=>x.status?.etat==='en cours')||reqs.find(x=>!x.status&&!x.stopAsked);
+      const r=reqs.find(x=>x.id===cur)||reqs.find(x=>x.status?.etat==='en cours')||reqs.find(x=>(!x.status||x.status.etat==='en attente')&&!x.stopAsked);
       if(r){ const m=ssProgressModel(r.status);
-        if(!r.status){ html=`<span class="ss-dot"></span><b>Analyse</b> · en attente du service (${r.contracts} contrat(s))`; cls='wait'; }
+        if(!r.status||r.status.etat==='en attente'){ html=`<span class="ss-dot"></span><b>Analyse</b> · ${r.status?.reprise?'reprise':'en attente du service'} (${r.contracts} contrat(s))`; cls='wait'; }
         else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
         else if(r.id===cur){ const ok=r.status.etat==='terminé'; html=ok?'✓ <b>Analyse terminée</b> · cliquer pour charger':`⚠ <b>Analyse ${escapeHtml(r.status.etat)}</b>`; cls=ok?'ok':'warn'; }
         if(!m.done&&r.status&&m.total) document.title=`(${Math.floor(m.pct)} %) ${ssTrackerTitle||(ssTrackerTitle=document.title.replace(/^\(\d+ %\) /,''))}`;
