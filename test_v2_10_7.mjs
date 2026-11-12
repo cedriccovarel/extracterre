@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.31.1','version');
+eq(APP_VERSION,'2.31.2','version');
 const page=`Performance thermique
 BAT AB / Nbre logts = 10 / Q4 = 0,7
 BBio = 60 - Bbiomax = 70 - Gain = 14,3

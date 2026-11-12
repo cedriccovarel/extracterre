@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {ssProgressModel,ssDuration} from './js/suivi-sources.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.31.1','version');
+eq(APP_VERSION,'2.31.2','version');
 const now=Date.parse('2026-11-12T12:00:00Z');
 const st={etat:'en cours',etape:'extraction',debut:'2026-11-12T10:50:00Z',debutExtraction:'2026-11-12T11:00:00Z',majA:'2026-11-12T11:59:50Z',contrats:['A','B','C','D','E'],
   operations:{fait:2,total:5,courante:'C · C - 06 - VILLEFICTIVE'},fichiers:{fait:5,total:10,courant:'x.pdf'},parOp:{A:{r:'ok',f:3,x:3},B:{r:'inchangé'}}};
@@ -27,3 +27,8 @@ console.log(`v2.31.0 — ${n} vérifications OK (données fictives)`);
   if(!/function resumeOrphans\(\)/.test(w)||!/etat:'en attente',etape:'attente',reprise:true/.test(w)||!/resumeOrphans\(\);\ntick\(\)/.test(w)) { console.error('ÉCHEC reprise des analyses coupées'); process.exit(1); }
   if(ssProgressModel({etat:'en attente',reprise:true}).step!=='attente'){ console.error('ÉCHEC étape reprise'); process.exit(1); }
   console.log('v2.31.1 — reprise OK'); }
+// v2.31.2 — avancement pendant la lecture de Box
+{ const m=ssProgressModel({etat:'en cours',etape:'lecture',debut:'2026-11-12T11:00:00Z',debutLecture:'2026-11-12T11:00:00Z',lecture:{fait:50,total:200,courant:'X'}},Date.parse('2026-11-12T11:02:00Z'));
+  if(m.step!=='lecture'||m.pct!==25||ssDuration(m.eta)!=='6 min'||m.tiles.length||!/dossier/.test(m.unit)){ console.error('ÉCHEC lecture Box',m); process.exit(1); }
+  const cli=fs.readFileSync('tools/import/extracterre-import.mjs','utf8'); if(!/debutLecture/.test(cli)||!/status\(\{lecture:\{fait:scanned/.test(cli)){ console.error('ÉCHEC script lecture'); process.exit(1); }
+  console.log('v2.31.2 — lecture Box OK'); }

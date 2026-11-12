@@ -1,3 +1,8 @@
+# v2.31.2 — Suivi : avancement visible dès la lecture de Box
+
+- La phase « Lecture de Box » (parcours des dossiers des opérations) affiche son avancement : barre, dossiers parcourus / total,
+  dossier en cours et temps restant. Cela vaut dans le panneau et dans l'indicateur du haut. Avant, il n'y avait rien jusqu'au début de l'analyse des documents.
+
 # v2.31.1 — Service d'import : reprise automatique d'une analyse coupée
 
 - Une analyse coupée par un redémarrage du service est reprise automatiquement au démarrage suivant. Cela couvre une mise à jour,

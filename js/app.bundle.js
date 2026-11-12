@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.31.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.31.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.31.1';
+const APP_VERSION='2.31.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -12272,15 +12272,17 @@ function ssDuration(ms){
 function ssProgressModel(st,now=Date.now()){
   const done=ssRequestDone(st);
   const step=!st||st.etat==='en attente'?'attente':done?'fin':st.etape==='extraction'?'extraction':st.etape==='correspondance'?'correspondance':'lecture';
-  const o=st?.operations||{}, f=st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
+  // v2.31.2 — phase « Lecture de Box » : avancement des dossiers parcourus (avant la liste des opérations).
+  const scanning=step==='lecture'&&st?.lecture;
+  const o=scanning?{fait:st.lecture.fait,total:st.lecture.total,courante:st.lecture.courant}:st?.operations||{}, f=scanning?{}:st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
   // Part de l'opération en cours comptée via ses documents : la barre avance aussi pendant une longue opération.
   const docShare=!done&&total&&fait<total&&f.total?Math.min(1,(f.fait||0)/f.total):0;
   const pct=done&&st.etat==='terminé'?100:total?Math.min(99.9,100*(fait+docShare)/total):0;
-  const t0=Date.parse(st?.debut), tx=Date.parse(st?.debutExtraction), tEnd=Date.parse(st?.finA||st?.majA);
+  const t0=Date.parse(st?.debut), tx=Date.parse(scanning?st?.debutLecture:st?.debutExtraction), tEnd=Date.parse(st?.finA||st?.majA);
   const elapsed=Number.isFinite(t0)?(done&&Number.isFinite(tEnd)?tEnd:now)-t0:NaN;
   const progressed=fait+docShare;
   const eta=!done&&Number.isFinite(tx)&&progressed>=0.5&&total?(now-tx)/progressed*(total-progressed):NaN;
-  const par=st?.parOp||{}, list=Array.isArray(st?.contrats)?st.contrats:[];
+  const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
     let state=r?.r||(i<fait?'ok':'attente');
@@ -12289,7 +12291,7 @@ function ssProgressModel(st,now=Date.now()){
     const detail=r&&r.f!=null?` · ${r.f} fichier(s), ${r.x||0} extrait(s)${r.v?`, ${r.v} à vérifier`:''}${r.e?`, ${r.e} erreur(s)`:''}`:'';
     return {contract:c,state,title:`${c} — ${SS_TILE_LABEL[state]||state}${detail}`}; });
   const counts={}; for(const t of tiles) counts[t.state]=(counts[t.state]||0)+1;
-  return {step,done,etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
+  return {step,done,unit:scanning?'dossier(s) Box parcouru(s)':'opération(s)',etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
     docs:f.total&&!done?{fait:f.fait||0,total:f.total,courant:f.courant||''}:null,
     current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
     elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
@@ -15779,10 +15781,10 @@ function ssProgressHtml(id,st){
   const legend=Object.entries(m.counts).map(([k,n])=>`<span class="ss-leg"><i class="ss-tile ${k}"></i>${escapeHtml(SS_TILE_LABEL[k]||k)} : <b>${n}</b></span>`).join('');
   const tiles=m.tiles.length?`<div class="ss-tiles" aria-label="État de chaque contrat">${m.tiles.map(x=>`<i class="ss-tile ${x.state}" title="${escapeHtml(x.title)}"></i>`).join('')}</div><div class="ss-legend">${legend}</div>`:'';
   return `<div class="ss-progress ${bad?'is-bad':stopped?'is-warn':m.done?'is-done':'is-run'}">${steps}
-    <div class="ss-progress-head"><b>${m.total?`${m.fait} / ${m.total} opération(s)`:escapeHtml(st.etape||'')}</b><span class="ss-pct">${m.total||m.done?pctTxt:''}</span></div>
+    <div class="ss-progress-head"><b>${m.total?`${m.fait} / ${m.total} ${m.unit}`:escapeHtml(m.current||st.etape||'')}</b><span class="ss-pct">${m.total||m.done?pctTxt:''}</span></div>
     <div class="ss-bar"><i style="width:${m.done&&st.etat==='terminé'?100:m.pct}%"></i></div>
     ${times?`<small class="ss-times">${times}</small>`:''}
-    ${m.current&&!m.done?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
+    ${m.current&&!m.done&&m.total?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
     ${m.stale?'<p class="ss-bad">Aucune nouvelle du service depuis plus de 10 minutes : vérifiez qu’il est actif (pastille ci-dessus).</p>':''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
     ${tiles}
@@ -15826,7 +15828,7 @@ async function ssTrackerTick(){
       const r=reqs.find(x=>x.id===cur)||reqs.find(x=>x.status?.etat==='en cours')||reqs.find(x=>(!x.status||x.status.etat==='en attente')&&!x.stopAsked);
       if(r){ const m=ssProgressModel(r.status);
         if(!r.status||r.status.etat==='en attente'){ html=`<span class="ss-dot"></span><b>Analyse</b> · ${r.status?.reprise?'reprise':'en attente du service'} (${r.contracts} contrat(s))`; cls='wait'; }
-        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
+        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %${m.step==='lecture'?' · lecture Box':''}`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
         else if(r.id===cur){ const ok=r.status.etat==='terminé'; html=ok?'✓ <b>Analyse terminée</b> · cliquer pour charger':`⚠ <b>Analyse ${escapeHtml(r.status.etat)}</b>`; cls=ok?'ok':'warn'; }
         if(!m.done&&r.status&&m.total) document.title=`(${Math.floor(m.pct)} %) ${ssTrackerTitle||(ssTrackerTitle=document.title.replace(/^\(\d+ %\) /,''))}`;
         else if(ssTrackerTitle){ document.title=ssTrackerTitle; ssTrackerTitle=null; }

@@ -115,6 +115,8 @@ async function main(){
   }
 
   // 2. Correspondance contrats ↔ dossiers (un seul listage de la racine ; les autres dossiers ne sont pas ouverts)
+  // v2.31.2 — « Lecture de Box » : avancement écrit aussi pendant le parcours des dossiers (barre et temps restant dans l'appli).
+  status({etape:'lecture',lecture:{fait:0,total:0,courant:'liste des dossiers de la racine Box'}});
   const folders=await listOperationFolders(root,cfg.racinesSupplementaires||[]);
   const match=matchContracts(folders,wanted,cfg);
   console.log(`  dossiers dans la racine : ${folders.length} · trouvés : ${match.found.length} · sans dossier : ${match.missing.length} · plusieurs dossiers (à vérifier) : ${match.multiple.length}${match.onlyCancelled.length?` · seulement annulés : ${match.onlyCancelled.length}`:''}`);
@@ -123,7 +125,9 @@ async function main(){
   const scans=new Map();
   const uniqueFolders=[...new Set(match.found.map(f=>f.folder))];
   const pr=new Progress(uniqueFolders.length,'Parcours');
-  await pool(uniqueFolders,4,async name=>{ scans.set(name,await scanOperation(path.join(root,name),cfg,{allSubfolders:!!args['all-subfolders']})); pr.tick(name); });
+  status({etape:'lecture',debutLecture:new Date().toISOString(),lecture:{fait:0,total:uniqueFolders.length,courant:''}}); let scanned=0,lastScanStatus=0;
+  await pool(uniqueFolders,4,async name=>{ scans.set(name,await scanOperation(path.join(root,name),cfg,{allSubfolders:!!args['all-subfolders']})); pr.tick(name);
+    scanned++; if(Date.now()-lastScanStatus>1500||scanned===uniqueFolders.length){ lastScanStatus=Date.now(); status({lecture:{fait:scanned,total:uniqueFolders.length,courant:name}}); } });
   pr.end();
 
   const famLabel=FAMILY_LABEL(cfg);

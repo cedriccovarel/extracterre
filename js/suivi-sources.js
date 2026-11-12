@@ -164,15 +164,17 @@ export function ssDuration(ms){
 export function ssProgressModel(st,now=Date.now()){
   const done=ssRequestDone(st);
   const step=!st||st.etat==='en attente'?'attente':done?'fin':st.etape==='extraction'?'extraction':st.etape==='correspondance'?'correspondance':'lecture';
-  const o=st?.operations||{}, f=st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
+  // v2.31.2 — phase « Lecture de Box » : avancement des dossiers parcourus (avant la liste des opérations).
+  const scanning=step==='lecture'&&st?.lecture;
+  const o=scanning?{fait:st.lecture.fait,total:st.lecture.total,courante:st.lecture.courant}:st?.operations||{}, f=scanning?{}:st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
   // Part de l'opération en cours comptée via ses documents : la barre avance aussi pendant une longue opération.
   const docShare=!done&&total&&fait<total&&f.total?Math.min(1,(f.fait||0)/f.total):0;
   const pct=done&&st.etat==='terminé'?100:total?Math.min(99.9,100*(fait+docShare)/total):0;
-  const t0=Date.parse(st?.debut), tx=Date.parse(st?.debutExtraction), tEnd=Date.parse(st?.finA||st?.majA);
+  const t0=Date.parse(st?.debut), tx=Date.parse(scanning?st?.debutLecture:st?.debutExtraction), tEnd=Date.parse(st?.finA||st?.majA);
   const elapsed=Number.isFinite(t0)?(done&&Number.isFinite(tEnd)?tEnd:now)-t0:NaN;
   const progressed=fait+docShare;
   const eta=!done&&Number.isFinite(tx)&&progressed>=0.5&&total?(now-tx)/progressed*(total-progressed):NaN;
-  const par=st?.parOp||{}, list=Array.isArray(st?.contrats)?st.contrats:[];
+  const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
     let state=r?.r||(i<fait?'ok':'attente');
@@ -181,7 +183,7 @@ export function ssProgressModel(st,now=Date.now()){
     const detail=r&&r.f!=null?` · ${r.f} fichier(s), ${r.x||0} extrait(s)${r.v?`, ${r.v} à vérifier`:''}${r.e?`, ${r.e} erreur(s)`:''}`:'';
     return {contract:c,state,title:`${c} — ${SS_TILE_LABEL[state]||state}${detail}`}; });
   const counts={}; for(const t of tiles) counts[t.state]=(counts[t.state]||0)+1;
-  return {step,done,etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
+  return {step,done,unit:scanning?'dossier(s) Box parcouru(s)':'opération(s)',etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
     docs:f.total&&!done?{fait:f.fait||0,total:f.total,courant:f.courant||''}:null,
     current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
     elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};

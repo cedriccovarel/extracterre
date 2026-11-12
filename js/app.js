@@ -3487,10 +3487,10 @@ function ssProgressHtml(id,st){
   const legend=Object.entries(m.counts).map(([k,n])=>`<span class="ss-leg"><i class="ss-tile ${k}"></i>${escapeHtml(SS_TILE_LABEL[k]||k)} : <b>${n}</b></span>`).join('');
   const tiles=m.tiles.length?`<div class="ss-tiles" aria-label="État de chaque contrat">${m.tiles.map(x=>`<i class="ss-tile ${x.state}" title="${escapeHtml(x.title)}"></i>`).join('')}</div><div class="ss-legend">${legend}</div>`:'';
   return `<div class="ss-progress ${bad?'is-bad':stopped?'is-warn':m.done?'is-done':'is-run'}">${steps}
-    <div class="ss-progress-head"><b>${m.total?`${m.fait} / ${m.total} opération(s)`:escapeHtml(st.etape||'')}</b><span class="ss-pct">${m.total||m.done?pctTxt:''}</span></div>
+    <div class="ss-progress-head"><b>${m.total?`${m.fait} / ${m.total} ${m.unit}`:escapeHtml(m.current||st.etape||'')}</b><span class="ss-pct">${m.total||m.done?pctTxt:''}</span></div>
     <div class="ss-bar"><i style="width:${m.done&&st.etat==='terminé'?100:m.pct}%"></i></div>
     ${times?`<small class="ss-times">${times}</small>`:''}
-    ${m.current&&!m.done?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
+    ${m.current&&!m.done&&m.total?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
     ${m.stale?'<p class="ss-bad">Aucune nouvelle du service depuis plus de 10 minutes : vérifiez qu’il est actif (pastille ci-dessus).</p>':''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
     ${tiles}
@@ -3534,7 +3534,7 @@ async function ssTrackerTick(){
       const r=reqs.find(x=>x.id===cur)||reqs.find(x=>x.status?.etat==='en cours')||reqs.find(x=>(!x.status||x.status.etat==='en attente')&&!x.stopAsked);
       if(r){ const m=ssProgressModel(r.status);
         if(!r.status||r.status.etat==='en attente'){ html=`<span class="ss-dot"></span><b>Analyse</b> · ${r.status?.reprise?'reprise':'en attente du service'} (${r.contracts} contrat(s))`; cls='wait'; }
-        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
+        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %${m.step==='lecture'?' · lecture Box':''}`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
         else if(r.id===cur){ const ok=r.status.etat==='terminé'; html=ok?'✓ <b>Analyse terminée</b> · cliquer pour charger':`⚠ <b>Analyse ${escapeHtml(r.status.etat)}</b>`; cls=ok?'ok':'warn'; }
         if(!m.done&&r.status&&m.total) document.title=`(${Math.floor(m.pct)} %) ${ssTrackerTitle||(ssTrackerTitle=document.title.replace(/^\(\d+ %\) /,''))}`;
         else if(ssTrackerTitle){ document.title=ssTrackerTitle; ssTrackerTitle=null; }

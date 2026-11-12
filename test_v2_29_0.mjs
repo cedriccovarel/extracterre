@@ -5,7 +5,7 @@ import {APP_VERSION} from './js/config.js';
 import {cctpLotDecision,ir_norm} from './js/import-rules.js';
 import {gridCctpLots,normalizeGrid,SECURITY_GRID} from './js/recherches.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.31.1','version');
+eq(APP_VERSION,'2.31.2','version');
 const sec=gridCctpLots(SECURITY_GRID), fan=gridCctpLots(normalizeGrid({name:'Brasseurs',themes:[{name:"Brasseurs d'air / ventilateurs"},{name:'Climatisation'},{name:'Mode constructif principal'}]}));
 eq(['menuiserie','serrurerie','electricite','vrd'].every(x=>sec.includes(x)),true,'sécurité → menuiseries, serrurerie, électricité, VRD');
 eq(['electricite','cvc','gros oeuvre'].every(x=>fan.includes(x))&&!fan.includes('charpente'),true,'brasseurs / clim / mode constructif → électricité, CVC, gros œuvre');
