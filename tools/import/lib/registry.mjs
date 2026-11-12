@@ -16,7 +16,8 @@ export class SupabaseStore{
     if(!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY absente du fichier .env.');
     this.url=String(url).replace(/\/$/,''); this.key=serviceKey; this.fetch=fetchImpl;
   }
-  headers(extra={}){ return {apikey:this.key,Authorization:`Bearer ${this.key}`,'Content-Type':'application/json',...extra}; }
+  // Clé « secret » (sb_secret_…) : en-tête apikey seul ; ancienne clé service_role (JWT eyJ…) : apikey + Authorization.
+  headers(extra={}){ return {apikey:this.key,...(/^eyJ/.test(this.key)?{Authorization:`Bearer ${this.key}`}:{}),'Content-Type':'application/json',...extra}; }
   async req(method,pathQ,body,extra){
     for(let attempt=1;;attempt++){
       let res;
