@@ -1439,3 +1439,9 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 /* v2.26.0 — import d'un export Salesforce */
 .sfx-body{display:grid;gap:10px;padding:14px 0}.sfx-body .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px}
 .sfx-status{font-size:13px}.sfx-status details{margin-top:6px}.sfx-status summary{cursor:pointer;color:var(--muted)}.sfx-status p{margin:4px 0}.sfx-status .muted{color:var(--muted)}
+
+/* v2.27.0 — périmètre Salesforce des bâtiments */
+.sfp-chip{display:inline-block;margin-top:6px;border:1px solid #bcd3e8;background:#eef5fc;color:#1d4f7c;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.sfp-chip.off{background:#f3f3f3;color:#6c7b74;border-color:#ddd}
+.sfp-body{display:grid;gap:12px;padding:12px 0;max-height:60vh;overflow:auto}.sfp-table{width:100%;font-size:13px}.sfp-table td,.sfp-table th{padding:6px 8px;max-width:none}
+.sfp-table tr.off td:first-child{color:#a23939;text-decoration:line-through}.sfp-table select{width:100%;padding:6px}.sfp-body .chk{display:flex;gap:8px;font-size:13px}

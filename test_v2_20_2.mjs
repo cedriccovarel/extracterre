@@ -7,7 +7,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {technicalDataFields} from './js/donnees-techniques.js';
 import {analyzeDocuments} from './js/engine.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.26.0','version');
+eq(APP_VERSION,'2.27.0','version');
 // Matériau écrit dans le libellé ; sinon rien, jamais de valeur par défaut (« Combles perdus » seul → rien).
 eq(['Plancher haut poutrelles hourdis','Prédalles + dalle de compression','Dalle béton 20 cm','Plancher bois sur solives','Charpente bois fermettes','Bac acier collaborant','Combles perdus','Combles perdus sur plancher béton','Terrasse accessible sur CLT'].map(roofStructureFrom),
   ['Poutrelles-hourdis','Prédalle','Dalle béton','Plancher bois','Charpente bois','Bac acier collaborant',null,'Dalle béton','Plancher bois'],'matériaux');

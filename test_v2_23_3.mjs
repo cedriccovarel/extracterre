@@ -7,7 +7,7 @@ import {classifyDocument} from './js/classifier.js';
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.26.0','version');
+eq(APP_VERSION,'2.27.0','version');
 const prep=(id,name,type,txt)=>{ const d=textDoc(id,name,type,txt); const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind}); d.classification={...c,automaticType:c.type}; d.type=type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
 const run=docs=>{ const r=analyzeDocuments(docs,structuredClone(DEFAULT_SOURCE_RULES),'Op'); applyComparisonBases(r); return r; };
 // Deux bâtiments (RSET), brasseurs décrits pour toute l'opération dans le CCTP.
@@ -28,7 +28,7 @@ eq(r0.rows[0].fan_presence,'Non','RSET 0 prioritaire');
 // Rattrapage : un document déjà rattrapé en 2.23.2 (fanRead = true) est relu une fois de plus.
 { const d=prep('o','Pièces DCE 3 FICTIF.pdf',DOC_TYPES.CONTRACT,'Fourniture et mise en œuvre de brasseurs d\'air électriques.');
   d.cachedOccurrences=[{field:'fan_type',value:'Brasseur d’air plafonnier',method:'comfort:fan-type',building:'Bâtiment unique',confidence:0.94,page:1}]; d.fanRead=true;
-  catchUpDocument(d); eq([d.fanRead,d.cachedOccurrences.some(o=>o.secondarySourceOk)],[2,true],'rattrapage 2.26.0');
+  catchUpDocument(d); eq([d.fanRead,d.cachedOccurrences.some(o=>o.secondarySourceOk)],[2,true],'rattrapage 2.27.0');
   catchUpDocument(d); eq(d.fanRead,2,'une seule fois'); }
 // Détection des bâtiments : une suite de phrase ou un en-tête de tableau n'est pas un bâtiment ; les vrais titres restent.
 const names=t=>detectBuildings(textDoc('n','CCTP FICTIF.pdf',DOC_TYPES.CCTP,t)).names;
@@ -50,4 +50,4 @@ eq(names('pour le\nbatiment A\npuis le\nbatiment B'),['Bâtiment A','Bâtiment B
   catchUpDocument(d); eq([d.buildings.names.length,d.cachedOccurrences[0].building],[1,'Bâtiment DE LOGEMENTS COLLECTIFS EN BANDE.'],'seul bâtiment du document : gardé'); }
 { const d={id:'m',name:'CCTP FICTIF.pdf',type:DOC_TYPES.CCTP,status:'ready',fanRead:2,buildings:{names:['Bâtiment A','Bâtiment COMPTE DE LA PERMEABILITE'],hits:[]},cachedOccurrences:[]};
   catchUpDocument(d,{'Bâtiment A':'Bâtiment COMPTE DE LA PERMEABILITE'}); eq(d.buildings.names,['Bâtiment A','Bâtiment COMPTE DE LA PERMEABILITE'],'nom d\'un regroupement manuel : gardé'); }
-console.log(`v2.26.0 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.27.0 — ${n} vérifications OK (données fictives)`);

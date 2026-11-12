@@ -188,6 +188,10 @@ function serializeProject(project={}){
     economicExcluded:safeJsonClone(project.economicExcluded,[]),
     importContract:project.importContract||'',
     contractNumber:project.contractNumber||'',
+    // v2.27.0 — périmètre Salesforce : bâtiments de référence, corrections de la table, désactivation.
+    sfBuildings:safeJsonClone(project.sfBuildings,[]),
+    sfBuildingMap:safeJsonClone(project.sfBuildingMap,{}),
+    sfPerimeterOff:!!project.sfPerimeterOff,
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,
     expanded:project.expanded!==false

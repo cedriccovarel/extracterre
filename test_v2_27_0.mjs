@@ -1,0 +1,25 @@
+// ExtracTerre v2.27.0 — périmètre Salesforce : bâtiments Salesforce seule référence, table de correspondance, exclusion. Noms fictifs.
+import fs from 'fs';
+import {APP_VERSION} from './js/config.js';
+import {sfPerimeterMap} from './js/sf-perimeter.js';
+let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
+eq(APP_VERSION,'2.27.0','version');
+const m=(sf,d,man)=>sfPerimeterMap(sf,d,man).map;
+eq(m(['BAT A','BAT B'],['Bâtiment A','Bat. B','BATIMENT A']),{'Bâtiment A':'Bâtiment A','Bat. B':'Bâtiment B','BATIMENT A':'Bâtiment A'},'même nom, écritures neutralisées');
+eq(m(['BAT A','BAT B'],['Bâtiment A Est','Bâtiment B aile nord']),{'Bâtiment A Est':'Bâtiment A','Bâtiment B aile nord':'Bâtiment B'},'qualificatif : même identifiant');
+eq(m(['BAT A','BAT B'],['Bâtiment 1','Bâtiment 2','Bâtiment 3']),{'Bâtiment 1':'Bâtiment A','Bâtiment 2':'Bâtiment B','Bâtiment 3':null},'chiffre → lettre ; sans correspondant : non retenu');
+eq(m(['Bâtiment 1','Bâtiment 2'],['Bât A','Bâtiment B','Bâtiment C']),{'Bât A':'Bâtiment 1','Bâtiment B':'Bâtiment 2','Bâtiment C':null},'lettre → chiffre');
+eq(m(['BAT A','BAT 2'],['Bâtiment 1']),{'Bâtiment 1':null},'Salesforce mélange lettres et chiffres : pas de conversion');
+eq(m(['BAT A','BAT B'],['Bâtiment A et B','Bâtiment Logements']),{'Bâtiment A et B':null,'Bâtiment Logements':null},'liste ou nom inconnu : non retenu');
+eq(m(['BAT E'],['Bâtiment unique']),{'Bâtiment unique':'Bâtiment E'},'un seul bâtiment Salesforce : « Bâtiment unique » s’y rattache');
+eq(m(['BAT A','BAT B'],['Bâtiment unique']),{'Bâtiment unique':null},'plusieurs bâtiments Salesforce : « Bâtiment unique » non rattaché');
+eq(m(['BAT A','BAT B'],['Bâtiment 3','Bâtiment 1'],{'Bâtiment 3':'BAT B','Bâtiment 1':''}),{'Bâtiment 3':'Bâtiment B','Bâtiment 1':null},'correction manuelle prioritaire (rattacher, ou ne pas retenir)');
+eq(sfPerimeterMap(['BAT A'],['Bâtiment 1'],{}).modes['Bâtiment 1'],'letter','règle affichée');
+const app=fs.readFileSync('js/app.js','utf8'), per=fs.readFileSync('js/persistence.js','utf8');
+eq(/function effectiveBuildingOverrides/.test(app)&&!/state\.buildingOverrides,manualPasteOccurrences\(/.test(app),true,'toutes les analyses passent par la table de correspondance');
+eq(/return \{\.\.\.out,\.\.\.base\};/.test(app),true,'fusions manuelles prioritaires sur les rapprochements automatiques');
+eq(/function applySfPerimeter/.test(app)&&/applySfPerimeter\(project\);/.test(app),true,'bâtiments hors périmètre retirés (lignes, valeurs, exports)');
+eq(/if\(sfPerimeterOn\(project\)\)\{ const S=project\.sfBuildings/.test(app),true,'valeur manuelle hors périmètre ignorée');
+eq(/sfBuildings:safeJsonClone\(project\.sfBuildings,\[\]\)/.test(per)&&/sfBuildingMap:safeJsonClone/.test(per)&&/sfPerimeterOff:!!project\.sfPerimeterOff/.test(per),true,'périmètre et corrections sauvegardés');
+eq(/data-sfp-open/.test(app)&&/data-sfp-off/.test(app),true,'table de correspondance et désactivation');
+console.log(`v2.27.0 — ${n} vérifications OK (données fictives)`);

@@ -1,3 +1,20 @@
+# v2.27.0 — Bâtiments Salesforce : seule référence de l'opération (table de correspondance)
+
+- Dès qu'une opération reçoit une fiche Salesforce découpée par bâtiment (favori ou export de masse), ses bâtiments Salesforce
+  deviennent le **périmètre** de l'opération. Les valeurs des documents ne remontent que sur ces bâtiments ; les autres bâtiments
+  ne sont ni affichés, ni retenus, ni exportés.
+- **Table de correspondance automatique** des bâtiments des documents vers les bâtiments Salesforce :
+  - même nom (« Bât A » = « BATIMENT A » = « Bat. A ») ;
+  - même identifiant (« Bât A Est », « Bâtiment B aile nord » → A, B) ;
+  - chiffre ↔ lettre quand Salesforce n'utilise que l'un des deux (« Bât 1 » → A, « Bât 2 » → B, et inversement) ;
+  - « Bâtiment unique » → le bâtiment Salesforce s'il n'y en a qu'un.
+  Une liste (« A et B ») ou un nom sans correspondant n'est pas retenu.
+- Bandeau de l'opération : « ☁ Périmètre Salesforce : n bâtiment(s) · m non retenu(s) · correspondances ». Il ouvre la table, où chaque
+  bâtiment des documents peut être rattaché à un bâtiment Salesforce ou « non retenu » (la correction l'emporte toujours).
+  On peut aussi revenir aux rapprochements automatiques, ou désactiver le périmètre pour l'opération.
+- Les fusions manuelles de bâtiments restent prioritaires. Une valeur saisie sur un bâtiment hors périmètre n'est plus remontée.
+- Correctif : à la fin d'une analyse de documents, les bâtiments supprimés à la main n'étaient pas retirés avant l'affichage.
+
 # v2.26.0 — Import d'un export Salesforce « Opérations (détails) »
 
 - Nouvelle tuile d'accueil **« ☁ Export Salesforce »** (dans les deux espaces). Elle importe l'export .xls (format HTML de

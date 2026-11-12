@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.26.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.27.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.26.0';
+const APP_VERSION='2.27.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -9864,6 +9864,50 @@ function sfxFiche(row,cols){
   return {text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
 }
 
+/* ---- sf-perimeter.js ---- */
+// ExtracTerre v2.27.0 — périmètre Salesforce : les bâtiments de la fiche (ou de l'export) Salesforce sont la seule référence.
+// Chaque bâtiment trouvé dans les documents est rapproché d'un bâtiment Salesforce ; ce qui ne correspond à rien n'est pas retenu.
+// Règles automatiques, dans l'ordre (une correction faite dans la table l'emporte toujours) :
+//   1. même nom (écritures neutralisées : « Bât A » = « BATIMENT A » = « Bât. A ») ;
+//   2. même identifiant (« Bât A Est », « Bâtiment A aile nord » → « Bât A ») ;
+//   3. chiffre ↔ lettre quand Salesforce n'utilise que l'un des deux (« Bât 1 » → « Bât A », « Bât B » → « Bât 2 ») ;
+//   4. « Bâtiment unique » → le bâtiment Salesforce s'il n'y en a qu'un.
+
+const SFP_SINGLE=/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/;
+const SFP_MODES={exact:'même nom',core:'même identifiant',letter:'chiffre ↔ lettre',unique:'bâtiment unique',manual:'correction manuelle',none:'non retenu',sf:'bâtiment Salesforce'};
+
+// sfNames : bâtiments Salesforce ; detected : noms lus dans les documents ; manual : {nom: bâtiment Salesforce | '' (non retenu)}.
+function sfPerimeterMap(sfNames,detected,manual={}){
+  const S=[...new Set((sfNames||[]).map(canonicalBuilding))];
+  const byKey=new Map(S.map(s=>[buildingMergeKey(s),s]));
+  const cores=S.map(s=>({s,core:buildingCoreId(s)}));
+  const allLetters=cores.length&&cores.every(c=>/^[a-z]$/.test(c.core)), allNumbers=cores.length&&cores.every(c=>/^\d{1,3}$/.test(c.core));
+  const map={},modes={};
+  for(const raw of [...new Set(detected||[])]){
+    if(!raw) continue;
+    const d=canonicalBuilding(raw);
+    if(Object.prototype.hasOwnProperty.call(manual||{},raw)||Object.prototype.hasOwnProperty.call(manual||{},d)){
+      const t=manual[raw]??manual[d]; map[raw]=t&&S.includes(canonicalBuilding(t))?canonicalBuilding(t):null; modes[raw]=map[raw]?'manual':'none'; continue; }
+    if(S.includes(d)){ map[raw]=d; modes[raw]=d===raw?'sf':'exact'; continue; }
+    if(d==='Bâtiment unique'){ map[raw]=S.length===1?S[0]:null; modes[raw]=S.length===1?'unique':'none'; continue; }
+    const k=buildingMergeKey(d); if(byKey.has(k)){ map[raw]=byKey.get(k); modes[raw]='exact'; continue; }
+    const first=(k.split(' ')[0]||''), core=SFP_SINGLE.test(first)?buildingCoreId(first):'';
+    // Une liste (« A et B », « 1 2 ») n'est pas un bâtiment : jamais rattachée automatiquement.
+    const isList=/\b(?:et|a|à)\b/.test(k.split(' ').slice(1).join(' '))||k.split(' ').slice(1).some(t=>SFP_SINGLE.test(t)&&t.length<=3&&!/^(?:est|nord|sud|rue|cour)$/.test(t));
+    const hit=core&&!isList?cores.filter(c=>c.core===core):[];
+    if(hit.length===1){ map[raw]=hit[0].s; modes[raw]='core'; continue; }
+    if(core&&!isList&&hit.length===0){
+      let alt='';
+      if(allLetters&&/^\d{1,2}$/.test(core)&&Number(core)>=1&&Number(core)<=26) alt=String.fromCharCode(96+Number(core));
+      if(allNumbers&&/^[a-z]$/.test(core)) alt=String(core.charCodeAt(0)-96);
+      const h2=alt?cores.filter(c=>c.core===alt):[];
+      if(h2.length===1){ map[raw]=h2[0].s; modes[raw]='letter'; continue; }
+    }
+    map[raw]=null; modes[raw]='none';
+  }
+  return {sf:S,map,modes};
+}
+
 /* ---- economics.js ---- */
 // v2.5.0 — Données économiques : nomenclature Excel du questionnaire financier MOA Prestaterre (V0.56).
 // Source principale : la synthèse PDF « Questionnaire financier d'opération » (lignes de coûts validées, aides mobilisées).
@@ -10685,6 +10729,10 @@ function serializeProject(project={}){
     economicExcluded:safeJsonClone(project.economicExcluded,[]),
     importContract:project.importContract||'',
     contractNumber:project.contractNumber||'',
+    // v2.27.0 — périmètre Salesforce : bâtiments de référence, corrections de la table, désactivation.
+    sfBuildings:safeJsonClone(project.sfBuildings,[]),
+    sfBuildingMap:safeJsonClone(project.sfBuildingMap,{}),
+    sfPerimeterOff:!!project.sfPerimeterOff,
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,
     expanded:project.expanded!==false
@@ -12250,7 +12298,39 @@ state.projects.push(createProject(1)); state.activeProjectId=state.projects[0].i
 function activeProject(){ return state.projects.find(p=>p.id===state.activeProjectId)||state.projects[0]; }
 for(const key of ['docs','result','buildingOverrides','deletedBuildings','manualTags','projectTags','manualValues','manualSources','manualPasteRaw','manualPasteRows','manualPasteColumns','retainedOccurrences','uncertainRejectedKeys','manualEconomics','economic']) Object.defineProperty(state,key,{get(){return activeProject()[key]},set(v){activeProject()[key]=v}});
 function projectTitle(p){ return (p.customTitle||p.operationName||p.result?.operation||p.label||'Projet').trim(); }
+// v2.27.0 — périmètre Salesforce : bâtiments des documents rapprochés des bâtiments Salesforce (table de correspondance).
+function sfDetectedNames(p){
+  const names=new Set();
+  for(const d of p.docs||[]){ for(const n of d.buildings?.names||[]) names.add(n); for(const o of d.cachedOccurrences||[]) if(o?.building) names.add(o.building); }
+  for(const o of manualPasteOccurrences(p)) if(o?.building) names.add(o.building);
+  for(const r of p.retainedOccurrences||[]) if(r?.building) names.add(r.building);
+  return [...names];
+}
+function sfPerimeterOn(p){ return !!(p&&!p.sfPerimeterOff&&Array.isArray(p.sfBuildings)&&p.sfBuildings.length); }
+function effectiveBuildingOverrides(p=activeProject()){
+  const base=p?.buildingOverrides||{}; if(!sfPerimeterOn(p)) return base;
+  const m=sfPerimeterMap(p.sfBuildings,sfDetectedNames(p),p.sfBuildingMap||{}); p._sfMap=m;
+  const out={}; for(const [d,t] of Object.entries(m.map)) if(t&&t!==d&&d!=='Bâtiment unique') out[d]=t;
+  return {...out,...base};
+}
+function applySfPerimeter(project){
+  const r=project?.result; if(!r||!sfPerimeterOn(project)) { if(r) r.sfExcluded=[]; return; }
+  const S=project.sfBuildings.map(canonicalBuilding), inS=b=>S.includes(b)||S.includes(canonicalBuilding(b||''));
+  // Un seul bâtiment Salesforce : les valeurs « Bâtiment unique » des documents le complètent.
+  if(S.length===1&&Array.isArray(r.rows)){ const u=r.rows.find(x=>x.building==='Bâtiment unique'), t=r.rows.find(x=>x.building===S[0]);
+    if(u&&t){ for(const [k,v] of Object.entries(u)) if(k!=='building'&&(t[k]===undefined||t[k]===null||t[k]==='')) t[k]=v; for(const o of r.finals||[]) if(o.building==='Bâtiment unique'&&!(r.finals||[]).some(x=>x.building===S[0]&&x.field===o.field)) o.building=S[0]; }
+    else if(u&&!t){ u.building=S[0]; for(const o of r.finals||[]) if(o.building==='Bâtiment unique') o.building=S[0]; } }
+  const excluded=[...new Set((r.rows||[]).map(x=>x.building).filter(b=>!inS(b)))];
+  r.sfExcluded=excluded; if(!excluded.length) return;
+  const keep=o=>inS(o?.building);
+  if(Array.isArray(r.rows)) r.rows=r.rows.filter(x=>inS(x?.building));
+  if(Array.isArray(r.finals)) r.finals=r.finals.filter(keep);
+  if(Array.isArray(r.detailed)) r.detailed=r.detailed.filter(keep);
+  if(Array.isArray(r.uncertain)) r.uncertain=r.uncertain.filter(keep);
+  if(Array.isArray(r.buildings)) r.buildings=r.buildings.filter(b=>inS(typeof b==='string'?b:b?.name));
+}
 function applyDeletedBuildings(project=activeProject()){
+  applySfPerimeter(project);
   const r=project?.result, deleted=new Set(project?.deletedBuildings||[]); if(!r||!deleted.size) return;
   const isDeleted=o=>deleted.has(o?.building)||deleted.has(o?.originalBuilding);
   if(Array.isArray(r.rows)) r.rows=r.rows.filter(x=>!deleted.has(x?.building));
@@ -12493,7 +12573,7 @@ function setHomeMode(on){ state.homeView=!!on; if(!on&&pendingExternalText){ con
 function renderHome(){ const h=$('#homeView'); if(h&&state.homeView) renderTiles(h,{home:true}); }
 // Tableau d'opérations (Excel importé ou collé) : une opération par n° de contrat / code interne / nom d'opération.
 function operationKey(v={}){ return String(v.contract_number||v.internal_code||v.operation_name||'').trim(); }
-function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status==='ready'); p.result=analyzeDocuments(valid,state.rules,p.operationName||'',p.buildingOverrides||{},manualPasteOccurrences(p)); applyDeletedBuildings(p); p.result.documentsCount=valid.length; applyManualValuesToProject(p); }
+function computeProjectResult(p){ const valid=(p.docs||[]).filter(d=>d.status==='ready'); p.result=analyzeDocuments(valid,state.rules,p.operationName||'',effectiveBuildingOverrides(p),manualPasteOccurrences(p)); applyDeletedBuildings(p); p.result.documentsCount=valid.length; applyManualValuesToProject(p); }
 // Opérations du dernier import de tableau : marquées « nouveau » sur leurs tuiles et sur celle de leur maître d'ouvrage.
 let lastImported=new Set();
 function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
@@ -12991,7 +13071,7 @@ function manualPasteOccurrences(project=activeProject()){
 function recomputeProject(message='Consolidation recalculée.'){
   const valid=state.docs.filter(d=>d.status==='ready');
   const operation=$('#operationName').value.trim(); activeProject().operationName=operation;
-  state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject());
+  state.result=analyzeDocuments(valid,state.rules,operation,effectiveBuildingOverrides(),manualPasteOccurrences()); applyDeletedBuildings(activeProject());
   state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('consolidation',80); if(message) toast(message,'success');
 }
 function openManualDataDialog(){
@@ -13155,6 +13235,7 @@ function applyFreePaste(){
   if(common&&(vals.some(v=>v.building)||(state.result?.rows||[]).length>1)){ vals.splice(vals.indexOf(common),1); allVals={values:{...common.values,...allVals?.values},sources:{...common.sources,...allVals?.sources}}; }
   // Lignes conservées (bâtiments créés si besoin) puis appliquées comme corrections manuelles, prioritaires.
   const chosen=freePaste.targets||{}; for(const v of vals){ const t=chosen[v.building]; if(t) v.building=t; }
+  if(/salesforce/i.test(freePaste.sourceLabel||'')){ const names=[...new Set(vals.filter(v=>v.building).map(v=>canonicalBuilding(v.building)))]; if(names.length) p.sfBuildings=names; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
   const before=new Set((p.result?.rows||[]).map(r=>r.building));
   // Un bâtiment collé explicitement est recréé même s'il avait été supprimé lors d'un essai précédent.
@@ -13348,7 +13429,7 @@ async function refreshProgressiveResults(reason='progression'){
   if(!valid.length) return;
   const operation=$('#operationName')?.value?.trim?.()||activeProject().operationName||'';
   activeProject().operationName=operation;
-  state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences());
+  state.result=analyzeDocuments(valid,state.rules,operation,effectiveBuildingOverrides(),manualPasteOccurrences());
   applyDeletedBuildings(activeProject());
   state.result.documentsCount=valid.length;
   applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
@@ -13521,7 +13602,7 @@ async function analyze(onlyIds=null,manualUnlimited=false){
     if(valid.length){
       const eta=$('#analysisEtaDetail'); if(eta) eta.textContent='Lecture terminée · consolidation des données…';
       setStatus('Extraction métier et consolidation…',72); await yieldToBrowser();
-      const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,state.buildingOverrides,manualPasteOccurrences()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
+      const operation=$('#operationName').value.trim(); activeProject().operationName=operation; state.result=analyzeDocuments(valid,state.rules,operation,effectiveBuildingOverrides(),manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags);
       // v2.20.7 — horodatage de l'analyse : compte dans « traitées aujourd'hui ».
       { const ap=activeProject(); ap.analysisRuns=[...(ap.analysisRuns||[]),{at:Date.now(),docs:valid.length,newDocs:pendingDocs.length}].slice(-50); }
       setStatus('Contrôles de cohérence…',92); await yieldToBrowser();
@@ -13563,7 +13644,7 @@ function buildTargetedCandidates(doc,tempDoc,parsed){
   const docsForGrouping=valid.map(x=>x.id===doc.id?tempDoc:x);
   if(!docsForGrouping.some(x=>x.id===tempDoc.id)) docsForGrouping.push(tempDoc);
   const rawExisting=docsForGrouping.flatMap(x=>x.id===doc.id?[]:(Array.isArray(x.cachedOccurrences)?x.cachedOccurrences:[]));
-  const grouping=buildBuildingGrouping(docsForGrouping,[...rawExisting,...parsed],state.buildingOverrides);
+  const grouping=buildBuildingGrouping(docsForGrouping,[...rawExisting,...parsed],effectiveBuildingOverrides());
   const rejected=new Set(doc.targetedRejectedKeys||[]), best=new Map();
   for(const o of parsed){
     if(!FIELD_MAP[o.field]||o.confidence<0.72) continue;
@@ -13616,7 +13697,7 @@ function showTargetedReview(doc,candidates,ocrMeta,opts={}){
       for(const a of additions){ const k=[a.field,a.building,String(a.value),a.page,a.method].join('|'); if(!seen.has(k)){ existing.push(a); seen.add(k); } }
       doc.cachedOccurrences=existing;
       const valid=state.docs.filter(x=>x.status==='ready');
-      state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests();
+      state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),effectiveBuildingOverrides(),manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests();
       toast(`${accepted.length} nouvelle${accepted.length>1?'s':''} valeur${accepted.length>1?'s':''} validée${accepted.length>1?'s':''} et ajoutée${accepted.length>1?'s':''} au tableau.`,'success');
       renderAll(); await checkpointDocument(activeProject(),doc);
     }else scheduleWorkspaceCheckpoint('décisions réanalyse ciblée',80);
@@ -13694,7 +13775,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${oddValue(f.key,v)?'odd':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${oddValue(f.key,v)?'odd':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -13848,7 +13929,7 @@ function renderReview(){
   const groupHtml=groups.map(g=>{ const shown=g.entries.filter(pass); if(!shown.length) return ''; const filled=g.entries.filter(e=>['ok','manual'].includes(e.status)).length;
     const body=shown.map(rowHtml).join(''); return g.admin||g.optional===profile?`<details class="rv-group rv-admin" data-rv-group="${escapeHtml(g.title)}" ${(reviewState.open||{})[g.title]||q?'open':''}><summary><h4>${g.title}</h4><span>${filled}/${g.entries.length}</span></summary>${body}</details>`:`<section class="rv-group"><header><h4>${g.title}</h4><span>${filled}/${g.entries.length}</span></header>${body}</section>`; }).join('');
   wrap.innerHTML=`<div class="rv">
-    <div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${buildings.length} bâtiment(s) · profil ${profile==='reno'?'rénovation':'construction neuve'}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
+    <div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${buildings.length} bâtiment(s) · profil ${profile==='reno'?'rénovation':'construction neuve'}</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
     <div class="rv-buildings" role="tablist" aria-label="Bâtiments">${tabs}</div>
     <div class="rv-toolbar">
       <div class="rv-summary"><strong>${escapeHtml(B)}</strong><span>${comp.filled} champ${comp.filled>1?'s':''} renseigné${comp.filled>1?'s':''} sur ${comp.total}</span></div>
@@ -14265,7 +14346,7 @@ async function submitBetaError(){
 
 function rerunWithBuildingLinks(message='Regroupement des bâtiments mis à jour.'){
   const valid=state.docs.filter(d=>d.status==='ready'); if((!valid.length&&!state.manualPasteRows.length&&!hasRetainedData())||!state.result) return;
-  state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('regroupement bâtiments',80); toast(message,'success');
+  state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),effectiveBuildingOverrides(),manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); state.selfTests=runSelfTests(); renderAll(); scheduleWorkspaceCheckpoint('regroupement bâtiments',80); toast(message,'success');
 }
 
 function mergeSelectedBuildings(names){
@@ -14304,7 +14385,9 @@ function applyManualValuesToProject(project){
   const result=project?.result; if(!result) return;
   const deleted=new Set(project.deletedBuildings||[]), alias=Object.fromEntries((result.buildingAliases||[]).map(a=>[a.source,a.target]));
   for(const [key,value] of Object.entries(project.manualValues||{})){
-    const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1); const row=manualRow(result,raw,deleted,alias); if(!row) continue; const building=row.building;
+    const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1);
+    if(sfPerimeterOn(project)){ const S=project.sfBuildings.map(canonicalBuilding), t=alias[raw]||raw; if(!S.includes(canonicalBuilding(t))&&!(S.length===1&&t==='Bâtiment unique')) continue; }
+    const row=manualRow(result,raw,deleted,alias); if(!row) continue; const building=row.building;
     if(building!==raw&&Object.prototype.hasOwnProperty.call(project.manualValues,`${building}|${field}`)) continue;
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
@@ -14394,7 +14477,7 @@ function rebuildProjectFromCheckpoints(project){
   project.pendingRebuild=false;
   const valid=(project.docs||[]).filter(d=>d.status==='ready'&&Array.isArray(d.cachedOccurrences));
   if(!valid.length&&!(project.manualPasteRows||[]).length&&!(project.freePasteRows||[]).length&&!hasRetainedData(project)){ project.result=null; return; }
-  project.result=analyzeDocuments(valid,state.rules,project.operationName||'',project.buildingOverrides||{},manualPasteOccurrences(project));
+  project.result=analyzeDocuments(valid,state.rules,project.operationName||'',effectiveBuildingOverrides(project),manualPasteOccurrences(project));
   applyDeletedBuildings(project); project.result.documentsCount=valid.length; applyManualValuesToProject(project);
   // v2.19.3 — document modifié par un rattrapage : sauvegardé une fois (sinon le rattrapage recommencerait au démarrage suivant).
   for(const d of project.docs||[]) if(d.needsCheckpoint){ d.needsCheckpoint=false; pendingDocCheckpoints.push([project,d]); }
@@ -15047,7 +15130,7 @@ async function reapplyPatchesToReadyDocuments(){
     const valid=(project.docs||[]).filter(d=>d.status==='ready');
     const operation=$('#operationName')?.value?.trim?.()||project.operationName||'';
     project.operationName=operation;
-    project.result=analyzeDocuments(valid,state.rules,operation,project.buildingOverrides,manualPasteOccurrences(project));
+    project.result=analyzeDocuments(valid,state.rules,operation,effectiveBuildingOverrides(project),manualPasteOccurrences(project));
     applyDeletedBuildings(project);
     project.result.documentsCount=valid.length;
     applyManualValues(); refreshEconomic(); project.projectTags=buildProjectTags(valid,project.result,project.manualTags);
@@ -15199,7 +15282,7 @@ function wire(){
     p.contractNumber=raw?contractDisplay(raw.replace(/[\s.-]/g,'')):''; syncProjectContract(p); renderAll(); scheduleWorkspaceCheckpoint('numéro de contrat'); });
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});
   const searchApply=$('#searchIntegrateApply'); if(searchApply) searchApply.onclick=applySearchIntegration; const searchClose=$('#searchIntegrateClose'); if(searchClose) searchClose.onclick=()=>$('#searchIntegrateDialog')?.close();
-  $('#saveRules').onclick=()=>{ $$('#rulesView input[data-rule]').forEach(inp=>{ const k=inp.dataset.rule,p=inp.dataset.part; state.rules[k][p]=inp.value.split(';').map(s=>s.trim()).filter(Boolean); }); saveSourceRules(state.rules); toast('Règles de sources enregistrées.','success'); if(state.result){ const valid=state.docs.filter(d=>d.status==='ready'); state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); } renderAll(); scheduleWorkspaceCheckpoint('règles de sources',80); };
+  $('#saveRules').onclick=()=>{ $$('#rulesView input[data-rule]').forEach(inp=>{ const k=inp.dataset.rule,p=inp.dataset.part; state.rules[k][p]=inp.value.split(';').map(s=>s.trim()).filter(Boolean); }); saveSourceRules(state.rules); toast('Règles de sources enregistrées.','success'); if(state.result){ const valid=state.docs.filter(d=>d.status==='ready'); state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),effectiveBuildingOverrides(),manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); } renderAll(); scheduleWorkspaceCheckpoint('règles de sources',80); };
   $('#resetRules').onclick=()=>{state.rules=resetSourceRules();renderRules();scheduleWorkspaceCheckpoint('règles par défaut',80);toast('Règles par défaut restaurées.','success');};
   const ocrMode=$('#ocrMode'); if(ocrMode){ const saved=localStorage.getItem('prestaterre-ocr-mode'); if(['auto','always','off'].includes(saved)) ocrMode.value=saved; ocrMode.onchange=()=>{localStorage.setItem('prestaterre-ocr-mode',ocrMode.value); const msg=ocrMode.value==='always'?'OCR renforcé : toutes les pages PDF seront vérifiées par Tesseract (plus lent).':ocrMode.value==='off'?'OCR désactivé pour les prochains documents.':'OCR automatique : Tesseract intervient seulement sur les pages difficiles.'; toast(msg,'info');}; }
   const analysisMode=$('#analysisMode'); if(analysisMode){
@@ -15556,6 +15639,8 @@ async function sfxReadFile(file){
 // Une valeur saisie ou collée à la main (hors Salesforce) est conservée, sauf replaceManual.
 function sfxApplyToProject(p,vals,srcName,{replaceManual=false}={}){
   vals=vals.filter(v=>Object.keys(v.values||{}).length); if(!vals.length) return {applied:0,kept:0};
+  // v2.27.0 — périmètre Salesforce posé avant tout calcul : les valeurs communes ne vont qu'aux bâtiments Salesforce.
+  { const names=[...new Set(vals.filter(v=>v.building).map(v=>canonicalBuilding(v.building)))]; if(names.length) p.sfBuildings=names; }
   let allVals=null; const common=vals.find(v=>!v.building);
   if(common&&(vals.some(v=>v.building)||(p.result?.rows||[]).length>1)){ vals.splice(vals.indexOf(common),1); allVals=common; }
   const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
@@ -15626,6 +15711,35 @@ function openSfxDialog(){
   }
   dlg.showModal();
 }
+
+// ---------- v2.27.0 — table de correspondance des bâtiments (périmètre Salesforce) ----------
+function sfPerimeterChip(p){
+  if(!Array.isArray(p?.sfBuildings)||!p.sfBuildings.length) return '';
+  const ex=p.result?.sfExcluded||[];
+  return `<button type="button" class="sfp-chip${p.sfPerimeterOff?' off':''}" data-sfp-open title="Bâtiments Salesforce : seule référence de l’opération">☁ ${p.sfPerimeterOff?'Périmètre Salesforce désactivé':`Périmètre Salesforce : ${p.sfBuildings.length} bâtiment(s)${ex.length?` · ${ex.length} non retenu(s)`:''}`} · correspondances</button>`;
+}
+function openSfPerimeterDialog(){
+  const p=activeProject(); if(!p?.sfBuildings?.length) return;
+  const m=sfPerimeterMap(p.sfBuildings,sfDetectedNames(p),p.sfBuildingMap||{});
+  const S=m.sf, rows=Object.keys(m.map).filter(d=>!(m.modes[d]==='sf')).sort((a,b)=>a.localeCompare(b,'fr'));
+  let dlg=$('#sfpDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='sfpDialog'; dlg.className='search-integrate-dialog'; document.body.appendChild(dlg); }
+  const opt=(d)=>{ const cur=m.map[d]||''; return `<select data-sfp-name="${escapeHtml(d)}"><option value=""${cur?'':' selected'}>— Non retenu —</option>${S.map(s=>`<option value="${escapeHtml(s)}"${s===cur?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select>`; };
+  dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Salesforce</span><h3>Correspondance des bâtiments</h3><p>Les bâtiments Salesforce sont la seule référence : <b>${S.map(escapeHtml).join(', ')}</b>. Chaque bâtiment lu dans les documents est rattaché à l’un d’eux, ou n’est pas retenu (ses valeurs ne remontent pas).</p></div><button class="icon-btn" type="button" data-sfp-close aria-label="Fermer">×</button></div>
+    <div class="sfp-body">${rows.length?`<table class="sfp-table"><thead><tr><th>Dans les documents</th><th>Bâtiment Salesforce</th><th>Règle</th></tr></thead><tbody>${rows.map(d=>`<tr class="${m.map[d]?'':'off'}"><td>${escapeHtml(d)}</td><td>${opt(d)}</td><td><small>${escapeHtml(SFP_MODES[m.modes[d]]||'')}</small></td></tr>`).join('')}</tbody></table>`:'<p class="ss-empty">Les documents n’utilisent que les noms Salesforce : rien à rapprocher.</p>'}
+    <label class="chk"><input type="checkbox" data-sfp-off${p.sfPerimeterOff?' checked':''}> Désactiver le périmètre Salesforce pour cette opération (tous les bâtiments des documents sont gardés)</label></div>
+    <div class="search-integrate-foot"><button class="btn light" type="button" data-sfp-reset title="Revenir aux rapprochements automatiques">Rapprochements automatiques</button><button class="btn light" type="button" data-sfp-close>Annuler</button><button class="btn primary" type="button" data-sfp-save>Appliquer</button></div></div>`;
+  dlg.onclick=e=>{
+    if(e.target.closest('[data-sfp-close]')){ dlg.close(); return; }
+    if(e.target.closest('[data-sfp-reset]')){ p.sfBuildingMap={}; dlg.close(); recomputeProject('Rapprochements automatiques des bâtiments Salesforce rétablis.'); scheduleWorkspaceCheckpoint('périmètre Salesforce',80); return; }
+    if(!e.target.closest('[data-sfp-save]')) return;
+    const manual={...(p.sfBuildingMap||{})};
+    dlg.querySelectorAll('[data-sfp-name]').forEach(sel=>{ const d=sel.dataset.sfpName, v=sel.value; if((m.map[d]||'')!==v||Object.prototype.hasOwnProperty.call(manual,d)) manual[d]=v; });
+    p.sfBuildingMap=manual; p.sfPerimeterOff=!!dlg.querySelector('[data-sfp-off]')?.checked;
+    dlg.close(); recomputeProject('Correspondance des bâtiments Salesforce appliquée.'); scheduleWorkspaceCheckpoint('périmètre Salesforce',80);
+  };
+  dlg.showModal();
+}
+document.addEventListener('click',e=>{ if(e.target.closest('[data-sfp-open]')) openSfPerimeterDialog(); });
 
 initializeApp();
 
