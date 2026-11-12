@@ -52,5 +52,5 @@ eq(val(ro,'dh','Bâtiment B'),472.7,'« | » ignoré ; « 3952 » (virgule perdu
 
 // --- 5. Réglages OCR ------------------------------------------------------------------------------------------------------------------
 const rd=fs.readFileSync('./js/readers.js','utf8');
-ok(/tessedit_pageseg_mode:'4'/.test(rd),'segmentation PSM 4 (tableaux conservés)'); ok(/fullPage\?\{\.\.\.opts,scale:Math\.max\(Number\(opts\.scale\)\|\|0,3\.0\)/.test(rd),'rendu ≈ 216 dpi pour les pages sans texte');
+ok(/tessedit_pageseg_mode:'4'/.test(rd),'segmentation PSM 4 (tableaux conservés)'); ok(/fullPage\?\{\.\.\.opts,scale:Math\.max\(Number\(opts\.scale\)\|\|0,opts\.ocrFullScale\|\|3\.0\)/.test(rd),'rendu ≈ 216 dpi pour les pages sans texte (par défaut ; réglable par l’import)');
 console.log(`v2.3.8 — ${n} vérifications OK (documents fictifs)`);
