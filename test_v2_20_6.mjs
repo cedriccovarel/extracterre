@@ -7,7 +7,7 @@ import {classifyDocument} from './js/classifier.js';
 import {parseDocument} from './js/parsers.js';
 import {detectBuildings} from './js/buildings.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.31.2','version');
+eq(APP_VERSION,'2.31.3','version');
 const H='Designation;Valx;DetailsGES;NumFiche;Quantite;Unite;dureeVie;TypeFiche;CO2Inies;StockC;Element;Commentaire';
 const sec=(t,rows,tot)=>[`${t};;EGES;Num Fiche;Quantité;Unité;Durée de vie;Type de fiche;CO2 Inies;StockC;Element;Commentaire`,...rows,`;. Total  : ;${tot};;;;;;;;;`,';;;;;;;;;;;'];
 const lots=Array.from({length:13},(_,i)=>sec(`${i+1}-Lot fictif ${i+1}`,[`${i+1}.1 Sous-lot;;;;;;;;;;;`,`Produit fictif ${i+1} - DONNEE ENVIRONNEMENTALE PAR DEFAUT;;${i===12?'0':(10+i)+',5'};1000${i};1,00;m²;50;3;12,3;0;Élément;`],i===12?'0,000':`${10+i},500`)).flat();

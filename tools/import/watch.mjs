@@ -53,6 +53,8 @@ function run(req){
     writeJson(statut,{etat:'en cours',etape:'démarrage',debut:new Date().toISOString()});
     const log=fs.openSync(path.join(dir,`${req.id}.log`),'a');
     const child=spawn(process.execPath,args,{cwd:HERE,stdio:['ignore',log,log],env:{...process.env}});
+    // v2.31.3 — Mac gardé éveillé pendant l'analyse (sinon la veille la met en pause la nuit) ; s'arrête avec elle.
+    if(process.platform==='darwin'){ try{ spawn('/usr/bin/caffeinate',['-i','-s','-w',String(child.pid)],{stdio:'ignore',detached:true}).unref(); }catch{} }
     current={id:req.id,child,stopAsked:0};
     child.on('exit',(code,signal)=>{ fs.closeSync(log); const st=readJson(statut)||{}; const stopped=current?.stopAsked; current=null;
       if(stopped&&st.etat!=='terminé') writeJson(statut,{...st,etat:'interrompu',etape:'arrêté à la demande',finA:new Date().toISOString()});

@@ -1,3 +1,8 @@
+# v2.31.3 — Service d'import : Mac gardé éveillé pendant une analyse
+
+- Pendant une analyse, le service empêche la mise en veille du Mac (caffeinate). La protection s'arrête avec l'analyse.
+  Avant, la veille automatique (1 min sur secteur) mettait l'analyse en pause la nuit. Fermer le capot met quand même le Mac en veille.
+
 # v2.31.2 — Suivi : avancement visible dès la lecture de Box
 
 - La phase « Lecture de Box » (parcours des dossiers des opérations) affiche son avancement : barre, dossiers parcourus / total,
