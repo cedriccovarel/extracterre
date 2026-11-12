@@ -9,7 +9,7 @@ import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
 import {analyzeDocuments,catchUpDocument,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
-import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS} from './geocode.js';
+import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS,folderCommune,geocodeCommune} from './geocode.js';
 import {oddValue} from './sanity.js';
 import {isPlanDoc,PLAN_QUANTITY_FIELDS,PLAN_KIND,planRowField,planOccurrences,defaultPlanBuilding} from './plans.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
@@ -952,7 +952,7 @@ async function openBoxDialog(changeRoot=false){
   try{ op=await boxFindOperation(root,contract); if(!op){ setStatus('Prêt'); toast(`Aucun dossier pour le contrat ${contract} dans « ${root.name} » (ni dans l’archive).`,'warn'); return; }
     if(op.cancelled){ setStatus('Prêt'); toast(`Le seul dossier du contrat ${contract} est annulé : « ${op.name} ».`,'warn'); return; }
     if(op.others?.length) toast(`Plusieurs dossiers pour le contrat ${contract} : « ${op.name} » est utilisé (aussi : ${op.others.join(', ')}).`,'info');
-    setStatus(`Box : lecture de ${op.name}…`); list=await boxListEvaluation(op); }
+    setStatus(`Box : lecture de ${op.name}…`); list=await boxListEvaluation(op); if(!activeProject().boxFolder) activeProject().boxFolder=op.name; }
   catch(err){ setStatus('Prêt'); toast(`Box illisible : ${err?.message||err}`,'error'); return; }
   setStatus('Prêt');
   if(!list.evaluation){ toast(`« ${op.name} » n’a pas de dossier Évaluation.`,'warn'); return; }
@@ -2238,9 +2238,9 @@ function applyGeocodes(project){
   const pending=[];
   for(const row of result.rows||[]){
     const b=row.building;
-    for(const o of result.finals) if(o.building===b&&o.method==='geocode:ign') delete row[o.field];
+    for(const o of result.finals) if(o.building===b&&(o.method==='geocode:ign'||o.method==='geocode:commune')) delete row[o.field];
     if(row.geocode_precision?.startsWith?.('Non géolocalisée')) delete row.geocode_precision;
-    result.finals=result.finals.filter(o=>!(o.building===b&&o.method==='geocode:ign'));
+    result.finals=result.finals.filter(o=>!(o.building===b&&(o.method==='geocode:ign'||o.method==='geocode:commune')));
     const q=geocodeQuery(row); if(!q) continue;
     const g=project.geocodes?.[q]; if(g===undefined){ pending.push(q); continue; }
     const taken=f=>Object.prototype.hasOwnProperty.call(project.manualValues||{},`${b}|${f}`)||result.finals.some(o=>o.building===b&&o.field===f)||!isBlank(row[f]);
@@ -2252,6 +2252,28 @@ function applyGeocodes(project){
       result.finals.push({field,value,building:b,docId:'geocode',fileName:'Géoplateforme IGN — Base Adresse Nationale',docType:'Géocodage',page:'',excerpt:`${q} → ${g.label} (score ${g.score})`,confidence:g.score,method:'geocode:ign',sourceTier:'main',provenanceNote:`Point adresse BAN, coordonnées WGS84 : ${mapLink(g.lat,g.lon)}`}); }
   }
   if(pending.length) geocodePending(project,pending,result.rows);
+  applyCommuneFallback(project,pending);
+}
+// v2.30.0 — secours : aucune position trouvée par l'adresse → centre de la commune lue dans le nom du dossier Box (position approximative).
+// Jamais à la place d'une adresse : seulement pour les bâtiments sans latitude, une fois les adresses en attente traitées.
+function applyCommuneFallback(project,pending=[]){
+  const result=project?.result, fc=folderCommune(project?.importFolder||project?.boxFolder||''); if(!result||!fc) return;
+  const rows=(result.rows||[]).filter(r=>isBlank(r.latitude)&&!pending.includes(geocodeQuery(r)));
+  if(!rows.length) return;
+  const key=`commune|${fc.department}|${fc.city}`, g=project.geocodes?.[key];
+  if(g===undefined){ if(!geocodeInflight.has(key)&&typeof fetch==='function'){ geocodeInflight.add(key);
+      geocodeCommune(fc).then(v=>{ (project.geocodes||(project.geocodes={}))[key]=v; if(project.result){ applyGeocodes(project); if(project===activeProject()){ renderSummary(); updateUxMirrors(); } scheduleWorkspaceCheckpoint('géolocalisation',80); } })
+        .catch(e=>console.warn('Commune non géolocalisée (nouvel essai plus tard)',e)).finally(()=>geocodeInflight.delete(key)); }
+    return; }
+  if(!g.ok) return;
+  for(const row of rows){ const b=row.building;
+    const taken=f=>Object.prototype.hasOwnProperty.call(project.manualValues||{},`${b}|${f}`)||result.finals.some(o=>o.building===b&&o.field===f);
+    if(taken('latitude')||taken('longitude')) continue;
+    const vals={latitude:g.lat,longitude:g.lon,insee_code:g.insee,geocode_precision:`${g.precision} — ${g.label}`};
+    for(const field of GEOCODE_FIELDS){ const value=vals[field]; if(value===''||(field!=='geocode_precision'&&taken(field))) continue;
+      row[field]=value;
+      result.finals.push({field,value,building:b,docId:'geocode',fileName:'Géoplateforme IGN — commune du nom du dossier',docType:'Géocodage',page:'',excerpt:`${project.importFolder||project.boxFolder} → ${g.label} (${fc.department})`,confidence:.6,method:'geocode:commune',sourceTier:'secondary',provenanceNote:'Position approximative : centre de la commune lue dans le nom du dossier Box (aucune adresse géolocalisée).'}); }
+  }
 }
 const geocodeInflight=new Set();
 async function geocodePending(project,queries,rows){
@@ -3534,13 +3556,14 @@ async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContr
   const res={rows:table.length-1,technical:0,updated:0,created:0,values:0,kept:0,noOperation:[],empty:0,duplicates:[]};
   const data=table.slice(1);
   for(let i=0;i<data.length;i++){
-    const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; continue; } res.technical++;
+    const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; if(!f.address&&!f.postcode&&!f.city) continue; } else res.technical++;
     const key=f.contract?contractKey(f.contract):''; if(onlyContracts&&!onlyContracts.has(key)) continue; let ps=(key&&byContract.get(key))||(f.code&&byCode.get(f.code.toUpperCase()))||[];
     if(ps.length>1){ res.duplicates.push(f.contract||f.code); }
     if(!ps.length){ if(!createMissing||!f.contract){ res.noOperation.push(f.contract||f.code); continue; }
       const p=createProject(state.projects.length+1); p.contractNumber=f.contract; p.customTitle=f.contract; p.expanded=false; state.projects.push(p); byContract.set(key,[p]); ps=[p]; res.created++; }
     const parsed=parseFreePaste(f.text); const vals=freePasteValues(parsed);
-    const extra={...(f.contract?{contract_number:f.contract}:{}),...(f.evaluationStatus?{evaluation_status:f.evaluationStatus}:{}),...(f.code?{internal_code:f.code}:{})};
+    const extra={...(f.contract?{contract_number:f.contract}:{}),...(f.evaluationStatus?{evaluation_status:f.evaluationStatus}:{}),...(f.code?{internal_code:f.code}:{}),
+      ...(f.address?{address:f.address}:{}),...(f.postcode?{postcode:f.postcode}:{}),...(f.city?{city:f.city}:{}),...(f.postcode&&!f.postcode.startsWith('20')?{department:f.postcode.startsWith('97')?f.postcode.slice(0,3):f.postcode.slice(0,2)}:{})};
     if(Object.keys(extra).length){ const c=vals.find(v=>!v.building); if(c) c.values={...extra,...c.values}; else vals.push({building:'',values:extra,sources:{}}); }
     for(const p of ps.slice(0,1)){ await ensureProjectReads(p); const r=sfxApplyToProject(p,vals.map(v=>({...v,values:{...v.values}})),srcName,{replaceManual}); res.values+=r.applied; res.kept+=r.kept; if(r.applied) res.updated++; releaseProjectReads(p); }
     if(i%10===0){ onProgress(i+1,data.length); await yieldToBrowser(); }

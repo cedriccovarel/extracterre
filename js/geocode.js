@@ -34,4 +34,39 @@ export async function geocodeAddress(query,row={},fetchImpl=fetch){
   const r=await fetchImpl(u.toString()); if(!r.ok) throw new Error(`Géoplateforme IGN : HTTP ${r.status}`);
   return geocodeVerdict(await r.json(),row);
 }
+// v2.30.0 — secours quand aucune adresse n'est connue : commune et département lus dans le nom du dossier Box
+// (« 00004464 - 06 - ANTIBES - Petit four », « 75 - 1439 - Paris - Monte Cristo », « 95-3991 - BEAUCHAMP - VILLA »).
+const geo_norm=s=>String(s??'').replace(/œ/gi,'oe').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/['’]/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+export function folderCommune(folder){
+  const name=String(folder??'').split('/').pop().trim();
+  const segs=name.split(/\s+[-–]\s*|\s*[-–]\s+/).map(s=>s.trim()).filter(Boolean);
+  let dep='',i=0;
+  for(;i<segs.length;i++){ const s=segs[i];
+    const m=s.match(/^(0[1-9]|[1-8]\d|9[0-5]|2[ab]|97[1-6])(?:-\d+)?$/i); if(m&&!dep){ dep=m[1].toUpperCase(); continue; }
+    if(/^[\d\s,;+&et]+$/i.test(s)||/^(?:cp|ap|annul\w*)$/i.test(geo_norm(s))) continue;
+    if(dep&&/[a-z]{2}/i.test(s)) break;
+  }
+  const city=dep&&i<segs.length?segs[i].replace(/\b(?:annul[ée]e?s?|cp|ap)\b/gi,' ').replace(/\s+/g,' ').trim():'';
+  return dep&&city?{department:dep,city}:null;
+}
+export function communeVerdict(json,{department,city}){
+  const want=geo_norm(city);
+  for(const f of json?.features||[]){ const p=f.properties||{}, [lon,lat]=f.geometry?.coordinates||[];
+    if(p.type!=='municipality'||!Number.isFinite(lat)) continue;
+    if(!String(p.context||'').toUpperCase().startsWith(department+',')) continue;
+    const label=geo_norm(p.label||p.city); if(!label||!(want===label||want.startsWith(label+' '))) continue;
+    return {ok:true,lat:Math.round(lat*1e6)/1e6,lon:Math.round(lon*1e6)/1e6,insee:p.citycode||'',label:p.label||'',precision:'Commune (nom du dossier Box) — position approximative'};
+  }
+  return {ok:false,reason:`commune « ${city} » (${department}) introuvable`};
+}
+export async function geocodeCommune(fc,fetchImpl=fetch){
+  const u=new URL(GEOCODE_URL); u.searchParams.set('q',fc.city); u.searchParams.set('type','municipality'); u.searchParams.set('limit','10');
+  const r=await fetchImpl(u.toString()); if(!r.ok) throw new Error(`Géoplateforme IGN : HTTP ${r.status}`);
+  const v=communeVerdict(await r.json(),fc); if(v.ok) return v;
+  // « Paris Rue des Amandiers » : la ville est suivie d'autre chose → on réessaie avec les premiers mots.
+  const words=fc.city.split(/\s+/);
+  for(let n=Math.min(words.length-1,4);n>=1;n--){ const city=words.slice(0,n).join(' '); u.searchParams.set('q',city);
+    const r2=await fetchImpl(u.toString()); if(!r2.ok) break; const v2=communeVerdict(await r2.json(),{...fc,city}); if(v2.ok) return v2; }
+  return v;
+}
 export const mapLink=(lat,lon)=>`https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;

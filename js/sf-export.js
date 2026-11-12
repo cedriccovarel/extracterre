@@ -22,7 +22,10 @@ export function sfxColumns(headers){
   const find=re=>full.findIndex(x=>re.test(x));
   const sections=[];
   SFX_SECTIONS.forEach(title=>{ const i=h.indexOf(sfx_norm(title)); if(i>=0) sections.push({index:i,title}); });
-  return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections};
+  // v2.30.0 — adresse de l'opération : « Rue », « Ville », « Code postal de l'opération (texte) ».
+  const short=h;
+  return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections,
+    street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
 }
 
 // Ligne → fiche (même texte que la page lue par le favori) + valeurs directes (contrat, statut de l'évaluation).
@@ -33,5 +36,8 @@ export function sfxFiche(row,cols){
   for(const s of cols.sections){ const v=String(row[s.index]||'').trim(); if(v) parts.push(s.title,v,''); }
   const contractRaw=cols.contract>=0?String(row[cols.contract]||'').replace(/\s/g,''):'';
   const contract=/^\d{1,8}$/.test(contractRaw)?contractRaw.replace(/^0+/,'').padStart(8,'0'):'';
-  return {text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
+  const cell=i=>i>=0?String(row[i]||'').replace(/\s+/g,' ').trim():'';
+  let postcode=cell(cols.postcode).replace(/\s/g,''); if(/^\d{4}$/.test(postcode)) postcode='0'+postcode; if(!/^\d{5}$/.test(postcode)) postcode='';
+  const address=cell(cols.street), city=cell(cols.city);
+  return {address,postcode,city,text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
 }

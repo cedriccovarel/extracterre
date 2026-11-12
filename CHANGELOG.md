@@ -1,3 +1,17 @@
+# v2.30.0 — Géolocalisation : adresse Salesforce et secours par la commune du dossier Box
+
+- **Export Salesforce : colonnes d'adresse.** « Rue » (numéro et voie), « Ville » et « Code postal de l'opération (texte) »
+  sont lues et appliquées à l'opération (adresse, ville, code postal, département). Un code postal à 4 chiffres est complété
+  (6160 → 06160). L'adresse est appliquée même aux lignes sans données techniques. Le géocodage IGN se fait ensuite au
+  niveau de la rue, automatiquement.
+- **Plan de secours : commune du nom du dossier Box.** Si aucune adresse n'est géolocalisée pour un bâtiment, la position est
+  celle du centre de la commune lue dans le nom du dossier (« 00004464 - 06 - ANTIBES - … », « 75 - 1439 - Paris - … »,
+  « 95-3991 - BEAUCHAMP - … », dossiers d'archive, plusieurs contrats). Le département du dossier départage les homonymes
+  (Saint-Denis 93 / 974). Précision affichée : « Commune (nom du dossier Box) — position approximative ».
+  Ce secours ne remplace jamais une position trouvée par l'adresse ni une valeur saisie à la main ; il s'efface dès qu'une adresse
+  est géolocalisée.
+- « Charger depuis Box » mémorise aussi le dossier de l'opération (pour ce secours).
+
 # v2.29.0 — Nouvelle analyse en 3 étapes ; lots de CCTP limités aux thèmes des Recherches
 
 - Suivi des sources → Nouvelle analyse :

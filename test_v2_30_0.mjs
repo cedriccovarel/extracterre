@@ -1,0 +1,34 @@
+// ExtracTerre v2.30.0 — Géolocalisation : adresse depuis l'export Salesforce (Rue / Ville / Code postal), secours par la
+// commune lue dans le nom du dossier Box. Noms fictifs, réponses IGN simulées (aucun appel réseau).
+import fs from 'fs';
+import {APP_VERSION} from './js/config.js';
+import {folderCommune,communeVerdict,geocodeCommune} from './js/geocode.js';
+import {sfxColumns,sfxFiche} from './js/sf-export.js';
+let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
+eq(APP_VERSION,'2.30.0','version');
+const fc=f=>{ const r=folderCommune(f); return r?`${r.department} ${r.city}`:null; };
+eq(fc('00009999 - 06 - VILLEFICTIVE - Résidence A'),'06 VILLEFICTIVE','contrat - dép - ville');
+eq(fc('75 - 9999 - Paris - Résidence B'),'75 Paris','ancien format dép - numéro');
+eq(fc('95-9999 - BOURGFICTIF - VILLA'),'95 BOURGFICTIF','ancien format collé');
+eq(fc('00001111 ET 00001112 - 59 - SAINT FICTIF EN VAL - X'),'59 SAINT FICTIF EN VAL','plusieurs contrats');
+eq(fc('06-015 - 9999 - CP - Ville sur Mer - Odyssée'),'06 Ville sur Mer','mention CP ignorée');
+eq(fc('00 - Certifications réalisées - Archivage/00001500 - 94 - BOURG-SUR-MARNE - Rue A'),'94 BOURG-SUR-MARNE','dossier d’archive : dernier segment');
+eq(fc('Sans numéro de département'),null,'pas de département → pas de secours');
+const feat=(label,citycode,context,lon,lat)=>({properties:{type:'municipality',label,citycode,context},geometry:{coordinates:[lon,lat]}});
+const J={features:[feat('Saint-Fictif','97411','974, La Réunion',55.4,-20.9),feat('Saint-Fictif','93066','93, Seine-Saint-Denis, Île-de-France',2.35,48.93)]};
+const v=communeVerdict(J,{department:'93',city:'SAINT FICTIF'});
+eq([v.ok,v.insee,v.lat],[true,'93066',48.93],'homonymes : département du dossier retenu');
+eq(communeVerdict(J,{department:'45',city:'SAINT FICTIF'}).ok,false,'aucune commune du bon département → refus');
+const calls=[]; const fake=async u=>{ calls.push(new URL(u).searchParams.get('q')); const q=new URL(u).searchParams.get('q');
+  return {ok:true,json:async()=>q==='Paris'?{features:[feat('Paris','75056','75, Paris, Île-de-France',2.347,48.859)]}:{features:[]}}; };
+const g=await geocodeCommune({department:'75',city:'Paris Rue des Fictifs'},fake);
+eq([g.ok,g.insee,calls[0],calls.at(-1)],[true,'75056','Paris Rue des Fictifs','Paris'],'ville suivie d’une rue : on réessaie avec les premiers mots');
+const H=['Numéro du contrat','Rue','Ville',"Code postal de l'opération (texte)",'Performance thermique'], c=sfxColumns(H);
+eq([c.street,c.city,c.postcode],[1,2,3],'colonnes Rue / Ville / Code postal reconnues');
+const f=sfxFiche(['00009999','12 rue des Fictifs','Villefictive','6160',''],c);
+eq([f.address,f.city,f.postcode],['12 rue des Fictifs','Villefictive','06160'],'code postal à 4 chiffres complété');
+eq(sfxFiche(['1','','','ABC',''],c).postcode,'','code postal invalide ignoré');
+const app=fs.readFileSync('js/app.js','utf8');
+eq(/address:f\.address/.test(app)&&/if\(!f\.address&&!f\.postcode&&!f\.city\) continue;/.test(app),true,'appli : adresse SF appliquée, même sans données techniques');
+eq(/applyCommuneFallback\(project,pending\)/.test(app)&&/method:'geocode:commune'/.test(app)&&/taken\('latitude'\)\|\|taken\('longitude'\)/.test(app),true,'appli : secours seulement sans position existante');
+console.log(`v2.30.0 — ${n} vérifications OK (données fictives)`);

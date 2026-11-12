@@ -5,7 +5,7 @@ import {APP_VERSION} from './js/config.js';
 import {cctpLotDecision,ir_norm} from './js/import-rules.js';
 import {gridCctpLots,normalizeGrid,SECURITY_GRID} from './js/recherches.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.29.0','version');
+eq(APP_VERSION,'2.30.0','version');
 const sec=gridCctpLots(SECURITY_GRID), fan=gridCctpLots(normalizeGrid({name:'Brasseurs',themes:[{name:"Brasseurs d'air / ventilateurs"},{name:'Climatisation'},{name:'Mode constructif principal'}]}));
 eq(['menuiserie','serrurerie','electricite','vrd'].every(x=>sec.includes(x)),true,'sécurité → menuiseries, serrurerie, électricité, VRD');
 eq(['electricite','cvc','gros oeuvre'].every(x=>fan.includes(x))&&!fan.includes('charpente'),true,'brasseurs / clim / mode constructif → électricité, CVC, gros œuvre');
@@ -20,4 +20,4 @@ const cli=fs.readFileSync('tools/import/extracterre-import.mjs','utf8'), w=fs.re
 eq(/f\.family!=='cctp'\|\|f\.ignoreReason/.test(cli)&&/--lots-cctp/.test(w),true,'script : lots transmis par la demande, filtre limité au dossier CCTP');
 eq(/data-ss-sfx/.test(app)&&/onlyContracts:new Set\(r\.contracts/.test(app)&&/cctpLots:ssCctpLots\(\)/.test(app),true,'appli : export Salesforce en étape 2, lots des Recherches dans la demande');
 eq(/data-g="cctpLots"/.test(app),true,'lots modifiables dans l’éditeur de grille');
-console.log(`v2.29.0 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.30.0 — ${n} vérifications OK (données fictives)`);
