@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.30.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.31.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.30.0';
+const APP_VERSION='2.31.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -12262,6 +12262,40 @@ async function ssDeleteRequest(dir,id){
 }
 const ssRequestDone=st=>!!st&&['terminé','erreur','interrompu','annulé'].includes(st.etat);
 
+// v2.31.0 — suivi visuel de l'analyse en cours : étapes, pourcentages, temps écoulé / restant, état de chaque contrat.
+const SS_STEPS=[['attente','Demande déposée'],['lecture','Lecture de Box'],['correspondance','Correspondance'],['extraction','Analyse des documents'],['fin','Terminé']];
+function ssDuration(ms){
+  if(!Number.isFinite(ms)||ms<0) return '';
+  if(ms<60000) return 'moins d’1 min'; const m=Math.round(ms/60000); if(m<60) return `${m} min`;
+  const h=Math.floor(m/60), r=m%60; return r?`${h} h ${String(r).padStart(2,'0')}`:`${h} h`;
+}
+function ssProgressModel(st,now=Date.now()){
+  const done=ssRequestDone(st);
+  const step=!st?'attente':done?'fin':st.etape==='extraction'?'extraction':st.etape==='correspondance'?'correspondance':'lecture';
+  const o=st?.operations||{}, f=st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
+  // Part de l'opération en cours comptée via ses documents : la barre avance aussi pendant une longue opération.
+  const docShare=!done&&total&&fait<total&&f.total?Math.min(1,(f.fait||0)/f.total):0;
+  const pct=done&&st.etat==='terminé'?100:total?Math.min(99.9,100*(fait+docShare)/total):0;
+  const t0=Date.parse(st?.debut), tx=Date.parse(st?.debutExtraction), tEnd=Date.parse(st?.finA||st?.majA);
+  const elapsed=Number.isFinite(t0)?(done&&Number.isFinite(tEnd)?tEnd:now)-t0:NaN;
+  const progressed=fait+docShare;
+  const eta=!done&&Number.isFinite(tx)&&progressed>=0.5&&total?(now-tx)/progressed*(total-progressed):NaN;
+  const par=st?.parOp||{}, list=Array.isArray(st?.contrats)?st.contrats:[];
+  const current=String(o.courante||'').split(' · ')[0];
+  const tiles=list.map((c,i)=>{ const r=par[c];
+    let state=r?.r||(i<fait?'ok':'attente');
+    if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
+    if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
+    const detail=r&&r.f!=null?` · ${r.f} fichier(s), ${r.x||0} extrait(s)${r.v?`, ${r.v} à vérifier`:''}${r.e?`, ${r.e} erreur(s)`:''}`:'';
+    return {contract:c,state,title:`${c} — ${SS_TILE_LABEL[state]||state}${detail}`}; });
+  const counts={}; for(const t of tiles) counts[t.state]=(counts[t.state]||0)+1;
+  return {step,done,etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
+    docs:f.total&&!done?{fait:f.fait||0,total:f.total,courant:f.courant||''}:null,
+    current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
+    elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
+}
+const SS_TILE_LABEL={ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
+
 /* ---- plans.js ---- */
 // v2.15.0 — plans mesurés dans Ashton : la table de correspondance reçue (par document) devient, pour les quantités
 // reliées à une colonne, des occurrences de type Plan. Longueurs, largeurs et surfaces restent dans l'onglet Plans.
@@ -15497,6 +15531,7 @@ function initSpaceChooser(){
   });
   $('#homeChoiceBtn')?.addEventListener('click',()=>{ if(chooser) chooser.hidden=false; });
   $('#sourcesBtn')?.addEventListener('click',()=>openSourcesView());
+  if(IMPORT_SPACE){ $('#ssTracker')?.addEventListener('click',()=>{ ss.tab='new'; openSourcesView().then(()=>ssTrackerTick()); }); ssTrackerTick(); }
 }
 
 const ss={dir:null,registry:null,decisions:{files:{}},tab:'new',filter:'',open:null,busy:false,linked:{}};
@@ -15729,24 +15764,36 @@ async function ssLaunch(mode){
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
 }
+// v2.31.0 — suivi visuel : étapes, barre globale (avance aussi document par document), temps écoulé / restant, une case par contrat.
 function ssProgressHtml(id,st){
-  if(!st) return `<p class="ss-wait">Demande ${escapeHtml(id)} en attente du service…</p>`;
-  const c=st.correspondance, o=st.operations, t=st.totaux;
-  const pct=o?.total?Math.round(100*o.fait/o.total):(st.etat==='terminé'?100:3);
+  const m=ssProgressModel(st);
+  const stepIdx=SS_STEPS.findIndex(x=>x[0]===m.step);
+  const bad=st?.etat==='erreur', stopped=['interrompu','annulé'].includes(st?.etat);
+  const steps=`<ol class="ss-steps">${SS_STEPS.map(([k,label],i)=>`<li class="${i<stepIdx||(m.done&&st?.etat==='terminé')?'done':i===stepIdx?(bad?'bad':stopped?'warn':'now'):''}"><i>${i<stepIdx||(m.done&&st?.etat==='terminé')?'✓':i+1}</i><span>${escapeHtml(k==='fin'&&m.done?({terminé:'Terminé',erreur:'Erreur',interrompu:'Interrompu',annulé:'Annulé'}[st.etat]||label):label)}</span></li>`).join('')}</ol>`;
+  if(!st) return `<div class="ss-progress">${steps}<p class="ss-wait">Demande ${escapeHtml(id)} déposée : en attente du service d’import…</p></div>`;
+  const c=st.correspondance, t=st.totaux;
   const list=(label,xs)=>xs?.length?`<div><b>${label} (${xs.length})</b> : ${escapeHtml(xs.slice(0,30).join(', '))}${xs.length>30?'…':''}</div>`:'';
-  const title=st.etat==='terminé'?'Terminé':st.etat==='erreur'?'Erreur':st.etat==='interrompu'?'Interrompu (arrêté)':st.etat==='annulé'?'Annulé':`En cours — ${st.etape||''}`;
-  return `<div class="ss-progress"><div class="ss-progress-head"><b>${escapeHtml(title)}</b><span>${o?.total?`${o.fait}/${o.total} opération(s)`:''}</span></div>
-    <div class="startup-bar"><i style="width:${pct}%"></i></div>${o?.courante?`<small>${escapeHtml(o.courante)}${st.fichiers?.total&&st.etat==='en cours'?` · document ${st.fichiers.fait}/${st.fichiers.total}${st.fichiers.courant?` : ${escapeHtml(st.fichiers.courant)}`:''}`:''}</small>`:''}
+  const pctTxt=`${String(m.pct).replace('.',',')} %`;
+  const times=[Number.isFinite(m.elapsed)?`⏱ ${m.done?'durée':'écoulé'} : ${ssDuration(m.elapsed)}`:'',Number.isFinite(m.eta)?`⏳ reste environ ${ssDuration(m.eta)}`:'',Number.isFinite(m.eta)?`fin vers ${new Date(Date.now()+m.eta).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}`:''].filter(Boolean).join(' · ');
+  const legend=Object.entries(m.counts).map(([k,n])=>`<span class="ss-leg"><i class="ss-tile ${k}"></i>${escapeHtml(SS_TILE_LABEL[k]||k)} : <b>${n}</b></span>`).join('');
+  const tiles=m.tiles.length?`<div class="ss-tiles" aria-label="État de chaque contrat">${m.tiles.map(x=>`<i class="ss-tile ${x.state}" title="${escapeHtml(x.title)}"></i>`).join('')}</div><div class="ss-legend">${legend}</div>`:'';
+  return `<div class="ss-progress ${bad?'is-bad':stopped?'is-warn':m.done?'is-done':'is-run'}">${steps}
+    <div class="ss-progress-head"><b>${m.total?`${m.fait} / ${m.total} opération(s)`:escapeHtml(st.etape||'')}</b><span class="ss-pct">${m.total||m.done?pctTxt:''}</span></div>
+    <div class="ss-bar"><i style="width:${m.done&&st.etat==='terminé'?100:m.pct}%"></i></div>
+    ${times?`<small class="ss-times">${times}</small>`:''}
+    ${m.current&&!m.done?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
+    ${m.stale?'<p class="ss-bad">Aucune nouvelle du service depuis plus de 10 minutes : vérifiez qu’il est actif (pastille ci-dessus).</p>':''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
-    ${c?`<div class="ss-corr"><div>Contrats trouvés : <b>${c.trouves}</b>${c.demandes!=null?` / ${c.demandes}`:''}</div>${list('Sans dossier',c.sansDossier)}${list('Plusieurs dossiers (à vérifier, non traités)',c.plusieursDossiers)}${list('Seulement un dossier « Annulé »',c.annules)}${list('Sans sous-dossier CCTP / thermique / carbone',c.sansSousDossier)}</div>`:''}
-    ${t?`<small>Fichiers : ${t.files} · extraits : ${t.extracted} · réutilisés : ${t.reused} · à vérifier : ${t.review} · erreurs : ${t.errors}${t.opsSkipped?` · opérations inchangées : ${t.opsSkipped}`:''}</small>`:''}</div>`;
+    ${tiles}
+    ${t?`<div class="ss-counters"><span>Fichiers <b>${t.files}</b></span><span>Extraits <b>${t.extracted}</b></span><span>Réutilisés <b>${t.reused}</b></span><span class="${t.review?'warn':''}">À vérifier <b>${t.review}</b></span><span class="${t.errors?'bad':''}">Erreurs <b>${t.errors}</b></span>${t.opsSkipped?`<span>Inchangées <b>${t.opsSkipped}</b></span>`:''}</div>`:''}
+    ${c?`<details class="ss-corr"><summary>Correspondance : <b>${c.trouves}</b>${c.demandes!=null?` / ${c.demandes}`:''} contrat(s) trouvé(s) dans Box</summary>${list('Sans dossier',c.sansDossier)}${list('Plusieurs dossiers (à vérifier, non traités)',c.plusieursDossiers)}${list('Seulement un dossier « Annulé »',c.annules)}${list('Sans sous-dossier CCTP / thermique / carbone',c.sansSousDossier)}</details>`:''}</div>`;
 }
 async function ssWatchRequest(){
   clearTimeout(ssPoll); const id=ssCurrentRequest(); const box=$('#sourcesDialog [data-ss-progress]');
   if(!id||!box||!ss.dir||!$('#sourcesDialog')?.open) return;
   const st=await ssReadStatus(ss.dir,id);
   if(!st&&!(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===id)){ ssForgetRequest(); box.innerHTML=''; ssRenderQueue(); return; }
-  box.innerHTML=ssProgressHtml(id,st); ssRefreshService(); ssRenderQueue();
+  box.innerHTML=ssProgressHtml(id,st); ssRefreshService(); ssRenderQueue(); ssTrackerTick();
   if(st&&['terminé','erreur','interrompu','annulé'].includes(st.etat)){
     ssForgetRequest();
     if(st.etat==='terminé'&&Array.isArray(st.contrats)&&st.contrats.length){
@@ -15757,6 +15804,36 @@ async function ssWatchRequest(){
     return;
   }
   ssPoll=setTimeout(ssWatchRequest,3000);
+}
+
+// v2.31.0 — indicateur permanent (barre du haut) : avancement de l'analyse en cours, même fenêtre fermée ; clic → Suivi des sources.
+let ssTrackerTimer=null, ssTrackerTitle=null;
+async function ssTrackerDir(){
+  if(ss.dir) return ss.dir;
+  const saved=await ssSavedWorkDir(); if(!saved) return null;
+  try{ return await saved.queryPermission({mode:'readwrite'})==='granted'?saved:'locked'; }catch{ return 'locked'; }
+}
+async function ssTrackerTick(){
+  clearTimeout(ssTrackerTimer);
+  const el=$('#ssTracker'); if(!el||!IMPORT_SPACE) return;
+  let html='', cls='', title='';
+  try{
+    const dir=await ssTrackerDir(), cur=ssCurrentRequest();
+    if(dir==='locked'){ if(cur){ html='<b>Analyse</b> · cliquer pour suivre'; cls='muted'; title='Chrome demande l’accès au dossier de travail pour afficher l’avancement.'; } }
+    else if(dir){
+      const reqs=await ssListRequests(dir).catch(()=>[]);
+      const r=reqs.find(x=>x.id===cur)||reqs.find(x=>x.status?.etat==='en cours')||reqs.find(x=>!x.status&&!x.stopAsked);
+      if(r){ const m=ssProgressModel(r.status);
+        if(!r.status){ html=`<span class="ss-dot"></span><b>Analyse</b> · en attente du service (${r.contracts} contrat(s))`; cls='wait'; }
+        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
+        else if(r.id===cur){ const ok=r.status.etat==='terminé'; html=ok?'✓ <b>Analyse terminée</b> · cliquer pour charger':`⚠ <b>Analyse ${escapeHtml(r.status.etat)}</b>`; cls=ok?'ok':'warn'; }
+        if(!m.done&&r.status&&m.total) document.title=`(${Math.floor(m.pct)} %) ${ssTrackerTitle||(ssTrackerTitle=document.title.replace(/^\(\d+ %\) /,''))}`;
+        else if(ssTrackerTitle){ document.title=ssTrackerTitle; ssTrackerTitle=null; }
+      } else if(ssTrackerTitle){ document.title=ssTrackerTitle; ssTrackerTitle=null; }
+    }
+  }catch(err){ console.warn('Suivi de l’analyse',err); }
+  el.innerHTML=html; el.className=`ss-tracker ${cls}`; el.title=title||'Suivi de l’analyse en cours : ouvrir « Suivi des sources »'; el.hidden=!html;
+  ssTrackerTimer=setTimeout(ssTrackerTick,html&&!/terminée|Analyse (erreur|interrompu|annulé)/.test(html)?4000:15000);
 }
 
 async function ssOpenAiProposals(key){

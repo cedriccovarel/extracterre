@@ -153,3 +153,37 @@ export async function ssDeleteRequest(dir,id){
   for(const ext of ['.json','.statut.json','.contrats.txt','.log','.stop']){ try{ await d.removeEntry(`${id}${ext}`); }catch{} }
 }
 export const ssRequestDone=st=>!!st&&['terminé','erreur','interrompu','annulé'].includes(st.etat);
+
+// v2.31.0 — suivi visuel de l'analyse en cours : étapes, pourcentages, temps écoulé / restant, état de chaque contrat.
+export const SS_STEPS=[['attente','Demande déposée'],['lecture','Lecture de Box'],['correspondance','Correspondance'],['extraction','Analyse des documents'],['fin','Terminé']];
+export function ssDuration(ms){
+  if(!Number.isFinite(ms)||ms<0) return '';
+  if(ms<60000) return 'moins d’1 min'; const m=Math.round(ms/60000); if(m<60) return `${m} min`;
+  const h=Math.floor(m/60), r=m%60; return r?`${h} h ${String(r).padStart(2,'0')}`:`${h} h`;
+}
+export function ssProgressModel(st,now=Date.now()){
+  const done=ssRequestDone(st);
+  const step=!st?'attente':done?'fin':st.etape==='extraction'?'extraction':st.etape==='correspondance'?'correspondance':'lecture';
+  const o=st?.operations||{}, f=st?.fichiers||{}, total=o.total||0, fait=Math.min(o.fait||0,total);
+  // Part de l'opération en cours comptée via ses documents : la barre avance aussi pendant une longue opération.
+  const docShare=!done&&total&&fait<total&&f.total?Math.min(1,(f.fait||0)/f.total):0;
+  const pct=done&&st.etat==='terminé'?100:total?Math.min(99.9,100*(fait+docShare)/total):0;
+  const t0=Date.parse(st?.debut), tx=Date.parse(st?.debutExtraction), tEnd=Date.parse(st?.finA||st?.majA);
+  const elapsed=Number.isFinite(t0)?(done&&Number.isFinite(tEnd)?tEnd:now)-t0:NaN;
+  const progressed=fait+docShare;
+  const eta=!done&&Number.isFinite(tx)&&progressed>=0.5&&total?(now-tx)/progressed*(total-progressed):NaN;
+  const par=st?.parOp||{}, list=Array.isArray(st?.contrats)?st.contrats:[];
+  const current=String(o.courante||'').split(' · ')[0];
+  const tiles=list.map((c,i)=>{ const r=par[c];
+    let state=r?.r||(i<fait?'ok':'attente');
+    if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
+    if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
+    const detail=r&&r.f!=null?` · ${r.f} fichier(s), ${r.x||0} extrait(s)${r.v?`, ${r.v} à vérifier`:''}${r.e?`, ${r.e} erreur(s)`:''}`:'';
+    return {contract:c,state,title:`${c} — ${SS_TILE_LABEL[state]||state}${detail}`}; });
+  const counts={}; for(const t of tiles) counts[t.state]=(counts[t.state]||0)+1;
+  return {step,done,etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
+    docs:f.total&&!done?{fait:f.fait||0,total:f.total,courant:f.courant||''}:null,
+    current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
+    elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
+}
+export const SS_TILE_LABEL={ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};

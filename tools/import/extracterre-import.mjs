@@ -181,16 +181,17 @@ async function main(){
   const aiMax=Number(args['max-ia']??cfg.ia?.maxAppels??30);
   const ops=match.found;
   const prOps=new Progress(ops.length,mode==='dry-run'?'Simulation':'Opérations');
-  status({etape:'extraction',operations:{fait:0,total:ops.length,courante:''},contrats:ops.map(o=>o.contract)});
+  // v2.31.0 — suivi visuel : début de l'extraction (temps restant) et résultat de chaque opération (cases colorées dans l'appli).
+  status({etape:'extraction',operations:{fait:0,total:ops.length,courante:''},contrats:ops.map(o=>o.contract),debutExtraction:new Date().toISOString(),parOp:{}});
 
   for(const op of ops){
     if(stopping) break;
     const s=scans.get(op.folder); const contract=op.contract;
     const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,cctpLots,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
-    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
+    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); STATUS.parOp[contract]={r:'inchangé'}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
     totals.ops++;
-    status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`}});
+    status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`,debutOp:new Date().toISOString()}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
     // v2.29.0 — lots de CCTP hors thèmes des Recherches : non lus (liste transmise par l'appli, option --lots-cctp).
     if(cctpLots.length) for(const f of s.files){ if(f.family!=='cctp'||f.ignoreReason) continue; const d=cctpLotDecision(f.name,cctpLots); if(!d.read) f.ignoreReason=d.reason; }
@@ -315,7 +316,7 @@ async function main(){
     }
     for(const k of Object.keys(c)) totals[k]+=c[k];
     finalRows.push([contract,op.folder,stopping?'interrompu':mode==='dry-run'?'simulé':'traité',c.files,c.extracted,c.reused,c.ignored,c.review,c.errors,c.missing,c.ai]);
-    prOps.tick(`${contract} · ${c.files} fichier(s)`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''},totaux:{...totals}});
+    prOps.tick(`${contract} · ${c.files} fichier(s)`); STATUS.parOp[contract]={r:stopping?'interrompu':c.errors?'erreurs':!s.retained.length?'vide':'ok',f:c.files,x:c.extracted,v:c.review,e:c.errors}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''},totaux:{...totals}});
   }
   prOps.end();
 

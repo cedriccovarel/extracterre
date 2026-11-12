@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.30.0','version');
+eq(APP_VERSION,'2.31.0','version');
 const app=readFileSync('js/app.js','utf8');
 const src=app.slice(app.indexOf('async function readSessionFile('),app.indexOf('async function importSessionJson('));
 const readSessionFile=new Function('setLocalSaveUi',`${src}; return readSessionFile;`)(()=>{});
@@ -23,4 +23,4 @@ eq((await readSessionFile(new Blob([old]))).workspace.projects,projects,'ancien 
 eq((await readSessionFile(new Blob([JSON.stringify(snap,null,1)]))).operations.length,3,'session sans workspace');
 eq((await readSessionFile(new Blob([JSON.stringify({...snap,workspace:{projects:[]}},null,1)]))).workspace.projects,[],'workspace vide');
 assert.ok(/JSON\.stringify\(serializeProjectFull\(p\)\)\+'\\n'/.test(app),'export compact, une ligne par opération'); n++;
-console.log(`v2.30.0 — ${n} vérifications OK`);
+console.log(`v2.31.0 — ${n} vérifications OK`);

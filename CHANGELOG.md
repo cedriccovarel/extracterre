@@ -1,3 +1,19 @@
+# v2.31.0 — Import massif : suivi visuel de l'analyse en cours
+
+- **Indicateur permanent dans la barre du haut** (espace Import massif). Il affiche le nombre d'opérations faites sur le total,
+  une mini-barre, le pourcentage et le temps restant. Il reste visible quand la fenêtre est fermée. Clic → Suivi des sources.
+  Une fois l'analyse terminée, il affiche « ✓ Analyse terminée · cliquer pour charger ». Le pourcentage apparaît aussi dans le titre de l'onglet.
+- **Panneau d'avancement détaillé** (Nouvelle analyse) :
+  - les étapes : demande déposée → lecture de Box → correspondance → analyse des documents → terminé ;
+  - une barre globale qui avance aussi document par document pendant une longue opération ;
+  - le temps écoulé, le temps restant estimé et l'heure de fin prévue ;
+  - l'opération en cours, avec sa propre barre (document n / total et nom du fichier) ;
+  - **une case par contrat** : traitée, inchangée, sans document, avec erreurs, en cours, en attente. Le détail s'affiche au survol, avec une légende chiffrée ;
+  - des compteurs (fichiers, extraits, réutilisés, à vérifier, erreurs) et la correspondance repliable ;
+  - une alerte si le service ne donne plus de nouvelles depuis 10 minutes.
+- Script : le fichier d'avancement donne le résultat de chaque opération et l'heure de début de l'extraction
+  (service à redémarrer pour en profiter ; sans cela, les cases sont déduites de l'ordre de traitement).
+
 # v2.30.0 — Géolocalisation : adresse Salesforce et secours par la commune du dossier Box
 
 - **Export Salesforce : colonnes d'adresse.** « Rue » (numéro et voie), « Ville » et « Code postal de l'opération (texte) »
