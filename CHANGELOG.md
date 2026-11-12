@@ -1,3 +1,13 @@
+# v2.24.7 — « Charger depuis Box » : anciens contrats
+
+- Le dossier d'une opération est retrouvé avec les mêmes règles que l'import massif. Formats pris en charge :
+  - anciens contrats « 75 - 1439 - Paris - … » (département avant le numéro) ;
+  - dossiers communs « 00001629 ET 00001630 - … », « 00001807, 1808, 1806 - … » ;
+  - dossier d'archive « 00 - Certifications réalisées - Archivage », où la racine prime.
+- Un dossier annulé est signalé au lieu d'être ouvert. S'il y a plusieurs dossiers, le premier est utilisé et les autres sont indiqués.
+- Tous les dossiers « Évaluation… » sont parcourus, sauf l'évaluation environnementale. Avant, seul le premier trouvé l'était, et il pouvait
+  s'agir de « Evaluation Environnementale » au lieu de « Evaluation Thermique ».
+
 # v2.24.6 — Décharger plusieurs opérations
 
 - Accueil : bouton **☑ Sélectionner**, qui fait apparaître des cases à cocher sur les tuiles. Un clic sur une tuile la coche. On peut tout

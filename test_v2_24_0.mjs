@@ -2,7 +2,7 @@
 // chiffrement du registre, espace séparé et écran d'accueil. Données fictives uniquement.
 import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
-import {contractKey,parseContractList,folderContracts,matchContracts,subfolderFamily,folderFamilyMatch,fileIgnoreReason,
+import {irContractKey,parseContractList,folderContracts,matchContracts,subfolderFamily,folderFamilyMatch,fileIgnoreReason,
   versionIndex,documentKey,dateIn,rankVersions,classifyImportFile,versionFolderKey} from './js/import-rules.js';
 import {classifyDocument} from './js/classifier.js';
 import {deriveKeys,encryptJson,decryptJson,hmac,newSalt} from './tools/import/lib/crypto.mjs';
@@ -11,13 +11,13 @@ import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseCon
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.24.6','version');
+eq(APP_VERSION,'2.24.7','version');
 
 // --- Numéros de contrat
-eq(contractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
-eq(contractKey('5361'),'00005361','clé : complétée à 8 chiffres');
-eq(contractKey('OPE-1234'),'','clé : pas un numéro');
-eq(contractKey('0153')===contractKey('01534'),false,'0153 ≠ 01534');
+eq(irContractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
+eq(irContractKey('5361'),'00005361','clé : complétée à 8 chiffres');
+eq(irContractKey('OPE-1234'),'','clé : pas un numéro');
+eq(irContractKey('0153')===irContractKey('01534'),false,'0153 ≠ 01534');
 const list=parseContractList('contrat;nom\n00001234;A\n1629\n 0153 \n1629\nabc\n# commentaire\n');
 eq(list.keys,['00001234','00001629','00000153'],'CSV : colonne 1, en-tête sauté, doublon retiré');
 eq(list.invalid.map(x=>x.value),['abc'],'CSV : ligne illisible');
@@ -185,4 +185,4 @@ const inst=fs.readFileSync(new URL('./tools/import/installer-service.mjs',import
 eq(/MaterializeDatalessFiles<\/key><true\/>/.test(inst)&&!/Background/.test(inst.replace(/\/\/.*$/gm,'')),true,'service autorisé à télécharger les fichiers Box');
 eq(/!\(prev\.counts\?\.errors\)/.test(cli),true,'opération avec erreurs reprise au passage suivant');
 
-console.log(`v2.24.6 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.24.7 — ${n} vérifications OK (données fictives)`);

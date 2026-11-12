@@ -901,10 +901,12 @@ async function openBoxDialog(changeRoot=false){
   let root=changeRoot?null:await boxSavedRoot();
   if(!root||!(await boxEnsureAccess(root))){ toast('Choisissez le dossier « 1 BEE Contrats » (Box › 2 PRODUCTION EVALUATION).','info'); try{ root=await boxPickRoot(); }catch{ return; } }
   let contract=boxContractKey(projectIdentity(activeProject()).contract);
-  if(!contract){ contract=boxContractKey(prompt('Numéro de contrat de l’opération (dossier Box « 0000xxxx - … ») :','')||''); if(!contract){ toast('Numéro de contrat manquant : chargement Box annulé.','warn'); return; } }
+  if(!contract){ contract=boxContractKey(prompt('Numéro de contrat de l’opération :','')||''); if(!contract){ toast('Numéro de contrat manquant : chargement Box annulé.','warn'); return; } }
   setStatus(`Box : recherche du dossier ${contract}…`);
   let op, list;
-  try{ op=await boxFindOperation(root,contract); if(!op){ setStatus('Prêt'); toast(`Aucun dossier « ${contract} - … » dans « ${root.name} ».`,'warn'); return; }
+  try{ op=await boxFindOperation(root,contract); if(!op){ setStatus('Prêt'); toast(`Aucun dossier pour le contrat ${contract} dans « ${root.name} » (ni dans l’archive).`,'warn'); return; }
+    if(op.cancelled){ setStatus('Prêt'); toast(`Le seul dossier du contrat ${contract} est annulé : « ${op.name} ».`,'warn'); return; }
+    if(op.others?.length) toast(`Plusieurs dossiers pour le contrat ${contract} : « ${op.name} » est utilisé (aussi : ${op.others.join(', ')}).`,'info');
     setStatus(`Box : lecture de ${op.name}…`); list=await boxListEvaluation(op); }
   catch(err){ setStatus('Prêt'); toast(`Box illisible : ${err?.message||err}`,'error'); return; }
   setStatus('Prêt');

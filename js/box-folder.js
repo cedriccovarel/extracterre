@@ -1,3 +1,4 @@
+import {folderContracts} from './import-rules.js';
 // v2.12.1 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
 // son accès est gardé par Chrome (File System Access API) ; pour une opération, le dossier « 0000xxxx - … » de son contrat est
 // retrouvé et ses sous-dossiers d'évaluation CCTP, Étude carbone et Étude thermique sont proposés, les plus récents cochés.
@@ -35,10 +36,19 @@ export async function boxPickRoot(){ const h=await globalThis.showDirectoryPicke
 // À appeler pendant un clic : Chrome redemande l'accès à chaque session.
 export async function boxEnsureAccess(h){ if(!h) return false; if(await h.queryPermission?.({mode:'read'})==='granted') return true; try{ return await h.requestPermission?.({mode:'read'})==='granted'; }catch{ return false; } } // sans clic récent, Chrome refuse la demande : on renvoie « non » au lieu de lever une erreur
 
+// v2.24.7 — mêmes règles que l'import massif (js/import-rules.js) : « 75 - 1439 - Paris … », « 00001629 ET 00001630 - … »,
+// « 00001807, 1808, 1806 - … » ; dossiers annulés écartés ; dossier d'archive « 00 - Certifications réalisées - Archivage » cherché aussi
+// (la racine prime). Plusieurs dossiers actifs : le premier trouvé, les autres signalés.
+export const BOX_ARCHIVE_DIRS=['00 - Certifications réalisées - Archivage'];
 export async function boxFindOperation(root,contract){
   const key=boxContractKey(contract); if(!key) return null;
-  for await (const [name,h] of root.entries()) if(h.kind==='directory'&&boxContractOf(name)===key) return {name,handle:h};
-  return null;
+  const hits=[],cancelled=[];
+  const scan=async(dir,prefix)=>{ for await (const [name,h] of dir.entries()){ if(h.kind!=='directory') continue; const r=folderContracts(name);
+    if(r.contracts.includes(key)) (r.cancelled?cancelled:hits).push({name:prefix+name,handle:h}); } };
+  await scan(root,'');
+  if(!hits.length) for(const a of BOX_ARCHIVE_DIRS){ let d=null; try{ d=await root.getDirectoryHandle(a); }catch{} if(d) await scan(d,`${a}/`); }
+  if(!hits.length) return cancelled.length?{...cancelled[0],cancelled:true}:null;
+  return {...hits[0],others:hits.slice(1).map(x=>x.name)};
 }
 async function bx_child(dir,test){ for await (const [name,h] of dir.entries()) if(h.kind==='directory'&&test(name)) return {name,handle:h}; return null; }
 async function bx_files(dir,path,kind,out,depth){
@@ -50,9 +60,14 @@ async function bx_files(dir,path,kind,out,depth){
   }
 }
 // Fichiers des sous-dossiers CCTP / Étude carbone / Étude thermique de « Évaluation », plus récents en tête.
+// v2.24.7 — tous les dossiers « Évaluation… » sont parcourus (anciens contrats : « Evaluation Thermique » à côté de « Evaluation
+// Environnementale », dans un ordre quelconque), sauf l'évaluation environnementale.
 export async function boxListEvaluation(opDir){
-  const ev=await bx_child(opDir.handle,isEvaluationFolder); if(!ev) return {evaluation:null,items:[]};
+  const evs=[];
+  for await (const [name,h] of opDir.handle.entries()) if(h.kind==='directory'&&isEvaluationFolder(name)&&!/environnement/.test(bx_norm(name))) evs.push({name,handle:h});
+  if(!evs.length) return {evaluation:null,items:[]};
+  evs.sort((a,b)=>a.name.localeCompare(b.name,'fr'));
   const items=[];
-  for await (const [name,h] of ev.handle.entries()){ if(h.kind!=='directory') continue; const kind=boxKindOf(name); if(kind) await bx_files(h,`${ev.name}/${name}`,kind,items,1); }
-  return {evaluation:ev.name,items:boxPrecheck(items).sort((a,b)=>BOX_KINDS.findIndex(k=>k[0]===a.kind)-BOX_KINDS.findIndex(k=>k[0]===b.kind)||b.lastModified-a.lastModified)};
+  for(const ev of evs) for await (const [name,h] of ev.handle.entries()){ if(h.kind!=='directory') continue; const kind=boxKindOf(name); if(kind) await bx_files(h,`${ev.name}/${name}`,kind,items,1); }
+  return {evaluation:evs.map(e=>e.name).join(' + '),items:boxPrecheck(items).sort((a,b)=>BOX_KINDS.findIndex(k=>k[0]===a.kind)-BOX_KINDS.findIndex(k=>k[0]===b.kind)||b.lastModified-a.lastModified)};
 }

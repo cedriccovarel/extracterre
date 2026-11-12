@@ -11,7 +11,7 @@ export function ir_norm(s=''){
 // ---------- Numéros de contrat ----------
 
 // « 0000-5361 », « 5361 », « 00005361 » → « 00005361 ». Vide si ce n'est pas un numéro.
-export function contractKey(raw,width=8){
+export function irContractKey(raw,width=8){
   const s=String(raw??'').replace(/[\s._-]+/g,'');
   if(!/^\d+$/.test(s)) return '';
   const v=s.replace(/^0+/,'');
@@ -41,13 +41,13 @@ export function parseContractList(text,{column=null,width=8}={}){
     const head=ir_csvSplit(first,sep[0]).map(x=>x.trim());
     if(column!=null&&/^\d+$/.test(String(column))) col=Number(column)-1;
     else if(column!=null){ col=head.findIndex(h=>ir_norm(h)===ir_norm(column)); if(col<0) throw new Error(`Colonne « ${column} » absente du fichier de contrats (colonnes : ${head.join(', ')}).`); }
-    if(!contractKey(head[col],width)) start=lines.indexOf(first)+1; // ligne d'en-tête
+    if(!irContractKey(head[col],width)) start=lines.indexOf(first)+1; // ligne d'en-tête
   }
   lines.forEach((line,i)=>{
     if(i<start||!line.trim()) return;
     const raw=(isCsv?ir_csvSplit(line,sep[0])[col]:line)?.trim()||'';
     if(!raw||raw.startsWith('#')) return;
-    const k=contractKey(raw,width);
+    const k=irContractKey(raw,width);
     if(!k){ invalid.push({line:i+1,value:raw}); return; }
     if(seen.has(k)){ duplicates.push(k); return; }
     seen.add(k); keys.push(k);
@@ -73,7 +73,7 @@ export function folderContracts(name,cfg={}){
   for(const run of head.match(/\d+/g)||[]){
     // « 76-008 - 1480 - … » : « 008 » (code commune) n'est pas un contrat — au moins minDigits chiffres significatifs.
     if(run.replace(/^0+/,'').length<minDigits) continue;
-    const k=contractKey(run,width); if(k&&!contracts.includes(k)) contracts.push(k);
+    const k=irContractKey(run,width); if(k&&!contracts.includes(k)) contracts.push(k);
   }
   return {contracts,cancelled};
 }

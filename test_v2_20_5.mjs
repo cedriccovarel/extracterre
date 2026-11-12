@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.6','version');
+eq(APP_VERSION,'2.24.7','version');
 const app=readFileSync('js/app.js','utf8'), relay=readFileSync('relay.html','utf8');
 // Onglet ExtracTerre : accusé de réception « check », envoi du contrôle à chaque changement, actions reçues, fin signalée.
 eq(/bc\.postMessage\(\{type:'ack',id:m\.id,check:true\}\); relayImportId=/.test(app),true,'accusé de réception avec contrôle');

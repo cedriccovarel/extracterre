@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.6','version');
+eq(APP_VERSION,'2.24.7','version');
 const app=readFileSync('js/app.js','utf8');
 const block=app.slice(app.indexOf('function miniCheckHtml()'),app.indexOf('function wireMiniWindow('));
 // Affiché seulement quand un import attend dans « Données manuelles » ; rafraîchi après l'ouverture de la fenêtre de dialogue.
