@@ -3141,7 +3141,7 @@ function ssRenderOps(){
     const linked=ss.linked[op.contract];
     return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
       <td class="ss-actions"><button class="btn light" data-ss-open="${escapeHtml(op.contract)}">${open?'Fermer':'Détail'}</button><button class="btn light" data-ss-load="${escapeHtml(op.contract)}" title="Créer ou mettre à jour l’opération dans ExtracTerre avec les documents traités">${p?'Mettre à jour':'Charger'}</button>${p?`<button class="btn light" data-ss-go="${escapeHtml(p.id)}">Ouvrir</button>`:''}<button class="btn light" data-ss-linked="${escapeHtml(op.contract)}" title="Comparer avec le dossier Box (nouveaux, modifiés, disparus)">⟳ Box</button></td></tr>
-      ${linked?`<tr class="ss-detail"><td colspan="9">${linked.error?`<p class="ss-bad">${escapeHtml(linked.error)}</p>`:`<p><b>Depuis le dernier passage du script :</b> ${linked.added.length} nouveau(x), ${linked.changed.length} modifié(s), ${linked.gone.length} disparu(s).${linked.added.length||linked.changed.length||linked.gone.length?` Relancez <code>node extracterre-import.mjs --operation ${escapeHtml(op.contract)}</code> pour les traiter.`:''}</p>${[...linked.added.map(x=>['nouveau',x]),...linked.changed.map(x=>['modifié',x]),...linked.gone.map(x=>['disparu',x])].slice(0,40).map(([k,x])=>`<div class="ss-line"><span class="ss-chip ${k==='disparu'?'bad':'warn'}">${k}</span> ${escapeHtml(x.relPath)}</div>`).join('')}`}</td></tr>`:''}
+      ${linked?`<tr class="ss-detail"><td colspan="9">${linked.error?`<p class="ss-bad">${escapeHtml(linked.error)}</p>${linked.needRoot?`<button class="btn light" data-ss-pickbox="${escapeHtml(op.contract)}">Choisir le dossier « 1 BEE Contrats »</button>`:''}`:`<p><b>Depuis le dernier passage du script :</b> ${linked.added.length} nouveau(x), ${linked.changed.length} modifié(s), ${linked.gone.length} disparu(s).${linked.added.length||linked.changed.length||linked.gone.length?` Relancez <code>node extracterre-import.mjs --operation ${escapeHtml(op.contract)}</code> pour les traiter.`:''}</p>${[...linked.added.map(x=>['nouveau',x]),...linked.changed.map(x=>['modifié',x]),...linked.gone.map(x=>['disparu',x])].slice(0,40).map(([k,x])=>`<div class="ss-line"><span class="ss-chip ${k==='disparu'?'bad':'warn'}">${k}</span> ${escapeHtml(x.relPath)}</div>`).join('')}`}</td></tr>`:''}
       ${open?`<tr class="ss-detail"><td colspan="9">${ssRenderOpDetail(op)}</td></tr>`:''}`; }).join('')}</tbody></table>`;
 }
 function ssRenderOpDetail(op){
@@ -3208,6 +3208,7 @@ async function ssClick(e){
   if(t.dataset.ssLoad){ await ssRun(()=>loadImportOperations([t.dataset.ssLoad])); return; }
   if(t.matches('[data-ss-loadall]')){ await ssRun(()=>loadImportOperations(ssOperations(ss.registry).map(o=>o.contract))); return; }
   if(t.dataset.ssLinked){ await ssRun(()=>ssLinkedCheck(t.dataset.ssLinked)); return; }
+  if(t.dataset.ssPickbox){ const c=t.dataset.ssPickbox; await boxPickRoot(); await ssRun(()=>ssLinkedCheck(c)); return; }
   const act=t.dataset.ssAct; const row=t.closest('[data-ss-key]'); if(!act||!row) return;
   const key=row.dataset.ssKey;
   if(act==='clear'){ delete ss.decisions.files[key]; await ssWriteDecisions(ss.dir,ss.decisions); }
@@ -3229,7 +3230,7 @@ async function ssLinkedCheck(contract){
     if(!boxSupported()) throw new Error('Ce navigateur ne permet pas de lier un dossier : utilisez Chrome ou Edge.');
     let root=await boxSavedRoot(); if(!root) root=await boxPickRoot();
     if(!await boxEnsureAccess(root)) throw new Error('Accès au dossier Box refusé.');
-    let h; try{ h=await root.getDirectoryHandle(op.folder); }catch{ throw new Error(`Dossier « ${op.folder} » introuvable dans « ${root.name} » : choisissez le dossier racine des contrats (1 BEE Contrats).`); }
+    let h; try{ h=await root.getDirectoryHandle(op.folder); }catch{ ss.linked[contract]={error:`Dossier « ${op.folder} » introuvable dans « ${root.name} ». Choisissez le dossier racine des contrats (1 BEE Contrats).`,needRoot:true}; return; }
     ssStatus(`Comparaison avec Box — ${op.folder}…`);
     ss.linked[contract]=await ssCompareLinked(h,ss.registry,contract);
   }catch(err){ ss.linked[contract]={error:err?.message||String(err)}; }

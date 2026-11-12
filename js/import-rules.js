@@ -66,10 +66,13 @@ export function folderContracts(name,cfg={}){
   const cancel=new RegExp(`^\\s*(?:${(cfg.cancelledPrefixes||['annule','annulee','annulé','annulée']).map(x=>ir_norm(x).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')})\\b\\s*[-–:]?\\s*`,'i');
   const n=ir_norm(s);
   const m=n.match(cancel); if(m){ cancelled=true; s=n.slice(m[0].length); } else s=n;
+  // « 07-011 - 0386 - CP Annule - … », « 13-009 - 2117 - Annulée - … » : mention d'annulation ailleurs dans le nom.
+  if(!cancelled&&/(?:^|[^a-z])annul(?:e|ee|es|ees)?(?![a-z])/.test(n)) cancelled=true;
   const head=(s.match(/^[\d\s,;+&\/._–-]*(?:(?:et|and)\b[\d\s,;+&\/._–-]*)*/)||[''])[0];
   const contracts=[];
   for(const run of head.match(/\d+/g)||[]){
-    if(run.length<minDigits) continue;
+    // « 76-008 - 1480 - … » : « 008 » (code commune) n'est pas un contrat — au moins minDigits chiffres significatifs.
+    if(run.replace(/^0+/,'').length<minDigits) continue;
     const k=contractKey(run,width); if(k&&!contracts.includes(k)) contracts.push(k);
   }
   return {contracts,cancelled};

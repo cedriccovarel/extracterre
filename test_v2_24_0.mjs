@@ -11,7 +11,7 @@ import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseCon
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.24.1','version');
+eq(APP_VERSION,'2.24.2','version');
 
 // --- Numéros de contrat
 eq(contractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
@@ -29,8 +29,12 @@ eq(folderContracts('00001629 ET 00001630 - 59 - LINSELLES').contracts,['00001629
 eq(folderContracts('00001807, 1808, 1806 - 93 - L\'ILE SAINT DENIS').contracts,['00001807','00001808','00001806'],'contrats abrégés');
 eq(folderContracts('00002510 + 00002955 - 94 - IVRY').contracts,['00002510','00002955'],'contrats « + »');
 eq(folderContracts('95-3991 - BEAUCHAMP - VILLA').contracts,['00003991'],'département puis contrat');
+eq(folderContracts('76-008 - 1480 - CP - Fecamp - Rue de Bailly').contracts,['00001480'],'code « 008 » ignoré, contrat 1480');
 eq(folderContracts('Annule - 06 - 0709 - Sospel'),{contracts:['00000709'],cancelled:true},'dossier annulé');
 eq(folderContracts('00 - Dossier type copie').contracts,[],'dossier type : pas de contrat');
+eq(folderContracts('07-011 - 0386 - CP Annule - Annonay').cancelled,true,'« Annule » au milieu du nom');
+eq(folderContracts('13-009 - 2117 - Annulée - Roquevaire'),{contracts:['00002117'],cancelled:true},'« Annulée » au milieu du nom');
+eq(folderContracts('00005361 - 70 - ANNULY LES BOIS').cancelled,false,'commune « Annuly » non annulée');
 eq(folderContracts('00001138 -59 - BAILLEUL - Rue 2024').contracts,['00001138'],'année dans le nom ignorée');
 eq(folderContracts(' 00002474 - 83 - LES ARCS').contracts,['00002474'],'espace en tête');
 const folders=['00001534 - 75 - PARIS','00015340 - 13 - MARSEILLE','00005555 - A','5555 - B','00001629 ET 00001630 - 59 - X','Annule - 06 - 0709 - Sospel'];
@@ -172,4 +176,4 @@ eq(/--statut/.test(cli)&&/find-generic-password/.test(cli),true,'script : avance
 eq(/'--dossier-travail',workDir/.test(watch)&&/extracterre-import-request/.test(watch),true,'service : demandes du dossier de travail');
 eq(/data-ss-tab="new"/.test(app)&&/ssWriteRequest\(ss\.dir/.test(app),true,'appli : onglet Nouvelle analyse');
 
-console.log(`v2.24.1 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.24.2 — ${n} vérifications OK (données fictives)`);

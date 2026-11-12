@@ -1,3 +1,12 @@
+# v2.24.2 — Import massif : contrats et dossiers annulés mieux lus, racine Box rechoisie
+
+- Noms « 76-008 - 1480 - CP - Fécamp » : le code « 008 » n'est plus pris pour le contrat n° 8. Il faut au moins 3 chiffres significatifs ;
+  cela corrige 139 dossiers sur Box.
+- Dossier annulé reconnu même quand « Annulé(e) » n'est pas en tête du nom (« 07-011 - 0386 - CP Annule - … », « 00000761 - 91 - Annulée - … ») :
+  il n'est plus traité.
+- ⟳ Box : si la racine mémorisée n'est pas « 1 BEE Contrats » (par exemple un dossier CCTP choisi autrefois), un bouton permet de la
+  rechoisir, puis la comparaison se relance.
+
 # v2.24.1 — Import massif : coller une liste de contrats
 
 - Suivi des sources → onglet **📋 Nouvelle analyse**. On colle la colonne Excel des contrats (colonne « contrat » repérée, codes postaux et
