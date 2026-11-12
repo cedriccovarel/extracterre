@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.25.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.26.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.25.0';
+const APP_VERSION='2.26.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -9825,6 +9825,45 @@ function salesforceEvaluationToPaste(text){
   return {text:[...common.map(line),...blocks.flatMap(b=>['',`${b.name} :`,...blockLines(b)])].join('\n'),notes};
 }
 
+/* ---- sf-export.js ---- */
+// ExtracTerre v2.26.0 — export Salesforce « Opérations (détails) » (.xls HTML, .xlsx ou .csv) : une ligne par opération,
+// colonnes « Évaluation: Performance thermique », « … Parois verticales »… Chaque ligne est reconstituée en fiche et lue par
+// le même décodeur que le favori Salesforce (collage-libre.js) : mêmes valeurs, mêmes bâtiments, même priorité.
+const SFX_SECTIONS=['Performance thermique','Planchers hauts','Parois verticales','Planchers bas','Menuiseries extérieures','Ponts thermiques','Chauffage','Régulation','Eau chaude sanitaire',"Renouvellement d'air",'Énergies renouvelables','Observations générales'];
+// Entités nommées courantes (accents français) ; un export peut écrire « &eacute; » au lieu de « é ».
+const SFX_ENT={eacute:'é',egrave:'è',ecirc:'ê',euml:'ë',agrave:'à',acirc:'â',ccedil:'ç',ocirc:'ô',ouml:'ö',ucirc:'û',ugrave:'ù',uuml:'ü',icirc:'î',iuml:'ï',Eacute:'É',Egrave:'È',Ecirc:'Ê',Agrave:'À',Acirc:'Â',Ccedil:'Ç',Ocirc:'Ô',Icirc:'Î',oelig:'œ',OElig:'Œ',rsquo:'’',lsquo:'‘',laquo:'«',raquo:'»',deg:'°',sup2:'²',sup3:'³',euro:'€',hellip:'…',ndash:'–',mdash:'—',times:'×',middot:'·'};
+const sfx_norm=s=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[’']/g,"'").replace(/\s+/g,' ').trim();
+
+// Tableau HTML d'un export « .xls » de Salesforce → lignes de cellules (les <br> deviennent des retours à la ligne).
+function sfxParseHtmlTable(html){
+  const decode=t=>t.replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(m,d)=>String.fromCharCode(Number(d))).replace(/&#x([0-9a-f]+);/gi,(m,h)=>String.fromCharCode(parseInt(h,16)))
+    .replace(/&quot;/g,'"').replace(/&apos;|&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&([A-Za-z]+[0-9]?);/g,(m,k)=>SFX_ENT[k]??m).replace(/&amp;/g,'&').replace(/\r/g,'').trim();
+  const rows=[];
+  for(const tr of String(html).matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) rows.push([...tr[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(m=>decode(m[1])));
+  return rows;
+}
+
+// Colonnes reconnues : contrat, code interne, statut de l'évaluation, sections techniques.
+function sfxColumns(headers){
+  const h=(headers||[]).map(x=>sfx_norm(String(x).replace(/^[^:]*:\s*(?=[^:]+$)/,'')));
+  const full=(headers||[]).map(sfx_norm);
+  const find=re=>full.findIndex(x=>re.test(x));
+  const sections=[];
+  SFX_SECTIONS.forEach(title=>{ const i=h.indexOf(sfx_norm(title)); if(i>=0) sections.push({index:i,title}); });
+  return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections};
+}
+
+// Ligne → fiche (même texte que la page lue par le favori) + valeurs directes (contrat, statut de l'évaluation).
+function sfxFiche(row,cols){
+  const code=cols.code>=0?String(row[cols.code]||'').trim():'';
+  const parts=[];
+  if(/^OPE-\d{6}$/.test(code)) parts.push(code,'');
+  for(const s of cols.sections){ const v=String(row[s.index]||'').trim(); if(v) parts.push(s.title,v,''); }
+  const contractRaw=cols.contract>=0?String(row[cols.contract]||'').replace(/\s/g,''):'';
+  const contract=/^\d{1,8}$/.test(contractRaw)?contractRaw.replace(/^0+/,'').padStart(8,'0'):'';
+  return {text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
+}
+
 /* ---- economics.js ---- */
 // v2.5.0 — Données économiques : nomenclature Excel du questionnaire financier MOA Prestaterre (V0.56).
 // Source principale : la synthèse PDF « Questionnaire financier d'opération » (lignes de coûts validées, aides mobilisées).
@@ -12423,6 +12462,7 @@ function renderTiles(wrap,{home=false}={}){
   // Accueil : tuiles d'action (créer une opération, coller ou importer un tableau d'opérations).
   const actions=home&&!q&&!(grouped&&state.overviewOwner)?`<button type="button" class="op-tile action" data-home-act="new"><span class="op-tile-plus" aria-hidden="true">＋</span><strong>Nouvelle opération</strong><span class="op-tile-meta">Déposer les documents d’une opération</span></button>
     <button type="button" class="op-tile action" data-home-act="paste"><span class="op-tile-plus" aria-hidden="true">⌨</span><strong>Coller un tableau</strong><span class="op-tile-meta">Zone Excel copiée avec ses en-têtes (contrat, n° d’opération, maître d’ouvrage…)</span></button>
+    <button type="button" class="op-tile action" data-home-act="sfx"><span class="op-tile-plus" aria-hidden="true">☁</span><strong>Export Salesforce</strong><span class="op-tile-meta">Évaluations « Opérations (détails) » : données techniques par bâtiment</span></button>
     <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
   if(home&&!items.length) sub='Aucune opération pour le moment';
   wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}${items.length?`<button type="button" class="btn light op-select-toggle" data-tile-select>${sel?'Terminer la sélection':'☑ Sélectionner'}</button>`:''}</div>${sel?`<div class="op-select-bar"><b>${state.tileSelected.size} opération(s) sélectionnée(s)</b>${visibleIds.length?`<button type="button" class="btn light" data-tile-selall>Tout sélectionner (${visibleIds.length} affichée(s))</button>`:'<span class="op-select-hint">Ouvrez un maître d’ouvrage ou faites une recherche pour cocher les opérations.</span>'}${state.tileSelected.size?'<button type="button" class="btn light" data-tile-selnone>Tout décocher</button><button type="button" class="btn primary danger-fill" data-tile-unload>Décharger la sélection</button>':''}</div>`:''}${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
@@ -12434,7 +12474,7 @@ function renderTiles(wrap,{home=false}={}){
   const sortSel=wrap.querySelector('[data-tile-sort]'); if(sortSel) sortSel.onchange=()=>{ state.tileSort=sortSel.value; rerender(); };
   wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; rerender(); });
   wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });
-  wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
+  wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='sfx') openSfxDialog(); else if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
   const toggleSel=id=>{ if(state.tileSelected.has(id)) state.tileSelected.delete(id); else state.tileSelected.add(id); rerender(); };
   wrap.querySelectorAll('[data-tile-toggle]').forEach(b=>b.onclick=()=>toggleSel(b.dataset.tileToggle));
@@ -15500,6 +15540,91 @@ async function ssOpenAiProposals(key){
   const candidates=buildTargetedCandidates(d,d,d.llmProposals);
   if(!candidates.length){ toast('Les propositions de l’IA ne complètent aucune case vide de l’opération.','info'); return; }
   showTargetedReview(d,candidates,{pages:[]},{title:`IA locale — ${d.name}`,sub:`${candidates.length} proposition(s) vérifiée(s) mot pour mot dans le document. Confiance plafonnée à 85 % : chaque valeur doit être validée ✓ / ✕.`});
+}
+
+// ---------- v2.26.0 — import d'un export Salesforce « Opérations (détails) » : une fiche par ligne, même décodeur que le favori ----------
+const SFX_DATE=()=>new Date().toLocaleDateString('fr-FR');
+async function sfxReadFile(file){
+  const buf=new Uint8Array(await file.arrayBuffer());
+  const head=new TextDecoder('latin1').decode(buf.slice(0,600));
+  if(/<table|<html|<head/i.test(head)){ const latin=/charset=(iso-8859-1|windows-1252|latin)/i.test(head); const text=new TextDecoder(latin?'windows-1252':'utf-8').decode(buf); return sfxParseHtmlTable(text); }
+  if(!globalThis.XLSX) throw new Error('Lecteur Excel indisponible : rechargez la page.');
+  const wb=XLSX.read(buf,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}).map(r=>r.map(v=>String(v??'')));
+}
+// Applique les valeurs d'une fiche à l'opération p (même logique que le collage d'une fiche Salesforce, sans fenêtre de confirmation).
+// Une valeur saisie ou collée à la main (hors Salesforce) est conservée, sauf replaceManual.
+function sfxApplyToProject(p,vals,srcName,{replaceManual=false}={}){
+  vals=vals.filter(v=>Object.keys(v.values||{}).length); if(!vals.length) return {applied:0,kept:0};
+  let allVals=null; const common=vals.find(v=>!v.building);
+  if(common&&(vals.some(v=>v.building)||(p.result?.rows||[]).length>1)){ vals.splice(vals.indexOf(common),1); allVals=common; }
+  const prev=p.freePasteRows||[]; p.freePasteRows=[...prev.filter(r=>!vals.some(v=>v.building===r.building)),...vals];
+  const pasted=new Set(vals.flatMap(v=>v.building?[v.building,canonicalBuilding(v.building)]:[])); if((p.deletedBuildings||[]).some(b=>pasted.has(b))) p.deletedBuildings=p.deletedBuildings.filter(b=>!pasted.has(b));
+  computeProjectResult(p);
+  const rows=p.result?.rows||[], aliases=p.result?.buildingAliases||[];
+  const target=name=>{ if(!name) return rows.length===1?rows[0].building:'Bâtiment unique'; const c=canonicalBuilding(name); return aliases.find(a=>a.source===name||a.source===c)?.target||rows.find(r=>r.building===name||r.building===c||normLower(r.building)===normLower(c))?.building||c; };
+  p.manualValues=p.manualValues||{}; p.manualSources=p.manualSources||{};
+  let applied=0,kept=0; const own={};
+  const put=(b,field,value,excerpt,whole)=>{ const key=`${b}|${field}`, cur=p.manualSources[key];
+    if(Object.prototype.hasOwnProperty.call(p.manualValues,key)&&String(p.manualValues[key])!==String(value)&&!SF_SRC.test(cur?.fileName||'')&&!replaceManual){ kept++; return; }
+    p.manualValues[key]=value; p.manualSources[key]={docId:'',fileName:whole?`${srcName} — toute l’opération`:srcName,page:'',excerpt:excerpt||'',method:'manual:free-paste',provenanceNote:'Export Salesforce : prioritaire sur les documents'}; applied++; };
+  for(const v of vals){ const b=target(v.building); own[b]=new Set(Object.keys(v.values)); for(const [f,val] of Object.entries(v.values)) put(b,f,val,v.sources?.[f]); }
+  if(allVals) for(const r of rows) for(const [f,val] of Object.entries(allVals.values)) if(!own[r.building]?.has(f)) put(r.building,f,val,allVals.sources?.[f],true);
+  if(applied) p.salesforceImports=[...(p.salesforceImports||[]),{at:Date.now(),values:applied}].slice(-50);
+  computeProjectResult(p);
+  return {applied,kept};
+}
+async function sfxImport(file,{replaceManual=false,createMissing=false,onProgress=()=>{}}={}){
+  const table=await sfxReadFile(file); if(table.length<2) throw new Error('Fichier vide ou illisible.');
+  const cols=sfxColumns(table[0]);
+  if(cols.contract<0&&cols.code<0) throw new Error('Colonne « Numéro du contrat » ou « Code interne » introuvable dans l’export.');
+  if(!cols.sections.length) throw new Error('Aucune colonne technique reconnue (Performance thermique, Parois verticales, Chauffage…).');
+  const byContract=new Map(), byCode=new Map();
+  for(const p of state.projects){ const id=projectIdentity(p); const c=contractKey(id.contract), k=String(id.code||'').toUpperCase(); if(c&&/^\d+$/.test(c)){ if(!byContract.has(c)) byContract.set(c,[]); byContract.get(c).push(p); } if(/^OPE-\d{6}$/.test(k)){ if(!byCode.has(k)) byCode.set(k,[]); byCode.get(k).push(p); } }
+  const srcName=`Salesforce — export du ${SFX_DATE()} (${file.name})`;
+  const res={rows:table.length-1,technical:0,updated:0,created:0,values:0,kept:0,noOperation:[],empty:0,duplicates:[]};
+  const data=table.slice(1);
+  for(let i=0;i<data.length;i++){
+    const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; continue; } res.technical++;
+    const key=f.contract?contractKey(f.contract):''; let ps=(key&&byContract.get(key))||(f.code&&byCode.get(f.code.toUpperCase()))||[];
+    if(ps.length>1){ res.duplicates.push(f.contract||f.code); }
+    if(!ps.length){ if(!createMissing||!f.contract){ res.noOperation.push(f.contract||f.code); continue; }
+      const p=createProject(state.projects.length+1); p.contractNumber=f.contract; p.customTitle=f.contract; p.expanded=false; state.projects.push(p); byContract.set(key,[p]); ps=[p]; res.created++; }
+    const parsed=parseFreePaste(f.text); const vals=freePasteValues(parsed);
+    const extra={...(f.contract?{contract_number:f.contract}:{}),...(f.evaluationStatus?{evaluation_status:f.evaluationStatus}:{}),...(f.code?{internal_code:f.code}:{})};
+    if(Object.keys(extra).length){ const c=vals.find(v=>!v.building); if(c) c.values={...extra,...c.values}; else vals.push({building:'',values:extra,sources:{}}); }
+    for(const p of ps.slice(0,1)){ await ensureProjectReads(p); const r=sfxApplyToProject(p,vals.map(v=>({...v,values:{...v.values}})),srcName,{replaceManual}); res.values+=r.applied; res.kept+=r.kept; if(r.applied) res.updated++; releaseProjectReads(p); }
+    if(i%10===0){ onProgress(i+1,data.length); await yieldToBrowser(); }
+  }
+  renderAll(); scheduleWorkspaceCheckpoint('import export Salesforce',80);
+  return res;
+}
+function openSfxDialog(){
+  let dlg=$('#sfxDialog');
+  if(!dlg){ dlg=document.createElement('dialog'); dlg.id='sfxDialog'; dlg.className='search-integrate-dialog';
+    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Salesforce</span><h3>Importer un export d’évaluations</h3><p>Export Salesforce « Opérations (détails) » (.xls, .xlsx ou .csv) avec le numéro de contrat et les champs techniques de l’évaluation. Chaque ligne est lue comme une fiche ouverte avec le favori : mêmes valeurs, mêmes bâtiments, priorité Salesforce.</p></div><button class="icon-btn" type="button" data-sfx-close aria-label="Fermer">×</button></div>
+      <div class="sfx-body"><input type="file" data-sfx-file accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
+      <label class="chk"><input type="checkbox" data-sfx-replace> Remplacer aussi les valeurs saisies ou collées à la main (sinon elles sont conservées)</label>
+      <label class="chk"><input type="checkbox" data-sfx-create> Créer les opérations absentes d’ExtracTerre (sinon elles sont seulement listées)</label>
+      <div class="sfx-status" data-sfx-status></div></div>
+      <div class="search-integrate-foot"><button class="btn light" type="button" data-sfx-close>Fermer</button><button class="btn primary" type="button" data-sfx-go disabled>Importer</button></div></div>`;
+    document.body.appendChild(dlg);
+    const file=dlg.querySelector('[data-sfx-file]'), go=dlg.querySelector('[data-sfx-go]'), st=dlg.querySelector('[data-sfx-status]');
+    file.onchange=()=>{ go.disabled=!file.files?.length; st.textContent=''; };
+    dlg.addEventListener('click',async e=>{
+      if(e.target.closest('[data-sfx-close]')){ dlg.close(); return; }
+      if(!e.target.closest('[data-sfx-go]')||!file.files?.length) return;
+      go.disabled=true; st.textContent='Lecture de l’export…';
+      try{
+        const r=await sfxImport(file.files[0],{replaceManual:dlg.querySelector('[data-sfx-replace]').checked,createMissing:dlg.querySelector('[data-sfx-create]').checked,onProgress:(i,n)=>{ st.textContent=`Lignes traitées : ${i} / ${n}`; }});
+        const list=(xs,label)=>xs.length?`<details><summary>${label} (${xs.length})</summary><p>${escapeHtml(xs.slice(0,400).join(', '))}${xs.length>400?'…':''}</p></details>`:'';
+        st.innerHTML=`<p><b>${r.updated}</b> opération(s) mise(s) à jour · <b>${r.values.toLocaleString('fr-FR')}</b> valeur(s) appliquée(s)${r.created?` · ${r.created} opération(s) créée(s)`:''}${r.kept?` · ${r.kept} valeur(s) saisie(s) à la main conservée(s)`:''}.</p><p class="muted">${r.rows} ligne(s) dans l’export, ${r.technical} avec des données techniques, ${r.empty} sans.</p>${list(r.noOperation,'Contrats sans opération dans ExtracTerre')}${list(r.duplicates,'Contrats présents sur plusieurs opérations (la première est mise à jour)')}`;
+        toast(`Export Salesforce : ${r.updated} opération(s) mise(s) à jour.`,'success');
+      }catch(err){ st.innerHTML=`<p class="ss-bad">${escapeHtml(err?.message||String(err))}</p>`; }
+      go.disabled=false;
+    });
+  }
+  dlg.showModal();
 }
 
 initializeApp();

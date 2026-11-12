@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.25.0','version');
+eq(APP_VERSION,'2.26.0','version');
 const css=readFileSync('styles.css','utf8'), tail=css.slice(css.indexOf('/* v2.20.4'));
 eq(/\.ux-tools-card \.ux-tool-row \.btn\.ux-manual-btn\{width:auto;max-width:48%;margin:0/.test(tail),true,'bouton à sa taille, plus 100 %');
 eq(/\.ux-tools-card \.ux-tool-row>div\{flex:1 1 auto;min-width:0\}/.test(tail),true,'texte qui se replie');

@@ -1435,3 +1435,7 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 /* v2.25.0 — encart Projet actuel : numéro de contrat */
 #projectContract.locked{background:#f3f7f4;color:var(--forest);font-weight:700;cursor:default}
 #projectContract.missing{border-color:#e0a84a;background:#fff8ec}
+
+/* v2.26.0 — import d'un export Salesforce */
+.sfx-body{display:grid;gap:10px;padding:14px 0}.sfx-body .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+.sfx-status{font-size:13px}.sfx-status details{margin-top:6px}.sfx-status summary{cursor:pointer;color:var(--muted)}.sfx-status p{margin:4px 0}.sfx-status .muted{color:var(--muted)}

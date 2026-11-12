@@ -1,3 +1,16 @@
+# v2.26.0 — Import d'un export Salesforce « Opérations (détails) »
+
+- Nouvelle tuile d'accueil **« ☁ Export Salesforce »** (dans les deux espaces). Elle importe l'export .xls (format HTML de
+  Salesforce), .xlsx ou .csv. Chaque ligne (contrat, code interne, statut de l'évaluation, champs techniques Performance
+  thermique, Planchers, Parois, Menuiseries, Chauffage, ECS, Ventilation, EnR, Observations) est reconstituée en fiche et lue par
+  **le même décodeur que le favori** : mêmes blocs par bâtiment (« * BAT A : … »), mêmes valeurs, même priorité Salesforce.
+- L'opération est retrouvée par son numéro de contrat (sinon par son code OPE). Les valeurs d'un import Salesforce précédent sont
+  mises à jour ; les valeurs saisies ou collées à la main sont conservées, sauf si l'option est cochée. Les contrats sans opération
+  sont listés, et peuvent être créés avec l'option dédiée. L'import est daté dans l'opération, comme avec le favori.
+- Mesuré sur un export réel (7 063 lignes, 3 430 évaluations renseignées) : 3 400 fiches donnent des valeurs, soit 113 591 valeurs sur
+  6 429 blocs de bâtiment. Les textes longs ne sont pas tronqués dans l'export.
+- `js/sf-export.js` : lecture du tableau et reconstitution des fiches (testable seule).
+
 # v2.25.0 — Import massif : beaucoup moins de documents « à vérifier » ; encart Projet actuel = n° de contrat
 
 Mesuré sur une analyse réelle de 45 opérations : sur 246 documents à vérifier, 156 sont acceptés et 15 écartés comme correspondance ;
