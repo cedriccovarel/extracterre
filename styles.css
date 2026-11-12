@@ -1418,3 +1418,16 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .eco-sources{display:grid;gap:6px}.eco-src-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 9px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .eco-src-row.off{background:#f6f7f6;opacity:.8}.eco-src-name{flex:1;min-width:200px;font-weight:600;overflow-wrap:anywhere}.eco-src-name small{display:block;font-weight:400;color:var(--muted)}
 .eco-src-row .btn{padding:6px 10px;font-size:12px}.eco-src-row .danger-btn{color:#a23939;border-color:#efc9c9}
+
+/* v2.24.6 — sélection multiple des opérations */
+.op-select-toggle{padding:7px 11px;font-size:12px}
+.op-select-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 10px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:#f6faf7}
+.op-select-bar .btn{padding:7px 11px;font-size:12px}.op-select-hint{color:var(--muted);font-size:12px}
+.op-select-bar .danger-fill{background:#a23939;color:#fff}
+.op-tile-check{position:absolute;top:8px;left:8px;z-index:2;display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#fff;border:1px solid var(--line);cursor:pointer}
+.op-tile-check input{margin:0;width:16px;height:16px;cursor:pointer}
+.op-tile.selected{outline:2px solid var(--forest,#173e31);outline-offset:-2px;background:#f2f8f4}
+.op-tile.selected .op-tile-main,.op-tile:has(.op-tile-check) .op-tile-main{padding-left:40px}
+
+/* v2.24.6 — « Suivi des sources » et badge seulement dans l’espace Import massif (le style des boutons masquait l’attribut hidden) */
+#sourcesBtn[hidden],#spaceBadge[hidden]{display:none!important}

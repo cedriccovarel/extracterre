@@ -1,3 +1,12 @@
+# v2.24.6 — Décharger plusieurs opérations
+
+- Accueil : bouton **☑ Sélectionner**, qui fait apparaître des cases à cocher sur les tuiles. Un clic sur une tuile la coche. On peut tout
+  sélectionner (opérations affichées) ou tout décocher, puis cliquer sur **Décharger la sélection** (confirmation). Les opérations, leurs
+  documents et leurs analyses sont retirés de l'espace ouvert seulement ; Box, le registre et les résultats de l'import massif ne sont pas touchés.
+- Espace Import massif : une opération déchargée n'est pas remise par « Charger toutes les opérations ». Elle est marquée « déchargée »
+  dans Suivi des sources ; « Charger » sur sa ligne, ou une nouvelle analyse de son contrat, la remet.
+- Correctif : le bouton « Suivi des sources » n'apparaît plus dans la version actuelle.
+
 # v2.24.5 — Import massif : archives, fichiers Box non téléchargés, reprise des erreurs
 
 - Les contrats sont aussi cherchés dans « 00 - Certifications réalisées - Archivage » (`racinesSupplementaires` dans import.config.json).

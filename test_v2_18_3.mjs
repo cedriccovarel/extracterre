@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFrNumber,stripUnitExponents} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.5','version');
+eq(APP_VERSION,'2.24.6','version');
 eq(parseFrNumber('m2 903'),903,'m2 903');
 eq(parseFrNumber('/m2 903,5'),903.5,'/m2 903,5');
 eq(parseFrNumber('kgCO2/m2 903'),903,'kgCO2/m2 903');

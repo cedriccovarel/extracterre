@@ -306,6 +306,10 @@ function renderTiles(wrap,{home=false}={}){
   if(state.overviewOwner&&!(state.overviewOwner===FAV_GROUP?favs.length:items.some(x=>ownerOf(x)===state.overviewOwner))) state.overviewOwner='';
   const bar=pct=>`<div class="op-progress ${tileTone(pct)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
   let sortCtl='',body='',title='Synthèse des opérations',sub=`${items.length} opération(s)`,shown=items.length;
+  // v2.24.6 — sélection multiple : cases à cocher sur les tuiles, « Décharger la sélection ».
+  if(!(state.tileSelected instanceof Set)) state.tileSelected=new Set();
+  for(const id of [...state.tileSelected]) if(!state.projects.some(p=>p.id===id)) state.tileSelected.delete(id);
+  const sel=!!state.tileSelect; let visibleIds=[];
   if(grouped&&!state.overviewOwner){
     let owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
     const ownerItems=owners.map(o=>{ const xs=items.filter(x=>ownerOf(x)===o); return {o,id:{name:o===NO_OWNER?'':o},p:{},pct:Math.round(xs.reduce((a,x)=>a+x.pct,0)/xs.length)}; });
@@ -319,7 +323,8 @@ function renderTiles(wrap,{home=false}={}){
     sortCtl=xs.length>1?`<select class="op-sort" data-tile-sort aria-label="Trier les opérations">${Object.entries(TILE_SORTS).map(([k,l])=>`<option value="${k}"${(state.tileSort||'')===k?' selected':''}>${l}</option>`).join('')}</select>`:'';
     if(found){ sub=terms?`${xs.length} opération(s) trouvée(s) pour ${terms.length} élément(s) de la liste`:`${xs.length} opération(s) trouvée(s) sur ${items.length}`; shown=xs.length; }
     if(grouped){ title=state.overviewOwner; sub=`${xs.length} opération(s)`; shown=xs.length; }
-    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}"><button type="button" class="op-tile-main" data-tile-open="${p.id}"><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
+    visibleIds=xs.map(x=>x.p.id);
+    body=xs.map(({p,id,pct,st})=>`<article class="op-tile ${p.id===state.activeProjectId?'current':''}${isDup(id)?' dup':''}${sel&&state.tileSelected.has(p.id)?' selected':''}">${sel?`<label class="op-tile-check" title="Sélectionner"><input type="checkbox" data-tile-check="${p.id}"${state.tileSelected.has(p.id)?' checked':''} aria-label="Sélectionner ${escapeHtml(id.contract||projectTitle(p))}"></label>`:''}<button type="button" class="op-tile-main" ${sel?`data-tile-toggle="${p.id}"`:`data-tile-open="${p.id}"`}><span class="op-tile-k">Contrat${isDup(id)?' <b class="op-dup">doublon</b>':''}${lastImported.has(p.id)?' <b class="op-new">nouvelle</b>':''}</span><strong>${escapeHtml(id.contract||'non renseigné')}</strong>
       <span class="op-tile-name">${escapeHtml(id.name||projectTitle(p))}</span><span class="op-tile-meta">${escapeHtml([id.code,grouped?'':id.owner].filter(Boolean).join(' · ')||'—')}</span>${bar(pct)}<span class="op-pct">${pct} % complété</span>
       <span class="op-tile-foot">${st.docs} doc. · ${st.buildings} bât. · ${st.values} valeurs${st.alerts?` · <b>${st.alerts} alerte(s)</b>`:''}</span></button>
       <button type="button" class="op-tile-fav${p.favorite?' on':''}" data-tile-fav="${p.id}" aria-pressed="${!!p.favorite}" title="${p.favorite?'Retirer des favoris':'Ajouter aux favoris'}" aria-label="${p.favorite?'Retirer des favoris':'Ajouter aux favoris'} : ${escapeHtml(id.contract||projectTitle(p))}">${p.favorite?'★':'☆'}</button>
@@ -330,7 +335,7 @@ function renderTiles(wrap,{home=false}={}){
     <button type="button" class="op-tile action" data-home-act="paste"><span class="op-tile-plus" aria-hidden="true">⌨</span><strong>Coller un tableau</strong><span class="op-tile-meta">Zone Excel copiée avec ses en-têtes (contrat, n° d’opération, maître d’ouvrage…)</span></button>
     <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
   if(home&&!items.length) sub='Aucune opération pour le moment';
-  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}</div>${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}${items.length?`<button type="button" class="btn light op-select-toggle" data-tile-select>${sel?'Terminer la sélection':'☑ Sélectionner'}</button>`:''}</div>${sel?`<div class="op-select-bar"><b>${state.tileSelected.size} opération(s) sélectionnée(s)</b>${visibleIds.length?`<button type="button" class="btn light" data-tile-selall>Tout sélectionner (${visibleIds.length} affichée(s))</button>`:'<span class="op-select-hint">Ouvrez un maître d’ouvrage ou faites une recherche pour cocher les opérations.</span>'}${state.tileSelected.size?'<button type="button" class="btn light" data-tile-selnone>Tout décocher</button><button type="button" class="btn primary danger-fill" data-tile-unload>Décharger la sélection</button>':''}</div>`:''}${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
   const search=wrap.querySelector('[data-home-search]');
   if(search){ search.oninput=()=>{ state.homeQuery=search.value; rerender(); const s=wrap.querySelector('[data-home-search]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); }; search.onkeydown=e=>{ if(e.key==='Escape'&&search.value){ search.value=''; search.oninput(); } };
     // Liste collée depuis Excel ou un texte (une valeur par ligne) : les retours à la ligne deviennent des virgules.
@@ -341,6 +346,13 @@ function renderTiles(wrap,{home=false}={}){
   wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });
   wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
+  const toggleSel=id=>{ if(state.tileSelected.has(id)) state.tileSelected.delete(id); else state.tileSelected.add(id); rerender(); };
+  wrap.querySelectorAll('[data-tile-toggle]').forEach(b=>b.onclick=()=>toggleSel(b.dataset.tileToggle));
+  wrap.querySelectorAll('[data-tile-check]').forEach(c=>c.onchange=()=>toggleSel(c.dataset.tileCheck));
+  wrap.querySelector('[data-tile-select]')?.addEventListener('click',()=>{ state.tileSelect=!state.tileSelect; if(!state.tileSelect) state.tileSelected.clear(); rerender(); });
+  wrap.querySelector('[data-tile-selall]')?.addEventListener('click',()=>{ visibleIds.forEach(id=>state.tileSelected.add(id)); rerender(); });
+  wrap.querySelector('[data-tile-selnone]')?.addEventListener('click',()=>{ state.tileSelected.clear(); rerender(); });
+  wrap.querySelector('[data-tile-unload]')?.addEventListener('click',()=>unloadSelectedProjects().then(rerender));
   wrap.querySelectorAll('[data-sf-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.sfOpen));
   wrap.querySelector('.sf-short')?.addEventListener('toggle',e=>{ state.sfShortOpen=e.currentTarget.open; });
   wrap.querySelectorAll('[data-tile-delete]').forEach(b=>b.onclick=()=>deleteProject(b.dataset.tileDelete));
@@ -776,6 +788,22 @@ function toggleProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)ret
 async function deleteProject(id){ const p=state.projects.find(x=>x.id===id); if(!p)return; const title=projectTitle(p); const docs=(p.docs||[]).length;
   if(!confirm(`Supprimer le projet « ${title} » de la liste ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}\nLe journal d’amélioration et les règles de sources sont conservés.`)) return;
   await removeProject(p); renderAll(); toast(`Projet « ${title} » supprimé.`,'success'); scheduleWorkspaceCheckpoint('suppression projet',80); }
+
+// v2.24.6 — décharge plusieurs opérations de l'espace ouvert (documents et analyses retirés de cet espace seulement ; Box, registre
+// et résultats de l'import massif intacts). Espace import : les contrats déchargés ne reviennent pas avec « Charger toutes les opérations ».
+const IMPORT_UNLOADED_KEY='extracterre.import.unloaded';
+function importUnloaded(){ try{ return new Set(JSON.parse(localStorage.getItem(IMPORT_UNLOADED_KEY)||'[]')); }catch{ return new Set(); } }
+function setImportUnloaded(set){ try{ localStorage.setItem(IMPORT_UNLOADED_KEY,JSON.stringify([...set])); }catch{} }
+async function unloadSelectedProjects(){
+  const ps=state.projects.filter(p=>state.tileSelected.has(p.id)); if(!ps.length) return;
+  const docs=ps.reduce((n,p)=>n+(p.docs||[]).length,0);
+  if(!confirm(`Décharger ${ps.length} opération(s) de cet espace ?${docs?`\n${docs} document(s) et leurs analyses seront retirés de la session.`:''}${IMPORT_SPACE?'\nLe registre et les résultats de l’import massif sont conservés : « Charger » dans Suivi des sources les remet.':''}`)) return;
+  const off=importUnloaded();
+  for(const p of ps){ if(IMPORT_SPACE&&p.importContract) off.add(p.importContract); await removeProject(p); }
+  if(IMPORT_SPACE) setImportUnloaded(off);
+  state.tileSelected.clear(); state.tileSelect=false;
+  renderAll(); toast(`${ps.length} opération(s) déchargée(s).`,'success'); scheduleWorkspaceCheckpoint('déchargement d’opérations',80);
+}
 async function removeProject(p){ const id=p.id;
   for(const d of p.docs||[]){ try{await deleteDocumentCheckpoint(d.id);}catch{} }
   const i=state.projects.findIndex(x=>x.id===id); if(i<0) return; state.projects.splice(i,1);
@@ -3165,7 +3193,7 @@ function ssRenderOps(){
   return `<table class="ss-table"><thead><tr><th>Contrat</th><th>Dossier</th><th>Dernier passage</th><th>Traités</th><th>À vérifier</th><th>Erreurs</th><th>Historique</th><th>Disparus</th><th></th></tr></thead><tbody>${ops.map(op=>{
     const p=state.projects.find(x=>x.importContract===op.contract), c=op.counts, open=ss.open===op.contract;
     const linked=ss.linked[op.contract];
-    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
+    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}${!p&&importUnloaded().has(op.contract)?' <span class="ss-chip muted">déchargée</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
       <td class="ss-actions"><button class="btn light" data-ss-open="${escapeHtml(op.contract)}">${open?'Fermer':'Détail'}</button><button class="btn light" data-ss-load="${escapeHtml(op.contract)}" title="Créer ou mettre à jour l’opération dans ExtracTerre avec les documents traités">${p?'Mettre à jour':'Charger'}</button>${p?`<button class="btn light" data-ss-go="${escapeHtml(p.id)}">Ouvrir</button>`:''}<button class="btn light" data-ss-linked="${escapeHtml(op.contract)}" title="Comparer avec le dossier Box (nouveaux, modifiés, disparus)">⟳ Box</button></td></tr>
       ${linked?`<tr class="ss-detail"><td colspan="9">${linked.error?`<p class="ss-bad">${escapeHtml(linked.error)}</p>${linked.needRoot?`<button class="btn light" data-ss-pickbox="${escapeHtml(op.contract)}">Choisir le dossier « 1 BEE Contrats »</button>`:''}`:`<p><b>Depuis le dernier passage du script :</b> ${linked.added.length} nouveau(x), ${linked.changed.length} modifié(s), ${linked.gone.length} disparu(s).${linked.added.length||linked.changed.length||linked.gone.length?` Relancez <code>node extracterre-import.mjs --operation ${escapeHtml(op.contract)}</code> pour les traiter.`:''}</p>${[...linked.added.map(x=>['nouveau',x]),...linked.changed.map(x=>['modifié',x]),...linked.gone.map(x=>['disparu',x])].slice(0,40).map(([k,x])=>`<div class="ss-line"><span class="ss-chip ${k==='disparu'?'bad':'warn'}">${k}</span> ${escapeHtml(x.relPath)}</div>`).join('')}`}</td></tr>`:''}
       ${open?`<tr class="ss-detail"><td colspan="9">${ssRenderOpDetail(op)}</td></tr>`:''}`; }).join('')}</tbody></table>`;
@@ -3239,7 +3267,8 @@ async function ssClick(e){
   if(t.dataset.ssOpen){ ss.open=ss.open===t.dataset.ssOpen?null:t.dataset.ssOpen; renderSourcesView(); return; }
   if(t.dataset.ssGo){ $('#sourcesDialog').close(); activateProject(t.dataset.ssGo); return; }
   if(t.dataset.ssLoad){ await ssRun(()=>loadImportOperations([t.dataset.ssLoad])); return; }
-  if(t.matches('[data-ss-loadall]')){ await ssRun(()=>loadImportOperations(ssOperations(ss.registry).map(o=>o.contract))); return; }
+  if(t.matches('[data-ss-loadall]')){ const off=importUnloaded(), all=ssOperations(ss.registry).map(o=>o.contract), keep=all.filter(c=>!off.has(c));
+    await ssRun(()=>loadImportOperations(keep)); if(all.length>keep.length) toast(`${all.length-keep.length} opération(s) déchargée(s) non rechargée(s) : utilisez « Charger » sur leur ligne pour les remettre.`,'info'); return; }
   if(t.dataset.ssLinked){ await ssRun(()=>ssLinkedCheck(t.dataset.ssLinked)); return; }
   if(t.dataset.ssPickbox){ const c=t.dataset.ssPickbox; await boxPickRoot(); await ssRun(()=>ssLinkedCheck(c)); return; }
   const act=t.dataset.ssAct; const row=t.closest('[data-ss-key]'); if(!act||!row) return;
@@ -3271,6 +3300,7 @@ async function ssLinkedCheck(contract){
 // Crée ou met à jour une opération par contrat : documents traités (et validés) du registre ; les documents ajoutés à la main,
 // les saisies et collages restent intacts et gardent leur priorité.
 async function loadImportOperations(contracts){
+  { const off=importUnloaded(); let n=off.size; contracts.forEach(c=>off.delete(c)); if(off.size!==n) setImportUnloaded(off); }
   const reg=ss.registry; let created=0,updated=0,added=0,removed=0,kept=0,failed=0;
   for(let i=0;i<contracts.length;i++){
     const contract=contracts[i]; const op=(reg.operations||{})[contract]||{contract,folder:''};

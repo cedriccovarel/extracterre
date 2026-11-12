@@ -6,7 +6,7 @@ import {classifyDocument} from './js/classifier.js';
 import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.5','version');
+eq(APP_VERSION,'2.24.6','version');
 
 const pagesTxt=[
   ['Etude RE2020 Projet 99999 FICTIVILLE _V2','DOSSIER THERMIQUE ET ENVIRONNEMENTAL','SYNTHESE THERMIQUE & CARBONE','COMPOSITION DU PROJET','Surface Habitable Usage au sens de Typologies *','[m²] la RE2020 T1 T2 T3 T4 T5','Batiment A','1234,5 Immeuble collectif 2 5 6 3 -'],
