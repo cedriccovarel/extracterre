@@ -1,3 +1,20 @@
+# v2.28.0 — Import massif : file des analyses, arrêt, avancement par document, OCR plus rapide
+
+- Suivi des sources → Nouvelle analyse : **File des analyses**, avec le statut de chaque demande (en attente, en cours n/N, terminée,
+  interrompue, annulée, erreur). Actions :
+  - **Arrêter** une analyse en cours : le document en cours se termine, le registre est enregistré, puis l'analyse s'arrête ;
+  - **Arrêt immédiat** ;
+  - **Annuler** une demande en attente ;
+  - **× Supprimer** une demande terminée, **Vider l'historique**.
+- Avancement par document dans l'opération en cours (« document 3/12 : CCTP lot 2.pdf ») : l'OCR d'une opération peut durer plusieurs minutes.
+- Case « OCR des PDF scannés » (décochée = analyse rapide sans OCR).
+- OCR de l'import plus rapide :
+  - pages entièrement scannées rendues à l'échelle 2 (≈ 144 dpi) au lieu de 3 ;
+  - deux pages lues en parallèle ;
+  - au plus 40 pages OCR par document, avec un avertissement (`ocrEchelle`, `ocrMaxPagesParDocument`, `ocrPixelsMax` dans import.config.json).
+  L'appli (glisser-déposer) garde ses réglages.
+- Le service d'import redémarre seul, entre deux analyses, quand son code est mis à jour.
+
 # v2.27.0 — Bâtiments Salesforce : seule référence de l'opération (table de correspondance)
 
 - Dès qu'une opération reçoit une fiche Salesforce découpée par bâtiment (favori ou export de masse), ses bâtiments Salesforce

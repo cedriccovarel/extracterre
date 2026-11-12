@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.27.0','version');
+eq(APP_VERSION,'2.28.0','version');
 const ex=await import('./tools/import/lib/extract.mjs');
 // Statut d'un document : incomplet ou sans donnée = information, pas « à vérifier ».
 const doc=(type,fields)=>({type,read:{pages:[]},cachedOccurrences:fields.map(f=>({field:f})),families:null});
@@ -32,4 +32,4 @@ eq(/N° de contrat\s*<input id="projectContract"/.test(html)&&/<input id="operat
 eq(/function syncProjectContract/.test(app)&&/el\.readOnly=!!fromData/.test(app),true,'contrat verrouillé quand il vient des données');
 eq(/p\?\.importContract\|\|p\?\.contractNumber/.test(app)&&/contractNumber:project\.contractNumber/.test(per),true,'numéro saisi : identité et sauvegarde');
 eq(/⚠ \$\{op\.alerts\.length\} alerte\(s\)/.test(app),true,'alertes affichées dans Suivi des sources');
-console.log(`v2.27.0 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.28.0 — ${n} vérifications OK (données fictives)`);

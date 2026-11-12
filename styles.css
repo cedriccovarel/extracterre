@@ -1445,3 +1445,9 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .sfp-chip.off{background:#f3f3f3;color:#6c7b74;border-color:#ddd}
 .sfp-body{display:grid;gap:12px;padding:12px 0;max-height:60vh;overflow:auto}.sfp-table{width:100%;font-size:13px}.sfp-table td,.sfp-table th{padding:6px 8px;max-width:none}
 .sfp-table tr.off td:first-child{color:#a23939;text-decoration:line-through}.sfp-table select{width:100%;padding:6px}.sfp-body .chk{display:flex;gap:8px;font-size:13px}
+
+/* v2.28.0 — file des analyses */
+.ss-ocr{display:flex;gap:8px;font-size:12px;color:var(--muted)}
+.ss-queue{display:grid;gap:4px}.ss-queue-head{display:flex;justify-content:space-between;align-items:center;margin-top:6px}.ss-queue-head .btn{padding:5px 9px;font-size:12px}
+.ss-qrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;background:#fff;font-size:12px}
+.ss-qname{flex:1;color:var(--ink)}.ss-qrow .btn{padding:5px 9px;font-size:12px}

@@ -1,7 +1,7 @@
 import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
 import {classifyDocument} from './classifier.js';
 import {classifyForSelectedFamily} from './doc-pipeline.js';
-import {IMPORT_SPACE,ssSupported,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState} from './suivi-sources.js';
+import {IMPORT_SPACE,ssSupported,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState,ssListRequests,ssStopRequest,ssDeleteRequest,ssRequestDone} from './suivi-sources.js';
 import {BOX_KINDS,boxSupported,boxSavedRoot,boxPickRoot,boxEnsureAccess,boxFindOperation,boxListEvaluation,boxContractKey} from './box-folder.js';
 import {readFile,readSpreadsheet,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings} from './buildings.js';
@@ -3318,6 +3318,10 @@ async function ssClick(e){
   if(t.matches('[data-ss-refresh]')){ await ssLoadDir(false); renderSourcesView(); toast('Registre relu.','success'); return; }
   if(t.dataset.ssTab){ ss.tab=t.dataset.ssTab; renderSourcesView(); return; }
   if(t.dataset.ssLaunch){ await ssLaunch(t.dataset.ssLaunch); return; }
+  if(t.dataset.ssQstop){ await ssStopRequest(ss.dir,t.dataset.ssQstop); toast('Arrêt demandé : le document en cours se termine, puis l’analyse s’arrête.','info'); ssRenderQueue(); return; }
+  if(t.dataset.ssQkill){ await ssStopRequest(ss.dir,t.dataset.ssQkill,{immediat:true}); toast('Arrêt immédiat demandé.','info'); ssRenderQueue(); return; }
+  if(t.dataset.ssQdel){ await ssDeleteRequest(ss.dir,t.dataset.ssQdel); if(ssCurrentRequest()===t.dataset.ssQdel) ssForgetRequest(); ssRenderQueue(); return; }
+  if(t.matches('[data-ss-qclear]')){ for(const r of (await ssListRequests(ss.dir)).filter(r=>ssRequestDone(r.status))){ await ssDeleteRequest(ss.dir,r.id); if(ssCurrentRequest()===r.id) ssForgetRequest(); } toast('Historique des analyses vidé.','success'); ssRenderQueue(); const b=$('#sourcesDialog [data-ss-progress]'); if(b&&!ssCurrentRequest()) b.innerHTML=''; return; }
   if(t.dataset.ssOpen){ ss.open=ss.open===t.dataset.ssOpen?null:t.dataset.ssOpen; renderSourcesView(); return; }
   if(t.dataset.ssGo){ $('#sourcesDialog').close(); activateProject(t.dataset.ssGo); return; }
   if(t.dataset.ssLoad){ await ssRun(()=>loadImportOperations([t.dataset.ssLoad])); return; }
@@ -3401,10 +3405,22 @@ function ssRenderNew(body){
   body.innerHTML=`<div class="ss-new"><p>Collez la colonne Excel des numéros de contrat. ExtracTerre dépose la demande dans le dossier de travail ; le <b>service d’import</b> de votre Mac lit les dossiers Box (lecture seule) et extrait les documents, puis les opérations se chargent ici automatiquement.</p>
     <div data-ss-service class="ss-service">Vérification du service…</div>
     <textarea data-ss-paste rows="8" placeholder="00005361&#10;00004918&#10;…"></textarea><div class="ss-paste-info" data-ss-paste-info></div>
+    <label class="chk ss-ocr"><input type="checkbox" data-ss-ocr checked> OCR des PDF scannés (plus lent : quelques secondes par page)</label>
     <div class="ss-new-actions"><button class="btn light" data-ss-launch="check-only" disabled title="Rapport de correspondance seulement : contrats trouvés, sans dossier, en double">Vérifier la correspondance</button><button class="btn primary" data-ss-launch="traitement" disabled>▶ Lancer l’analyse</button></div>
-    <div data-ss-progress></div></div>`;
+    <div data-ss-progress></div><div class="ss-queue" data-ss-queue></div></div>`;
   const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); ssPasteInfo();
-  ssRefreshService(); ssWatchRequest();
+  ssRefreshService(); ssWatchRequest(); ssRenderQueue();
+}
+// v2.28.0 — file des analyses : statut de chaque demande, arrêter / annuler / supprimer, vider l'historique.
+async function ssRenderQueue(){
+  const box=$('#sourcesDialog [data-ss-queue]'); if(!box||!ss.dir) return;
+  let list=[]; try{ list=await ssListRequests(ss.dir); }catch{ box.innerHTML=''; return; }
+  if(!list.length){ box.innerHTML=''; return; }
+  const label=r=>{ const st=r.status; if(r.stopAsked&&!ssRequestDone(st)) return ['warn','arrêt demandé…']; if(!st) return ['muted','en attente']; return [{terminé:'ok',erreur:'bad',interrompu:'warn',annulé:'muted'}[st.etat]||'warn',st.etat==='en cours'?`en cours · ${st.operations?.fait??0}/${st.operations?.total??'?'}`:st.etat]; };
+  const done=list.filter(r=>ssRequestDone(r.status));
+  box.innerHTML=`<div class="ss-queue-head"><b>File des analyses</b>${done.length?`<button class="btn light" type="button" data-ss-qclear>Vider l’historique (${done.length})</button>`:''}</div>${list.slice(0,30).map(r=>{ const [cls,txt]=label(r), running=r.status?.etat==='en cours', waiting=!r.status;
+    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}</span>
+      ${running&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}" title="Termine le document en cours, enregistre, puis s’arrête">Arrêter</button>`:''}${running&&r.stopAsked?`<button class="btn light" type="button" data-ss-qkill="${escapeHtml(r.id)}">Arrêt immédiat</button>`:''}${waiting&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}">Annuler</button>`:''}${ssRequestDone(r.status)?`<button class="icon-btn" type="button" data-ss-qdel="${escapeHtml(r.id)}" title="Supprimer de l’historique" aria-label="Supprimer">×</button>`:''}</div>`; }).join('')}`;
 }
 async function ssRefreshService(){
   const el=$('#sourcesDialog [data-ss-service]'); if(!el||!ss.dir) return;
@@ -3415,9 +3431,9 @@ async function ssRefreshService(){
 async function ssLaunch(mode){
   const r=ssPasteInfo(); if(!r.contracts.length) return;
   // Une demande à la fois : un double clic ne lance pas deux analyses.
-  const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!st||!['terminé','erreur','interrompu'].includes(st.etat)){ toast('Une analyse est déjà en cours : attendez la fin avant d’en lancer une autre.','warn'); return; } }
+  const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!ssRequestDone(st)&&(st||(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===cur))){ toast('Une analyse est déjà en cours : attendez la fin, ou arrêtez-la dans « File des analyses ».','warn'); return; } }
   $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=true);
-  const id=await ssWriteRequest(ss.dir,r.contracts,mode);
+  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked});
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
 }
@@ -3426,9 +3442,9 @@ function ssProgressHtml(id,st){
   const c=st.correspondance, o=st.operations, t=st.totaux;
   const pct=o?.total?Math.round(100*o.fait/o.total):(st.etat==='terminé'?100:3);
   const list=(label,xs)=>xs?.length?`<div><b>${label} (${xs.length})</b> : ${escapeHtml(xs.slice(0,30).join(', '))}${xs.length>30?'…':''}</div>`:'';
-  const title=st.etat==='terminé'?'Terminé':st.etat==='erreur'?'Erreur':st.etat==='interrompu'?'Interrompu':`En cours — ${st.etape||''}`;
+  const title=st.etat==='terminé'?'Terminé':st.etat==='erreur'?'Erreur':st.etat==='interrompu'?'Interrompu (arrêté)':st.etat==='annulé'?'Annulé':`En cours — ${st.etape||''}`;
   return `<div class="ss-progress"><div class="ss-progress-head"><b>${escapeHtml(title)}</b><span>${o?.total?`${o.fait}/${o.total} opération(s)`:''}</span></div>
-    <div class="startup-bar"><i style="width:${pct}%"></i></div>${o?.courante?`<small>${escapeHtml(o.courante)}</small>`:''}
+    <div class="startup-bar"><i style="width:${pct}%"></i></div>${o?.courante?`<small>${escapeHtml(o.courante)}${st.fichiers?.total&&st.etat==='en cours'?` · document ${st.fichiers.fait}/${st.fichiers.total}${st.fichiers.courant?` : ${escapeHtml(st.fichiers.courant)}`:''}`:''}</small>`:''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
     ${c?`<div class="ss-corr"><div>Contrats trouvés : <b>${c.trouves}</b>${c.demandes!=null?` / ${c.demandes}`:''}</div>${list('Sans dossier',c.sansDossier)}${list('Plusieurs dossiers (à vérifier, non traités)',c.plusieursDossiers)}${list('Seulement un dossier « Annulé »',c.annules)}${list('Sans sous-dossier CCTP / thermique / carbone',c.sansSousDossier)}</div>`:''}
     ${t?`<small>Fichiers : ${t.files} · extraits : ${t.extracted} · réutilisés : ${t.reused} · à vérifier : ${t.review} · erreurs : ${t.errors}${t.opsSkipped?` · opérations inchangées : ${t.opsSkipped}`:''}</small>`:''}</div>`;
@@ -3437,8 +3453,9 @@ async function ssWatchRequest(){
   clearTimeout(ssPoll); const id=ssCurrentRequest(); const box=$('#sourcesDialog [data-ss-progress]');
   if(!id||!box||!ss.dir||!$('#sourcesDialog')?.open) return;
   const st=await ssReadStatus(ss.dir,id);
-  box.innerHTML=ssProgressHtml(id,st); ssRefreshService();
-  if(st&&['terminé','erreur','interrompu'].includes(st.etat)){
+  if(!st&&!(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===id)){ ssForgetRequest(); box.innerHTML=''; ssRenderQueue(); return; }
+  box.innerHTML=ssProgressHtml(id,st); ssRefreshService(); ssRenderQueue();
+  if(st&&['terminé','erreur','interrompu','annulé'].includes(st.etat)){
     ssForgetRequest();
     if(st.etat==='terminé'&&Array.isArray(st.contrats)&&st.contrats.length){
       ss.registry=await ssReadRegistry(ss.dir); await ssRun(()=>loadImportOperations(st.contrats));

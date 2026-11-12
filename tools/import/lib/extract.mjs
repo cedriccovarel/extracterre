@@ -61,12 +61,12 @@ export {enableOcr} from './runtime.mjs';
 export function readResult(workDir,rel){ return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(workDir,rel))).toString('utf8')); }
 
 // Lecture complète + parseurs. familyOverride : clé de DOCUMENT_FAMILIES choisie dans la liste « À vérifier ».
-export async function extractFile(entry,{familyOverride=null,incompleteBelow=0.5,ocr=false}={}){
+export async function extractFile(entry,{familyOverride=null,incompleteBelow=0.5,ocr=false,ocrOptions={}}={}){
   const file=nodeFile(entry.abs,entry.name);
   const d=makeDocumentRecord(file); d.relativePath=entry.relPath;
   if(familyOverride&&DOCUMENT_FAMILIES[familyOverride]){ d.familyMode='manual'; d.families=[familyOverride]; }
   else { d.familyMode='auto'; d.families=null; }
-  d.read=await readFile(file,()=>{},{mode:ocr?'auto':'off',lang:'fra+eng',detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&familyOverride==='plan'});
+  d.read=await readFile(file,()=>{},{mode:ocr?'auto':'off',...(ocr?ocrOptions:{}),lang:'fra+eng',detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&familyOverride==='plan'});
   const pages=d.read?.pageCount||d.read?.pages?.length||0;
   const chars=String(d.read?.text||'').replace(/\s+/g,'').length;
   const ocrPages=d.read?.ocr?.pages?.length||0;

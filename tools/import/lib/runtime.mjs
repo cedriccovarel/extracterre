@@ -31,7 +31,10 @@ export function enableOcr(){
   // tesseract.js sous Node lit une image PNG : la toile est convertie avant reconnaissance.
   const toImg=img=>img&&typeof img.toBuffer==='function'?img.toBuffer('image/png'):img;
   globalThis.Tesseract={...Tess,createWorker:async(...a)=>{ const w=await Tess.createWorker(...a); return new Proxy(w,{get(t,k){ if(k==='recognize') return (img,...r)=>t.recognize(toImg(img),...r); const v=t[k]; return typeof v==='function'?v.bind(t):v; }}); }};
-  OCR_ON=true; return true;
+  OCR_ON=true;
+  // Deux pages OCR en parallèle (limite de l'appli : 2).
+  import('../../../js/readers.js').then(m=>m.setOcrConcurrencyLimit?.(2)).catch(()=>{});
+  return true;
 }
 
 import {withRetry} from './retry.mjs';

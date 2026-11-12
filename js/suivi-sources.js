@@ -123,14 +123,33 @@ export function ssParseContractPaste(text=''){
   return {contracts,invalid,column:col};
 }
 async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
-export async function ssWriteRequest(dir,contracts,mode='traitement'){
+export async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true}={}){
   const d=new Date(), p=n=>String(n).padStart(2,'0');
   const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
-  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
   return id;
 }
 async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }
 export const ssReadStatus=(dir,id)=>ss_json(dir,`${id}.statut.json`);
 // Service actif : battement de cœur de moins de 30 s.
 export async function ssServiceState(dir){ const s=await ss_json(dir,'service.json'); return {alive:!!s&&Date.now()-Date.parse(s.vu)<30000,info:s}; }
+
+// v2.28.0 — file des analyses : liste, arrêt / annulation (<id>.stop lu par le service), suppression.
+export async function ssListRequests(dir){
+  const d=await ss_demandes(dir), ids=[];
+  for await (const [name,h] of d.entries()){ const m=h.kind==='file'&&name.match(/^(demande-[\w-]+)\.json$/); if(m&&!/\.statut$/.test(m[1])) ids.push(m[1]); }
+  const out=[];
+  for(const id of ids){ const req=await ss_json(dir,`${id}.json`), st=await ss_json(dir,`${id}.statut.json`); let stop=false; try{ await d.getFileHandle(`${id}.stop`); stop=true; }catch{}
+    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
+  return out.sort((a,b)=>String(b.id).localeCompare(String(a.id)));
+}
+export async function ssStopRequest(dir,id,{immediat=false}={}){
+  const h=await (await ss_demandes(dir)).getFileHandle(`${id}.stop`,{create:true}); const w=await h.createWritable();
+  await w.write(JSON.stringify({at:new Date().toISOString(),immediat})); await w.close();
+}
+export async function ssDeleteRequest(dir,id){
+  const d=await ss_demandes(dir);
+  for(const ext of ['.json','.statut.json','.contrats.txt','.log','.stop']){ try{ await d.removeEntry(`${id}${ext}`); }catch{} }
+}
+export const ssRequestDone=st=>!!st&&['terminé','erreur','interrompu','annulé'].includes(st.etat);

@@ -364,7 +364,9 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
         // v2.3.12 — en mode « toujours », une page propre et dense n'est OCRisée que si elle contient une image.
         let hasImages;
         if(opts.mode==='always'&&isCleanDenseTextLayer(pdfText,content.items)) hasImages=await pdfPageHasImages(page);
-        const needOcr=shouldOcrPdfPage(pdfText,content.items,opts.mode,{hasImages});
+        let needOcr=shouldOcrPdfPage(pdfText,content.items,opts.mode,{hasImages});
+        // v2.28.0 — plafond de pages OCR par document (import massif seulement ; l'appli n'en fixe pas).
+        if(needOcr&&Number.isFinite(opts.ocrMaxPages)&&ocrPages.length>=opts.ocrMaxPages){ needOcr=false; if(!ocrWarnings.some(w=>/plafond/.test(w))) ocrWarnings.push(`OCR limité à ${opts.ocrMaxPages} page(s) pour ce document (plafond de l’import) : pages suivantes non lues.`); }
         onProgress(((p-1)+.18)/pdf.numPages,{stage:'pdf',page:p,totalPages:pdf.numPages,message:`Lecture PDF page ${p}/${pdf.numPages}`});
         if(needOcr){
           activeOcrPage=p;
@@ -377,7 +379,7 @@ export async function readPdf(file, onProgress=()=>{}, options={}) {
             try{
               // Page sans couche texte ou à texte brouillé : rendu plus fin (≈ 216 dpi) pour lire les chiffres des tableaux.
               const fullPage=pdfQuality.chars===0||pdfQuality.garbled;
-              canvas=await renderPdfPageForOcr(page,fullPage?{...opts,scale:Math.max(Number(opts.scale)||0,3.0),maxPixels:Math.max(Number(opts.maxPixels)||0,8000000)}:opts);
+              canvas=await renderPdfPageForOcr(page,fullPage?{...opts,scale:Math.max(Number(opts.scale)||0,opts.ocrFullScale||3.0),maxPixels:Math.max(Number(opts.maxPixels)||0,opts.ocrFullMaxPixels||8000000)}:opts);
               let ret;
               try{ ret=await worker.recognize(canvas,{},{text:true,blocks:true}); }
               catch(optErr){ ret=await worker.recognize(canvas); }

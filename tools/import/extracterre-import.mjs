@@ -200,6 +200,8 @@ async function main(){
     const handle=async f=>{
       if(stopping) return;
       seen.add(f.relPath); c.files++;
+      // v2.28.0 — avancement par document (l'OCR d'une opération peut durer plusieurs minutes).
+      fileDone++; if(Date.now()-lastFileStatus>1500||fileDone===fileTotal){ lastFileStatus=Date.now(); status({fichiers:{fait:fileDone,total:fileTotal,courant:f.name}}); }
       const dec=decisions[`${contract}|${f.relPath}`]||{};
       const old=reg.file(contract,f.relPath);
       const base={contract,folder:op.folder,relPath:f.relPath,relDir:f.relDir,name:f.name,ext:fileExtension(f.name),family:f.family,size:f.size,mtimeMs:f.mtimeMs,
@@ -260,7 +262,7 @@ async function main(){
           reg.putFile({...base,...ver,sha256:sha,docType:res.doc.type,importType:j.k.type,method:j.k.method,status:j.status,reason:j.reason,resultFile:twin.resultFile,processedAt:twin.processedAt,completeness:j.completeness,fields:j.fields,pages:twin.pages,reusedFrom:twin.contract===contract?null:twin.contract,decisionAccept:!!dec.accept});
           return;
         }
-        const opts={familyOverride:dec.family||null,ocr:ocrOn};
+        const opts={familyOverride:dec.family||null,ocr:ocrOn,ocrOptions:{ocrMaxPages:Number(cfg.ocrMaxPagesParDocument??40),ocrFullScale:Number(cfg.ocrEchelle??2),ocrFullMaxPixels:Number(cfg.ocrPixelsMax??4500000),scale:Math.min(1.85,Number(cfg.ocrEchelle??2))}};
         let x=await extract.extractFile(f,opts);
         let meta={scan:x.scan,xml};
         let j=judge(x.d,meta,sha);
@@ -291,7 +293,9 @@ async function main(){
         reg.putFile({...base,...ver,status:'erreur',reason:`lecture impossible : ${err?.message||err}`,sha256:old?.sha256||null,resultFile:null});
       }
     };
-    await pool(kept.concat(s.files.filter(f=>f.ignoreReason)),parallel,handle);
+    const queue=kept.concat(s.files.filter(f=>f.ignoreReason)); let fileDone=0,lastFileStatus=0; const fileTotal=queue.length;
+    status({fichiers:{fait:0,total:fileTotal,courant:''}});
+    await pool(queue,parallel,handle);
 
     if(mode==='traitement'){
       // v2.25.0 — contrôle par opération : une famille dont aucun document lisible n'a donné de valeur est signalée une fois.

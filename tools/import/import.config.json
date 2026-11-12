@@ -258,5 +258,9 @@
   ],
   "_aide_ocr": "OCR des PDF scannés (même moteur que l'appli, plus lent : quelques secondes par page). false pour le désactiver (option --sans-ocr).",
   "ocr": true,
-  "_aide_nameHints": "families[].nameHints : expressions sur le nom du fichier (sans accents, minuscules) qui confirment la famille du dossier (ex. « LOT 11 - ÉLECTRICITÉ » dans CCTP)."
+  "_aide_nameHints": "families[].nameHints : expressions sur le nom du fichier (sans accents, minuscules) qui confirment la famille du dossier (ex. « LOT 11 - ÉLECTRICITÉ » dans CCTP).",
+  "_aide_ocrReglages": "Vitesse de l'OCR : ocrMaxPagesParDocument (pages OCR au plus par document), ocrEchelle (2 ≈ 144 dpi, suffisant pour du texte dactylographié ; 3 = plus fin et ~2× plus lent), ocrPixelsMax (taille maximale d'une page rendue).",
+  "ocrMaxPagesParDocument": 40,
+  "ocrEchelle": 2,
+  "ocrPixelsMax": 4500000
 }
