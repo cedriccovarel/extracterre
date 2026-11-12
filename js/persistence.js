@@ -184,6 +184,8 @@ function serializeProject(project={}){
     favorite:!!project.favorite,
     ownerName:project.ownerName||'',
     // v2.24.0 — opération alimentée par l'import massif (contrat, dossier, dernière mise à jour).
+    // v2.24.3 — documents déchargés de l'onglet Économie (restent dans l'opération pour les autres colonnes).
+    economicExcluded:safeJsonClone(project.economicExcluded,[]),
     importContract:project.importContract||'',
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,

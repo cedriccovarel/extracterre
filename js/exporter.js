@@ -23,7 +23,7 @@ export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
 
   // v2.5.0 — 2e feuille : nomenclature économique (une ligne par opération), identifiant du projet en tête.
   const blank=v=>v===undefined||v===null||v===''||v==='non précisé';
-  const eco=usable.map((p,idx)=>{ const e=analyzeEconomicData(p.docs||[],p.result?.operation||'',p.manualEconomics||{}); const rows=p.result?.rows||[]; const first=k=>rows.map(r=>r[k]).find(x=>!blank(x));
+  const eco=usable.map((p,idx)=>{ const off=new Set(p.economicExcluded||[]); const e=analyzeEconomicData((p.docs||[]).filter(d=>!off.has(d.id)),p.result?.operation||'',p.manualEconomics||{}); const rows=p.result?.rows||[]; const first=k=>rows.map(r=>r[k]).find(x=>!blank(x));
     return {p,e,code:first('internal_code')??e.values.fin_operation_code??'',name:first('operation_name')??(p.operationName||p.result?.operation||e.values.fin_operation_label||projectName(p,idx))}; });
   if(eco.some(x=>x.e.source||Object.keys(x.e.values).length)){
     const sheet=[['Code interne','Nom opération',...ECONOMIC_FIELDS.map(f=>f.label)],...eco.map(x=>[x.code,x.name,...ECONOMIC_FIELDS.map(f=>x.e.values[f.key]??'')])];

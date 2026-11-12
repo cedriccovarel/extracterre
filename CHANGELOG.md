@@ -1,3 +1,11 @@
+# v2.24.3 — Économie : fichiers sources déchargeables ou supprimables
+
+- Onglet Économie, encart « Fichiers sources » : questionnaire financier ou DPGF utilisés, avec deux boutons par fichier.
+  **Décharger** : le fichier n'est plus utilisé pour l'économie mais reste dans l'opération ; le questionnaire suivant prend le relais ;
+  **Réutiliser** le remet. **Supprimer** retire le document de l'opération, comme le ✕ de la liste des fichiers.
+- **Effacer les saisies** : supprime les valeurs économiques saisies à la main.
+- Le déchargement est sauvegardé et respecté par l'export Excel.
+
 # v2.24.2 — Import massif : contrats et dossiers annulés mieux lus, racine Box rechoisie
 
 - Noms « 76-008 - 1480 - CP - Fécamp » : le code « 008 » n'est plus pris pour le contrat n° 8. Il faut au moins 3 chiffres significatifs ;

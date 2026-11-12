@@ -2242,7 +2242,12 @@ function rebuildProjectFromCheckpoints(project){
   // Tags et économie calculés précédemment restent sauvegardés ; ils seront recalculés
   // automatiquement dès qu'un document est relu ou qu'une donnée est modifiée.
 }
-function refreshEconomic(project=activeProject()){ project.economic=analyzeEconomicData(project.docs,project.result?.operation||project.operationName||'',project.manualEconomics); return project.economic; }
+function refreshEconomic(project=activeProject()){
+  // v2.24.3 — documents « déchargés » de l'économie : ignorés ici seulement (le questionnaire suivant prend le relais).
+  const off=new Set(project.economicExcluded||[]);
+  project.economic=analyzeEconomicData((project.docs||[]).filter(d=>!off.has(d.id)),project.result?.operation||project.operationName||'',project.manualEconomics);
+  project.economic.excludedDocs=(project.docs||[]).filter(d=>off.has(d.id)).map(d=>({id:d.id,name:d.name}));
+  return project.economic; }
 // v2.5.0 — onglet Économie : nomenclature du questionnaire financier (2e feuille de l'export), modifiable champ par champ.
 let economicShowAll=false;
 function economicIdentity(project=activeProject()){
@@ -2253,6 +2258,17 @@ function economicInput(f,v,manual){
   const shown=v===undefined||v===null?'':f.type==='number'?formatValue(v):String(v);
   return `<input class="eco-input ${manual?'manual':''}" data-eco-key="${f.key}" value="${escapeHtml(shown)}" placeholder="—" aria-label="${escapeHtml(f.label)}"${f.type==='number'?' inputmode="decimal"':''}>`;
 }
+// v2.24.3 — sources de l'onglet Économie (questionnaire financier ou DPGF) : décharger, remettre, supprimer ; saisies effaçables.
+function ecoSourcesHtml(e){
+  const src=e.sourceDocs||[], off=e.excludedDocs||[], manual=(e.manualKeys||[]).length;
+  if(!src.length&&!off.length&&!manual) return '';
+  const row=(d,used)=>`<div class="eco-src-row${used?'':' off'}"><span class="eco-src-name">${used?'📄':'⏸'} ${escapeHtml(d.name)}<small>${used?(d.type==='questionnaire'?'questionnaire financier utilisé':'DPGF utilisé'):'déchargé : ignoré pour l’économie'}</small></span>
+    ${used?`<button type="button" class="btn light" data-eco-src="unload" data-eco-id="${escapeHtml(d.id)}" title="Ne plus utiliser ce fichier pour l’économie ; il reste dans l’opération">Décharger</button>`:`<button type="button" class="btn light" data-eco-src="reload" data-eco-id="${escapeHtml(d.id)}">Réutiliser</button>`}
+    <button type="button" class="btn light danger-btn" data-eco-src="delete" data-eco-id="${escapeHtml(d.id)}" title="Retirer le document de l’opération">Supprimer</button></div>`;
+  return `<section class="eco-group eco-sources"><h4>Fichiers sources</h4>${src.map(d=>row(d,true)).join('')}${off.map(d=>row(d,false)).join('')}
+    ${manual?`<div class="eco-src-row"><span class="eco-src-name">✎ ${manual} saisie(s) manuelle(s)<small>prioritaires sur les fichiers</small></span><button type="button" class="btn light danger-btn" data-eco-src="clear-manual" data-eco-id="">Effacer les saisies</button></div>`:''}</section>`;
+}
+
 function renderEconomic(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const e=refreshEconomic(p); const v=e.values||{}; const manual=new Set(e.manualKeys||[]); const id=economicIdentity(p);
   const filled=ECONOMIC_FIELDS.filter(f=>!isBlank(v[f.key])).length;
@@ -2261,12 +2277,22 @@ function renderEconomic(wrap=$('#summaryView')){
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Données économiques · ${e.source?escapeHtml(e.source):'aucune source économique'}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
   <section class="eco-head"><div class="eco-ident"><span>Code interne</span><strong>${escapeHtml(id.code||'—')}</strong></div><div class="eco-ident"><span>Nom opération</span><strong>${escapeHtml(id.name||'—')}</strong></div>
   <div class="manual-filter-chips" role="group" aria-label="Colonnes affichées"><button type="button" class="manual-filter ${economicShowAll?'':'active'}" data-eco-all="0">Colonnes renseignées · ${filled}</button><button type="button" class="manual-filter ${economicShowAll?'active':''}" data-eco-all="1">Toutes les colonnes · ${ECONOMIC_FIELDS.length}</button></div></section>
+  ${ecoSourcesHtml(e)}
   ${e.source?'':`<div class="empty-state"><h3>Aucune donnée économique</h3><p>Ajoutez la synthèse PDF du questionnaire financier Prestaterre (ou un DPGF), lancez l’analyse, ou saisissez les valeurs dans « Toutes les colonnes ».</p></div>`}
   ${groups.map(g=>`<section class="eco-group"><h4>${escapeHtml(g.label)}</h4><div class="eco-grid">${g.fields.map(f=>`<label class="eco-field"><span>${escapeHtml(f.label)}</span>${economicInput(f,v[f.key],manual.has(f.key))}</label>`).join('')}</div></section>`).join('')}
   ${e.costs?.length?`<details class="eco-group"><summary>Lignes de coûts lues · ${e.costs.length}</summary>${lines(e.costs,[['Source',r=>r.source],['Lot / poste',r=>r.label],['Catégorie',r=>COST_CATEGORIES.find(c=>c.id===r.category)?.label],['Montant HT',r=>r.amount],['Document',r=>r.document],['Page',r=>r.page]])}</details>`:''}
   ${e.aids?.length?`<details class="eco-group"><summary>Aides lues · ${e.aids.length}</summary>${lines(e.aids,[['Aide',r=>r.label],['Porteur',r=>r.level],['Calcul',r=>r.calc],['Montant',r=>r.amount],['Statut',r=>r.status],['Page',r=>r.page]])}</details>`:''}`;
   $('#detailBackOverview')?.addEventListener('click',showProjectsOverview);
   wrap.querySelectorAll('[data-eco-all]').forEach(b=>b.onclick=()=>{ economicShowAll=b.dataset.ecoAll==='1'; renderEconomic(wrap); });
+  // v2.24.3 — sources : décharger (ignorer pour l'économie), remettre, supprimer le document, effacer les saisies.
+  wrap.querySelectorAll('[data-eco-src]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.ecoId, act=b.dataset.ecoSrc, doc=(p.docs||[]).find(d=>d.id===id);
+    if(act==='unload'){ p.economicExcluded=[...new Set([...(p.economicExcluded||[]),id])]; toast(`${doc?.name||'Document'} déchargé de l’économie (il reste dans l’opération).`,'success'); }
+    else if(act==='reload'){ p.economicExcluded=(p.economicExcluded||[]).filter(x=>x!==id); toast(`${doc?.name||'Document'} de nouveau utilisé pour l’économie.`,'success'); }
+    else if(act==='delete'){ if(!confirm(`Supprimer « ${doc?.name||'ce document'} » de l’opération ?\n\nIl est retiré de la liste des documents (les valeurs déjà retenues dans le tableau sont conservées).`)) return;
+      p.economicExcluded=(p.economicExcluded||[]).filter(x=>x!==id); await removeDocuments([id]); }
+    else if(act==='clear-manual'){ if(!confirm('Effacer toutes les saisies manuelles de l’onglet Économie ?')) return; p.manualEconomics={}; toast('Saisies économiques effacées.','success'); }
+    renderEconomic(wrap); scheduleWorkspaceCheckpoint('source économique',50); });
   // Saisie : valeur vide = retour à la valeur lue ; nombres au format français.
   wrap.querySelectorAll('[data-eco-key]').forEach(i=>i.onchange=()=>{ const k=i.dataset.ecoKey, f=ECONOMIC_FIELD_MAP[k], raw=i.value.trim(); p.manualEconomics=p.manualEconomics||{};
     if(!raw) delete p.manualEconomics[k];

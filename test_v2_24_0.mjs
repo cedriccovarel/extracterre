@@ -11,7 +11,7 @@ import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseCon
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.24.2','version');
+eq(APP_VERSION,'2.24.3','version');
 
 // --- Numéros de contrat
 eq(contractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
@@ -176,4 +176,4 @@ eq(/--statut/.test(cli)&&/find-generic-password/.test(cli),true,'script : avance
 eq(/'--dossier-travail',workDir/.test(watch)&&/extracterre-import-request/.test(watch),true,'service : demandes du dossier de travail');
 eq(/data-ss-tab="new"/.test(app)&&/ssWriteRequest\(ss\.dir/.test(app),true,'appli : onglet Nouvelle analyse');
 
-console.log(`v2.24.2 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.24.3 — ${n} vérifications OK (données fictives)`);

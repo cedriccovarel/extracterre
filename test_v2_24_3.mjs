@@ -1,0 +1,19 @@
+// ExtracTerre v2.24.3 — onglet Économie : fichiers sources déchargeables / supprimables, saisies effaçables (données fictives).
+import fs from 'fs';
+import {APP_VERSION,DOC_TYPES} from './js/config.js';
+import {analyzeEconomicData} from './js/economics.js';
+let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
+eq(APP_VERSION,'2.24.3','version');
+const dpgf=(id,name)=>({id,name,status:'ready',type:DOC_TYPES.DPGF,read:{kind:'spreadsheet',pages:[],text:''}});
+const docs=[dpgf('d1','DPGF lot 1.xlsx'),dpgf('d2','DPGF lot 2.xlsx')];
+eq(analyzeEconomicData(docs).sourceDocs.map(d=>d.id),['d1','d2'],'sources DPGF listées avec leur identifiant');
+eq(analyzeEconomicData(docs.filter(d=>d.id!=='d1')).sourceDocs.map(d=>d.id),['d2'],'source déchargée : plus utilisée');
+eq(analyzeEconomicData([]).sourceDocs,[],'aucune source');
+const app=fs.readFileSync(new URL('./js/app.js',import.meta.url),'utf8');
+const exp=fs.readFileSync(new URL('./js/exporter.js',import.meta.url),'utf8');
+const per=fs.readFileSync(new URL('./js/persistence.js',import.meta.url),'utf8');
+eq(/filter\(d=>!off\.has\(d\.id\)\)/.test(app)&&/filter\(d=>!off\.has\(d\.id\)\)/.test(exp),true,'déchargement appliqué à l’onglet et à l’export Excel');
+eq(/economicExcluded:safeJsonClone\(project\.economicExcluded,\[\]\)/.test(per),true,'déchargement sauvegardé');
+eq(['unload','reload','delete','clear-manual'].every(a=>app.includes(`data-eco-src="${a}"`)),true,'boutons Décharger / Réutiliser / Supprimer / Effacer les saisies');
+eq(/await removeDocuments\(\[id\]\)/.test(app),true,'Supprimer = même retrait que la liste des fichiers');
+console.log(`v2.24.3 — ${n} vérifications OK (données fictives)`);

@@ -328,5 +328,6 @@ export function analyzeEconomicData(docs,operation='',manual={}){
   const values=q?.json?{...aggregate(costs,aids,q.total??null),...q.identity}:{...(q?.identity||{}),...aggregate(costs,aids,q?.total??null)};
   const manualKeys=[];
   for(const [k,val] of Object.entries(legacy)){ if(val===''||val===null||val===undefined) continue; values[k]=val; manualKeys.push(k); }
-  return {operation,values,manualKeys,costs,aids,source:qDoc?`Questionnaire financier (${qDoc.name})`:costs.length?'DPGF':'',documents:qDoc?[qDoc.name]:ready.filter(d=>d.type===DOC_TYPES.DPGF).map(d=>d.name),total:values.cost_total??0};
+  const srcDocs=qDoc?[qDoc]:ready.filter(d=>d.type===DOC_TYPES.DPGF);
+  return {operation,values,manualKeys,costs,aids,source:qDoc?`Questionnaire financier (${qDoc.name})`:costs.length?'DPGF':'',documents:srcDocs.map(d=>d.name),sourceDocs:srcDocs.map(d=>({id:d.id,name:d.name,type:qDoc?'questionnaire':'dpgf'})),total:values.cost_total??0};
 }
