@@ -20,7 +20,8 @@ async function ss_file(dir,rel){
   return (await d.getFileHandle(parts.at(-1))).getFile();
 }
 export async function ssReadRegistry(dir){
-  let f; try{ f=await ss_file(dir,'registre.json'); }catch{ throw new Error('registre.json absent : choisissez le dossier de travail du script (par défaut ExtracTerre-import dans votre dossier personnel), après un premier traitement.'); }
+  // Dossier encore vide (première utilisation) : registre vide, la première analyse le créera.
+  let f; try{ f=await ss_file(dir,'registre.json'); }catch{ return {format:'extracterre-import-registry',version:1,updatedAt:null,files:{},operations:{},empty:true}; }
   const r=JSON.parse(await f.text());
   if(r?.format!=='extracterre-import-registry') throw new Error('Ce fichier n’est pas un registre d’import ExtracTerre.');
   return r;
@@ -99,3 +100,36 @@ export async function ssCompareLinked(opHandle,registry,contract){
   const gone=[...known.values()].filter(f=>dirs.some(d=>f.relPath.startsWith(`${d}/`))&&!seen.has(f.relPath)&&f.status!=='ignoré');
   return {added,changed,gone};
 }
+
+
+// ---------- v2.24.1 — « Coller une liste de contrats » : demandes exécutées par le service d'import (tools/import/watch.mjs) ----------
+
+// Liste collée depuis Excel (une ou plusieurs colonnes) → numéros de contrat (8 chiffres). Colonne choisie : en-tête
+// contenant « contrat », sinon celle qui a le plus de numéros (évite départements, codes postaux, années d'une autre colonne).
+export function ssParseContractPaste(text=''){
+  const rows=String(text).replace(/\r/g,'').split('\n').filter(l=>l.trim()).map(l=>l.split('\t'));
+  if(!rows.length) return {contracts:[],invalid:[],column:null};
+  const width=Math.max(...rows.map(r=>r.length));
+  const digits=v=>String(v||'').replace(/[\s.-]/g,'');
+  const head=rows[0].findIndex(c=>/contrat/i.test(c||''));
+  let col=head;
+  if(col<0){ let best=-1; for(let c=0;c<width;c++){ const n=rows.filter(r=>/^\d{3,8}$/.test(digits(r[c]))).length; if(n>best){ best=n; col=c; } } }
+  const contracts=[],invalid=[];
+  rows.forEach((r,i)=>{ if(i===0&&head>=0) return; const raw=String(r[col]||'').trim(); if(!raw) return;
+    const d=digits(raw), v=d.replace(/^0+/,'');
+    if(!/^\d+$/.test(d)||!v||v.length>8){ invalid.push(raw); return; }
+    const k=v.padStart(8,'0'); if(!contracts.includes(k)) contracts.push(k); });
+  return {contracts,invalid,column:col};
+}
+async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
+export async function ssWriteRequest(dir,contracts,mode='traitement'){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  return id;
+}
+async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }
+export const ssReadStatus=(dir,id)=>ss_json(dir,`${id}.statut.json`);
+// Service actif : battement de cœur de moins de 30 s.
+export async function ssServiceState(dir){ const s=await ss_json(dir,'service.json'); return {alive:!!s&&Date.now()-Date.parse(s.vu)<30000,info:s}; }

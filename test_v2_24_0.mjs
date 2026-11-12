@@ -6,12 +6,12 @@ import {contractKey,parseContractList,folderContracts,matchContracts,subfolderFa
   versionIndex,documentKey,dateIn,rankVersions,classifyImportFile,versionFolderKey} from './js/import-rules.js';
 import {classifyDocument} from './js/classifier.js';
 import {deriveKeys,encryptJson,decryptJson,hmac,newSalt} from './tools/import/lib/crypto.mjs';
-import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName} from './js/suivi-sources.js';
+import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseContractPaste} from './js/suivi-sources.js';
 
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.24.0','version');
+eq(APP_VERSION,'2.24.1','version');
 
 // --- Numéros de contrat
 eq(contractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
@@ -160,4 +160,16 @@ eq(/SUPABASE_SERVICE_ROLE_KEY|service_role|sb_secret_/.test(app+bundle+html),fal
 const sql=fs.readFileSync(new URL('./supabase/migrations/20261112_import_massif.sql',import.meta.url),'utf8');
 eq(/enable row level security/.test(sql)&&/revoke all on public\.extracterre_import_files from anon, authenticated/.test(sql),true,'tables fermées aux clés publiques');
 
-console.log(`v2.24.0 — ${n} vérifications OK (données fictives)`);
+// --- v2.24.1 : liste collée depuis Excel, service d'import
+eq(ssParseContractPaste('00005361\n4918\n 0000-1234 \n4918\n').contracts,['00005361','00004918','00001234'],'collage une colonne (doublon retiré)');
+eq(ssParseContractPaste('N° contrat\tVille\tCP\n00001234\tLille\t59000\n1629\tLinselles\t59126\n').contracts,['00001234','00001629'],'collage : colonne « contrat » choisie, pas le code postal');
+eq(ssParseContractPaste('Ville\tNum\nLille\t00001234\nParis\t5361\n').contracts,['00001234','00005361'],'collage sans en-tête « contrat » : colonne des numéros');
+eq(ssParseContractPaste('5361\nabc\n123456789\n').invalid,['abc','123456789'],'collage : lignes illisibles signalées');
+eq(ssParseContractPaste('').contracts,[],'collage vide');
+const cli=fs.readFileSync(new URL('./tools/import/extracterre-import.mjs',import.meta.url),'utf8');
+const watch=fs.readFileSync(new URL('./tools/import/watch.mjs',import.meta.url),'utf8');
+eq(/--statut/.test(cli)&&/find-generic-password/.test(cli),true,'script : avancement JSON et phrase secrète dans le Trousseau');
+eq(/'--dossier-travail',workDir/.test(watch)&&/extracterre-import-request/.test(watch),true,'service : demandes du dossier de travail');
+eq(/data-ss-tab="new"/.test(app)&&/ssWriteRequest\(ss\.dir/.test(app),true,'appli : onglet Nouvelle analyse');
+
+console.log(`v2.24.1 — ${n} vérifications OK (données fictives)`);

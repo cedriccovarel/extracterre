@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.24.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.24.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.24.0';
+const APP_VERSION='2.24.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11638,7 +11638,8 @@ async function ss_file(dir,rel){
   return (await d.getFileHandle(parts.at(-1))).getFile();
 }
 async function ssReadRegistry(dir){
-  let f; try{ f=await ss_file(dir,'registre.json'); }catch{ throw new Error('registre.json absent : choisissez le dossier de travail du script (par défaut ExtracTerre-import dans votre dossier personnel), après un premier traitement.'); }
+  // Dossier encore vide (première utilisation) : registre vide, la première analyse le créera.
+  let f; try{ f=await ss_file(dir,'registre.json'); }catch{ return {format:'extracterre-import-registry',version:1,updatedAt:null,files:{},operations:{},empty:true}; }
   const r=JSON.parse(await f.text());
   if(r?.format!=='extracterre-import-registry') throw new Error('Ce fichier n’est pas un registre d’import ExtracTerre.');
   return r;
@@ -11717,6 +11718,39 @@ async function ssCompareLinked(opHandle,registry,contract){
   const gone=[...known.values()].filter(f=>dirs.some(d=>f.relPath.startsWith(`${d}/`))&&!seen.has(f.relPath)&&f.status!=='ignoré');
   return {added,changed,gone};
 }
+
+
+// ---------- v2.24.1 — « Coller une liste de contrats » : demandes exécutées par le service d'import (tools/import/watch.mjs) ----------
+
+// Liste collée depuis Excel (une ou plusieurs colonnes) → numéros de contrat (8 chiffres). Colonne choisie : en-tête
+// contenant « contrat », sinon celle qui a le plus de numéros (évite départements, codes postaux, années d'une autre colonne).
+function ssParseContractPaste(text=''){
+  const rows=String(text).replace(/\r/g,'').split('\n').filter(l=>l.trim()).map(l=>l.split('\t'));
+  if(!rows.length) return {contracts:[],invalid:[],column:null};
+  const width=Math.max(...rows.map(r=>r.length));
+  const digits=v=>String(v||'').replace(/[\s.-]/g,'');
+  const head=rows[0].findIndex(c=>/contrat/i.test(c||''));
+  let col=head;
+  if(col<0){ let best=-1; for(let c=0;c<width;c++){ const n=rows.filter(r=>/^\d{3,8}$/.test(digits(r[c]))).length; if(n>best){ best=n; col=c; } } }
+  const contracts=[],invalid=[];
+  rows.forEach((r,i)=>{ if(i===0&&head>=0) return; const raw=String(r[col]||'').trim(); if(!raw) return;
+    const d=digits(raw), v=d.replace(/^0+/,'');
+    if(!/^\d+$/.test(d)||!v||v.length>8){ invalid.push(raw); return; }
+    const k=v.padStart(8,'0'); if(!contracts.includes(k)) contracts.push(k); });
+  return {contracts,invalid,column:col};
+}
+async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
+async function ssWriteRequest(dir,contracts,mode='traitement'){
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  return id;
+}
+async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }
+const ssReadStatus=(dir,id)=>ss_json(dir,`${id}.statut.json`);
+// Service actif : battement de cœur de moins de 30 s.
+async function ssServiceState(dir){ const s=await ss_json(dir,'service.json'); return {alive:!!s&&Date.now()-Date.parse(s.vu)<30000,info:s}; }
 
 /* ---- plans.js ---- */
 // v2.15.0 — plans mesurés dans Ashton : la table de correspondance reçue (par document) devient, pour les quantités
@@ -14828,7 +14862,7 @@ function initSpaceChooser(){
   $('#sourcesBtn')?.addEventListener('click',()=>openSourcesView());
 }
 
-const ss={dir:null,registry:null,decisions:{files:{}},tab:'ops',filter:'',open:null,busy:false,linked:{}};
+const ss={dir:null,registry:null,decisions:{files:{}},tab:'new',filter:'',open:null,busy:false,linked:{}};
 const SS_FAMILY_LABEL={cctp:'CCTP',thermique:'Note ou étude thermique',carbone:'Carbone / ACV / RSEE'};
 async function ssLoadDir(pick=false){
   if(!ssSupported()) throw new Error('Ce navigateur ne permet pas d’ouvrir un dossier : utilisez Chrome ou Edge.');
@@ -14894,6 +14928,7 @@ function renderSourcesView(){
   if(!ss.registry){ info.textContent=''; body.innerHTML=`<div class="ss-start"><p>Choisissez le <b>dossier de travail</b> du script d’import (par défaut <code>ExtracTerre-import</code> dans votre dossier personnel). ExtracTerre y lit le registre et les résultats ; vos dossiers Box ne sont jamais modifiés.</p>${ssSupported()?'<button class="btn primary" data-ss-pick>Choisir le dossier de travail</button>':'<p class="ss-bad">Ce navigateur ne permet pas d’ouvrir un dossier local : utilisez Chrome ou Edge.</p>'}</div>`; return; }
   const ops=ssOperations(ss.registry);
   info.textContent=`${ss.dir?.name||''} · registre du ${ss.registry.updatedAt?new Date(ss.registry.updatedAt).toLocaleString('fr-FR'):'—'} · ${ops.length} opération(s)`;
+  if(ss.tab==='new'){ ssRenderNew(body); return; }
   body.innerHTML=ss.tab==='review'?ssRenderReview():ssRenderOps();
 }
 async function openSourcesView(){
@@ -14901,7 +14936,7 @@ async function openSourcesView(){
   if(!dlg){
     dlg=document.createElement('dialog'); dlg.id='sourcesDialog'; dlg.className='search-integrate-dialog sources-dialog';
     dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Import massif</span><h3>Suivi des sources</h3><p data-ss-info></p></div><div class="ss-head-actions"><button class="btn light" data-ss-pick title="Changer de dossier de travail">Dossier…</button><button class="btn light" data-ss-refresh>Actualiser</button><button class="btn primary" data-ss-loadall title="Créer ou mettre à jour toutes les opérations du registre">Charger toutes les opérations</button><button class="icon-btn" type="button" data-ss-close aria-label="Fermer">×</button></div></div>
-      <div class="ss-tabs"><button class="ss-tab" data-ss-tab="ops">Opérations</button><button class="ss-tab" data-ss-tab="review">À vérifier</button></div><div class="ss-body" data-ss-body></div><div class="ss-status" data-ss-status></div></div>`;
+      <div class="ss-tabs"><button class="ss-tab" data-ss-tab="new">📋 Nouvelle analyse</button><button class="ss-tab" data-ss-tab="ops">Opérations</button><button class="ss-tab" data-ss-tab="review">À vérifier</button></div><div class="ss-body" data-ss-body></div><div class="ss-status" data-ss-status></div></div>`;
     document.body.appendChild(dlg);
     dlg.addEventListener('click',e=>ssClick(e).catch(err=>toast(err?.message||String(err),'error')));
     dlg.addEventListener('change',e=>ssChange(e).catch(err=>toast(err?.message||String(err),'error')));
@@ -14917,6 +14952,7 @@ async function ssClick(e){
   if(t.matches('[data-ss-pick]')){ await ssLoadDir(true); renderSourcesView(); return; }
   if(t.matches('[data-ss-refresh]')){ await ssLoadDir(false); renderSourcesView(); toast('Registre relu.','success'); return; }
   if(t.dataset.ssTab){ ss.tab=t.dataset.ssTab; renderSourcesView(); return; }
+  if(t.dataset.ssLaunch){ await ssLaunch(t.dataset.ssLaunch); return; }
   if(t.dataset.ssOpen){ ss.open=ss.open===t.dataset.ssOpen?null:t.dataset.ssOpen; renderSourcesView(); return; }
   if(t.dataset.ssGo){ $('#sourcesDialog').close(); activateProject(t.dataset.ssGo); return; }
   if(t.dataset.ssLoad){ await ssRun(()=>loadImportOperations([t.dataset.ssLoad])); return; }
@@ -14981,6 +15017,68 @@ async function loadImportOperations(contracts){
   renderAll();
   toast(`Import : ${created} opération(s) créée(s), ${updated} mise(s) à jour · ${added} document(s) ajouté(s), ${removed} retiré(s), ${kept} inchangé(s)${failed?` · ${failed} résultat(s) illisible(s)`:''}.`,failed?'warn':'success');
 }
+// v2.24.1 — « Nouvelle analyse » : liste de contrats collée depuis Excel → demande pour le service d'import, avancement, chargement.
+const SS_REQ_KEY='extracterre.import.request';
+let ssPoll=null;
+function ssCurrentRequest(){ try{ return localStorage.getItem(SS_REQ_KEY)||''; }catch{ return ''; } }
+function ssForgetRequest(){ try{ localStorage.setItem(SS_REQ_KEY,''); }catch{} }
+function ssPasteInfo(){
+  const ta=$('#sourcesDialog [data-ss-paste]'); const r=ssParseContractPaste(ta?.value||''); const el=$('#sourcesDialog [data-ss-paste-info]');
+  if(el) el.innerHTML=r.contracts.length?`<b>${r.contracts.length}</b> contrat(s) reconnu(s)${r.invalid.length?` · <span class="ss-warn">${r.invalid.length} ligne(s) ignorée(s) : ${escapeHtml(r.invalid.slice(0,5).join(', '))}${r.invalid.length>5?'…':''}</span>`:''}`:'Collez la colonne des numéros de contrat (avec ou sans en-tête).';
+  $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=!r.contracts.length);
+  return r;
+}
+function ssRenderNew(body){
+  const keep=$('#sourcesDialog [data-ss-paste]')?.value||'';
+  body.innerHTML=`<div class="ss-new"><p>Collez la colonne Excel des numéros de contrat. ExtracTerre dépose la demande dans le dossier de travail ; le <b>service d’import</b> de votre Mac lit les dossiers Box (lecture seule) et extrait les documents, puis les opérations se chargent ici automatiquement.</p>
+    <div data-ss-service class="ss-service">Vérification du service…</div>
+    <textarea data-ss-paste rows="8" placeholder="00005361&#10;00004918&#10;…"></textarea><div class="ss-paste-info" data-ss-paste-info></div>
+    <div class="ss-new-actions"><button class="btn light" data-ss-launch="check-only" disabled title="Rapport de correspondance seulement : contrats trouvés, sans dossier, en double">Vérifier la correspondance</button><button class="btn primary" data-ss-launch="traitement" disabled>▶ Lancer l’analyse</button></div>
+    <div data-ss-progress></div></div>`;
+  const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); ssPasteInfo();
+  ssRefreshService(); ssWatchRequest();
+}
+async function ssRefreshService(){
+  const el=$('#sourcesDialog [data-ss-service]'); if(!el||!ss.dir) return;
+  const st=await ssServiceState(ss.dir);
+  el.className=`ss-service ${st.alive?'ok':'bad'}`;
+  el.innerHTML=st.alive?`● Service d’import actif${st.info?.occupe?' — analyse en cours':''}`:'● Service d’import arrêté : les demandes attendront qu’il démarre. Pour l’installer (une fois), dans Terminal : <code>cd ~/Documents/GitHub/extracterre/tools/import &amp;&amp; ~/.local/node/bin/node installer-service.mjs</code>';
+}
+async function ssLaunch(mode){
+  const r=ssPasteInfo(); if(!r.contracts.length) return;
+  const id=await ssWriteRequest(ss.dir,r.contracts,mode);
+  try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
+  toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
+}
+function ssProgressHtml(id,st){
+  if(!st) return `<p class="ss-wait">Demande ${escapeHtml(id)} en attente du service…</p>`;
+  const c=st.correspondance, o=st.operations, t=st.totaux;
+  const pct=o?.total?Math.round(100*o.fait/o.total):(st.etat==='terminé'?100:3);
+  const list=(label,xs)=>xs?.length?`<div><b>${label} (${xs.length})</b> : ${escapeHtml(xs.slice(0,30).join(', '))}${xs.length>30?'…':''}</div>`:'';
+  const title=st.etat==='terminé'?'Terminé':st.etat==='erreur'?'Erreur':st.etat==='interrompu'?'Interrompu':`En cours — ${st.etape||''}`;
+  return `<div class="ss-progress"><div class="ss-progress-head"><b>${escapeHtml(title)}</b><span>${o?.total?`${o.fait}/${o.total} opération(s)`:''}</span></div>
+    <div class="startup-bar"><i style="width:${pct}%"></i></div>${o?.courante?`<small>${escapeHtml(o.courante)}</small>`:''}
+    ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
+    ${c?`<div class="ss-corr"><div>Contrats trouvés : <b>${c.trouves}</b>${c.demandes!=null?` / ${c.demandes}`:''}</div>${list('Sans dossier',c.sansDossier)}${list('Plusieurs dossiers (à vérifier, non traités)',c.plusieursDossiers)}${list('Seulement un dossier « Annulé »',c.annules)}${list('Sans sous-dossier CCTP / thermique / carbone',c.sansSousDossier)}</div>`:''}
+    ${t?`<small>Fichiers : ${t.files} · extraits : ${t.extracted} · réutilisés : ${t.reused} · à vérifier : ${t.review} · erreurs : ${t.errors}${t.opsSkipped?` · opérations inchangées : ${t.opsSkipped}`:''}</small>`:''}</div>`;
+}
+async function ssWatchRequest(){
+  clearTimeout(ssPoll); const id=ssCurrentRequest(); const box=$('#sourcesDialog [data-ss-progress]');
+  if(!id||!box||!ss.dir||!$('#sourcesDialog')?.open) return;
+  const st=await ssReadStatus(ss.dir,id);
+  box.innerHTML=ssProgressHtml(id,st); ssRefreshService();
+  if(st&&['terminé','erreur','interrompu'].includes(st.etat)){
+    ssForgetRequest();
+    if(st.etat==='terminé'&&Array.isArray(st.contrats)&&st.contrats.length){
+      ss.registry=await ssReadRegistry(ss.dir); await ssRun(()=>loadImportOperations(st.contrats));
+      ss.tab='new'; renderSourcesView();
+      const b=$('#sourcesDialog [data-ss-progress]'); if(b) b.innerHTML=ssProgressHtml(id,st)+'<p class="ss-ok">Opérations chargées dans ExtracTerre.</p>';
+    }
+    return;
+  }
+  ssPoll=setTimeout(ssWatchRequest,3000);
+}
+
 async function ssOpenAiProposals(key){
   const p=state.projects.find(x=>x.docs?.some(d=>d.importKey===key)); const d=p?.docs.find(x=>x.importKey===key);
   if(!p||!d){ toast('Document non chargé dans l’opération.','warn'); return; }

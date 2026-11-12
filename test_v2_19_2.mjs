@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.0','version');
+eq(APP_VERSION,'2.24.1','version');
 const per=readFileSync('js/persistence.js','utf8'), app=readFileSync('js/app.js','utf8'), css=readFileSync('styles.css','utf8');
 eq(/async function getDocumentRecords\(db,ids,onProgress\)/.test(per)&&/savedById\.get\(meta\.id\)/.test(per)&&!/await getDocumentRecord\(db,meta\.id\)/.test(per),true,'documents lus dans une seule transaction');
 eq(/function lazyRead\(doc,raw/.test(per)&&/storedRead\(doc\)/.test(per),true,'texte préparé à la première lecture');

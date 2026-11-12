@@ -1,3 +1,14 @@
+# v2.24.1 — Import massif : coller une liste de contrats
+
+- Suivi des sources → onglet **📋 Nouvelle analyse**. On colle la colonne Excel des contrats (colonne « contrat » repérée, codes postaux et
+  villes ignorés), puis on clique sur **Lancer l'analyse** ou **Vérifier la correspondance**. La demande est déposée dans le dossier de travail.
+- **Service d'import** (`tools/import/watch.mjs`, LaunchAgent installé par `installer-service.mjs`) : il exécute les demandes une par une avec le
+  script. L'avancement (`--statut`) est suivi dans l'appli : correspondance (sans dossier, en double, annulés), opérations, fichiers. Les
+  opérations se chargent automatiquement à la fin.
+- Phrase secrète lue dans le Trousseau macOS (service « extracterre-import ») : aucune saisie et rien en clair sur le disque.
+- Un dossier de travail vide est accepté (première utilisation).
+- Clé Supabase « secret » (`sb_secret_…`) acceptée, en plus de l'ancienne `service_role`.
+
 # v2.24.0 — Import massif & suivi des sources
 
 - **Écran d'accueil** à deux entrées : « Version actuelle » (inchangée : session, opérations, options) et « Import massif & suivi des

@@ -4,7 +4,7 @@ import {APP_VERSION} from './js/config.js';
 import {normalizeGrid,runSearchGrid,searchCellValue,SEARCH_KINDS} from './js/recherches.js';
 import {parseDocument} from './js/parsers.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.24.0','version');
+eq(APP_VERSION,'2.24.1','version');
 eq(SEARCH_KINDS.field,'Rappel de colonne','nouveau type');
 const grid=normalizeGrid({id:'t',name:'Test',themes:[{name:'Confort',min:1}],criteria:[
   {id:'dh_zt',theme:'Confort',label:'DH ZT',kind:'field',field:'dh_zt',unit:'°C.h',max:1250},

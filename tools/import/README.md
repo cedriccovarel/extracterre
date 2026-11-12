@@ -127,6 +127,34 @@ Un indice présent d'un seul côté, ou deux versions indiscernables, mettent le
 4. Onglet **À vérifier** : vous pouvez filtrer par motif, corriger le type, valider tel quel, choisir la version, relancer, ignorer ou ouvrir les propositions de l'IA. Ces choix sont pris en compte au prochain lancement du script.
 5. **⟳ Box** : compare le dossier Box de l'opération au registre (nouveaux, modifiés, disparus). Cette fonction n'existe que dans Chrome et Edge.
 
+## 8. Service automatique (bouton « Coller une liste de contrats »)
+
+Dans l'appli, ouvrez **📂 Suivi des sources**, puis l'onglet **📋 Nouvelle analyse**. Collez la colonne Excel des contrats et cliquez sur **▶ Lancer l'analyse**.
+- Si plusieurs colonnes sont collées, la colonne retenue est celle dont l'en-tête contient « contrat », sinon celle qui contient le plus de numéros.
+- La demande est déposée dans `dossier de travail/demandes/`.
+- Le **service d'import** de votre Mac l'exécute avec ce même script.
+- L'avancement s'affiche dans l'appli ; à la fin, les opérations se chargent toutes seules.
+
+**À faire une fois, dans Terminal.**
+
+1. Enregistrez la phrase secrète du registre dans le **Trousseau macOS**. Le service la lit là, sans qu'elle soit écrite dans aucun fichier :
+   ```bash
+   security add-generic-password -s extracterre-import -a registre -w
+   ```
+   Tapez la phrase deux fois. Rien ne s'affiche pendant la frappe.
+2. Installez le service. Il démarre à chaque ouverture de session :
+   ```bash
+   cd ~/Documents/GitHub/extracterre/tools/import && ~/.local/node/bin/node installer-service.mjs
+   ```
+
+Au premier accès aux dossiers Box, macOS peut demander d'autoriser « node » : acceptez.
+
+**Pour le retirer :** `~/.local/node/bin/node installer-service.mjs --retirer`
+
+**Fichiers produits :**
+- journal du service : `~/ExtracTerre-import/service.log` ;
+- journal de chaque demande : `demandes/<demande>.log`.
+
 ## 7. Tests
 
 ```bash

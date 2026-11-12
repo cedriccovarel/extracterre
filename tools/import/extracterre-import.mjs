@@ -39,6 +39,7 @@ Options
   --racine <dossier>       dossier racine (défaut : configuration)
   --dossier-travail <dos.> rapports, résultats et registre local (défaut : ~/ExtracTerre-import)
   --config <fichier>       autre fichier de configuration
+  --statut <fichier>       avancement en JSON (utilisé par le service et l'appli)
 `;
 
 function parseArgs(argv){
@@ -57,7 +58,7 @@ function loadEnv(file){
   return env;
 }
 async function askHidden(question){
-  if(!process.stdin.isTTY) throw new Error('Phrase secrète requise : lancez le script dans un Terminal ou renseignez EXTRACTERRE_PASSPHRASE dans .env.');
+  if(!process.stdin.isTTY) throw new Error('Phrase secrète introuvable : enregistrez-la dans le Trousseau (voir README, « Service automatique ») ou lancez le script dans Terminal.');
   process.stdout.write(question);
   return new Promise(resolve=>{
     const stdin=process.stdin; let s=''; stdin.setRawMode(true); stdin.resume(); stdin.setEncoding('utf8');
@@ -75,10 +76,20 @@ async function pool(items,n,fn){
   await Promise.all(Array.from({length:Math.max(1,Math.min(n,items.length))},async()=>{ while(i<items.length){ const k=i++; out[k]=await fn(items[k],k); } }));
   return out;
 }
+// --statut <fichier> : avancement lisible par l'appli (bouton « Coller une liste de contrats »).
+let STATUS_FILE=null; const STATUS={etat:'en cours',etape:'démarrage',debut:new Date().toISOString()};
+function status(patch={}){ Object.assign(STATUS,patch,{majA:new Date().toISOString()}); if(!STATUS_FILE) return; try{ const tmp=`${STATUS_FILE}.tmp`; fs.writeFileSync(tmp,JSON.stringify(STATUS,null,1)); fs.renameSync(tmp,STATUS_FILE); }catch{} }
+// Phrase secrète : .env, sinon Trousseau macOS (service « extracterre-import », compte « registre »), sinon saisie masquée.
+async function keychainPassphrase(){
+  if(process.platform!=='darwin') return '';
+  const {execFileSync}=await import('child_process');
+  try{ return execFileSync('/usr/bin/security',['find-generic-password','-s','extracterre-import','-a','registre','-w'],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim(); }catch{ return ''; }
+}
 const FAMILY_LABEL=cfg=>Object.fromEntries((cfg.families||[]).map(f=>[f.id,f.label]));
 
 async function main(){
   const args=parseArgs(process.argv.slice(2));
+  if(args.statut) STATUS_FILE=path.resolve(home(args.statut));
   if(args.aide||args.help){ console.log(AIDE); return; }
   const cfgPath=path.resolve(args.config||path.join(HERE,'import.config.json'));
   const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
@@ -132,7 +143,8 @@ async function main(){
   if(match.missing.length) console.log(`  sans dossier : ${match.missing.slice(0,15).join(', ')}${match.missing.length>15?'…':''}`);
   console.log(`  sous-dossiers ignorés les plus fréquents : ${ign.slice(0,12).map(([k,e])=>`${k} (${e.n})`).join(' · ')||'aucun'}`);
   console.log(`  rapports : ${runDir}`);
-  if(mode==='check-only') return;
+  status({etape:'correspondance',correspondance:{demandes:wanted?.length??null,trouves:match.found.length,sansDossier:match.missing,plusieursDossiers:match.multiple.map(m=>m.contract),annules:match.onlyCancelled.map(m=>m.contract),illisibles:(listInfo?.invalid||[]).map(x=>x.value),sansSousDossier:noFamily},rapports:runDir});
+  if(mode==='check-only'){ status({etat:'terminé',etape:'terminé'}); return; }
 
   // 4. Registre, décisions, phrase secrète
   const env={...loadEnv(path.join(HERE,'.env')),...process.env};
@@ -140,7 +152,7 @@ async function main(){
   const useSupabase=!args.local&&mode==='traitement'&&env.SUPABASE_URL&&env.SUPABASE_SERVICE_ROLE_KEY;
   if(useSupabase){
     store=new SupabaseStore({url:env.SUPABASE_URL,serviceKey:env.SUPABASE_SERVICE_ROLE_KEY});
-    const pass=env.EXTRACTERRE_PASSPHRASE||await askHidden('Phrase secrète du registre (non affichée) : ');
+    const pass=env.EXTRACTERRE_PASSPHRASE||await keychainPassphrase()||await askHidden('Phrase secrète du registre (non affichée) : ');
     const k=await openKeys(store,pass); keys=k.keys;
     console.log(k.created?'  registre Supabase créé (chiffré avec votre phrase secrète — conservez-la : elle n’est enregistrée nulle part).':'  registre Supabase ouvert (chiffré).');
   } else if(mode==='traitement') console.log('  Supabase non configuré (ou --local) : registre local seulement.');
@@ -162,14 +174,16 @@ async function main(){
   const aiMax=Number(args['max-ia']??cfg.ia?.maxAppels??30);
   const ops=match.found;
   const prOps=new Progress(ops.length,mode==='dry-run'?'Simulation':'Opérations');
+  status({etape:'extraction',operations:{fait:0,total:ops.length,courante:''},contrats:ops.map(o=>o.contract)});
 
   for(const op of ops){
     if(stopping) break;
     const s=scans.get(op.folder); const contract=op.contract;
     const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
-    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
+    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
     totals.ops++;
+    status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
     const kept=s.files.filter(f=>!f.ignoreReason);
     const ranks=rankVersions(kept.map(f=>({id:f.relPath,family:f.family,relDir:f.relDir,name:f.name,mtimeMs:f.mtimeMs})),cfg);
@@ -269,7 +283,7 @@ async function main(){
     }
     for(const k of Object.keys(c)) totals[k]+=c[k];
     finalRows.push([contract,op.folder,stopping?'interrompu':mode==='dry-run'?'simulé':'traité',c.files,c.extracted,c.reused,c.ignored,c.review,c.errors,c.missing,c.ai]);
-    prOps.tick(`${contract} · ${c.files} fichier(s)`);
+    prOps.tick(`${contract} · ${c.files} fichier(s)`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''},totaux:{...totals}});
   }
   prOps.end();
 
@@ -277,6 +291,7 @@ async function main(){
   writeCsv(path.join(runDir,'rapport-final.csv'),['contrat','dossier','résultat','fichiers','extraits','réutilisés','ignorés','à vérifier','erreurs','disparus','appels IA'],finalRows);
   console.log(`\nRésultat (${mode})\n  opérations : ${totals.ops}${totals.opsSkipped?` · inchangées sautées : ${totals.opsSkipped}`:''}\n  fichiers : ${totals.files} · extraits : ${totals.extracted} · réutilisés : ${totals.reused} · ignorés : ${totals.ignored} · à vérifier : ${totals.review} · erreurs : ${totals.errors}${totals.missing?` · disparus : ${totals.missing}`:''}${args['with-ai']?`\n  appels IA : ${totals.ai} · propositions : ${totals.aiProposals}`:''}\n  rapports : ${runDir}`);
   if(stopping) console.log('  Interrompu : relancez la même commande pour reprendre.');
+  status({etat:stopping?'interrompu':'terminé',etape:'terminé',totaux:{...totals},finA:new Date().toISOString()});
 }
 
 function firstPageOf(d){ const p=d?.read?.pages?.[0]; return (p?.lines||[]).map(l=>l.text).join('\n')||String(p?.text||''); }
@@ -292,4 +307,4 @@ function combine(x,k,r,dec){
 
 function invRow(e,k){ return [e.contract,e.relDir,e.family,e.name,e.ext,e.size,e.docType||'',e.method||'',e.docKey||'',e.versionLabel||'',e.versionRank||'',e.isCurrent?'oui':'non',e.status,e.reason||'']; }
 
-main().catch(err=>{ console.error(`\nErreur : ${err?.message||err}`); process.exit(1); });
+main().catch(err=>{ console.error(`\nErreur : ${err?.message||err}`); status({etat:'erreur',erreur:String(err?.message||err)}); process.exit(1); });
