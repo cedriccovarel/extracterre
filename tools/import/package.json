@@ -1,0 +1,11 @@
+{
+  "name": "extracterre-import",
+  "private": true,
+  "type": "module",
+  "description": "Import massif ExtracTerre : sélection par contrats, classement, versions, extraction par les parseurs de l'appli.",
+  "bin": {"extracterre-import": "./extracterre-import.mjs"},
+  "dependencies": {
+    "pdfjs-dist": "3.11.174",
+    "xlsx": "0.18.5"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "_aide": "Configuration de l'import massif ExtracTerre. Modifiable sans toucher au code. Les noms sont comparés sans accents, sans majuscules, sans numérotation en tête (« 03 - », « 3_ ») et au singulier. Voir tools/import/README.md.",
+
+  "racine": "~/Library/CloudStorage/Box-Box/2 PRODUCTION EVALUATION/1 BEE Contrats",
+  "dossierTravail": "~/ExtracTerre-import",
+
+  "_aide_contrats": "Numéros de contrat : lus en tête du nom de dossier (avant le premier mot), comparés par valeur complétée à 8 chiffres. Les numéros de moins de minContractDigits chiffres (départements) sont ignorés.",
+  "contractWidth": 8,
+  "minContractDigits": 3,
+  "cancelledPrefixes": ["Annule", "Annulé", "Annulee", "Annulée"],
+
+  "_aide_familles": "Sous-dossiers retenus, à n'importe quel niveau de l'opération. synonyms : mots ou suites de mots à trouver dans le nom du dossier. presumedType : type présumé d'un fichier rangé là. compatibleTypes : types qui ne contredisent pas le dossier.",
+  "families": [
+    {
+      "id": "cctp",
+      "label": "CCTP",
+      "synonyms": ["CCTP", "cahier des clauses techniques", "clauses techniques"],
+      "presumedType": "CCTP",
+      "compatibleTypes": ["CCTP", "DPGF", "Notice architecturale / pièce écrite architecte", "Descriptif du projet", "Contrat"]
+    },
+    {
+      "id": "thermique",
+      "label": "Note ou étude thermique",
+      "synonyms": ["thermique", "thermic", "RE2020", "RE 2020", "RT2012", "RT 2012", "RT existant", "Bbio", "etude energetique", "note technique", "notes techniques"],
+      "presumedType": "Étude thermique",
+      "compatibleTypes": ["Étude thermique", "RSET RE2020", "RSEE RE2020", "RT2012", "RT Existant", "DPE", "Rapport d'imperméabilité", "Diagnostic"]
+    },
+    {
+      "id": "carbone",
+      "label": "Note ou étude carbone / ACV / RSEE",
+      "synonyms": ["carbone", "ACV", "RSEE", "RSET", "RSEnv", "ACV dynamique", "analyse de cycle de vie", "cycle de vie"],
+      "presumedType": "Étude carbone / ACV",
+      "compatibleTypes": ["Étude carbone / ACV", "RSEE RE2020", "RSENV / RSNV", "RSET RE2020", "Étude thermique"]
+    }
+  ],
+
+  "_aide_notFamily": "Dossiers « conteneurs » (ex. Évaluation thermique, qui contient aussi plans et DQE) : leurs fichiers directs prennent la famille de leur nom, mais leurs sous-dossiers ne sont retenus que s'ils correspondent eux-mêmes à une famille.",
+  "notFamily": ["evaluation thermique", "evaluation"],
+
+  "_aide_skipFolders": "Dossiers jamais parcourus (ni listés, ni lus). Par défaut : copies brutes du DCE (Dossier source, Autres), suivi de chantier, exécution (fiches produits) et photos — les documents retenus sont ceux triés dans Évaluation. Retirer un nom pour le faire parcourir.",
+  "skipFolders": ["dossier source", "autres", "suivi environnemental", "execution", "photo", "photos de visite"],
+
+  "_aide_archiveFolders": "Dossiers d'archives : leurs fichiers passent après ceux du dossier principal pour le choix de la version courante.",
+  "archiveFolders": ["archive", "archives", "ancien", "anciens", "ancienne version", "old", "obsolete", "perime"],
+
+  "_aide_fichiers": "Fichiers ignorés (ni lus, ni hachés). readableExtensions : formats lus par ExtracTerre.",
+  "readableExtensions": ["pdf", "xml", "xlsx", "xls", "csv"],
+  "ignoreExtensions": ["jpg", "jpeg", "png", "gif", "heic", "tif", "tiff", "bmp", "webp", "dwg", "dxf", "rvt", "ifc", "skp", "zip", "rar", "7z", "msg", "eml", "lnk", "url", "tmp", "bak", "mp4", "mov", "docx", "doc", "pptx", "ppt", "txt", "json", "boxnote"],
+  "ignoreFilePrefixes": ["~$", "._", ".~lock"],
+  "ignoreFileNames": [".DS_Store", "Thumbs.db", "desktop.ini", "Icon\r"],
+
+  "_aide_versions": "Expressions régulières (sur le nom sans accents, en minuscules). Le groupe 1 donne l'indice. letterSuffix s'applique au nom d'origine (majuscule collée par - ou _ en fin de nom, ex. CCTP-C).",
+  "versionPatterns": {
+    "letter": ["(?:^|[^a-z0-9])ind(?:ice)?[\\s._-]*([a-z])(?![a-z0-9])"],
+    "number": ["(?:^|[^a-z0-9])v(?:ersion)?[\\s._-]*(\\d{1,3})(?![0-9])", "(?:^|[^a-z0-9])rev(?:ision)?[\\s._-]*(\\d{1,3})(?![0-9])", "(?:^|[^a-z0-9])ind(?:ice)?[\\s._-]*(\\d{1,3})(?![0-9])"],
+    "letterSuffix": ["[_-]([A-H])$"]
+  },
+  "versionWords": ["final", "finale", "def", "definitif", "definitive", "rev", "version", "copie", "copy", "maj", "modifie", "vf", "dernier", "derniere", "ind", "indice"],
+
+  "_aide_classement": "nameMinConfidence : confiance minimale du classement par nom de fichier (règle c).",
+  "nameMinConfidence": 0.6,
+  "types": {"rset": "RSET RE2020", "rsee": "RSEE RE2020", "dpe": "DPE"},
+
+  "_aide_extraction": "incompleteBelow : en dessous de cette part de champs attendus trouvés, le document passe « à vérifier ». parallelisme : documents lus en même temps.",
+  "incompleteBelow": 0.5,
+  "parallelisme": 3,
+  "profondeurMax": 8,
+  "ia": {"modele": "qwen2.5:7b", "maxAppels": 30, "pauseMs": 1500, "essais": 3}
+}

@@ -1,6 +1,7 @@
 import {APP_VERSION} from './config.js';
 
-const DB_NAME='extracterre-local-workspace';
+// v2.24.0 — l'espace « Import massif » (?espace=import) a sa propre base : la session actuelle n'est jamais touchée.
+const DB_NAME=(()=>{ try{ return new URLSearchParams(globalThis.location?.search||'').get('espace')==='import'?'extracterre-import-workspace':'extracterre-local-workspace'; }catch{ return 'extracterre-local-workspace'; } })();
 const DB_VERSION=3;
 const WORKSPACE_STORE='workspaces';
 const DOCUMENT_STORE='documents';
@@ -118,6 +119,9 @@ function serializeDocMeta(doc={}){
     specializedLabel:doc.specializedLabel||'',
     families:safeJsonClone(doc.families,null),
     familyMode:doc.familyMode||'auto',
+    importKey:doc.importKey||'',
+    importSha:doc.importSha||'',
+    llmProposals:safeJsonClone(doc.llmProposals,null),
     persistedAnalysis:hasAnalysis
   };
 }
@@ -179,6 +183,10 @@ function serializeProject(project={}){
     planChecks:safeJsonClone(project.planChecks,{}),
     favorite:!!project.favorite,
     ownerName:project.ownerName||'',
+    // v2.24.0 — opération alimentée par l'import massif (contrat, dossier, dernière mise à jour).
+    importContract:project.importContract||'',
+    importFolder:project.importFolder||'',
+    importSyncedAt:project.importSyncedAt||null,
     expanded:project.expanded!==false
   };
 }
