@@ -1,3 +1,22 @@
+# v2.29.0 — Nouvelle analyse en 3 étapes ; lots de CCTP limités aux thèmes des Recherches
+
+- Suivi des sources → Nouvelle analyse :
+  1. liste des contrats ;
+  2. **export Salesforce** (facultatif, recommandé) : appliqué d'abord, aux seuls contrats de la liste ; les opérations absentes
+     sont créées pour eux, avec les bâtiments Salesforce comme périmètre ;
+  3. analyse des documents.
+- **Lots de CCTP lus selon les thèmes des Recherches.**
+  - Sécurité : menuiseries, serrurerie-métallerie, électricité et courants faibles, VRD et extérieurs, clôtures et portails.
+  - Brasseurs et climatisation : électricité, CVC, ventilation, plomberie.
+  - Mode constructif : gros œuvre, structure, ossature bois.
+
+  Les autres lots ne sont pas lus : charpente-couverture, étanchéité, plâtrerie, peinture, sols, carrelage, échafaudage, généralités…
+  Un CCTP sans lot identifiable est toujours lu. Les abréviations (ELEC, PLB, MEX, MIN, CFO/CFA, GO) et « Œ » sont reconnues.
+  Les lots sont déduits des thèmes de chaque grille, et modifiables dans l'éditeur de grille (« Lots de CCTP à lire »).
+  Mesuré sur le registre réel : 773 CCTP, 412 lus, 361 écartés.
+- Études thermiques et carbone toujours lues : elles nourrissent l'onglet Thermique et les Recherches brasseurs / clim / DH.
+- Script : option `--lots-cctp`, transmise par le service depuis la demande.
+
 # v2.28.0 — Import massif : file des analyses, arrêt, avancement par document, OCR plus rapide
 
 - Suivi des sources → Nouvelle analyse : **File des analyses**, avec le statut de chaque demande (en attente, en cours n/N, terminée,

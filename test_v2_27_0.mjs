@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {sfPerimeterMap} from './js/sf-perimeter.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.28.0','version');
+eq(APP_VERSION,'2.29.0','version');
 const m=(sf,d,man)=>sfPerimeterMap(sf,d,man).map;
 eq(m(['BAT A','BAT B'],['Bâtiment A','Bat. B','BATIMENT A']),{'Bâtiment A':'Bâtiment A','Bat. B':'Bâtiment B','BATIMENT A':'Bâtiment A'},'même nom, écritures neutralisées');
 eq(m(['BAT A','BAT B'],['Bâtiment A Est','Bâtiment B aile nord']),{'Bâtiment A Est':'Bâtiment A','Bâtiment B aile nord':'Bâtiment B'},'qualificatif : même identifiant');
@@ -22,4 +22,4 @@ eq(/function applySfPerimeter/.test(app)&&/applySfPerimeter\(project\);/.test(ap
 eq(/if\(sfPerimeterOn\(project\)\)\{ const S=project\.sfBuildings/.test(app),true,'valeur manuelle hors périmètre ignorée');
 eq(/sfBuildings:safeJsonClone\(project\.sfBuildings,\[\]\)/.test(per)&&/sfBuildingMap:safeJsonClone/.test(per)&&/sfPerimeterOff:!!project\.sfPerimeterOff/.test(per),true,'périmètre et corrections sauvegardés');
 eq(/data-sfp-open/.test(app)&&/data-sfp-off/.test(app),true,'table de correspondance et désactivation');
-console.log(`v2.28.0 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.29.0 — ${n} vérifications OK (données fictives)`);

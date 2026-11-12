@@ -49,6 +49,7 @@ function run(req){
     if(process.env.EXTRACTERRE_SERVICE_ARGS) args.push(...process.env.EXTRACTERRE_SERVICE_ARGS.split(' ').filter(Boolean));
     if(r.mode==='check-only') args.push('--check-only');
     if(r.ocr===false) args.push('--sans-ocr');
+    if(Array.isArray(r.cctpLots)&&r.cctpLots.length) args.push('--lots-cctp',r.cctpLots.map(String).join(','));
     writeJson(statut,{etat:'en cours',etape:'démarrage',debut:new Date().toISOString()});
     const log=fs.openSync(path.join(dir,`${req.id}.log`),'a');
     const child=spawn(process.execPath,args,{cwd:HERE,stdio:['ignore',log,log],env:{...process.env}});

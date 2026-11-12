@@ -27,6 +27,19 @@ const srch_normS=s=>normLower(s).replace(/[’'`]/g,' ');
 const srch_numOrNull=v=>{ const n=typeof v==='number'?v:parseFrNumber(String(v??'')); return Number.isFinite(n)?n:null; };
 
 // Grille reçue d'un fichier, de l'IA ou du stockage local : champs attendus seulement, typés un par un.
+// v2.29.0 — lots de CCTP utiles à une grille (import massif : les autres lots ne sont pas lus). Déduits des thèmes quand la
+// grille n'en a pas encore ; modifiables dans l'éditeur (« Lots de CCTP à lire »).
+const SRCH_LOT_RULES=[
+  [/s[ée]curit|fen[êe]tre|porte|hall|abord|parking|acc[èe]s|intrusion/i,['menuiserie','menuiseries exterieures','menuiseries interieures','serrurerie','metallerie','electricite','courants faibles','controle d acces','interphonie','vrd','espaces exterieurs','amenagements exterieurs','cloture','portail','automatisme','fermeture']],
+  [/brasseur|ventilateur/i,['electricite','cvc','chauffage','ventilation','vmc','plomberie','climatisation']],
+  [/clim|refroidi/i,['cvc','chauffage','ventilation','vmc','climatisation','plomberie']],
+  [/mode constructif|structure|constructi/i,['gros oeuvre','gros-oeuvre','maconnerie','structure','ossature bois','beton']]
+];
+export function gridCctpLots(g){
+  if(Array.isArray(g?.cctpLots)&&g.cctpLots.length) return g.cctpLots;
+  const names=[...(g?.themes||[]).map(t=>t.name),...(g?.criteria||[]).map(c=>c.theme)].join(' | ');
+  return [...new Set(SRCH_LOT_RULES.filter(([re])=>re.test(names)).flatMap(([,lots])=>lots))];
+}
 export function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
@@ -35,7 +48,7 @@ export function normalizeGrid(g={}){
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   if(g.id==='securite-logements') srch_migrateSecurity(criteria);
   return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
-    docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria};
+    docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria,cctpLots:srch_list(g.cctpLots)};
 }
 
 // v2.14.0 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et

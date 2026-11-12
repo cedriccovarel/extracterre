@@ -5,7 +5,7 @@
 
 // Minuscules, sans accents, apostrophes et espaces uniformisés.
 export function ir_norm(s=''){
-  return String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[’‘`]/g,"'").replace(/ /g,' ').toLowerCase().replace(/\s+/g,' ').trim();
+  return String(s??'').replace(/œ/g,'oe').replace(/Œ/g,'OE').replace(/æ/g,'ae').replace(/Æ/g,'AE').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[’‘`]/g,"'").replace(/ /g,' ').toLowerCase().replace(/\s+/g,' ').trim();
 }
 
 // ---------- Numéros de contrat ----------
@@ -155,6 +155,23 @@ export function fileIgnoreReason(name,cfg={}){
   const plain=ir_norm(base.replace(/\.[a-z0-9]{1,6}$/i,'')).replace(/[_.]+/g,' ');
   for(const src of cfg.ignoreNamePatterns||[]){ try{ if(new RegExp(src,'i').test(plain)) return 'correspondance ou pièce annexe (nom du fichier)'; }catch{} }
   return null;
+}
+
+// v2.29.0 — lots de CCTP : un fichier dont le nom désigne un lot n'est lu que si ce lot est utile aux Recherches (wanted).
+// Un CCTP sans lot identifiable (« CCTP.pdf », « CCTP compilé ») est toujours lu.
+const IR_LOT_WORDS=['gros oeuvre','maconnerie','demolition','desamiantage','terrassement','fondation','charpente','couverture','zinguerie','etancheite','bardage','facade','ravalement','isolation thermique','ite','menuiserie','serrurerie','metallerie','platrerie','cloison','doublage','faux plafond','plafond','peinture','revetement','sols','carrelage','faience','parquet','electricite','courants faibles','cvc','chauffage','ventilation','vmc','plomberie','sanitaire','climatisation','ascenseur','vrd','espaces verts','espaces exterieurs','amenagements exterieurs','cloture','portail','nettoyage','echafaudage','generalites','structure','ossature','beton','automatisme','controle d acces','interphonie','photovoltaique','ecs','equipements'];
+export function cctpLotDecision(name,wanted=[]){
+  const plain=' '+ir_norm(String(name).replace(/\.[a-z0-9]{1,6}$/i,'')).replace(/[_.\-–—()]+/g,' ').replace(/\s+/g,' ')+' ';
+  const ABBR={'electricite':['elec','cfo','cfa','courants forts','courant fort','courant faible'],'plomberie':['plb','plomb'],'menuiserie':['mex','min','menuis'],'menuiseries exterieures':['mex'],'menuiseries interieures':['min'],
+    'serrurerie':['serr'],'metallerie':['metal'],'gros oeuvre':['go'],'chauffage':['chauf'],'ventilation':['vent'],'climatisation':['clim'],'courants faibles':['cfa'],'vrd':['voirie']};
+  const W=[...new Set((wanted||[]).flatMap(w=>{ const k=ir_norm(w).replace(/[_.\-–—()]+/g,' ').replace(/\s+/g,' ').trim(); return [k,...(ABBR[k]||[])]; }))].filter(Boolean).map(w=>' '+w+' ');
+  if(!W.length) return {read:true,reason:''};
+  const has=w=>plain.includes(w)||plain.includes(w.trimEnd()+'s ');
+  if(W.some(has)) return {read:true,reason:'lot utile aux Recherches'};
+  const lotWords=IR_LOT_WORDS.map(w=>' '+w+' ').filter(has);
+  const isLot=lotWords.length||/ lot ?n?°? ?\d/.test(plain);
+  if(!isLot) return {read:true,reason:''};
+  return {read:false,reason:`lot CCTP hors thèmes des Recherches${lotWords.length?` (${lotWords.map(w=>w.trim()).slice(0,2).join(', ')})`:''}`};
 }
 
 // ---------- Versions ----------

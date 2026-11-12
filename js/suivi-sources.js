@@ -123,11 +123,11 @@ export function ssParseContractPaste(text=''){
   return {contracts,invalid,column:col};
 }
 async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
-export async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true}={}){
+export async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[]}={}){
   const d=new Date(), p=n=>String(n).padStart(2,'0');
   const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
-  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
   return id;
 }
 async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }

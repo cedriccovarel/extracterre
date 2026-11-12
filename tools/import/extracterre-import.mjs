@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
-import {parseContractList,matchContracts,rankVersions,classifyImportFile,documentKey,fileExtension} from '../../js/import-rules.js';
+import {parseContractList,matchContracts,rankVersions,classifyImportFile,documentKey,fileExtension,cctpLotDecision} from '../../js/import-rules.js';
 import {listOperationFolders,scanOperation,ignoredDirLabel} from './lib/scan.mjs';
 import {Registry,SupabaseStore,openKeys} from './lib/registry.mjs';
 import {sha256File} from './lib/crypto.mjs';
@@ -36,6 +36,7 @@ Options
   --max-ia <n>             plafond d'appels IA (défaut : configuration)
   --parallelisme <n>       documents lus en même temps (défaut : configuration)
   --sans-ocr               ne pas faire l'OCR des PDF scannés (plus rapide)
+  --lots-cctp <a,b,c>      lots de CCTP à lire (les autres lots ne sont pas lus) ; vide = tous
   --reextraire             relire même les fichiers déjà connus (après une mise à jour des parseurs)
   --local                  ne pas utiliser Supabase (registre local seulement)
   --racine <dossier>       dossier racine (défaut : configuration)
@@ -98,6 +99,7 @@ async function main(){
   const root=home(args.racine||cfg.racine);
   const workDir=home(args['dossier-travail']||cfg.dossierTravail||'~/ExtracTerre-import');
   const parallel=Number(args.parallelisme||cfg.parallelisme||3);
+  const cctpLots=String(args['lots-cctp']||'').split(',').map(x=>x.trim()).filter(Boolean);
   const mode=args['check-only']?'check-only':args['dry-run']?'dry-run':'traitement';
   const runDir=path.join(workDir,'rapports',`${stamp()}_${mode}`);
   if(!fs.existsSync(root)) throw new Error(`Dossier racine introuvable : ${root}`);
@@ -184,12 +186,14 @@ async function main(){
   for(const op of ops){
     if(stopping) break;
     const s=scans.get(op.folder); const contract=op.contract;
-    const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
+    const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,cctpLots,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
     if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
     totals.ops++;
     status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
+    // v2.29.0 — lots de CCTP hors thèmes des Recherches : non lus (liste transmise par l'appli, option --lots-cctp).
+    if(cctpLots.length) for(const f of s.files){ if(f.family!=='cctp'||f.ignoreReason) continue; const d=cctpLotDecision(f.name,cctpLots); if(!d.read) f.ignoreReason=d.reason; }
     const kept=s.files.filter(f=>!f.ignoreReason);
     const ranks=rankVersions(kept.map(f=>({id:f.relPath,family:f.family,relDir:f.relDir,name:f.name,mtimeMs:f.mtimeMs})),cfg);
     // Choix de version imposé dans l'appli (« À vérifier »)

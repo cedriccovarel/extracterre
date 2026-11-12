@@ -21,7 +21,7 @@ import {canonicalBuilding} from './buildings.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
-import {normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
+import {gridCctpLots,normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,loadDocumentReads,unloadDocumentRead,docReadLoaded,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
@@ -2392,7 +2392,7 @@ function renderSearchEditor(g){
   const crits=g.criteria, themes=g.themes, opt=(v,cur)=>`<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>`;
   return `<section class="eco-group srch-editor"><h4>Paramétrage de la grille</h4>
   <div class="srch-grid-meta"><label>Nom<input data-g="name" value="${escapeHtml(g.name)}"></label><label>Limiter aux documents dont le nom ou le type contient <small>(virgules ; vide = tous)</small><input data-g="docFilter" value="${escapeHtml(g.docFilter)}" placeholder="ex. CCTP, menuiserie"></label>
-  <label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
+  <label class="wide">Lots de CCTP à lire (import massif) <small>(virgules ; vide = déduits des thèmes : ${escapeHtml(gridCctpLots({...g,cctpLots:[]}).join(', ')||'aucun')})</small><input data-g="cctpLots" value="${escapeHtml((g.cctpLots||[]).join(', '))}" placeholder="ex. menuiserie, serrurerie, electricite"></label><label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
   <h5>Thèmes</h5><div class="table-scroll"><table class="srch-table"><thead><tr><th>Thème</th><th>Critères à trouver (minimum)</th><th>Applicable seulement si</th></tr></thead><tbody>${themes.map((t,i)=>`<tr data-theme-row="${i}"><td><input data-t="name" value="${escapeHtml(t.name)}"></td><td><input data-t="min" type="number" min="0" value="${t.min}"></td><td><select data-t="applicableIf">${opt('',t.applicableIf)}toujours</option>${crits.map(c=>`${opt(c.id,t.applicableIf)}${escapeHtml(c.label.slice(0,70))}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
   <h5>Critères <small>mots-clés séparés par des virgules ; sans accents ni majuscules obligatoires ; « re: » = expression régulière</small></h5>
   <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
@@ -2407,7 +2407,7 @@ function renderSearchEditor(g){
 }
 function collectGridFromEditor(root,g){
   const val=(el,k)=>el.querySelector(`[data-${k}]`);
-  const next={...g,name:root.querySelector('[data-g="name"]').value,docFilter:root.querySelector('[data-g="docFilter"]').value,description:root.querySelector('[data-g="description"]').value};
+  const next={...g,name:root.querySelector('[data-g="name"]').value,docFilter:root.querySelector('[data-g="docFilter"]').value,description:root.querySelector('[data-g="description"]').value,cctpLots:String(root.querySelector('[data-g="cctpLots"]')?.value||'').split(',').map(x=>x.trim()).filter(Boolean)};
   const themes=[...root.querySelectorAll('[data-theme-row]')].map(r=>({name:r.querySelector('[data-t="name"]').value.trim(),min:r.querySelector('[data-t="min"]').value,applicableIf:r.querySelector('[data-t="applicableIf"]').value,required:[]}));
   // Renommage d'un thème : les critères suivent.
   g.themes.forEach((t,i)=>{ if(themes[i]&&themes[i].name&&themes[i].name!==t.name) for(const c of g.criteria) if(c.theme===t.name) c.theme=themes[i].name; });
@@ -3404,7 +3404,11 @@ function ssRenderNew(body){
   const keep=$('#sourcesDialog [data-ss-paste]')?.value||'';
   body.innerHTML=`<div class="ss-new"><p>Collez la colonne Excel des numéros de contrat. ExtracTerre dépose la demande dans le dossier de travail ; le <b>service d’import</b> de votre Mac lit les dossiers Box (lecture seule) et extrait les documents, puis les opérations se chargent ici automatiquement.</p>
     <div data-ss-service class="ss-service">Vérification du service…</div>
+    <div class="ss-step"><b>1.</b> Liste des numéros de contrat</div>
     <textarea data-ss-paste rows="8" placeholder="00005361&#10;00004918&#10;…"></textarea><div class="ss-paste-info" data-ss-paste-info></div>
+    <div class="ss-step"><b>2.</b> Export Salesforce « Opérations (détails) » <small>(facultatif, recommandé : ses données et ses bâtiments sont appliqués d’abord, aux seuls contrats de la liste)</small></div>
+    <input type="file" data-ss-sfx accept=".xls,.xlsx,.csv">
+    <div class="ss-step"><b>3.</b> Analyse des documents <small>(études thermiques et carbone ; lots de CCTP utiles aux Recherches : ${escapeHtml(ssCctpLots().slice(0,12).join(', '))}${ssCctpLots().length>12?'…':''})</small></div>
     <label class="chk ss-ocr"><input type="checkbox" data-ss-ocr checked> OCR des PDF scannés (plus lent : quelques secondes par page)</label>
     <div class="ss-new-actions"><button class="btn light" data-ss-launch="check-only" disabled title="Rapport de correspondance seulement : contrats trouvés, sans dossier, en double">Vérifier la correspondance</button><button class="btn primary" data-ss-launch="traitement" disabled>▶ Lancer l’analyse</button></div>
     <div data-ss-progress></div><div class="ss-queue" data-ss-queue></div></div>`;
@@ -3412,6 +3416,8 @@ function ssRenderNew(body){
   ssRefreshService(); ssWatchRequest(); ssRenderQueue();
 }
 // v2.28.0 — file des analyses : statut de chaque demande, arrêter / annuler / supprimer, vider l'historique.
+// Lots de CCTP utiles : réunion des lots des grilles de Recherches (déduits des thèmes si la grille n'en précise pas).
+function ssCctpLots(){ try{ return [...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]; }catch{ return []; } }
 async function ssRenderQueue(){
   const box=$('#sourcesDialog [data-ss-queue]'); if(!box||!ss.dir) return;
   let list=[]; try{ list=await ssListRequests(ss.dir); }catch{ box.innerHTML=''; return; }
@@ -3433,7 +3439,13 @@ async function ssLaunch(mode){
   // Une demande à la fois : un double clic ne lance pas deux analyses.
   const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!ssRequestDone(st)&&(st||(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===cur))){ toast('Une analyse est déjà en cours : attendez la fin, ou arrêtez-la dans « File des analyses ».','warn'); return; } }
   $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=true);
-  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked});
+  // Étape 2 : export Salesforce appliqué d'abord (contrats de la liste seulement ; opérations créées pour eux si absentes).
+  const sfFile=$('#sourcesDialog [data-ss-sfx]')?.files?.[0];
+  if(sfFile&&mode==='traitement'){ try{ const box=$('#sourcesDialog [data-ss-progress]'); if(box) box.innerHTML='<p class="ss-wait">Export Salesforce : application aux contrats de la liste…</p>';
+      const res=await sfxImport(sfFile,{onlyContracts:new Set(r.contracts.map(c=>contractKey(c))),createMissing:true});
+      toast(`Salesforce : ${res.updated} opération(s) mises à jour${res.created?`, ${res.created} créée(s)`:''} · ${res.values.toLocaleString('fr-FR')} valeur(s).`,'success'); }
+    catch(err){ toast(`Export Salesforce non appliqué : ${err?.message||err}`,'error'); } }
+  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots()});
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
 }
@@ -3511,7 +3523,7 @@ function sfxApplyToProject(p,vals,srcName,{replaceManual=false}={}){
   computeProjectResult(p);
   return {applied,kept};
 }
-async function sfxImport(file,{replaceManual=false,createMissing=false,onProgress=()=>{}}={}){
+async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContracts=null,onProgress=()=>{}}={}){
   const table=await sfxReadFile(file); if(table.length<2) throw new Error('Fichier vide ou illisible.');
   const cols=sfxColumns(table[0]);
   if(cols.contract<0&&cols.code<0) throw new Error('Colonne « Numéro du contrat » ou « Code interne » introuvable dans l’export.');
@@ -3523,7 +3535,7 @@ async function sfxImport(file,{replaceManual=false,createMissing=false,onProgres
   const data=table.slice(1);
   for(let i=0;i<data.length;i++){
     const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; continue; } res.technical++;
-    const key=f.contract?contractKey(f.contract):''; let ps=(key&&byContract.get(key))||(f.code&&byCode.get(f.code.toUpperCase()))||[];
+    const key=f.contract?contractKey(f.contract):''; if(onlyContracts&&!onlyContracts.has(key)) continue; let ps=(key&&byContract.get(key))||(f.code&&byCode.get(f.code.toUpperCase()))||[];
     if(ps.length>1){ res.duplicates.push(f.contract||f.code); }
     if(!ps.length){ if(!createMissing||!f.contract){ res.noOperation.push(f.contract||f.code); continue; }
       const p=createProject(state.projects.length+1); p.contractNumber=f.contract; p.customTitle=f.contract; p.expanded=false; state.projects.push(p); byContract.set(key,[p]); ps=[p]; res.created++; }
