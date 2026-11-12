@@ -11,7 +11,7 @@ import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseCon
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.24.7','version');
+eq(APP_VERSION,'2.25.0','version');
 
 // --- Numéros de contrat
 eq(irContractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
@@ -71,6 +71,8 @@ eq(fileIgnoreReason('plan.dwg',cfg),'extension ignorée (.dwg)','DWG');
 eq(fileIgnoreReason('RSET.xml',cfg),null,'XML lu');
 eq(fileIgnoreReason('note.PDF',cfg),null,'PDF lu');
 eq(fileIgnoreReason('fichier.pages',cfg),'format non lu par ExtracTerre (.pages)','format inconnu');
+eq(['Mail modif DCE V2.pdf','Retour NC sur OPE 000770.pdf','PV 11-A-572.pdf','Catalogue options (1).pdf','Messagerie PRESTATERRE.pdf'].map(n=>!!fileIgnoreReason(n,cfg)),[true,true,true,true,true],'v2.25.0 : correspondance et annexes écartées par le nom');
+eq(['Note thermique.pdf','PC16_Attestation Thermique.pdf','Réponses Fluidys pour certification.pdf','RE Dossier BD.pdf'].map(n=>fileIgnoreReason(n,cfg)),[null,null,null,null],'v2.25.0 : documents techniques gardés');
 
 // --- Versions
 eq(versionIndex('CCTP lot 2 indA.pdf',cfg),{scheme:'lettre',rank:1,label:'ind A'},'indA');
@@ -108,18 +110,27 @@ const vs=rankVersions([
 eq(['a','b','c','d'].map(k=>vs.get(k).current),[false,true,false,false],'indice le plus élevé (l’archive passe après)');
 eq(vs.get('b').rank,1,'rang 1');
 eq(vs.get('f').current,true,'date du dossier daté prime sur la date de modification');
-eq([vs.get('g').ambiguous,vs.get('h').ambiguous],[true,true],'indice d’un côté seulement → ambigu');
+eq([vs.get('g').ambiguous,vs.get('h').ambiguous],[true,true],'indice d’un côté seulement, fichier sans indice plus récent → ambigu');
+const vs2=rankVersions([{id:'x',family:'cctp',relDir:'CCTP',name:'Lot 10_CVP_V3.pdf',mtimeMs:5},{id:'y',family:'cctp',relDir:'CCTP',name:'Lot 10_CVP.pdf',mtimeMs:2}],cfg);
+eq([vs2.get('x').current,vs2.get('x').ambiguous],[true,false],'v2.25.0 : indice d’un côté, plus récent → courant sans doute');
 eq(vs.get('e').ambiguous,false,'dates comparables → pas ambigu');
 
 // --- Classement (règles a → e)
 const T=cfg.types;
-eq(classifyImportFile({family:'cctp',name:'Lot 2.pdf'},classifyDocument,cfg),{type:'CCTP',method:'sous-dossier',status:'à traiter',doubt:'',steps:['a:CCTP']},'a : sous-dossier seul');
+eq(classifyImportFile({family:'cctp',name:'Notes.pdf'},classifyDocument,cfg),{type:'CCTP',method:'sous-dossier',status:'à traiter',doubt:'',note:'',steps:['a:CCTP']},'a : sous-dossier seul');
 eq(classifyImportFile({family:'thermique',name:'x.xml',xml:{re2020:'RSEE'}},classifyDocument,cfg).type,T.rsee,'b : XML RSEE');
 eq(classifyImportFile({family:'thermique',name:'x.xml',xml:{re2020:null,dpe:false}},classifyDocument,cfg).status,'à vérifier','b : XML non reconnu');
+eq(classifyImportFile({family:'thermique',name:'Entree.xml',xml:{other:'thcex'}},classifyDocument,cfg).type,'RT Existant','b : entrée ThCEx reconnue');
+eq(classifyImportFile({family:'thermique',name:'XML.xml',xml:{other:'controle'}},classifyDocument,cfg).status,'à traiter','b : dossier de contrôle reconnu');
+eq(classifyImportFile({family:'thermique',name:'1248826.xml',xml:{other:'dce'}},classifyDocument,cfg).note,'index de DCE : liste de documents, rien à lire','b : index de DCE');
+eq(classifyImportFile({family:'thermique',name:'Sorties.xml',xml:{re2020:null},appType:'RT Existant'},classifyDocument,cfg).status,'à traiter','b : XML tranché par la lecture complète');
 eq(classifyImportFile({family:'cctp',name:'DPGF lot 02.pdf'},classifyDocument,cfg).type,'DPGF','c : nom compatible');
 eq(classifyImportFile({family:'cctp',name:'scan.pdf',text:''},classifyDocument,cfg).doubt,'PDF sans texte (scan) : OCR nécessaire','scan');
-const contra=classifyImportFile({family:'thermique',name:'Note.pdf',text:'CAHIER DES CLAUSES TECHNIQUES PARTICULIERES\nLot 02'},classifyDocument,cfg);
-eq([contra.status,contra.type],['à vérifier','CCTP'],'d : contenu contradictoire → à vérifier');
+const contra=classifyImportFile({family:'thermique',name:'Note.pdf',text:'CAHIER DES CLAUSES TECHNIQUES PARTICULIERES\nLot 02',appType:'Permis / pièce administrative'},classifyDocument,cfg);
+eq([contra.status,contra.type],['à vérifier','CCTP'],'d : indices sans majorité → à vérifier');
+eq(classifyImportFile({family:'thermique',name:'Note.pdf',text:'CAHIER DES CLAUSES TECHNIQUES PARTICULIERES\nLot 02',appType:'CCTP'},classifyDocument,cfg).note,'rangé dans « Note ou étude thermique » mais lu comme CCTP','v2.25.0 : 1re page et document entier d’accord → accepté avec une note');
+eq(classifyImportFile({family:'cctp',name:'LOT 18 - DEMOLITION - DESCRIPTIF.pdf',text:'Analyse de cycle de vie ACV',appType:'RSET RE2020'},classifyDocument,cfg).status,'à traiter','v2.25.0 : nom de lot dans le dossier CCTP');
+eq(classifyImportFile({family:'thermique',name:'Etude.pdf',text:'Cahier des clauses techniques particulières',appType:'RT Existant'},classifyDocument,cfg),{type:'RT Existant',method:'lecture complète (appli)',status:'à traiter',doubt:'',note:'',steps:['a:Étude thermique','d:CCTP','e:RT Existant']},'v2.25.0 : sous-dossier + document entier suffisent');
 eq(classifyImportFile({family:'thermique',name:'Etude.pdf',text:'Étude thermique réglementaire RE2020'},classifyDocument,cfg).status,'à traiter','d : contenu confirmé');
 eq(classifyImportFile({family:null,name:'xyz.pdf'},classifyDocument,cfg).status,'à vérifier','aucun indice');
 
@@ -185,4 +196,4 @@ const inst=fs.readFileSync(new URL('./tools/import/installer-service.mjs',import
 eq(/MaterializeDatalessFiles<\/key><true\/>/.test(inst)&&!/Background/.test(inst.replace(/\/\/.*$/gm,'')),true,'service autorisé à télécharger les fichiers Box');
 eq(/!\(prev\.counts\?\.errors\)/.test(cli),true,'opération avec erreurs reprise au passage suivant');
 
-console.log(`v2.24.7 — ${n} vérifications OK (données fictives)`);
+console.log(`v2.25.0 — ${n} vérifications OK (données fictives)`);

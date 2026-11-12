@@ -2,3 +2,4 @@
 tools/import/.env
 tools/import/node_modules/
 .DS_Store
+tools/import/*.traineddata

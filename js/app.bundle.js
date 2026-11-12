@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.24.7 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.25.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.24.7';
+const APP_VERSION='2.25.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -10645,6 +10645,7 @@ function serializeProject(project={}){
     // v2.24.3 — documents déchargés de l'onglet Économie (restent dans l'opération pour les autres colonnes).
     economicExcluded:safeJsonClone(project.economicExcluded,[]),
     importContract:project.importContract||'',
+    contractNumber:project.contractNumber||'',
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,
     expanded:project.expanded!==false
@@ -11712,6 +11713,9 @@ function fileIgnoreReason(name,cfg={}){
   if(!ext) return 'sans extension';
   if((cfg.ignoreExtensions||[]).includes(ext)) return `extension ignorée (.${ext})`;
   if(!(cfg.readableExtensions||[]).includes(ext)) return `format non lu par ExtracTerre (.${ext})`;
+  // v2.25.0 — pièces de correspondance ou annexes reconnues à leur nom (mails, courriers, retours de NC, PV, catalogues…).
+  const plain=ir_norm(base.replace(/\.[a-z0-9]{1,6}$/i,'')).replace(/[_.]+/g,' ');
+  for(const src of cfg.ignoreNamePatterns||[]){ try{ if(new RegExp(src,'i').test(plain)) return 'correspondance ou pièce annexe (nom du fichier)'; }catch{} }
   return null;
 }
 
@@ -11803,7 +11807,11 @@ function rankVersions(files,cfg={}){
     if(second&&top.archived===second.archived){
       const mixed=(!!top.index)!==(!!second.index)||(top.index&&second.index&&top.index.scheme!==second.index.scheme);
       const tied=!(top.index&&second.index&&top.index.rank!==second.index.rank)&&!(top.date&&second.date&&top.date!==second.date)&&Math.abs((top.mtimeMs||0)-(second.mtimeMs||0))<1000;
-      if(mixed){ ambiguous=true; reason=`ordre des versions ambigu : « ${top.name} » et « ${second.name} » n'ont pas le même type d'indice`; }
+      // v2.25.0 — indice d'un seul côté : la date de modification départage ; ambigu seulement si le fichier sans indice est plus récent.
+      const lone=mixed&&(!!top.index)!==(!!second.index);
+      const indexedNewer=lone&&((top.index?top:second).mtimeMs||0)>=((top.index?second:top).mtimeMs||0);
+      if(lone&&indexedNewer){ const w=top.index?top:second; if(w!==top){ const i=list.indexOf(w); list.splice(i,1); list.unshift(w); } }
+      else if(mixed){ ambiguous=true; reason=`ordre des versions ambigu : « ${top.name} » et « ${second.name} » n'ont pas le même type d'indice`; }
       else if(tied){ ambiguous=true; reason=`ordre des versions ambigu : « ${top.name} » et « ${second.name} » sont indiscernables`; }
     }
     list.forEach((f,i)=>out.set(f.id,{group:key,rank:i+1,count:list.length,current:i===0,ambiguous:ambiguous&&i<2,reason:ambiguous&&i<2?reason:'',
@@ -11817,37 +11825,49 @@ function rankVersions(files,cfg={}){
 // Règles a → e. classify(fileName, text) = classifyDocument de l'appli (injecté pour garder ce module pur).
 // xml : {re2020:'RSET'|'RSEE'|null, dpe:bool} si le fichier est un XML lu. text : texte de la 1re page (PDF) ;
 // text === '' pour un PDF lu sans texte ; undefined si le contenu n'a pas été lu.
-function classifyImportFile({family=null,name='',xml=null,text,unknownType='Document inconnu'},classify,cfg={}){
+// v2.25.0 — appType : type donné par l'appli après lecture du document entier (même classement que le glisser-déposer).
+// Vote des indices : sous-dossier + au moins un autre indice compatible (nom, 1re page, document entier) = accepté ;
+// 1re page et document entier d'accord sur un autre type = accepté, avec une note « rangé dans … » ;
+// « à vérifier » seulement si les indices se contredisent sans majorité, ou s'il n'y en a aucun.
+function classifyImportFile({family=null,name='',xml=null,text,appType=null,unknownType='Document inconnu'},classify,cfg={}){
   const fam=(cfg.families||[]).find(f=>f.id===family)||null;
-  const compatible=t=>!fam||(fam.compatibleTypes||[]).includes(t);
+  const compatible=t=>!!t&&(!fam||(fam.compatibleTypes||[]).includes(t));
   const ext=fileExtension(name);
+  const known=t=>t&&t!==unknownType?t:null;
+  const A=known(appType);
   const steps=[];
-  let type=fam?.presumedType||null, method=fam?'sous-dossier':'', doubt='';
   if(fam) steps.push(`a:${fam.presumedType}`);
   if(ext==='xml'){
-    if(xml?.re2020){ const t=xml.re2020==='RSEE'?cfg.types?.rsee:cfg.types?.rset; steps.push(`b:${t}`); return {type:t,method:'structure XML',status:'à traiter',doubt:'',steps}; }
-    if(xml?.dpe){ steps.push(`b:${cfg.types?.dpe}`); return {type:cfg.types?.dpe,method:'structure XML',status:'à traiter',doubt:'',steps}; }
-    return {type:type||unknownType,method:method||'extension',status:'à vérifier',doubt:'XML non reconnu (ni RSET/RSEE RE2020, ni DPE)',steps:[...steps,'b:inconnu']};
+    if(xml?.re2020){ const t=xml.re2020==='RSEE'?cfg.types?.rsee:cfg.types?.rset; steps.push(`b:${t}`); return {type:t,method:'structure XML',status:'à traiter',doubt:'',note:'',steps}; }
+    if(xml?.dpe){ steps.push(`b:${cfg.types?.dpe}`); return {type:cfg.types?.dpe,method:'structure XML',status:'à traiter',doubt:'',note:'',steps}; }
+    if(xml?.other==='thcex') return {type:cfg.types?.rtex||'RT Existant',method:'structure XML (entrée ThCEx)',status:'à traiter',doubt:'',note:'',steps:[...steps,'b:thcex']};
+    if(xml?.other==='controle') return {type:cfg.types?.thermal||'Étude thermique',method:'structure XML (dossier de contrôle)',status:'à traiter',doubt:'',note:'dossier de contrôle thermique (XML)',steps:[...steps,'b:controle']};
+    if(xml?.other==='dce') return {type:A||unknownType,method:'structure XML (index de DCE)',status:'à traiter',doubt:'',note:'index de DCE : liste de documents, rien à lire',steps:[...steps,'b:dce']};
+    // XML d'un autre logiciel (ThCEx, ClimaWin…) : la lecture complète de l'appli tranche.
+    if(A&&compatible(A)) return {type:A,method:'lecture complète (appli)',status:'à traiter',doubt:'',note:'',steps:[...steps,`b:${A}`]};
+    return {type:fam?.presumedType||unknownType,method:fam?'sous-dossier':'extension',status:'à vérifier',doubt:A?`XML lu comme ${A}, rangé dans ${fam?.label||family}`:'XML non reconnu (ni RSET/RSEE RE2020, ni DPE)',note:'',steps:[...steps,'b:inconnu']};
   }
   const byName=classify(name,'');
-  const nameType=byName&&byName.type!==unknownType&&byName.confidence>=(cfg.nameMinConfidence??0.6)?byName.type:null;
-  if(nameType){ steps.push(`c:${nameType}`); if(compatible(nameType)){ type=nameType; method='nom du fichier'; } }
-  if(text===''){ return {type:type||unknownType,method:method||'aucune',status:'à vérifier',doubt:'PDF sans texte (scan) : OCR nécessaire',steps:[...steps,'d:scan']}; }
-  if(typeof text==='string'){
-    const byText=classify(`document.${ext||'pdf'}`,text); // contenu seul : le nom est jugé à part (règle c)
-    const textType=byText&&byText.type!==unknownType?byText.type:null;
-    steps.push(`d:${textType||'inconnu'}`);
-    if(textType&&compatible(textType)){ type=textType; method='contenu (1re page)'; }
-    else if(textType&&!compatible(textType)){
-      if(nameType&&compatible(nameType)) doubt=`indices contradictoires : nom → ${nameType}, contenu → ${textType}`;
-      else doubt=`indices contradictoires : sous-dossier ${fam?.label||family} → ${fam?.presumedType}, contenu → ${textType}`;
-      type=textType; method='contenu (1re page)';
-    }
-  } else if(nameType&&!compatible(nameType)){
-    doubt=`indices contradictoires : sous-dossier ${fam?.label||family} → ${fam?.presumedType}, nom → ${nameType}`;
-  }
-  if(!type) return {type:unknownType,method:'aucune',status:'à vérifier',doubt:'aucun indice de type (sous-dossier, nom ou contenu)',steps};
-  return {type,method,status:doubt?'à vérifier':'à traiter',doubt,steps};
+  let N=byName&&byName.confidence>=(cfg.nameMinConfidence??0.6)?known(byName.type):null;
+  // v2.25.0 — indices de nom propres à la famille du dossier (ex. « LOT 11 - ÉLECTRICITÉ » dans CCTP).
+  if(!(N&&compatible(N))&&fam){ const plain=ir_norm(name).replace(/[_.]+/g,' '); if((fam.nameHints||[]).some(src=>{ try{ return new RegExp(src,'i').test(plain); }catch{ return false; } })) N=fam.presumedType; }
+  if(N) steps.push(`c:${N}`);
+  if(text===''&&!A) return {type:(compatible(N)&&N)||fam?.presumedType||unknownType,method:compatible(N)?'nom du fichier':fam?'sous-dossier':'aucune',status:'à vérifier',doubt:'PDF sans texte (scan) : OCR nécessaire',note:'',steps:[...steps,'d:scan']};
+  let T=null;
+  if(typeof text==='string'&&text){ const byText=classify(`document.${ext||'pdf'}`,text); T=known(byText?.type); steps.push(`d:${T||'inconnu'}`); }
+  if(A) steps.push(`e:${A}`);
+  // 1. Le sous-dossier et au moins un autre indice sont d'accord.
+  const ok=[[T,'contenu (1re page)'],[N,'nom du fichier'],[A,'lecture complète (appli)']].find(([t])=>compatible(t));
+  if(ok&&fam) return {type:ok[0],method:ok[1],status:'à traiter',doubt:'',note:'',steps};
+  if(!fam){ const any=[[T,'contenu (1re page)'],[N,'nom du fichier'],[A,'lecture complète (appli)']].find(([t])=>t); return any?{type:any[0],method:any[1],status:'à traiter',doubt:'',note:'',steps}:{type:unknownType,method:'aucune',status:'à vérifier',doubt:'aucun indice de type (nom ou contenu)',note:'',steps}; }
+  // 2. Le contenu (1re page et document entier) désigne un autre type : document rangé ailleurs, accepté avec une note.
+  const votes=[T,N,A].filter(Boolean), major=votes.find(t=>votes.filter(x=>x===t).length>=2);
+  if(major) return {type:major,method:T===major?'contenu (1re page)':'lecture complète (appli)',status:'à traiter',doubt:'',note:`rangé dans « ${fam.label} » mais lu comme ${major}`,steps};
+  // 3. Indices sans majorité.
+  const seen=[T&&`1re page → ${T}`,A&&A!==T&&`document entier → ${A}`,N&&`nom → ${N}`].filter(Boolean);
+  if(seen.length) return {type:T||A||N,method:T?'contenu (1re page)':A?'lecture complète (appli)':'nom du fichier',status:'à vérifier',doubt:`indices contradictoires : sous-dossier ${fam.label} → ${fam.presumedType}, ${seen.join(', ')}`,note:'',steps};
+  // 4. Seul le sous-dossier parle : type présumé.
+  return {type:fam.presumedType,method:'sous-dossier',status:'à traiter',doubt:'',note:'',steps};
 }
 
 /* ---- box-folder.js ---- */
@@ -12229,7 +12249,17 @@ Les fichiers sources resteront chargés.`)) return;
   project.deletedBuildings=[...new Set([...previous,...names])]; applyDeletedBuildings(project); renderAll(); scheduleWorkspaceCheckpoint('suppression bâtiments',40); showBuildingDeletionUndo(names,previous);
 }
 
-function syncProjectInput(){ const p=activeProject(); const el=$('#operationName'); if(el) el.value=p.operationName||p.result?.operation||''; }
+function syncProjectInput(){ const p=activeProject(); const el=$('#operationName'); if(el) el.value=p.operationName||p.result?.operation||''; syncProjectContract(p); }
+// v2.25.0 — encart « Projet actuel » : l'opération est identifiée par son numéro de contrat (obligatoire). Venu des données
+// (tableau, Salesforce, questionnaire, import massif) il est affiché verrouillé ; sinon il est saisi ici.
+function contractDisplay(c){ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,'').padStart(8,'0'):String(c||'').trim(); }
+function syncProjectContract(p=activeProject()){
+  const el=$('#projectContract'); if(!el) return;
+  const fromData=(()=>{ const saved=p.contractNumber; p.contractNumber=''; const c=projectIdentity(p).contract; p.contractNumber=saved; return c; })();
+  el.value=contractDisplay(fromData||p.contractNumber||'');
+  el.readOnly=!!fromData; el.classList.toggle('locked',!!fromData); el.classList.toggle('missing',!el.value);
+  el.title=fromData?'Numéro de contrat lu dans les données de l’opération':'Numéro de contrat de l’opération (obligatoire) : saisissez-le';
+}
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const RESULT_VIEWS = Object.freeze({
@@ -12297,7 +12327,7 @@ function projectIdentity(p){
   if(p?.pendingRebuild&&p.tileCache?.identity) return {...p.tileCache.identity,name:p.tileCache.identity.name||p.operationName||'',owner:String(p.ownerName||p.tileCache.identity.owner||'').trim()};
   const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
   const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
-  return {contract:pick('contract_number')||ev.fin_contract||p?.importContract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
+  return {contract:pick('contract_number')||ev.fin_contract||p?.importContract||p?.contractNumber||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
 }
 function projectCompletion(p){
   if(p?.pendingRebuild&&p.tileCache) return p.tileCache.completion||0;
@@ -15124,6 +15154,9 @@ function wire(){
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
+  $('#projectContract')?.addEventListener('change',e=>{ const p=activeProject(); if(e.target.readOnly) return; const raw=String(e.target.value||'').trim();
+    if(raw&&!/^\d{1,8}$/.test(raw.replace(/[\s.-]/g,''))){ toast('Numéro de contrat : chiffres uniquement (ex. 00005361).','warn'); syncProjectContract(p); return; }
+    p.contractNumber=raw?contractDisplay(raw.replace(/[\s.-]/g,'')):''; syncProjectContract(p); renderAll(); scheduleWorkspaceCheckpoint('numéro de contrat'); });
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});
   const searchApply=$('#searchIntegrateApply'); if(searchApply) searchApply.onclick=applySearchIntegration; const searchClose=$('#searchIntegrateClose'); if(searchClose) searchClose.onclick=()=>$('#searchIntegrateDialog')?.close();
   $('#saveRules').onclick=()=>{ $$('#rulesView input[data-rule]').forEach(inp=>{ const k=inp.dataset.rule,p=inp.dataset.part; state.rules[k][p]=inp.value.split(';').map(s=>s.trim()).filter(Boolean); }); saveSourceRules(state.rules); toast('Règles de sources enregistrées.','success'); if(state.result){ const valid=state.docs.filter(d=>d.status==='ready'); state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); } renderAll(); scheduleWorkspaceCheckpoint('règles de sources',80); };
@@ -15255,20 +15288,21 @@ function ssRenderOps(){
   return `<table class="ss-table"><thead><tr><th>Contrat</th><th>Dossier</th><th>Dernier passage</th><th>Traités</th><th>À vérifier</th><th>Erreurs</th><th>Historique</th><th>Disparus</th><th></th></tr></thead><tbody>${ops.map(op=>{
     const p=state.projects.find(x=>x.importContract===op.contract), c=op.counts, open=ss.open===op.contract;
     const linked=ss.linked[op.contract];
-    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}${!p&&importUnloaded().has(op.contract)?' <span class="ss-chip muted">déchargée</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
+    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}${(op.alerts||[]).length?` <span class="ss-chip warn" title="${escapeHtml(op.alerts.join('\n'))}">⚠ ${op.alerts.length} alerte(s)</span>`:''}${!p&&importUnloaded().has(op.contract)?' <span class="ss-chip muted">déchargée</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
       <td class="ss-actions"><button class="btn light" data-ss-open="${escapeHtml(op.contract)}">${open?'Fermer':'Détail'}</button><button class="btn light" data-ss-load="${escapeHtml(op.contract)}" title="Créer ou mettre à jour l’opération dans ExtracTerre avec les documents traités">${p?'Mettre à jour':'Charger'}</button>${p?`<button class="btn light" data-ss-go="${escapeHtml(p.id)}">Ouvrir</button>`:''}<button class="btn light" data-ss-linked="${escapeHtml(op.contract)}" title="Comparer avec le dossier Box (nouveaux, modifiés, disparus)">⟳ Box</button></td></tr>
       ${linked?`<tr class="ss-detail"><td colspan="9">${linked.error?`<p class="ss-bad">${escapeHtml(linked.error)}</p>${linked.needRoot?`<button class="btn light" data-ss-pickbox="${escapeHtml(op.contract)}">Choisir le dossier « 1 BEE Contrats »</button>`:''}`:`<p><b>Depuis le dernier passage du script :</b> ${linked.added.length} nouveau(x), ${linked.changed.length} modifié(s), ${linked.gone.length} disparu(s).${linked.added.length||linked.changed.length||linked.gone.length?` Relancez <code>node extracterre-import.mjs --operation ${escapeHtml(op.contract)}</code> pour les traiter.`:''}</p>${[...linked.added.map(x=>['nouveau',x]),...linked.changed.map(x=>['modifié',x]),...linked.gone.map(x=>['disparu',x])].slice(0,40).map(([k,x])=>`<div class="ss-line"><span class="ss-chip ${k==='disparu'?'bad':'warn'}">${k}</span> ${escapeHtml(x.relPath)}</div>`).join('')}`}</td></tr>`:''}
       ${open?`<tr class="ss-detail"><td colspan="9">${ssRenderOpDetail(op)}</td></tr>`:''}`; }).join('')}</tbody></table>`;
 }
 function ssRenderOpDetail(op){
+  const alertHtml=(op.alerts||[]).map(a=>`<p class="ss-reason">⚠ ${escapeHtml(a)}</p>`).join('');
   const fams=[...new Set(op.files.map(f=>f.family||'autre'))];
-  return fams.map(fam=>{
+  return alertHtml+(fams.map(fam=>{
     const files=op.files.filter(f=>(f.family||'autre')===fam&&f.status!=='ignoré'||((f.family||'autre')===fam&&f.versionGroup&&!f.isCurrent));
     const groups=new Map(); for(const f of files){ const k=f.versionGroup||f.relPath; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(f); }
     return `<h4>${escapeHtml(SS_FAMILY_LABEL[fam]||fam)}</h4>${[...groups.values()].map(g=>{ g.sort((a,b)=>(a.missing-b.missing)||((a.versionRank||9)-(b.versionRank||9))); const [cur,...hist]=g;
       const line=(f,h)=>`<div class="ss-line ${h?'ss-hist':''}">${ssStatusChip(f)} <span class="ss-name">${escapeHtml(f.name)}</span> <small>${escapeHtml(f.relDir||'')}${f.versionLabel?` · ${escapeHtml(f.versionLabel)}`:''}${f.docType?` · ${escapeHtml(f.docType)}`:''}${f.completeness?` · ${f.completeness.found}/${f.completeness.expected} champs attendus`:''}</small>${f.reason?`<small class="ss-reason">${escapeHtml(f.reason)}</small>`:''}</div>`;
       return line(cur,false)+(hist.length?`<details class="ss-history"><summary>${hist.length} version(s) antérieure(s) ou disparue(s)</summary>${hist.map(f=>line(f,true)).join('')}</details>`:''); }).join('')}`;
-  }).join('')||'<p class="ss-empty">Aucun document retenu.</p>';
+  }).join('')||'<p class="ss-empty">Aucun document retenu.</p>');
 }
 function ssReviewItems(){ return Object.values(ss.registry?.files||{}).filter(f=>!f.missing&&(f.status==='à vérifier'||f.status==='erreur')); }
 function ssRenderReview(){

@@ -119,6 +119,23 @@ Un indice présent d'un seul côté, ou deux versions indiscernables, mettent le
 
 **Hiérarchie des sources.** Les documents importés entrent dans l'opération comme des documents glissés-déposés. Les collages Excel, le collage libre, Salesforce et les saisies gardent leur priorité. Les documents ajoutés à la main ne sont jamais retirés par une mise à jour.
 
+## 5 bis. Réduire la liste « À vérifier » (v2.25.0)
+
+**Ce qui fait passer un document « à vérifier » :**
+- Il n'y a pas de majorité entre les indices : sous-dossier, nom, 1re page et lecture complète par l'appli.
+- C'est un scan que l'OCR n'a pas pu lire.
+- C'est un XML inconnu.
+- L'ordre des versions est vraiment ambigu.
+
+**Ce qui n'y fait plus passer un document :**
+- Un document partiel : il reçoit une simple information, et le contrôle se fait par opération, par une alerte de famille.
+- Une pièce de correspondance : elle est écartée par son nom.
+
+**Réglages dans `import.config.json` :**
+- `ignoreNamePatterns` : noms écartés (mails, PV, catalogues…). Retirer une ligne pour que ces fichiers soient lus.
+- `families[].nameHints` : noms qui confirment la famille du dossier (ex. « LOT 11 » dans CCTP).
+- `ocr` : OCR des scans. Il compte quelques secondes par page ; `--sans-ocr` pour un passage rapide.
+
 ## 6. Dans l'appli
 
 1. Écran d'accueil → **Import massif & suivi des sources**.

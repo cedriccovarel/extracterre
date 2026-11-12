@@ -36,6 +36,10 @@ export async function probeXml(abs){
     if(/<RSEnv[\s>/]/.test(t)) return {re2020:'RSEE',dpe:false};
     if(/<RSET[\s>/]/.test(t)) return {re2020:'RSET',dpe:false};
   }
+  // v2.25.0 — autres XML connus : entrée ThCEx (<Projet><Calcul_ThE>), dossier de contrôle thermique, index de DCE.
+  if(/<Projet[\s>]/.test(head)&&/<Calcul_(ThE|projet)[\s>/]/i.test(t.slice(0,20000))) return {re2020:null,dpe:false,other:'thcex'};
+  if(/<dossier_controle[\s>/]/i.test(head)) return {re2020:null,dpe:false,other:'controle'};
+  if(/<dce[\s>/]/i.test(head)&&/<document[\s>/]/i.test(t.slice(0,20000))) return {re2020:null,dpe:false,other:'dce'};
   return {re2020:null,dpe:false};
 }
 
@@ -53,40 +57,43 @@ export function writeResult(workDir,sha,payload){
   fs.writeFileSync(tmp,zlib.gzipSync(Buffer.from(JSON.stringify(payload),'utf8'),{level:6})); fs.renameSync(tmp,file);
   return path.relative(workDir,file);
 }
+export {enableOcr} from './runtime.mjs';
 export function readResult(workDir,rel){ return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(workDir,rel))).toString('utf8')); }
 
 // Lecture complète + parseurs. familyOverride : clé de DOCUMENT_FAMILIES choisie dans la liste « À vérifier ».
-export async function extractFile(entry,{familyOverride=null,incompleteBelow=0.5}={}){
+export async function extractFile(entry,{familyOverride=null,incompleteBelow=0.5,ocr=false}={}){
   const file=nodeFile(entry.abs,entry.name);
   const d=makeDocumentRecord(file); d.relativePath=entry.relPath;
   if(familyOverride&&DOCUMENT_FAMILIES[familyOverride]){ d.familyMode='manual'; d.families=[familyOverride]; }
   else { d.familyMode='auto'; d.families=null; }
-  d.read=await readFile(file,()=>{},{mode:'off',lang:'fra+eng',detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&familyOverride==='plan'});
+  d.read=await readFile(file,()=>{},{mode:ocr?'auto':'off',lang:'fra+eng',detectPlan:d.familyMode!=='manual',forcePlan:d.familyMode==='manual'&&familyOverride==='plan'});
   const pages=d.read?.pageCount||d.read?.pages?.length||0;
   const chars=String(d.read?.text||'').replace(/\s+/g,'').length;
+  const ocrPages=d.read?.ocr?.pages?.length||0;
   const scan=d.read?.kind==='pdf'&&!d.read?.plan&&chars<Math.max(80,pages*40);
   prepareReadDocument(d);
-  let status='traité',reason='';
-  const found=new Set((d.cachedOccurrences||[]).map(o=>o?.field).filter(Boolean));
-  const expected=d.read?.plan?[]:documentExpectedFields(d);
-  const hit=expected.filter(e=>Array.isArray(e)?e.some(k=>found.has(k)):found.has(e));
-  const completeness=expected.length?{found:hit.length,expected:expected.length}:null;
-  if(d.parseError){ status='erreur'; reason=`parseur en échec : ${d.parseError}`; }
-  else if(scan){ status='à vérifier'; reason='PDF sans texte (scan) : OCR à faire dans l’appli'; }
-  else if(d.read?.plan){ status='traité'; reason='plan : non analysé (à mesurer dans Ashton)'; }
-  else if(!found.size&&LOT_TYPES.has(d.type)){ reason='lot : aucun champ suivi dans ce lot'; }
-  else if(!found.size){ status='à vérifier'; reason='aucune donnée extraite par les parseurs'; }
-  else if(completeness&&hit.length/expected.length<incompleteBelow){
-    // Un CCTP / DPGF est découpé par lot : chacun ne couvre qu'une partie des champs, l'opération les réunit.
-    if(LOT_TYPES.has(d.type)) reason=`lot : ${hit.length}/${expected.length} champs du CCTP`;
-    else { status='à vérifier'; reason=`résultat incomplet : ${hit.length}/${expected.length} champs attendus`; }
-  }
-  return {d,status,reason,completeness,pages,scan,fields:found.size};
+  const {status,reason,completeness,fields}=docStatus(d,{scan});
+  return {d,status,reason,completeness,pages,scan,fields};
 }
 
 // Famille de l'appli correspondant à un type (choix « Famille » d'un document), ou null.
 export function familyForType(type){ const k=Object.keys(DOCUMENT_FAMILIES).find(k=>k!=='annex'&&DOCUMENT_FAMILIES[k].type===type); return k||(type===DOC_TYPES.RSEE_RE2020||type===DOC_TYPES.RSENV?'carbone':null); }
 export function autoAgrees(appType,family){ return autoFamiliesForType(appType).includes(family); }
+
+// v2.25.0 — statut d'un document lu. Un document incomplet ou sans donnée n'est plus « à vérifier » à lui seul : une étude
+// est souvent découpée en plusieurs fichiers (RT Existant, CCTP par lot). Le contrôle se fait par opération (alertes de famille).
+export function docStatus(d,{scan=false}={}){
+  const found=new Set((d.cachedOccurrences||[]).map(o=>o?.field).filter(Boolean));
+  const expected=d.read?.plan?[]:documentExpectedFields(d);
+  const hit=expected.filter(e=>Array.isArray(e)?e.some(k=>found.has(k)):found.has(e));
+  const completeness=expected.length?{found:hit.length,expected:expected.length}:null;
+  if(d.parseError) return {status:'erreur',reason:`parseur en échec : ${d.parseError}`,completeness,fields:found.size};
+  if(scan) return {status:'à vérifier',reason:'PDF sans texte (scan) : OCR à faire dans l’appli',completeness,fields:found.size};
+  if(d.read?.plan) return {status:'traité',reason:'plan : non analysé (à mesurer dans Ashton)',completeness,fields:found.size};
+  if(!found.size) return {status:'traité',reason:LOT_TYPES.has(d.type)?'lot : aucun champ suivi dans ce lot':'aucune donnée extraite (contrôle par opération)',completeness,fields:0};
+  if(completeness&&hit.length<expected.length) return {status:'traité',reason:`${LOT_TYPES.has(d.type)?'lot':'partiel'} : ${hit.length}/${expected.length} champs attendus`,completeness,fields:found.size};
+  return {status:'traité',reason:'',completeness,fields:found.size};
+}
 
 // Option --with-ai : IA locale (Ollama), propositions vérifiées mot pour mot, plafonnées à 85 %, à valider ✓ / ✕ dans l'appli.
 export async function askLocalAi(d,{model='qwen2.5:7b'}={}){

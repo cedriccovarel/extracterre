@@ -187,6 +187,7 @@ function serializeProject(project={}){
     // v2.24.3 — documents déchargés de l'onglet Économie (restent dans l'opération pour les autres colonnes).
     economicExcluded:safeJsonClone(project.economicExcluded,[]),
     importContract:project.importContract||'',
+    contractNumber:project.contractNumber||'',
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,
     expanded:project.expanded!==false

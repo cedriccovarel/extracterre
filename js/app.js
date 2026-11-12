@@ -169,7 +169,17 @@ Les fichiers sources resteront chargés.`)) return;
   project.deletedBuildings=[...new Set([...previous,...names])]; applyDeletedBuildings(project); renderAll(); scheduleWorkspaceCheckpoint('suppression bâtiments',40); showBuildingDeletionUndo(names,previous);
 }
 
-function syncProjectInput(){ const p=activeProject(); const el=$('#operationName'); if(el) el.value=p.operationName||p.result?.operation||''; }
+function syncProjectInput(){ const p=activeProject(); const el=$('#operationName'); if(el) el.value=p.operationName||p.result?.operation||''; syncProjectContract(p); }
+// v2.25.0 — encart « Projet actuel » : l'opération est identifiée par son numéro de contrat (obligatoire). Venu des données
+// (tableau, Salesforce, questionnaire, import massif) il est affiché verrouillé ; sinon il est saisi ici.
+function contractDisplay(c){ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,'').padStart(8,'0'):String(c||'').trim(); }
+function syncProjectContract(p=activeProject()){
+  const el=$('#projectContract'); if(!el) return;
+  const fromData=(()=>{ const saved=p.contractNumber; p.contractNumber=''; const c=projectIdentity(p).contract; p.contractNumber=saved; return c; })();
+  el.value=contractDisplay(fromData||p.contractNumber||'');
+  el.readOnly=!!fromData; el.classList.toggle('locked',!!fromData); el.classList.toggle('missing',!el.value);
+  el.title=fromData?'Numéro de contrat lu dans les données de l’opération':'Numéro de contrat de l’opération (obligatoire) : saisissez-le';
+}
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const RESULT_VIEWS = Object.freeze({
@@ -237,7 +247,7 @@ function projectIdentity(p){
   if(p?.pendingRebuild&&p.tileCache?.identity) return {...p.tileCache.identity,name:p.tileCache.identity.name||p.operationName||'',owner:String(p.ownerName||p.tileCache.identity.owner||'').trim()};
   const rows=p?.result?.rows||[], paste=(p?.manualPasteRows||[]).map(r=>r.values||{}), ev=p?.economic?.values||{};
   const pick=(...keys)=>{ for(const k of keys) for(const r of [...paste,...rows]){ const v=r?.[k]; if(v!==undefined&&v!==null&&String(v).trim()&&v!=='non précisé') return String(v).trim(); } return ''; };
-  return {contract:pick('contract_number')||ev.fin_contract||p?.importContract||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
+  return {contract:pick('contract_number')||ev.fin_contract||p?.importContract||p?.contractNumber||'',code:pick('internal_code')||ev.fin_operation_code||'',name:pick('operation_name')||p?.operationName||'',owner:String(p?.ownerName||pick('owner_company','owner_main_company')||'').trim()};
 }
 function projectCompletion(p){
   if(p?.pendingRebuild&&p.tileCache) return p.tileCache.completion||0;
@@ -3064,6 +3074,9 @@ function wire(){
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
+  $('#projectContract')?.addEventListener('change',e=>{ const p=activeProject(); if(e.target.readOnly) return; const raw=String(e.target.value||'').trim();
+    if(raw&&!/^\d{1,8}$/.test(raw.replace(/[\s.-]/g,''))){ toast('Numéro de contrat : chiffres uniquement (ex. 00005361).','warn'); syncProjectContract(p); return; }
+    p.contractNumber=raw?contractDisplay(raw.replace(/[\s.-]/g,'')):''; syncProjectContract(p); renderAll(); scheduleWorkspaceCheckpoint('numéro de contrat'); });
   $('#occSearch').oninput=renderOccurrences; $('#occStatus').onchange=renderOccurrences; $('#freeSearchBtn').onclick=renderSearchResults; $('#freeSearchInput').addEventListener('keydown',e=>{if(e.key==='Enter')renderSearchResults();});
   const searchApply=$('#searchIntegrateApply'); if(searchApply) searchApply.onclick=applySearchIntegration; const searchClose=$('#searchIntegrateClose'); if(searchClose) searchClose.onclick=()=>$('#searchIntegrateDialog')?.close();
   $('#saveRules').onclick=()=>{ $$('#rulesView input[data-rule]').forEach(inp=>{ const k=inp.dataset.rule,p=inp.dataset.part; state.rules[k][p]=inp.value.split(';').map(s=>s.trim()).filter(Boolean); }); saveSourceRules(state.rules); toast('Règles de sources enregistrées.','success'); if(state.result){ const valid=state.docs.filter(d=>d.status==='ready'); state.result=analyzeDocuments(valid,state.rules,$('#operationName').value.trim(),state.buildingOverrides,manualPasteOccurrences()); applyDeletedBuildings(activeProject()); state.result.documentsCount=valid.length; applyManualValues(); refreshEconomic(); state.projectTags=buildProjectTags(valid,state.result,state.manualTags); } renderAll(); scheduleWorkspaceCheckpoint('règles de sources',80); };
@@ -3195,20 +3208,21 @@ function ssRenderOps(){
   return `<table class="ss-table"><thead><tr><th>Contrat</th><th>Dossier</th><th>Dernier passage</th><th>Traités</th><th>À vérifier</th><th>Erreurs</th><th>Historique</th><th>Disparus</th><th></th></tr></thead><tbody>${ops.map(op=>{
     const p=state.projects.find(x=>x.importContract===op.contract), c=op.counts, open=ss.open===op.contract;
     const linked=ss.linked[op.contract];
-    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}${!p&&importUnloaded().has(op.contract)?' <span class="ss-chip muted">déchargée</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
+    return `<tr class="${open?'open':''}"><td><b>${escapeHtml(op.contract)}</b></td><td class="ss-folder">${escapeHtml(op.folder||'')}${op.sharedWith?.length?`<small>dossier commun avec ${escapeHtml(op.sharedWith.join(', '))}</small>`:''}</td><td>${op.lastRunAt?escapeHtml(new Date(op.lastRunAt).toLocaleString('fr-FR')):'—'}${op.status==='interrompu'?' <span class="ss-chip warn">interrompu</span>':''}${(op.alerts||[]).length?` <span class="ss-chip warn" title="${escapeHtml(op.alerts.join('\n'))}">⚠ ${op.alerts.length} alerte(s)</span>`:''}${!p&&importUnloaded().has(op.contract)?' <span class="ss-chip muted">déchargée</span>':''}</td><td>${c.traite}</td><td>${c.review?`<b class="ss-warn">${c.review}</b>`:0}</td><td>${c.errors?`<b class="ss-bad">${c.errors}</b>`:0}</td><td>${c.history}</td><td>${c.missing?`<b class="ss-bad">${c.missing}</b>`:0}</td>
       <td class="ss-actions"><button class="btn light" data-ss-open="${escapeHtml(op.contract)}">${open?'Fermer':'Détail'}</button><button class="btn light" data-ss-load="${escapeHtml(op.contract)}" title="Créer ou mettre à jour l’opération dans ExtracTerre avec les documents traités">${p?'Mettre à jour':'Charger'}</button>${p?`<button class="btn light" data-ss-go="${escapeHtml(p.id)}">Ouvrir</button>`:''}<button class="btn light" data-ss-linked="${escapeHtml(op.contract)}" title="Comparer avec le dossier Box (nouveaux, modifiés, disparus)">⟳ Box</button></td></tr>
       ${linked?`<tr class="ss-detail"><td colspan="9">${linked.error?`<p class="ss-bad">${escapeHtml(linked.error)}</p>${linked.needRoot?`<button class="btn light" data-ss-pickbox="${escapeHtml(op.contract)}">Choisir le dossier « 1 BEE Contrats »</button>`:''}`:`<p><b>Depuis le dernier passage du script :</b> ${linked.added.length} nouveau(x), ${linked.changed.length} modifié(s), ${linked.gone.length} disparu(s).${linked.added.length||linked.changed.length||linked.gone.length?` Relancez <code>node extracterre-import.mjs --operation ${escapeHtml(op.contract)}</code> pour les traiter.`:''}</p>${[...linked.added.map(x=>['nouveau',x]),...linked.changed.map(x=>['modifié',x]),...linked.gone.map(x=>['disparu',x])].slice(0,40).map(([k,x])=>`<div class="ss-line"><span class="ss-chip ${k==='disparu'?'bad':'warn'}">${k}</span> ${escapeHtml(x.relPath)}</div>`).join('')}`}</td></tr>`:''}
       ${open?`<tr class="ss-detail"><td colspan="9">${ssRenderOpDetail(op)}</td></tr>`:''}`; }).join('')}</tbody></table>`;
 }
 function ssRenderOpDetail(op){
+  const alertHtml=(op.alerts||[]).map(a=>`<p class="ss-reason">⚠ ${escapeHtml(a)}</p>`).join('');
   const fams=[...new Set(op.files.map(f=>f.family||'autre'))];
-  return fams.map(fam=>{
+  return alertHtml+(fams.map(fam=>{
     const files=op.files.filter(f=>(f.family||'autre')===fam&&f.status!=='ignoré'||((f.family||'autre')===fam&&f.versionGroup&&!f.isCurrent));
     const groups=new Map(); for(const f of files){ const k=f.versionGroup||f.relPath; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(f); }
     return `<h4>${escapeHtml(SS_FAMILY_LABEL[fam]||fam)}</h4>${[...groups.values()].map(g=>{ g.sort((a,b)=>(a.missing-b.missing)||((a.versionRank||9)-(b.versionRank||9))); const [cur,...hist]=g;
       const line=(f,h)=>`<div class="ss-line ${h?'ss-hist':''}">${ssStatusChip(f)} <span class="ss-name">${escapeHtml(f.name)}</span> <small>${escapeHtml(f.relDir||'')}${f.versionLabel?` · ${escapeHtml(f.versionLabel)}`:''}${f.docType?` · ${escapeHtml(f.docType)}`:''}${f.completeness?` · ${f.completeness.found}/${f.completeness.expected} champs attendus`:''}</small>${f.reason?`<small class="ss-reason">${escapeHtml(f.reason)}</small>`:''}</div>`;
       return line(cur,false)+(hist.length?`<details class="ss-history"><summary>${hist.length} version(s) antérieure(s) ou disparue(s)</summary>${hist.map(f=>line(f,true)).join('')}</details>`:''); }).join('')}`;
-  }).join('')||'<p class="ss-empty">Aucun document retenu.</p>';
+  }).join('')||'<p class="ss-empty">Aucun document retenu.</p>');
 }
 function ssReviewItems(){ return Object.values(ss.registry?.files||{}).filter(f=>!f.missing&&(f.status==='à vérifier'||f.status==='erreur')); }
 function ssRenderReview(){

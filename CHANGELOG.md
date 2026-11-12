@@ -1,3 +1,27 @@
+# v2.25.0 — Import massif : beaucoup moins de documents « à vérifier » ; encart Projet actuel = n° de contrat
+
+Mesuré sur une analyse réelle de 45 opérations : sur 246 documents à vérifier, 156 sont acceptés et 15 écartés comme correspondance ;
+62 scans sont lus par OCR au passage suivant, 4 versions sont départagées par leur date. Il ne reste que les cas sans majorité.
+- **Vote des indices** : sous-dossier, nom, 1re page et lecture complète par l'appli (même classement que le glisser-déposer).
+  - Le sous-dossier et un autre indice d'accord : le document est accepté.
+  - Deux indices d'accord sur un autre type : accepté, avec la note « rangé dans … mais lu comme … ».
+  - « À vérifier » seulement sans majorité.
+- **Nom de lot** dans le dossier CCTP (« LOT 11 - ÉLECTRICITÉ », « DESCRIPTIF », « DCE ») et noms thermique / carbone : indices
+  configurables (`nameHints`).
+- **Correspondance et annexes écartées par le nom** : mails, messagerie, courriers, retours ou réponses aux NC, PV, catalogues,
+  fiches et avis techniques, devis, factures, photos (`ignoreNamePatterns`, modifiable).
+- **Complétude jugée par opération** : un fichier partiel ou sans donnée (étude RT Existant en plusieurs fichiers, lot de CCTP) est
+  « traité » avec une information. Une famille sans aucune donnée dans toute l'opération est signalée une fois (alerte dans Suivi des sources).
+- **XML reconnus** : entrée ThCEx (`<Projet><Calcul_ThE>`), dossier de contrôle thermique (`<dossier_controle>`), index de DCE (`<dce>`, rien à lire).
+  Les autres XML sont tranchés par la lecture complète de l'appli.
+- **Versions** : un fichier avec indice et un sans indice sont départagés par la date de modification. L'ordre n'est ambigu que si le fichier sans indice est plus récent.
+- **OCR des PDF scannés** dans le script : même moteur que l'appli (tesseract.js 7), pages rendues par @napi-rs/canvas. Option `--sans-ocr`
+  ou `"ocr": false`. Les scans déjà connus sont relus une fois avec OCR.
+- Relancer une liste applique les règles actuelles aux documents déjà extraits, sans relire Box.
+- **Encart « Projet actuel »** : « N° de contrat » remplace « Nom de l'opération ». Il est verrouillé quand le numéro vient des données
+  (tableau, Salesforce, questionnaire, import massif), et à saisir sinon (signalé « obligatoire »). Le nom de l'opération reste géré
+  comme avant, sans être affiché, et la colonne « Nom opération » n'est pas touchée.
+
 # v2.24.7 — « Charger depuis Box » : anciens contrats
 
 - Le dossier d'une opération est retrouvé avec les mêmes règles que l'import massif. Formats pris en charge :

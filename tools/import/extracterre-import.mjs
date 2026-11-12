@@ -35,6 +35,7 @@ Options
   --with-ai                IA locale (Ollama) sur les documents incomplets ; propositions à valider dans l'appli
   --max-ia <n>             plafond d'appels IA (défaut : configuration)
   --parallelisme <n>       documents lus en même temps (défaut : configuration)
+  --sans-ocr               ne pas faire l'OCR des PDF scannés (plus rapide)
   --reextraire             relire même les fichiers déjà connus (après une mise à jour des parseurs)
   --local                  ne pas utiliser Supabase (registre local seulement)
   --racine <dossier>       dossier racine (défaut : configuration)
@@ -44,7 +45,7 @@ Options
 `;
 
 function parseArgs(argv){
-  const a={}; const flags=new Set(['check-only','dry-run','all-subfolders','with-ai','reextraire','local','sans-contenu','aide','help']);
+  const a={}; const flags=new Set(['check-only','dry-run','all-subfolders','with-ai','reextraire','local','sans-contenu','sans-ocr','aide','help']);
   for(let i=0;i<argv.length;i++){
     const k=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')) throw new Error(`Argument inattendu : ${argv[i]}`);
@@ -167,6 +168,9 @@ async function main(){
   const {classifyDocument}=await import('../../js/classifier.js');
   const {APP_VERSION}=await import('../../js/config.js');
 
+  // v2.25.0 — OCR des scans (même moteur que l'appli).
+  let ocrOn=false;
+  if(mode==='traitement'&&cfg.ocr!==false&&!args['sans-ocr']){ ocrOn=!!extract?.enableOcr?.(); console.log(ocrOn?'  OCR des PDF scannés : activé':'  OCR indisponible (bibliothèques absentes : npm install).'); }
   let stopping=false;
   process.on('SIGINT',()=>{ if(stopping) process.exit(130); stopping=true; console.log('\nArrêt demandé : fin du document en cours, registre enregistré, puis arrêt (relancer reprendra ici).'); });
 
@@ -230,45 +234,58 @@ async function main(){
         return;
       }
       // Traitement réel
+      // Statut d'un document lu (nouveau ou déjà extrait) : règles actuelles de classement et de statut, sans relire Box.
+      const judge=(doc,meta,sha)=>{
+        const scan=!!meta?.scan;
+        const ds=extract.docStatus(doc,{scan});
+        const k=dec.family?{type:doc.type,method:'choix dans l’appli',status:'à traiter',doubt:'',note:''}:classifyImportFile({family:f.family,name:f.name,xml:xml||meta?.xml,text:doc.read?.plan?undefined:scan?'':firstPageOf(doc),appType:doc.type},classifyDocument,cfg);
+        const {status,reason}=combine({...ds,scan},k,r,dec);
+        const forcedNote=meta?.forcedFamily?`famille imposée : ${k.type}`:'';
+        return {k,status,reason:[forcedNote,reason].filter(Boolean).join(' ; '),fields:ds.fields,completeness:ds.completeness};
+      };
       try{
-        const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept;
-        if(unchanged){ c.reused++; reg.putFile({...old,...base,...ver,status:old.status,reason:old.reason}); if(old.status==='à vérifier') c.review++; return; }
+        const scanWas=e=>/scan/.test(e?.reason||'');
+        const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept&&!(ocrOn&&scanWas(old));
+        if(unchanged){
+          const res=extract.readResult(workDir,old.resultFile); const j=judge(res.doc,res.meta,old.sha256);
+          c.reused++; if(j.status==='à vérifier') c.review++;
+          reg.putFile({...old,...base,...ver,docType:res.doc.type,importType:j.k.type,method:j.k.method,status:j.status,reason:j.reason,fields:j.fields,completeness:j.completeness}); return;
+        }
         const sha=await withRetry(()=>sha256File(f.abs));
         const twin=!args.reextraire&&!dec.reprocess&&!dec.family?reg.byHash(sha):null;
-        if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))){
+        if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))&&!(ocrOn&&scanWas(twin))){
           // Même contenu déjà extrait : résultat réutilisé, mais le classement dépend du sous-dossier et du nom de CE fichier.
-          const res=extract.readResult(workDir,twin.resultFile);
-          const ex={status:res.meta?.extractStatus||twin.status,reason:res.meta?.extractReason||'',scan:!!res.meta?.scan};
-          const k=classifyImportFile({family:f.family,name:f.name,xml,text:ex.scan?'':firstPageOf(res.doc)},classifyDocument,cfg);
-          const {status,reason}=combine(ex,k,r,dec);
-          c.reused++; if(status==='à vérifier') c.review++;
-          reg.putFile({...base,...ver,sha256:sha,docType:twin.docType,importType:k.type,method:k.method,status,reason,resultFile:twin.resultFile,processedAt:twin.processedAt,completeness:twin.completeness,pages:twin.pages,reusedFrom:twin.contract===contract?null:twin.contract,decisionAccept:!!dec.accept});
+          const res=extract.readResult(workDir,twin.resultFile); const j=judge(res.doc,res.meta,sha);
+          c.reused++; if(j.status==='à vérifier') c.review++;
+          reg.putFile({...base,...ver,sha256:sha,docType:res.doc.type,importType:j.k.type,method:j.k.method,status:j.status,reason:j.reason,resultFile:twin.resultFile,processedAt:twin.processedAt,completeness:j.completeness,fields:j.fields,pages:twin.pages,reusedFrom:twin.contract===contract?null:twin.contract,decisionAccept:!!dec.accept});
           return;
         }
-        let x=await extract.extractFile(f,{familyOverride:dec.family||null,incompleteBelow:cfg.incompleteBelow??0.5});
-        const k=dec.family?{type:x.d.type,method:'choix dans l’appli',status:'à traiter',doubt:''}:classifyImportFile({family:f.family,name:f.name,xml,text:x.d.read?.plan?undefined:x.scan?'':firstPageOf(x.d)},classifyDocument,cfg);
-        // Type confirmé par le nom, le contenu ou la structure, mais détection automatique de l'appli différente (ex. CCTP pris
+        const opts={familyOverride:dec.family||null,ocr:ocrOn};
+        let x=await extract.extractFile(f,opts);
+        let meta={scan:x.scan,xml};
+        let j=judge(x.d,meta,sha);
+        // Type confirmé par les indices, mais détection automatique de l'appli incompatible avec le sous-dossier (ex. CCTP pris
         // pour un RSET à égalité de points) : on impose la famille, comme le choix « Famille » d'un document dans l'appli.
         let forced=null;
-        const famCfg=(cfg.families||[]).find(x=>x.id===f.family);
-        if(!dec.family&&k.status==='à traiter'&&k.method!=='sous-dossier'&&!x.d.read?.plan&&famCfg&&!famCfg.compatibleTypes.includes(x.d.type)){
-          const fam=extract.familyForType(k.type);
-          if(fam&&!extract.autoAgrees(x.d.type,fam)){ forced={family:fam,auto:x.d.type}; x=await extract.extractFile(f,{familyOverride:fam,incompleteBelow:cfg.incompleteBelow??0.5}); }
+        const famCfg=(cfg.families||[]).find(y=>y.id===f.family);
+        if(!dec.family&&j.k.status==='à traiter'&&!j.k.note&&j.k.method!=='sous-dossier'&&!x.d.read?.plan&&famCfg&&!famCfg.compatibleTypes.includes(x.d.type)){
+          const fam=extract.familyForType(j.k.type);
+          if(fam&&!extract.autoAgrees(x.d.type,fam)){ forced={family:fam,auto:x.d.type}; x=await extract.extractFile(f,{...opts,familyOverride:fam}); meta={scan:x.scan,xml,forcedFamily:fam}; j=judge(x.d,meta,sha); }
         }
-        let {status,reason}=combine(x,k,r,dec);
-        if(forced) reason=[`famille imposée : ${k.type} (détection automatique : ${forced.auto})`,reason].filter(Boolean).join(' ; ');
-        // IA locale sur les documents incomplets (jamais sur les scans ni les erreurs)
-        if(args['with-ai']&&status==='à vérifier'&&!x.scan&&x.status==='à vérifier'&&totals.ai<aiMax){
+        let status=j.status, reason=j.reason;
+        if(forced) reason=reason.replace(`famille imposée : ${j.k.type}`,`famille imposée : ${j.k.type} (détection automatique : ${forced.auto})`);
+        // IA locale sur les documents sans donnée (jamais sur les scans ni les erreurs)
+        if(args['with-ai']&&!x.scan&&status!=='erreur'&&!j.fields&&totals.ai<aiMax){
           for(let attempt=1;attempt<=(cfg.ia?.essais||3);attempt++){
             totals.ai++; c.ai++;
-            try{ const ai=await extract.askLocalAi(x.d,{model:cfg.ia?.modele}); x.d.llmProposals=ai.accepted; totals.aiProposals+=ai.accepted.length; if(ai.accepted.length) reason+=` ; IA : ${ai.accepted.length} proposition(s) à valider`; break; }
+            try{ const ai=await extract.askLocalAi(x.d,{model:cfg.ia?.modele}); x.d.llmProposals=ai.accepted; totals.aiProposals+=ai.accepted.length; if(ai.accepted.length){ status='à vérifier'; reason+=` ; IA : ${ai.accepted.length} proposition(s) à valider`; } break; }
             catch(err){ if(attempt>=(cfg.ia?.essais||3)||totals.ai>=aiMax){ reason+=` ; IA indisponible (${err.message})`; break; } await new Promise(r=>setTimeout(r,(cfg.ia?.pauseMs||1500)*attempt)); }
           }
         }
-        const meta={sha256:sha,contract,relPath:f.relPath,family:f.family,importType:k.type,method:k.method,status,reason,extractStatus:x.status,extractReason:x.reason,scan:x.scan,forcedFamily:forced?.family||null};
-        const resultFile=extract.writeResult(workDir,sha,extract.serializeDoc(x.d,meta));
+        const fullMeta={sha256:sha,contract,relPath:f.relPath,family:f.family,importType:j.k.type,method:j.k.method,status,reason,extractStatus:x.status,extractReason:x.reason,scan:x.scan,xml,forcedFamily:forced?.family||null,ocrPages:x.d.read?.ocr?.pages?.length||0};
+        const resultFile=extract.writeResult(workDir,sha,extract.serializeDoc(x.d,fullMeta));
         c.extracted++; if(status==='à vérifier') c.review++; if(status==='erreur') c.errors++;
-        reg.putFile({...base,...ver,sha256:sha,docType:x.d.type,importType:k.type,method:k.method,status,reason,resultFile,processedAt:new Date().toISOString(),completeness:x.completeness,pages:x.pages,fields:x.fields,forcedFamily:forced?.family||null,decisionFamily:dec.family||null,decisionAccept:!!dec.accept});
+        reg.putFile({...base,...ver,sha256:sha,docType:x.d.type,importType:j.k.type,method:j.k.method,status,reason,resultFile,processedAt:new Date().toISOString(),completeness:j.completeness,pages:x.pages,fields:j.fields,ocrPages:fullMeta.ocrPages,forcedFamily:forced?.family||null,decisionFamily:dec.family||null,decisionAccept:!!dec.accept});
       }catch(err){
         c.errors++;
         reg.putFile({...base,...ver,status:'erreur',reason:`lecture impossible : ${err?.message||err}`,sha256:old?.sha256||null,resultFile:null});
@@ -277,8 +294,14 @@ async function main(){
     await pool(kept.concat(s.files.filter(f=>f.ignoreReason)),parallel,handle);
 
     if(mode==='traitement'){
+      // v2.25.0 — contrôle par opération : une famille dont aucun document lisible n'a donné de valeur est signalée une fois.
+      const alerts=[];
+      if(!stopping) for(const fam of cfg.families||[]){
+        const docs=reg.filesOf(contract).filter(e=>e.family===fam.id&&e.isCurrent&&!e.missing&&e.status!=='ignoré'&&!/scan/.test(e.reason||''));
+        if(docs.length&&!docs.some(e=>(e.fields||0)>0)) alerts.push(`${fam.label} : aucune donnée extraite de ${docs.length} document(s)`);
+      }
       if(!stopping) for(const old of reg.filesOf(contract)) if(!seen.has(old.relPath)&&!old.missing){ c.missing++; reg.putFile({...old,missing:true,missingSince:now,isCurrent:false}); }
-      reg.putOperation({contract,folder:op.folder,sharedWith:op.sharedWith,status:stopping?'interrompu':c.errors?'avec erreurs':!s.retained.length?'sans sous-dossier':'complet',fingerprint:stopping||c.errors||!s.retained.length?null:fp,lastRunAt:now,appVersion:APP_VERSION,counts:c,
+      reg.putOperation({contract,folder:op.folder,sharedWith:op.sharedWith,status:stopping?'interrompu':c.errors?'avec erreurs':!s.retained.length?'sans sous-dossier':'complet',fingerprint:stopping||c.errors||!s.retained.length?null:fp,lastRunAt:now,appVersion:APP_VERSION,counts:c,alerts,
         families:s.retained.map(x=>({relDir:x.relDir,family:x.family,container:x.container}))});
       await reg.flush();
     }
@@ -298,7 +321,7 @@ async function main(){
 function firstPageOf(d){ const p=d?.read?.pages?.[0]; return (p?.lines||[]).map(l=>l.text).join('\n')||String(p?.text||''); }
 // Statut final : extraction (x), classement a → e (k), versions (r), choix de l'utilisateur (dec).
 function combine(x,k,r,dec){
-  let status=x.status, reason=x.reason||'';
+  let status=x.status, reason=[x.reason,k.note].filter(Boolean).join(' ; ');
   if(status==='traité'&&k.status==='à vérifier'&&!(x.scan&&/scan/.test(k.doubt))){ status='à vérifier'; reason=[reason,k.doubt].filter(Boolean).join(' ; '); }
   else if(k.doubt&&!reason.includes(k.doubt)&&!(x.scan&&/scan/.test(k.doubt))) reason=[reason,k.doubt].filter(Boolean).join(' ; ');
   if(r.ambiguous){ status=status==='erreur'?status:'à vérifier'; reason=[r.reason,reason].filter(Boolean).join(' ; '); }
