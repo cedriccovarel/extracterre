@@ -1,3 +1,10 @@
+# v2.31.4 — Import massif : une erreur dans un document n'arrête plus l'analyse
+
+- Correction : « DOMMatrix is not defined ». Le rendu de certaines pages PDF pour l'OCR faisait planter tout le script ; c'est arrivé à l'opération 38/217.
+  Les objets de dessin manquants sont maintenant fournis par @napi-rs/canvas.
+- Une erreur isolée dans un document est notée dans le journal et l'analyse continue.
+- Le service relance automatiquement, jusqu'à 3 fois, une analyse arrêtée de façon inattendue. Les opérations déjà traitées sont sautées.
+
 # v2.31.3 — Service d'import : Mac gardé éveillé pendant une analyse
 
 - Pendant une analyse, le service empêche la mise en veille du Mac (caffeinate). La protection s'arrête avec l'analyse.

@@ -50,7 +50,7 @@ function run(req){
     if(r.mode==='check-only') args.push('--check-only');
     if(r.ocr===false) args.push('--sans-ocr');
     if(Array.isArray(r.cctpLots)&&r.cctpLots.length) args.push('--lots-cctp',r.cctpLots.map(String).join(','));
-    writeJson(statut,{etat:'en cours',etape:'démarrage',debut:new Date().toISOString()});
+    { const prev=readJson(statut); writeJson(statut,{etat:'en cours',etape:'démarrage',debut:new Date().toISOString(),...(prev?.tentatives?{tentatives:prev.tentatives}:{})}); }
     const log=fs.openSync(path.join(dir,`${req.id}.log`),'a');
     const child=spawn(process.execPath,args,{cwd:HERE,stdio:['ignore',log,log],env:{...process.env}});
     // v2.31.3 — Mac gardé éveillé pendant l'analyse (sinon la veille la met en pause la nuit) ; s'arrête avec elle.
@@ -58,6 +58,10 @@ function run(req){
     current={id:req.id,child,stopAsked:0};
     child.on('exit',(code,signal)=>{ fs.closeSync(log); const st=readJson(statut)||{}; const stopped=current?.stopAsked; current=null;
       if(stopped&&st.etat!=='terminé') writeJson(statut,{...st,etat:'interrompu',etape:'arrêté à la demande',finA:new Date().toISOString()});
+      // v2.31.4 — arrêt inattendu : relance automatique (3 fois au plus) ; les opérations déjà traitées sont sautées.
+      else if(code!==0&&['en cours','erreur'].includes(st.etat)&&(st.tentatives||0)<3){ const n=(st.tentatives||0)+1;
+        console.log(`${req.id} : arrêt inattendu (code ${code}), relance automatique ${n}/3.`);
+        writeJson(statut,{etat:'en attente',etape:'attente',reprise:true,tentatives:n,derniereErreur:st.erreur||`code ${code}`}); }
       else if(code!==0&&st.etat==='en cours') writeJson(statut,{...st,etat:'erreur',erreur:st.erreur||`Arrêt inattendu (code ${code}) : voir ${req.id}.log`});
       try{ fs.unlinkSync(stopFile(req.id)); }catch{}
       resolve(); });

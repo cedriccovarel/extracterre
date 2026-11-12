@@ -93,6 +93,7 @@ const FAMILY_LABEL=cfg=>Object.fromEntries((cfg.families||[]).map(f=>[f.id,f.lab
 async function main(){
   const args=parseArgs(process.argv.slice(2));
   if(args.statut) STATUS_FILE=path.resolve(home(args.statut));
+  if(STATUS_FILE){ try{ const prev=JSON.parse(fs.readFileSync(STATUS_FILE,'utf8')); if(prev?.tentatives) STATUS.tentatives=prev.tentatives; }catch{} }
   if(args.aide||args.help){ console.log(AIDE); return; }
   const cfgPath=path.resolve(args.config||path.join(HERE,'import.config.json'));
   const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
@@ -344,4 +345,6 @@ function combine(x,k,r,dec){
 
 function invRow(e,k){ return [e.contract,e.relDir,e.family,e.name,e.ext,e.size,e.docType||'',e.method||'',e.docKey||'',e.versionLabel||'',e.versionRank||'',e.isCurrent?'oui':'non',e.status,e.reason||'']; }
 
+// v2.31.4 — une erreur isolée dans un document (rendu PDF, OCR) ne doit jamais arrêter toute l'analyse : elle est notée et l'analyse continue.
+process.on('unhandledRejection',err=>{ console.warn(`\n  ⚠ Erreur isolée ignorée (l'analyse continue) : ${err?.message||err}`); });
 main().catch(err=>{ console.error(`\nErreur : ${err?.message||err}`); status({etat:'erreur',erreur:String(err?.message||err)}); process.exit(1); });

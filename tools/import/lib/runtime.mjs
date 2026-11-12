@@ -22,6 +22,8 @@ let OCR_ON=false;
 export function enableOcr(){
   if(OCR_ON) return true;
   let napi,Tess; try{ napi=require('@napi-rs/canvas'); Tess=require('tesseract.js'); }catch{ return false; }
+  // v2.31.4 — pdf.js en a besoin pour dessiner certaines pages (motifs, images) : absents de Node → « DOMMatrix is not defined ».
+  for(const k of ['DOMMatrix','Path2D','ImageData']) if(!globalThis[k]&&napi[k]) globalThis[k]=napi[k];
   class CanvasFactory{ create(w,h){ const canvas=napi.createCanvas(Math.max(1,w|0),Math.max(1,h|0)); return {canvas,context:canvas.getContext('2d')}; }
     reset(cc,w,h){ cc.canvas.width=Math.max(1,w|0); cc.canvas.height=Math.max(1,h|0); } destroy(cc){ cc.canvas.width=0; cc.canvas.height=0; cc.canvas=null; cc.context=null; } }
   const realGetDocument=pdfjs.getDocument;

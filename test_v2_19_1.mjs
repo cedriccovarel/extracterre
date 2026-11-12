@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {SECURITY_GRID,runSearchGrid,searchCellValue,normalizeGrid} from './js/recherches.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.31.3','version');
+eq(APP_VERSION,'2.31.4','version');
 const doc=text=>({id:'d1',name:'CCTP fictif.pdf',status:'ready',read:{pages:[{page:3,text}]}});
 const run=(text,ov={})=>runSearchGrid(SECURITY_GRID,[doc(text)],ov);
 const crit=SECURITY_GRID.criteria.find(c=>c.id==='hall_sas');
