@@ -3,9 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import {folderFamilyMatch,isSkippedFolder,fileIgnoreReason,folderTokens} from '../../../js/import-rules.js';
 
-export async function listOperationFolders(root){
+export async function listOperationFolders(root,extraRoots=[]){
   const entries=await fs.promises.readdir(root,{withFileTypes:true});
-  return entries.filter(e=>e.isDirectory()&&!e.name.startsWith('.')).map(e=>e.name);
+  const out=entries.filter(e=>e.isDirectory()&&!e.name.startsWith('.')).map(e=>e.name);
+  // Dossiers d'archive (ex. « 00 - Certifications réalisées - Archivage ») : leurs opérations sont cherchées aussi, chemin relatif.
+  for(const sub of extraRoots||[]){
+    let inner=[]; try{ inner=await fs.promises.readdir(path.join(root,sub),{withFileTypes:true}); }catch{ continue; }
+    for(const e of inner) if(e.isDirectory()&&!e.name.startsWith('.')) out.push(`${sub}/${e.name}`);
+  }
+  return out;
 }
 
 // Sous-dossiers d'une opération : familles retenues, fichiers (sans lecture), noms de dossiers ignorés.

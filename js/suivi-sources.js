@@ -76,6 +76,7 @@ export function ssLoadableFiles(registry,contract,decisions={}){
 
 // Nom d'opération lisible tiré du nom de dossier : « 00001234 - 59 - LILLE - LES TILLEULS » → « LILLE - LES TILLEULS ».
 export function ssOperationName(folder=''){
+  folder=String(folder).split('/').pop();
   return String(folder).replace(/^\s*(?:annul[ée]e?\s*-\s*)?[\d\s,;+&\/._–-]*(?:(?:et|and)\b[\d\s,;+&\/._–-]*)*/i,'').replace(/^(?:\d{2}|2a|2b)\s*-\s*/i,'').trim()||String(folder).trim();
 }
 

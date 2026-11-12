@@ -19,10 +19,14 @@ pdfjs.GlobalWorkerOptions.workerSrc=require.resolve('pdfjs-dist/legacy/build/pdf
 globalThis.XLSX=require('xlsx');
 // Pas d'OCR en Node : les pages scannées sont signalées « PDF sans texte » (à traiter dans l'appli, OCR navigateur).
 
+import {withRetry} from './retry.mjs';
+export {withRetry};
+export const readFileRetry=(abs,enc)=>withRetry(()=>fs.promises.readFile(abs,enc));
+
 // Objet « File » minimal attendu par js/readers.js.
 export function nodeFile(absPath,name=path.basename(absPath)){
   const st=fs.statSync(absPath); let buf=null;
-  const load=async()=>buf||(buf=await fs.promises.readFile(absPath));
+  const load=async()=>buf||(buf=await readFileRetry(absPath));
   return {name,size:st.size,lastModified:st.mtimeMs,
     async arrayBuffer(){ const b=await load(); return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength); },
     async text(){ return (await load()).toString('utf8'); },

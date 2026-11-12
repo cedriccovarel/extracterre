@@ -11,7 +11,7 @@ import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseCon
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.24.4','version');
+eq(APP_VERSION,'2.24.5','version');
 
 // --- Numéros de contrat
 eq(contractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');
@@ -176,4 +176,13 @@ eq(/--statut/.test(cli)&&/find-generic-password/.test(cli),true,'script : avance
 eq(/'--dossier-travail',workDir/.test(watch)&&/extracterre-import-request/.test(watch),true,'service : demandes du dossier de travail');
 eq(/data-ss-tab="new"/.test(app)&&/ssWriteRequest\(ss\.dir/.test(app),true,'appli : onglet Nouvelle analyse');
 
-console.log(`v2.24.4 — ${n} vérifications OK (données fictives)`);
+// --- v2.24.5 : dossiers d'archive, service autorisé à télécharger les fichiers Box
+const arch=matchContracts(['00002125 - 75 - PARIS','00 - Certifications réalisées - Archivage/00001500 - 94 - CHENNEVIÈRES','00 - Certifications réalisées - Archivage/00002125 - 75 - PARIS (ancien)'],['00001500','00002125'],cfg);
+eq(arch.found.map(f=>[f.contract,f.folder]),[['00001500','00 - Certifications réalisées - Archivage/00001500 - 94 - CHENNEVIÈRES'],['00002125','00002125 - 75 - PARIS']],'archive cherchée ; la racine prime sur l’archive');
+eq(cfg.racinesSupplementaires,['00 - Certifications réalisées - Archivage'],'archive dans la configuration');
+eq(ssOperationName('00 - Certifications réalisées - Archivage/00001500 - 94 - CHENNEVIÈRES'),'CHENNEVIÈRES','nom d’opération d’un dossier d’archive');
+const inst=fs.readFileSync(new URL('./tools/import/installer-service.mjs',import.meta.url),'utf8');
+eq(/MaterializeDatalessFiles<\/key><true\/>/.test(inst)&&!/Background/.test(inst.replace(/\/\/.*$/gm,'')),true,'service autorisé à télécharger les fichiers Box');
+eq(/!\(prev\.counts\?\.errors\)/.test(cli),true,'opération avec erreurs reprise au passage suivant');
+
+console.log(`v2.24.5 — ${n} vérifications OK (données fictives)`);

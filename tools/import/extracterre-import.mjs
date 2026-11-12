@@ -10,6 +10,7 @@ import {parseContractList,matchContracts,rankVersions,classifyImportFile,documen
 import {listOperationFolders,scanOperation,ignoredDirLabel} from './lib/scan.mjs';
 import {Registry,SupabaseStore,openKeys} from './lib/registry.mjs';
 import {sha256File} from './lib/crypto.mjs';
+import {withRetry} from './lib/retry.mjs';
 import {writeCsv,Progress,stamp} from './lib/report.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
@@ -111,7 +112,7 @@ async function main(){
   }
 
   // 2. Correspondance contrats ↔ dossiers (un seul listage de la racine ; les autres dossiers ne sont pas ouverts)
-  const folders=await listOperationFolders(root);
+  const folders=await listOperationFolders(root,cfg.racinesSupplementaires||[]);
   const match=matchContracts(folders,wanted,cfg);
   console.log(`  dossiers dans la racine : ${folders.length} · trouvés : ${match.found.length} · sans dossier : ${match.missing.length} · plusieurs dossiers (à vérifier) : ${match.multiple.length}${match.onlyCancelled.length?` · seulement annulés : ${match.onlyCancelled.length}`:''}`);
 
@@ -181,7 +182,7 @@ async function main(){
     const s=scans.get(op.folder); const contract=op.contract;
     const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
-    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
+    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
     totals.ops++;
     status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
@@ -232,7 +233,7 @@ async function main(){
       try{
         const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept;
         if(unchanged){ c.reused++; reg.putFile({...old,...base,...ver,status:old.status,reason:old.reason}); if(old.status==='à vérifier') c.review++; return; }
-        const sha=await sha256File(f.abs);
+        const sha=await withRetry(()=>sha256File(f.abs));
         const twin=!args.reextraire&&!dec.reprocess&&!dec.family?reg.byHash(sha):null;
         if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))){
           // Même contenu déjà extrait : résultat réutilisé, mais le classement dépend du sous-dossier et du nom de CE fichier.
@@ -277,7 +278,7 @@ async function main(){
 
     if(mode==='traitement'){
       if(!stopping) for(const old of reg.filesOf(contract)) if(!seen.has(old.relPath)&&!old.missing){ c.missing++; reg.putFile({...old,missing:true,missingSince:now,isCurrent:false}); }
-      reg.putOperation({contract,folder:op.folder,sharedWith:op.sharedWith,status:stopping?'interrompu':'complet',fingerprint:stopping?null:fp,lastRunAt:now,appVersion:APP_VERSION,counts:c,
+      reg.putOperation({contract,folder:op.folder,sharedWith:op.sharedWith,status:stopping?'interrompu':c.errors?'avec erreurs':!s.retained.length?'sans sous-dossier':'complet',fingerprint:stopping||c.errors||!s.retained.length?null:fp,lastRunAt:now,appVersion:APP_VERSION,counts:c,
         families:s.retained.map(x=>({relDir:x.relDir,family:x.family,container:x.container}))});
       await reg.flush();
     }

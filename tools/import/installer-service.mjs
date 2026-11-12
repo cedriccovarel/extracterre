@@ -28,7 +28,9 @@ fs.writeFileSync(plist,`<?xml version="1.0" encoding="UTF-8"?>
   <key>WorkingDirectory</key><string>${esc(HERE)}</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>Standard</string>
+  <!-- Fichiers et dossiers Box pas encore téléchargés : autoriser leur téléchargement (sinon dossiers vus vides, erreur -11). -->
+  <key>MaterializeDatalessFiles</key><true/>
   <key>StandardOutPath</key><string>${esc(path.join(logDir,'service.log'))}</string>
   <key>StandardErrorPath</key><string>${esc(path.join(logDir,'service.log'))}</string>
 </dict></plist>

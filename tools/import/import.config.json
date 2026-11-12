@@ -3,6 +3,8 @@
 
   "racine": "~/Library/CloudStorage/Box-Box/2 PRODUCTION EVALUATION/1 BEE Contrats",
   "dossierTravail": "~/ExtracTerre-import",
+  "_aide_racinesSupplementaires": "Dossiers de la racine qui contiennent eux-mêmes des dossiers d'opérations (archives). Si un contrat est à la fois à la racine et dans une archive, la racine prime.",
+  "racinesSupplementaires": ["00 - Certifications réalisées - Archivage"],
 
   "_aide_contrats": "Numéros de contrat : lus en tête du nom de dossier (avant le premier mot), comparés par valeur complétée à 8 chiffres. Les numéros de moins de minContractDigits chiffres (départements) sont ignorés.",
   "contractWidth": 8,

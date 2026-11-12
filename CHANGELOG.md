@@ -1,3 +1,15 @@
+# v2.24.5 — Import massif : archives, fichiers Box non téléchargés, reprise des erreurs
+
+- Les contrats sont aussi cherchés dans « 00 - Certifications réalisées - Archivage » (`racinesSupplementaires` dans import.config.json).
+  Si un contrat est à la fois à la racine et en archive, la racine prime. Sur la liste testée, 7 contrats « sans dossier » sur 7 sont maintenant trouvés.
+- Service d'import : il est maintenant autorisé à télécharger les dossiers et fichiers Box qui ne sont pas encore sur le Mac
+  (`MaterializeDatalessFiles`). Avant, ces dossiers étaient vus vides (« sans sous-dossier ») et ces fichiers renvoyaient « Unknown system error -11 ».
+  **Réinstaller le service une fois** (`node installer-service.mjs`).
+- Une lecture qui échoue pour cette raison est réessayée (attente de 2 à 30 s).
+- Une opération qui contient des erreurs ou dont aucun sous-dossier n'a été retenu n'est plus marquée « complète » : elle est reprise
+  au passage suivant.
+- Un double clic sur « Lancer l'analyse » ne crée plus deux demandes.
+
 # v2.24.4 — Suivi des sources : plus d'erreur « Failed to execute » à l'ouverture
 
 - Après un rechargement de la page, Chrome redemande l'accès au dossier de travail. Cette demande doit venir d'un clic : elle était lancée

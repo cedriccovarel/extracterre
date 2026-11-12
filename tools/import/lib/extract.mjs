@@ -1,6 +1,6 @@
 // Lecture et extraction d'un fichier avec les modules de l'appli (même code que le glisser-déposer).
 import './runtime.mjs';
-import {nodeFile} from './runtime.mjs';
+import {nodeFile,readFileRetry} from './runtime.mjs';
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
@@ -18,7 +18,7 @@ const LOT_TYPES=new Set([DOC_TYPES.CCTP,DOC_TYPES.DPGF]); // documents découpé
 // Texte de la 1re page d'un PDF (classement, règle d). '' = page sans texte (scan).
 export async function firstPageText(abs){
   const pdfjs=require('pdfjs-dist/legacy/build/pdf.js');
-  const data=new Uint8Array(await fs.promises.readFile(abs));
+  const data=new Uint8Array(await readFileRetry(abs));
   const task=pdfjs.getDocument({data,disableFontFace:true,isEvalSupported:false,verbosity:0});
   const pdf=await task.promise;
   try{
@@ -29,7 +29,7 @@ export async function firstPageText(abs){
 
 // Structure d'un XML : RSET / RSEE RE2020 (balise racine <projet> avec blocs RSET / RSEnv) ou DPE ADEME.
 export async function probeXml(abs){
-  const t=await fs.promises.readFile(abs,'utf8');
+  const t=await readFileRetry(abs,'utf8');
   const head=t.slice(0,4000);
   if(isDpeXmlText(t)) return {re2020:null,dpe:true};
   if(/<projet[\s>]/i.test(head)||/<projet[\s>]/i.test(t.slice(0,200000))){

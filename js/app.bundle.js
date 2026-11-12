@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.24.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.24.5 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.24.4';
+const APP_VERSION='2.24.5';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11697,6 +11697,7 @@ function ssLoadableFiles(registry,contract,decisions={}){
 
 // Nom d'opération lisible tiré du nom de dossier : « 00001234 - 59 - LILLE - LES TILLEULS » → « LILLE - LES TILLEULS ».
 function ssOperationName(folder=''){
+  folder=String(folder).split('/').pop();
   return String(folder).replace(/^\s*(?:annul[ée]e?\s*-\s*)?[\d\s,;+&\/._–-]*(?:(?:et|and)\b[\d\s,;+&\/._–-]*)*/i,'').replace(/^(?:\d{2}|2a|2b)\s*-\s*/i,'').trim()||String(folder).trim();
 }
 
@@ -15016,7 +15017,7 @@ async function ssLinkedCheck(contract){
     if(!boxSupported()) throw new Error('Ce navigateur ne permet pas de lier un dossier : utilisez Chrome ou Edge.');
     let root=await boxSavedRoot(); if(!root) root=await boxPickRoot();
     if(!await boxEnsureAccess(root)) throw new Error('Accès au dossier Box refusé.');
-    let h; try{ h=await root.getDirectoryHandle(op.folder); }catch{ ss.linked[contract]={error:`Dossier « ${op.folder} » introuvable dans « ${root.name} ». Choisissez le dossier racine des contrats (1 BEE Contrats).`,needRoot:true}; return; }
+    let h; try{ h=root; for(const part of String(op.folder).split('/').filter(Boolean)) h=await h.getDirectoryHandle(part); }catch{ ss.linked[contract]={error:`Dossier « ${op.folder} » introuvable dans « ${root.name} ». Choisissez le dossier racine des contrats (1 BEE Contrats).`,needRoot:true}; return; }
     ssStatus(`Comparaison avec Box — ${op.folder}…`);
     ss.linked[contract]=await ssCompareLinked(h,ss.registry,contract);
   }catch(err){ ss.linked[contract]={error:err?.message||String(err)}; }
@@ -15083,6 +15084,9 @@ async function ssRefreshService(){
 }
 async function ssLaunch(mode){
   const r=ssPasteInfo(); if(!r.contracts.length) return;
+  // Une demande à la fois : un double clic ne lance pas deux analyses.
+  const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!st||!['terminé','erreur','interrompu'].includes(st.etat)){ toast('Une analyse est déjà en cours : attendez la fin avant d’en lancer une autre.','warn'); return; } }
+  $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=true);
   const id=await ssWriteRequest(ss.dir,r.contracts,mode);
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();

@@ -82,7 +82,7 @@ export function folderContracts(name,cfg={}){
 export function matchContracts(folders,wanted=null,cfg={}){
   const byKey=new Map(), cancelledByKey=new Map(), shared=[];
   for(const name of folders){
-    const {contracts,cancelled}=folderContracts(name,cfg);
+    const {contracts,cancelled}=folderContracts(String(name).split('/').pop(),cfg);
     if(!contracts.length) continue;
     const target=cancelled?cancelledByKey:byKey;
     for(const k of contracts){ if(!target.has(k)) target.set(k,[]); target.get(k).push(name); }
@@ -91,8 +91,10 @@ export function matchContracts(folders,wanted=null,cfg={}){
   const keys=wanted||[...byKey.keys()].sort();
   const found=[],missing=[],multiple=[],onlyCancelled=[];
   for(const k of keys){
-    const hits=byKey.get(k)||[];
-    if(hits.length===1) found.push({contract:k,folder:hits[0],sharedWith:(folderContracts(hits[0],cfg).contracts).filter(x=>x!==k)});
+    let hits=byKey.get(k)||[];
+    // Même contrat à la racine et dans un dossier d'archive (« 00 - Certifications réalisées - Archivage/… ») : la racine prime.
+    if(hits.length>1){ const top=hits.filter(h=>!String(h).includes('/')); if(top.length===1) hits=top; }
+    if(hits.length===1) found.push({contract:k,folder:hits[0],sharedWith:(folderContracts(String(hits[0]).split('/').pop(),cfg).contracts).filter(x=>x!==k)});
     else if(hits.length>1) multiple.push({contract:k,folders:hits});
     else if(cancelledByKey.has(k)) onlyCancelled.push({contract:k,folders:cancelledByKey.get(k)});
     else missing.push(k);
