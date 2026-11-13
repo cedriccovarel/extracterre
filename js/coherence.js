@@ -53,7 +53,10 @@ export function applyCoherenceChecks(result){
     const cep=get('cep'), cepnr=get('cepnr');
     if(cep!==null&&cepnr!==null){ if(cepnr<=cep+0.5) record('Cep,nr ≤ Cep','ok',`${cepnr} ≤ ${cep}`); else record('Cep,nr ≤ Cep','fail',`Cep,nr = ${cepnr} > Cep = ${cep}`,['cep','cepnr']); }
     // 5. Gains recalculés
-    for(const [v,m,g] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain'],['cepnr','cepnr_max','cepnr_gain'],['ubat_after','ubat_ref','ubat_gain'],['ges','ges_ref','ges_gain']]){
+    // v2.34.0 — rénovation : le gain se calcule sur l'état initial quand il est connu (règle des évaluateurs, Salesforce),
+    // la référence du document restant affichée telle quelle.
+    for(const [v,m0,g,init] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain','cep_before'],['cepnr','cepnr_max','cepnr_gain'],['ubat_after','ubat_ref','ubat_gain','ubat_before'],['ges','ges_ref','ges_gain','ges_before']]){
+      const m=init&&get(init)>0?init:m0;
       const a=get(v), mx=get(m), gain=get(g); if(a===null||!mx) continue;
       const calc=Math.round((mx-a)/mx*1000)/10;
       if(gain===null){

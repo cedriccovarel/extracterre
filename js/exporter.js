@@ -1,6 +1,7 @@
 import {APP_VERSION,FIELD_DEFS,FIELD_MAP,MIN_RETAINED_CONFIDENCE} from './config.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,COST_CATEGORIES} from './economics.js';
 import {runSearchGrid,searchCellValue,STAT_KEYS} from './recherches.js';
+import {reliabilityTable,RELIABILITY} from './qualite.js';
 import {INSULATION_LIBRARY_VERSION,INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 
 function aoaSheet(rows){ return XLSX.utils.aoa_to_sheet(rows); }
@@ -21,6 +22,7 @@ export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });
   const ws1=aoaSheet(data); autoWidth(ws1); XLSX.utils.book_append_sheet(wb,ws1,'Données par bâtiment');
 
+
   // v2.5.0 — 2e feuille : nomenclature économique (une ligne par opération), identifiant du projet en tête.
   const blank=v=>v===undefined||v===null||v===''||v==='non précisé';
   const eco=usable.map((p,idx)=>{ const off=new Set(p.economicExcluded||[]); const e=analyzeEconomicData((p.docs||[]).filter(d=>!off.has(d.id)),p.result?.operation||'',p.manualEconomics||{}); const rows=p.result?.rows||[]; const first=k=>rows.map(r=>r[k]).find(x=>!blank(x));
@@ -34,8 +36,12 @@ export function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
     if(det.length>1){ const wsD=aoaSheet(det); autoWidth(wsD); XLSX.utils.book_append_sheet(wb,wsD,'Lignes financières'); }
   }
 
-  const tr=[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']];
-  usable.forEach((p,idx)=>{ const r=p.result,pname=projectName(p,idx); for(const o of r.finals) tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
+  // v2.34.0 — même grille, niveau de fiabilité de chaque valeur (Certifiée / Sûre / Probable / À vérifier) ; lue par TotalRecoll.
+  const relData=[[...fields.map(f=>f.label)]];
+  usable.forEach(p=>{ const t=reliabilityTable(p.result); for(const row of p.result.rows){ const m=t[row.building]||{}; relData.push(fields.map(f=>f.key==='building'?(row.building??''):f.key==='contract_number'?(row.contract_number??''):f.key==='internal_code'?(row.internal_code??''):(m[f.key]?RELIABILITY[m[f.key]].short:''))); } });
+  const wsR=aoaSheet(relData); autoWidth(wsR); XLSX.utils.book_append_sheet(wb,wsR,'Fiabilité par bâtiment');
+  const tr=[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Fiabilité','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']];
+  usable.forEach((p,idx)=>{ const r=p.result,pname=projectName(p,idx),rt=reliabilityTable(r); for(const o of r.finals) tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,RELIABILITY[rt[o.building]?.[o.field]]?.short||'',o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
   const ws2=aoaSheet(tr); autoWidth(ws2); XLSX.utils.book_append_sheet(wb,ws2,'Traçabilité');
 
   const oc=[['Projet','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Routage','Statut','Motif rejet','Méthode','Origine','Commentaire','Extrait']];

@@ -381,7 +381,7 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(o); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -414,16 +414,12 @@ export function applyComparisonBases(result){
   for(const row of result?.rows||[]){ const b=row.building; const fin=f=>result.finals.find(o=>o.building===b&&o.field===f);
     for(const [init,ref,gain,values] of COMPARISON_BASES){
       const v=numOrNull(row[init]), src=fin(init), prev=fin(ref); if(v===null||!src||!(v>0)||isManualFinal(prev)) continue;
-      if(numOrNull(row[ref])!==v){
-        result.finals=result.finals.filter(o=>o!==prev);
-        result.finals.push({...src,field:ref,method:'derive:reference-etat-initial',derivedFromDocument:true,provenanceNote:`Rénovation : référence = état initial (${FIELD_MAP[init]?.label||init} = ${v})${prev?` ; référence du document : ${prev.value}`:''}.`});
-        row[ref]=v;
-        for(const d of result.detailed||[]) if(d.building===b&&d.field===ref&&d.status==='retenu'&&d!==prev){ d.status='rejeté'; d.rejectionReason='Rénovation : la référence de comparaison retenue est l’état initial.'; }
-      }
+      // v2.34.0 — la référence (Cep réf, Ubat réf, GES réf) reste celle du document, comme dans Salesforce (évaluateurs :
+      // Cep réf ≠ état initial sur 38 fiches / 38, Ubat réf sur 58 / 60) ; seul le gain est calculé sur l'état initial (26 / 38).
       const vf=values.find(f=>numOrNull(row[f])!==null), g=fin(gain); if(!vf||isManualFinal(g)) continue;
       const calc=Math.round((v-Number(row[vf]))/v*1000)/10; if(numOrNull(row[gain])===calc) continue;
       result.finals=result.finals.filter(o=>o!==g);
-      result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[ref]?.label||ref} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (réf − valeur) / réf = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
+      result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[init]?.label||init} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (état initial − valeur) / état initial = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
       row[gain]=calc;
     }
     // v2.6.0 — période de construction déduite de l'année lue (proposition validée 46 fois sur 46 dans le pack du 26/10/2026).

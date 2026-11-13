@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.33.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.34.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.33.2';
+const APP_VERSION='2.34.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -809,6 +809,126 @@ async function geocodeCommune(fc,fetchImpl=fetch){
   return v;
 }
 const mapLink=(lat,lon)=>`https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;
+
+/* ---- qualite.js ---- */
+// ExtracTerre v2.34.0 — fiabilité des données : comparaison d'une valeur extraite à la valeur de référence Salesforce
+// (vérifiée par les évaluateurs, celle qui a servi à la certification). Partagé par l'appli et par le banc de vérité
+// (tools/qualite/banc-salesforce.mjs).
+
+const q_norm=s=>String(s??'').replace(/œ/gi,'oe').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()
+  .replace(/[’']/g,' ').replace(/[^a-z0-9.,+/-]+/g,' ').replace(/\s+/g,' ').trim();
+function q_number(v){
+  if(typeof v==='number') return Number.isFinite(v)?v:null;
+  const m=String(v??'').replace(/\s/g,'').replace(',','.').match(/^-?\d+(?:\.\d+)?$/);
+  return m?Number(m[0]):null;
+}
+// Deux valeurs d'un même champ disent-elles la même chose ? Nombres : écart d'arrondi seulement (±0,05, ou 0,1 % au-delà de 100).
+// Textes : même texte une fois normalisé, ou l'un contient l'autre (« Laine de verre » / « laine de verre 200 mm »).
+function sameValue(field,a,b){
+  if(a===undefined||a===null||a===''||b===undefined||b===null||b==='') return false;
+  const def=FIELD_MAP[field]||{};
+  const na=q_number(a), nb=q_number(b);
+  if(def.type==='number'||(na!==null&&nb!==null)){
+    if(na===null||nb===null) return false;
+    return Math.abs(na-nb)<=Math.max(0.051,Math.abs(nb)*0.001)+1e-9;
+  }
+  const x=q_norm(a), y=q_norm(b); if(!x||!y) return false;
+  if(x===y) return true;
+  return (x.length>=3&&y.includes(x))||(y.length>=3&&x.includes(y));
+}
+
+// Champs décrits en texte libre dans Salesforce (« Zépac 70 : 2*PAC… + secours chaudière ») et en catégorie dans les
+// documents (« PAC ») : on compare les catégories. Juste si les catégories lues sont toutes dans Salesforce ;
+// « non comparable » si l'un des deux ne nomme aucune catégorie (« Production commune avec le chauffage »).
+const Q_CAT_RULES={
+  energy:[['pac',/\bpac\b|pompe a chaleur|thermodynamique|\bcet\b|zepac|effipac|aerotherm|geotherm/],['reseau',/reseau de chaleur|chauffage urbain|sous ?-?station|\brcu\b|reseau urbain/],
+    ['gaz',/\bgaz\b|chaudiere(?! bois)(?! a granul)|condensation|\bgn\b/],['elec',/electri|effet joule|\bjoule\b|convecteur|panneaux? rayonnant|radiateurs? electrique|ballons? electrique/],
+    ['bois',/\bbois\b|granul|biomasse|pellet|buche/],['solaire',/solaire|\bcesi\b|\bssc\b/],['fioul',/fioul|fuel|mazout/]],
+  ventilation:[['double',/double flux|\bdf\b/],['hygro',/hygro|\bsimple flux\b|\bsf\b|vmc/],['naturelle',/naturelle|vmr|ventilation par conduit/]],
+  glazing:[['triple',/triple/],['double',/double|\b4[ ./-]?1[0-9][ ./-]?4\b|\b44[.,]2/]],
+  insulation:[['lv',/laine de verre|\blv\b|\bgr ?3[0-9]\b/],['lr',/laine de roche|\blr\b|roche/],['pse',/polystyrene expanse|\bpse\b|\bpsee\b|\bpse[- ]?th/],['xps',/extrude|\bxps\b/],
+    ['pu',/polyurethane|\bpu\b|\bpur\b|\bpir\b/],['fibre_bois',/fibre de bois|laine de bois|\bfdb\b/],['ouate',/ouate|cellulose/],['biosource',/chanvre|lin\b|coton|paille/],['laine_minerale',/laine minerale/]],
+};
+const CAT_FIELDS={heating_mode_after:'energy',heating_vector_after:'energy',heating_vector_before:'energy',ecs:'energy',ecs_vector_after:'energy',ecs_vector_before:'energy',
+  ventilation:'ventilation',window_glazing:'glazing',roof_insulation:'insulation',wall_insulation:'insulation',floor_insulation:'insulation',wall_ite_insulation:'insulation',wall_iti_insulation:'insulation'};
+function categoriesOf(field,v){
+  const kind=CAT_FIELDS[field]; if(!kind) return null;
+  const t=' '+q_norm(v)+' '; const set=new Set();
+  for(const [k,re] of Q_CAT_RULES[kind]) if(re.test(t)) set.add(k);
+  if(kind==='insulation'&&set.has('laine_minerale')&&(set.has('lv')||set.has('lr'))) set.delete('laine_minerale');
+  return set;
+}
+// Résultat d'une comparaison à Salesforce : 'juste' | 'faux' | 'incomparable'.
+function compareToReference(field,docValue,refValue){
+  if(CAT_FIELDS[field]){
+    const d=categoriesOf(field,docValue), r=categoriesOf(field,refValue);
+    if(!d.size||!r.size) return sameValue(field,docValue,refValue)?'juste':'incomparable';
+    // Laine minérale (sans précision) = laine de verre ou de roche.
+    const ok=[...d].every(k=>r.has(k)||(k==='laine_minerale'&&(r.has('lv')||r.has('lr')))||((k==='lv'||k==='lr')&&r.has('laine_minerale')));
+    return ok?'juste':'faux';
+  }
+  return sameValue(field,docValue,refValue)?'juste':'faux';
+}
+
+// Niveaux de fiabilité. calib : {pairs:{'méthode|champ':{juste,faux}}, methods:{…}} produit par le banc de vérité.
+const RELIABILITY=Object.freeze({
+  certifiee:{rank:4,label:'Certifiée (Salesforce, vérifiée par les évaluateurs)',short:'Certifiée'},
+  sure:{rank:3,label:'Sûre (lecture mesurée juste ≥ 95 % face à Salesforce)',short:'Sûre'},
+  probable:{rank:2,label:'Probable (lecture mesurée juste ≥ 85 % face à Salesforce)',short:'Probable'},
+  averifier:{rank:1,label:'À vérifier (lecture non mesurée, peu fiable ou contredite par un autre document)',short:'À vérifier'},
+});
+const Q_SF_SRC=/salesforce/i;
+// Exactitude mesurée d'une méthode de lecture pour un champ (sinon pour la méthode tous champs confondus).
+function methodAccuracy(calib,method,field=''){
+  const pick=m=>{ if(!m) return null; const n=(m.juste||0)+(m.faux||0); return n>=CALIB_MIN?{rate:(m.juste||0)/n,n}:null; };
+  return (field&&pick(calib?.pairs?.[`${method}|${field}`]))||pick(calib?.methods?.[method]);
+}
+const CALIB_MIN=12, CALIB_SURE=0.95, CALIB_PROBABLE=0.85;
+// Niveau d'une valeur : Salesforce = certifiée ; sinon le niveau MESURÉ par le banc de vérité pour cette méthode de
+// lecture et ce champ ; une lecture non mesurée reste « à vérifier ». (Banc, validation croisée : la confirmation par un
+// 2e document ou le seul fait d'être un XML ne prédisaient pas une valeur juste — 76 % et 33 %.)
+function reliabilityOf(o,{calib=null,field=''}={}){
+  if(!o) return null;
+  const m=String(o.method||''), f=field||o.field||'';
+  if(m==='manual:free-paste'||Q_SF_SRC.test(o.fileName||'')) return 'certifiee';
+  if(/^geocode:/.test(m)) return m==='geocode:ign'?'sure':'averifier';
+  if(/^manual:/.test(m)||o.docType==='Correction manuelle') return 'sure'; // saisie ou validation de l'utilisateur
+  const acc=methodAccuracy(calib,m,f);
+  if(acc) return acc.rate>=CALIB_SURE?'sure':acc.rate>=CALIB_PROBABLE?'probable':'averifier';
+  return 'averifier';
+}
+
+// Calibration mesurée par le banc de vérité Salesforce (statistiques par méthode de lecture, sans donnée d'opération) :
+// data/fiabilite-calibration.json, chargée au démarrage de l'appli et par l'import massif.
+let CALIB=null;
+function setCalibration(c){ CALIB=c&&c.methods?c:null; return !!CALIB; }
+function getCalibration(){ return CALIB; }
+const Q_NO_CONFIRM=/^(?:manual:|geocode:|derive:|coherence:|library:)/;
+const Q_STUDY_DOC=/RSET|RSEE|RSENV|RT2012|RT Existant|[ÉE]tude thermique|[ÉE]tude carbone/i;
+// Fiabilité de chaque valeur d'un résultat : {bâtiment: {champ: niveau}}.
+function reliabilityTable(result,{calib=CALIB,reasons=null}={}){
+  const out={}, finals=result?.finals||[], detailed=result?.detailed||[];
+  for(const row of result?.rows||[]){ const b=row.building, m={};
+    for(const [f,v] of Object.entries(row)){
+      if(f==='building'||v===undefined||v===null||v===''||!FIELD_MAP[f]) continue;
+      const o=finals.find(x=>x.field===f&&x.building===b)||finals.find(x=>x.field===f&&x.building==='Bâtiment unique');
+      if(!o) continue;
+      // Valeur contestée : un autre document (autre fichier, lecture des documents) donne une autre valeur pour ce bâtiment
+      // (ex. deux versions d'étude). Sans Salesforce, impossible de savoir laquelle a été certifiée → « à vérifier ».
+      const contested=!!o.fileName&&detailed.some(d=>d.field===f&&(d.building===b||d.originalBuilding===b)&&d.fileName&&d.fileName!==o.fileName&&Q_STUDY_DOC.test(String(d.docType||''))&&!Q_NO_CONFIRM.test(String(d.method||''))&&d.value!==undefined&&d.value!==null&&d.value!==''&&!sameValue(f,d.value,v));
+      const lvl=reliabilityOf(o,{calib,field:f});
+      m[f]=contested&&lvl!=='certifiee'&&!/^manual:/.test(String(o.method||''))?'averifier':lvl;
+      if(reasons) (reasons[b]=reasons[b]||{})[f]=contested?'contestée':methodAccuracy(calib,String(o.method||''),f)?'mesure':'non mesurée';
+    }
+    out[b]=m;
+  }
+  return out;
+}
+function reliabilityCounts(table){
+  const c={certifiee:0,sure:0,probable:0,averifier:0};
+  for(const m of Object.values(table||{})) for(const k of Object.values(m)) if(c[k]!==undefined) c[k]++;
+  return c;
+}
 
 /* ---- vecteurs.js ---- */
 // ExtracTerre v2.19.0 — vecteur énergétique hybride (chauffage et ECS).
@@ -3508,7 +3628,7 @@ function parseU48WinRtex(doc,occ,canonical=(s)=>s){
     const parois=[]; let cur=null;
     for(const x of P){ let m;
       if((m=x.t.match(/^Parois?\s+(\d+)\s*\/\s*(.+)$/i))){ cur={code:m[1],name:m[2].trim(),x,type:'',layers:[],renov:null}; parois.push(cur); continue; }
-      if((m=x.t.match(/^Type\s+de\s+paroi\s*:\s*(.+)$/i))) cur.renov=/neuve|renovee/i.test(m[1])&&!/non\s+renovee/i.test(m[1]);
+      if(cur&&(m=x.t.match(/^Type\s+de\s+paroi\s*:\s*(.+)$/i))) cur.renov=/neuve|renovee/i.test(m[1])&&!/non\s+renovee/i.test(m[1]);
       if(!cur) continue;
       if((m=x.t.match(/^Type\s*:\s*(.+?)\s*\(A\d\)/i))) cur.type=m[1];
       // Couche : « désignation ép. [λ] R proportion origine » (λ absent quand la résistance est donnée directement).
@@ -6099,7 +6219,10 @@ function parseBuildingSurface(doc){
         // du libellé et on ignore tout nombre < 10 (exposant, indice de zone, ratio...).
         const compactLabel=/^(?:shab(?:\s*(?:ou|\/)\s*(?:su|surt))?|s\s*ref(?:\s*\/\s*usage\s+principal)?|surt(?:\s+totale)?|srt(?:\s+totale)?|shonrt(?:\s+totale)?|surface(?:\s+(?:habitable|utile|r[eé]glementaire|thermique|totale|de\s+plancher|(?:de\s+)?r[eé]f[eé]rence|(?:totale\s+)?(?:du\s+)?b[aâ]timent))?)(?:\s*\([^)]*\))?\s*(?::|=)?\s*(?:m(?:2|²))?\s*$/i;
         if(compactLabel.test(raw) || /^s\s*ref\s*\/\s*usage\s+principal\b/i.test(raw) || /^srt\b/i.test(raw)){
-          const near=normalizeText([tail,...lines.slice(i+1,i+3).map(x=>x.text)].join(' | '));
+          // v2.34.0 — lignes suivantes seulement tant qu'elles commencent par une valeur (« SRT déclarée -1 m² » puis
+          // « Nombre de logements 32 » donnait une SHAB de 32 m² ; banc Salesforce).
+          const follow=[]; for(const x of lines.slice(i+1,i+3)){ const t=normalizeText(x.text); if(!/^\s*[-+]?\d/.test(t)) break; follow.push(t); }
+          const near=normalizeText([tail,...follow].join(' | '));
           const nearVals=numbersIn(near).filter(plausibleBuildingSurface);
           if(nearVals.length){
             const chosen=nearVals[0];
@@ -6590,7 +6713,10 @@ function parseRset(doc){
         const narrative=/\b(?:article|art\.?|conforme|inferieur|inférieur|egal|égal|exigence)\b/i.test(s) || /-\s*b[aâ]t\.?\s*\d+\s*$/i.test(s);
         let vals=[];
         if(!narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(s).filter(x=>x>=0&&x<1000);
-        if(vals.length<2 && !narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0&&x<1000);
+        // v2.34.0 — valeurs sur la ligne suivante seulement si elle commence par un nombre (sinon « Besoins annuels en chaud
+        // … 28,800 » devenait le Bbio max ; banc Salesforce : 8 erreurs sur 8).
+        const nextOnlyNumbers=/^\s*[-+]?\d/.test(normalizeText(lines[i+1]?.text||''));
+        if(vals.length<2 && !narrative && nextOnlyNumbers && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0&&x<1000);
         if(vals.length>=2){ push(out,occ(doc,page,line,'bbio',vals[0],'rset:bbio-table',0.99)); push(out,occ(doc,page,line,'bbio_max',vals[1],'rset:bbio-table',0.99)); if(vals.length>=3) push(out,occ(doc,page,line,'bbio_gain',vals[2],'rset:bbio-table',0.98,'%')); }
       }
       if(/coefficients?\s+cep\s*\/\s*cep\s*(?:max)?/i.test(s)){
@@ -7780,28 +7906,30 @@ function typeForFamily(family,doc){
   if(family==='carbone') return [DOC_TYPES.RSENV,DOC_TYPES.CARBON].includes(t)?t:(t===DOC_TYPES.RSEE_RE2020?DOC_TYPES.RSENV:DOC_TYPES.CARBON);
   return DOCUMENT_FAMILIES[family]?.type||doc.type;
 }
+// v2.34.0 — ajout élément par élément : out.push(...tableau) dépasse la pile sur les gros documents (« Maximum call stack size exceeded »).
+function pushAll(out,...arrs){ for(const a of arrs) if(a) for(const x of a) out.push(x); return out; }
 function parseFamily(doc,family){
   const fdoc={...doc,type:typeForFamily(family,doc)};
   let out=[...parseTaggedFields(fdoc)];
   if(family==='rset'||family==='rt2012'){
-    out.push(...parseBuildingSurface(fdoc),...parseRset(fdoc),...parseRt2012Hierarchical(fdoc),...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseRset(fdoc),parseRt2012Hierarchical(fdoc),parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='carbone'){
-    out.push(...parseProgram(fdoc),...parseCarbon(fdoc)); addRsetCarbonBreakdown(fdoc,out);
+    pushAll(out,parseProgram(fdoc),parseCarbon(fdoc)); addRsetCarbonBreakdown(fdoc,out);
     const rsenvLike=fdoc.type===DOC_TYPES.RSENV||/chapitre\s*5\s*:/i.test(fdoc.read?.text||'');
-    if(rsenvLike) out.push(...parseRsenvHierarchical({...fdoc,type:DOC_TYPES.RSENV}));
+    if(rsenvLike) pushAll(out,parseRsenvHierarchical({...fdoc,type:DOC_TYPES.RSENV}));
   }else if(family==='thcex'){
-    out.push(...parseBuildingSurface(fdoc),...parseGenericRegulatory(fdoc));
-    if(isStructuredRenovationThermalDocument(fdoc)) out.push(...parseStructuredRenovationThermal(fdoc));
-    out.push(...parseThermalStudy(fdoc),...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseGenericRegulatory(fdoc));
+    if(isStructuredRenovationThermalDocument(fdoc)) pushAll(out,parseStructuredRenovationThermal(fdoc));
+    pushAll(out,parseThermalStudy(fdoc),parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='cctp'){
-    out.push(...parseBuildingSurface(fdoc),...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='dpgf'){
-    out.push(...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='dpe'){
     // DPE et 3CL fusionnés : classes + état existant ; recommandations exclues par parseSystems.
-    out.push(...parseBuildingSurface(fdoc),...parseProgram(fdoc),...parseDpe(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseProgram(fdoc),parseDpe(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }
-  out.push(...parsePatchOccurrences(fdoc));
+  pushAll(out,parsePatchOccurrences(fdoc));
   out=filterSpecializedOccurrences(family,out.filter(Boolean));
   out=pruneHierarchicalShadowed(fdoc,out);
   return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:family,specializedParser:true}));
@@ -8403,7 +8531,10 @@ function applyCoherenceChecks(result){
     const cep=get('cep'), cepnr=get('cepnr');
     if(cep!==null&&cepnr!==null){ if(cepnr<=cep+0.5) record('Cep,nr ≤ Cep','ok',`${cepnr} ≤ ${cep}`); else record('Cep,nr ≤ Cep','fail',`Cep,nr = ${cepnr} > Cep = ${cep}`,['cep','cepnr']); }
     // 5. Gains recalculés
-    for(const [v,m,g] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain'],['cepnr','cepnr_max','cepnr_gain'],['ubat_after','ubat_ref','ubat_gain'],['ges','ges_ref','ges_gain']]){
+    // v2.34.0 — rénovation : le gain se calcule sur l'état initial quand il est connu (règle des évaluateurs, Salesforce),
+    // la référence du document restant affichée telle quelle.
+    for(const [v,m0,g,init] of [['bbio','bbio_max','bbio_gain'],['cep','cep_max','cep_gain','cep_before'],['cepnr','cepnr_max','cepnr_gain'],['ubat_after','ubat_ref','ubat_gain','ubat_before'],['ges','ges_ref','ges_gain','ges_before']]){
+      const m=init&&get(init)>0?init:m0;
       const a=get(v), mx=get(m), gain=get(g); if(a===null||!mx) continue;
       const calc=Math.round((mx-a)/mx*1000)/10;
       if(gain===null){
@@ -8800,7 +8931,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(o); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -8833,16 +8964,12 @@ function applyComparisonBases(result){
   for(const row of result?.rows||[]){ const b=row.building; const fin=f=>result.finals.find(o=>o.building===b&&o.field===f);
     for(const [init,ref,gain,values] of COMPARISON_BASES){
       const v=numOrNull(row[init]), src=fin(init), prev=fin(ref); if(v===null||!src||!(v>0)||isManualFinal(prev)) continue;
-      if(numOrNull(row[ref])!==v){
-        result.finals=result.finals.filter(o=>o!==prev);
-        result.finals.push({...src,field:ref,method:'derive:reference-etat-initial',derivedFromDocument:true,provenanceNote:`Rénovation : référence = état initial (${FIELD_MAP[init]?.label||init} = ${v})${prev?` ; référence du document : ${prev.value}`:''}.`});
-        row[ref]=v;
-        for(const d of result.detailed||[]) if(d.building===b&&d.field===ref&&d.status==='retenu'&&d!==prev){ d.status='rejeté'; d.rejectionReason='Rénovation : la référence de comparaison retenue est l’état initial.'; }
-      }
+      // v2.34.0 — la référence (Cep réf, Ubat réf, GES réf) reste celle du document, comme dans Salesforce (évaluateurs :
+      // Cep réf ≠ état initial sur 38 fiches / 38, Ubat réf sur 58 / 60) ; seul le gain est calculé sur l'état initial (26 / 38).
       const vf=values.find(f=>numOrNull(row[f])!==null), g=fin(gain); if(!vf||isManualFinal(g)) continue;
       const calc=Math.round((v-Number(row[vf]))/v*1000)/10; if(numOrNull(row[gain])===calc) continue;
       result.finals=result.finals.filter(o=>o!==g);
-      result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[ref]?.label||ref} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (réf − valeur) / réf = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
+      result.finals.push({...fin(vf),field:gain,value:calc,unit:'%',method:'derive:gain-etat-initial',derivedFromDocument:true,excerpt:`${FIELD_MAP[init]?.label||init} = ${v} ; ${FIELD_MAP[vf]?.label||vf} = ${row[vf]} → gain = (état initial − valeur) / état initial = ${calc} %`,provenanceNote:`Gain calculé sur l’état initial${g?` ; gain lu dans le document : ${g.value}`:''}.`});
       row[gain]=calc;
     }
     // v2.6.0 — période de construction déduite de l'année lue (proposition validée 46 fois sur 46 dans le pack du 26/10/2026).
@@ -10641,6 +10768,7 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });
   const ws1=aoaSheet(data); autoWidth(ws1); XLSX.utils.book_append_sheet(wb,ws1,'Données par bâtiment');
 
+
   // v2.5.0 — 2e feuille : nomenclature économique (une ligne par opération), identifiant du projet en tête.
   const blank=v=>v===undefined||v===null||v===''||v==='non précisé';
   const eco=usable.map((p,idx)=>{ const off=new Set(p.economicExcluded||[]); const e=analyzeEconomicData((p.docs||[]).filter(d=>!off.has(d.id)),p.result?.operation||'',p.manualEconomics||{}); const rows=p.result?.rows||[]; const first=k=>rows.map(r=>r[k]).find(x=>!blank(x));
@@ -10654,8 +10782,12 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
     if(det.length>1){ const wsD=aoaSheet(det); autoWidth(wsD); XLSX.utils.book_append_sheet(wb,wsD,'Lignes financières'); }
   }
 
-  const tr=[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']];
-  usable.forEach((p,idx)=>{ const r=p.result,pname=projectName(p,idx); for(const o of r.finals) tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
+  // v2.34.0 — même grille, niveau de fiabilité de chaque valeur (Certifiée / Sûre / Probable / À vérifier) ; lue par TotalRecoll.
+  const relData=[[...fields.map(f=>f.label)]];
+  usable.forEach(p=>{ const t=reliabilityTable(p.result); for(const row of p.result.rows){ const m=t[row.building]||{}; relData.push(fields.map(f=>f.key==='building'?(row.building??''):f.key==='contract_number'?(row.contract_number??''):f.key==='internal_code'?(row.internal_code??''):(m[f.key]?RELIABILITY[m[f.key]].short:''))); } });
+  const wsR=aoaSheet(relData); autoWidth(wsR); XLSX.utils.book_append_sheet(wb,wsR,'Fiabilité par bâtiment');
+  const tr=[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Fiabilité','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']];
+  usable.forEach((p,idx)=>{ const r=p.result,pname=projectName(p,idx),rt=reliabilityTable(r); for(const o of r.finals) tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,RELIABILITY[rt[o.building]?.[o.field]]?.short||'',o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
   const ws2=aoaSheet(tr); autoWidth(ws2); XLSX.utils.book_append_sheet(wb,ws2,'Traçabilité');
 
   const oc=[['Projet','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Routage','Statut','Motif rejet','Méthode','Origine','Commentaire','Extrait']];
@@ -12710,6 +12842,7 @@ const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]
 // v2.20.7 — Salesforce : opérations « remplies » (au moins un import Salesforce intégré), bâtiments qui n'existent que par
 // un import Salesforce (en rouge), compteur et liste des opérations remplies par les documents seuls.
 const SF_SRC=/salesforce/i;
+const isBoxCctpType=t=>[DOC_TYPES.CCTP,DOC_TYPES.DPGF,DOC_TYPES.NOTICE,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.CONTRACT].includes(t);
 // v2.33.0 — origine d'une valeur retenue : 'sf' (collage libre d'une fiche Salesforce ou export .xlsx), 'doc' (analyse d'un
 // document), '' (saisie, géolocalisation, bibliothèque). Couleur de cellule : vert Salesforce > jaune inhabituelle > bleu documents.
 function valueOrigin(o,p=activeProject()){
@@ -12718,7 +12851,7 @@ function valueOrigin(o,p=activeProject()){
   return o.removedDocument||(p?.docs||[]).some(d=>d.id===o.docId)?'doc':'';
 }
 function cellTone(o,odd,p){ const k=valueOrigin(o,p); return k==='sf'?'v-sf':odd?'odd':k==='doc'?'v-doc':''; }
-const TONE_LEGEND='<div class="tone-legend"><span><i class="v-sf"></i>Salesforce (collage libre ou export .xlsx)</span><span><i class="odd"></i>Valeur inhabituelle, à vérifier</span><span><i class="v-doc"></i>Lue dans les documents</span></div>';
+const TONE_LEGEND='<div class="tone-legend"><span><i class="v-sf"></i>Salesforce (collage libre ou export .xlsx)</span><span><i class="odd"></i>Valeur inhabituelle, à vérifier</span><span><i class="v-doc"></i>Lue dans les documents</span></div><div class="tone-legend rel-legend"><b>Fiabilité (liseré)</b><span><i class="rel-certifiee"></i>Certifiée (Salesforce)</span><span><i class="rel-sure"></i>Sûre</span><span><i class="rel-probable"></i>Probable</span><span><i class="rel-averifier"></i>À vérifier</span></div>';
 function sfImports(p){ const xs=p?.salesforceImports||[]; if(xs.length) return xs; return Object.values(p?.manualSources||{}).some(m=>SF_SRC.test(m?.fileName||''))?[{at:0}]:[]; }
 const sfDayKey=t=>{ const d=new Date(t); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; };
 function sfAddedBuildings(p){
@@ -13180,7 +13313,7 @@ function addFiles(fileList,specializedFamily=null,opts={}){
     }
     // Fichier redéposé : ses valeurs conservées sont remplacées par la nouvelle lecture.
     if(hasRetainedData()) activeProject().retainedOccurrences=retainedOccurrences().filter(o=>o.fileName!==file.name);
-    const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null;
+    const rec=makeDocumentRecord(file); rec.relativePath=rel; rec.familyMode='auto'; rec.families=null; rec.specializedFamily=null; if(file._boxKind) rec.boxKind=file._boxKind;
     const forced=normalizeFamilyKey(specializedFamily); if(forced&&forced!=='annex'){ rec.familyMode='manual'; rec.families=[forced]; }
     // v2.3.2 — Analyse manuelle : moteur libre (famille « annex » imposée), sans liste blanche de champs.
     if(opts.manualAnalysis){ rec.familyMode='manual'; rec.families=['annex']; }
@@ -13382,7 +13515,7 @@ async function openBoxDialog(changeRoot=false){
   $('#boxNone').onclick=()=>{ box.querySelectorAll('[data-box-i]').forEach(c=>c.checked=false); count(); };
   $('#boxRoot').onclick=()=>{ dlg.close(); openBoxDialog(true); };
   $('#boxClose').onclick=()=>dlg.close();
-  btn.onclick=()=>{ const files=[...box.querySelectorAll('[data-box-i]:checked')].map(c=>{ const it=items[Number(c.dataset.boxI)]; return attachRelativePath(it.file,`${op.name}/${it.path}`); });
+  btn.onclick=()=>{ const files=[...box.querySelectorAll('[data-box-i]:checked')].map(c=>{ const it=items[Number(c.dataset.boxI)]; const f=attachRelativePath(it.file,`${op.name}/${it.path}`); try{ f._boxKind=it.kind; }catch{} return f; });
     dlg.close(); if(files.length){ addFiles(files); toast(`${files.length} document(s) chargé(s) depuis Box (${op.name}).`,'success'); } };
   dlg.showModal();
 }
@@ -13786,6 +13919,9 @@ async function analyze(onlyIds=null,manualUnlimited=false){
       await gate();
       d.liveStage='classification'; updateParallelStatus(d,{stage:'classification'},true); await yieldToBrowser();
       d.classification=classifyForSelectedFamily(d);
+      // v2.34.0 — fichier du sous-dossier CCTP de Box classé dans un type incompatible (ex. CCTP pris pour un RSET : « 176
+      // logements » du programme) : famille CCTP imposée, comme dans l'import massif. Thermique et carbone restent automatiques.
+      if(d.boxKind==='cctp'&&d.familyMode!=='manual'&&!isBoxCctpType(d.classification.type)&&!d.read?.plan){ d.familyMode='manual'; d.families=['cctp']; d.boxForced=d.classification.type; d.classification=classifyForSelectedFamily(d); }
       d.type=d.classification.type;
       d.buildings=detectBuildings(d);
       await yieldToBrowser();
@@ -14013,7 +14149,7 @@ function renderSummary(){
   if(normalizedResultViewKey(activeProject().resultView)==='searches'){ renderSearches(wrap); renderResultWorkspaceControls(); return; }
   if(normalizedResultViewKey(activeProject().resultView)==='plans'){ renderPlans(wrap); renderResultWorkspaceControls(); return; }
   if(!r){ wrap.innerHTML='<div class="empty-state"><div class="empty-ico">⌁</div><h3>Nouveau projet prêt à analyser</h3><p>Ajoutez vos PDF, XML ou tableaux Excel, ou collez directement une ligne Excel dans Données manuelles.</p></div>'; renderResultWorkspaceControls(); return; }
-  const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote);
+  const libraryNotes=r.finals.filter(o=>o.libraryDerived&&o.provenanceNote); const relT=reliabilityTable(r);
   const groupedAliases=(r.buildingAliases||[]).filter(a=>a.source!==a.target);
   const suggestions=(r.buildingSuggestions||[]).slice(0,8);
   const hasManual=Object.keys(state.buildingOverrides||{}).some(k=>state.buildingOverrides[k]&&state.buildingOverrides[k]!==k);
@@ -14023,7 +14159,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${TONE_LEGEND}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${v===undefined?'':cellTone(o,oddValue(f.key,v))}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${TONE_LEGEND}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${v===undefined?'':cellTone(o,oddValue(f.key,v))} ${v===undefined?'':`rel-${relT[row.building]?.[f.key]||'none'}`}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([v===undefined?'':`Fiabilité : ${RELIABILITY[relT[row.building]?.[f.key]]?.label||'—'}`,oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -14159,7 +14295,7 @@ function renderReview(){
   const wrap=$('#summaryView'); const r=state.result; if(!wrap||!r) return;
   const profile=projectProfile(); const buildings=reviewBuildings();
   if(!buildings.includes(reviewState.building)) reviewState.building=buildings[0]||'';
-  const B=reviewState.building; const q=normLower(reviewState.query||'');
+  const B=reviewState.building; const q=normLower(reviewState.query||''); const relB=reliabilityTable(r)[B]||{};
   const groups=REVIEW_GROUPS.map(g=>({...g,entries:reviewFields(g,profile).map(d=>reviewEntry(B,d))})).filter(g=>g.entries.length);
   const all=groups.filter(g=>!g.admin&&g.optional!==profile).flatMap(g=>g.entries); const count=s=>all.filter(e=>s.includes(e.status)).length;
   const pass=e=>(reviewState.filter==='all'||(reviewState.filter==='todo'&&['missing','review'].includes(e.status))||(reviewState.filter==='review'&&e.status==='review')||(reviewState.filter==='done'&&['ok','manual'].includes(e.status)))&&(!q||normLower(e.def.label).includes(q)||normLower(formatValue(e.v)).includes(q));
@@ -14170,7 +14306,7 @@ function renderReview(){
   const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
     const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}${k==='geocode_precision'?geoLinkHtml(B):''}`);
     const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
-    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value${!editing&&!isBlank(e.v)?' '+cellTone(e.src,oddValue(k,e.v)):''}"${!editing&&oddValue(k,e.v)?` title="${escapeHtml(oddValue(k,e.v))}"`:''}>${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
+    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value${!editing&&!isBlank(e.v)?' '+cellTone(e.src,oddValue(k,e.v)):''}"${!editing&&oddValue(k,e.v)?` title="${escapeHtml(oddValue(k,e.v))}"`:''}>${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${!isBlank(e.v)&&relB[k]?`<span class="rv-rel rel-${relB[k]}" title="Fiabilité : ${escapeHtml(RELIABILITY[relB[k]].label)}">${escapeHtml(RELIABILITY[relB[k]].short)}</span>`:''}${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
       <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${e.manual?`<button type="button" class="rv-btn rv-ghost" data-rv-unset="${k}" title="Supprimer la donnée manuelle : l’analyse des documents reprend ce champ">Supprimer</button>`:''}${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
   const tabs=buildings.map(b=>{ const c=reviewCompletion(b,profile); return `<button type="button" class="rv-bld ${b===B?'active':''}" data-rv-building="${escapeHtml(b)}"><span>${escapeHtml(b.replace(/^Bâtiment\s+/,''))}</span><span class="rv-bld-bar" style="--p:${c.pct}%"></span><small>${c.filled}/${c.total}</small></button>`; }).join('');
   const comp=reviewCompletion(B,profile);
@@ -15043,7 +15179,7 @@ function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
         searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks,p.result)]).filter(([,r])=>r.documents.length||r.fieldHits||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
-      return {...base,rows:p.result?.rows||[],finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
+      return {...base,rows:p.result?.rows||[],reliability:p.result?reliabilityTable(p.result):{},finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; }
 }
 // v2.23.1 — témoin d'avancement de l'export de session : carte flottante (étape, opération en cours, %, taille écrite).
@@ -15222,7 +15358,9 @@ function synthLine(p){
   });
   const odds=[]; for(const row of rows) for(const f of FIELD_DEFS){ const why=oddValue(f.key,row[f.key]); if(why) odds.push(`${f.label} = ${formatValue(row[f.key])}${rows.length>1?` (${row.building})`:''} : ${why}`); }
   const missing=cols.filter(c=>c.st==='miss'||c.st==='part').length;
-  return {p,id,cols,odds,missing,owner:id.owner||NO_OWNER,pct:projectCompletion(p),buildings:rows.length,docs:(p.docs||[]).length,geo:cols[0].st};
+  const rc=r?reliabilityCounts(reliabilityTable(r)):{certifiee:0,sure:0,probable:0,averifier:0}, rn=rc.certifiee+rc.sure+rc.probable+rc.averifier;
+  const rel={...rc,n:rn,pct:rn?Math.round((rc.certifiee+rc.sure)/rn*100):null};
+  return {p,id,cols,odds,missing,rel,owner:id.owner||NO_OWNER,pct:projectCompletion(p),buildings:rows.length,docs:(p.docs||[]).length,geo:cols[0].st};
 }
 async function openSynthesis(){
   let dlg=$('#synthDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='synthDialog'; dlg.className='search-integrate-dialog synth-dialog'; document.body.appendChild(dlg);
@@ -15245,17 +15383,17 @@ function renderSynthesis(dlg,{keepFocus=false}={}){
   if(synthUi.owner&&!owners.includes(synthUi.owner)) synthUi.owner='';
   const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); const q=fold(synthUi.q||'').trim();
   const lines=all.filter(x=>(!synthUi.owner||x.owner===synthUi.owner)&&(!q||fold([x.id.contract,x.id.name,projectTitle(x.p),x.id.code,x.owner].join(' ')).includes(q))
-    &&(!synthUi.filter||(synthUi.filter==='miss'&&x.missing)||(synthUi.filter==='odd'&&x.odds.length)||(synthUi.filter==='geo'&&x.geo!=='geo')))
+    &&(!synthUi.filter||(synthUi.filter==='miss'&&x.missing)||(synthUi.filter==='odd'&&x.odds.length)||(synthUi.filter==='geo'&&x.geo!=='geo')||(synthUi.filter==='rel'&&x.rel.averifier)))
     .sort((a,b)=>(b.missing+2*b.odds.length)-(a.missing+2*a.odds.length)||String(a.id.contract).localeCompare(String(b.id.contract)));
   dlg._lines=lines;
   const n=k=>all.filter(k).length;
   const kpi=`<div class="synth-kpis"><span><b>${all.length}</b>opération(s)</span><span class="${n(x=>x.geo==='miss')?'bad':''}"><b>${n(x=>x.geo==='miss'||x.geo==='part')}</b>sans géolocalisation complète</span><span><b>${n(x=>x.geo==='approx')}</b>localisée(s) à la commune</span><span class="${n(x=>x.missing)?'warn':''}"><b>${n(x=>x.missing)}</b>avec donnée(s) cruciale(s) manquante(s)</span><span class="${n(x=>x.odds.length)?'warn':''}"><b>${n(x=>x.odds.length)}</b>avec valeur(s) inhabituelle(s)</span></div>`;
   const tools=`<div class="synth-tools"><input type="search" data-synth-q placeholder="Contrat, nom, code, maître d’ouvrage" value="${escapeHtml(synthUi.q)}" aria-label="Rechercher">
-    <select data-synth-filter aria-label="Filtrer">${[['','Toutes les opérations'],['miss','Données cruciales manquantes'],['odd','Valeurs inhabituelles'],['geo','Sans géolocalisation à l’adresse']].map(([v,l])=>`<option value="${v}"${synthUi.filter===v?' selected':''}>${l}</option>`).join('')}</select>
+    <select data-synth-filter aria-label="Filtrer">${[['','Toutes les opérations'],['miss','Données cruciales manquantes'],['odd','Valeurs inhabituelles'],['geo','Sans géolocalisation à l’adresse'],['rel','Valeurs à vérifier (fiabilité)']].map(([v,l])=>`<option value="${v}"${synthUi.filter===v?' selected':''}>${l}</option>`).join('')}</select>
     <select data-synth-owner aria-label="Maître d’ouvrage"><option value="">Tous les maîtres d’ouvrage</option>${owners.map(o=>`<option${o===synthUi.owner?' selected':''}>${escapeHtml(o)}</option>`).join('')}</select>
     <span class="badge doc">${lines.length} affichée(s)</span><button class="btn light" type="button" data-synth-geo title="Interroge l’IGN pour les opérations affichées sans position à l’adresse">⌖ Géolocaliser les manquantes</button><button class="btn light" type="button" data-synth-csv>Exporter (.csv)</button></div>`;
-  const head=`<tr><th>Contrat</th><th>Opération</th><th>Maître d’ouvrage</th><th>Bât.</th><th>Docs</th><th>Complétude</th>${SYN_COLS.map(c=>`<th>${escapeHtml(c[1])}</th>`).join('')}<th>Valeurs inhabituelles</th></tr>`;
-  const body=lines.slice(0,3000).map(x=>`<tr data-synth-go="${x.p.id}" title="Ouvrir l’opération"><td><b>${escapeHtml(x.id.contract||'—')}</b></td><td class="wrap">${escapeHtml(x.id.name||projectTitle(x.p))}</td><td class="wrap">${escapeHtml(x.owner===NO_OWNER?'—':x.owner)}</td><td>${x.buildings||'—'}</td><td>${x.docs}</td><td>${x.pct} %</td>${x.cols.map(c=>`<td class="c-${c.st}" title="${escapeHtml(c.title||'')}">${escapeHtml(c.txt)}</td>`).join('')}<td class="${x.odds.length?'c-odd wrap':''}" title="${escapeHtml(x.odds.join('\n'))}">${x.odds.length?escapeHtml(x.odds.length===1?x.odds[0]:`${x.odds.length} valeurs : ${x.odds[0]}…`):''}</td></tr>`).join('');
+  const head=`<tr><th>Contrat</th><th>Opération</th><th>Maître d’ouvrage</th><th>Bât.</th><th>Docs</th><th>Complétude</th><th title="Part des valeurs certifiées (Salesforce) ou sûres">Fiabilité</th>${SYN_COLS.map(c=>`<th>${escapeHtml(c[1])}</th>`).join('')}<th>Valeurs inhabituelles</th></tr>`;
+  const body=lines.slice(0,3000).map(x=>`<tr data-synth-go="${x.p.id}" title="Ouvrir l’opération"><td><b>${escapeHtml(x.id.contract||'—')}</b></td><td class="wrap">${escapeHtml(x.id.name||projectTitle(x.p))}</td><td class="wrap">${escapeHtml(x.owner===NO_OWNER?'—':x.owner)}</td><td>${x.buildings||'—'}</td><td>${x.docs}</td><td>${x.pct} %</td><td class="${x.rel.pct===null?'':x.rel.pct>=80?'c-sf':x.rel.pct>=50?'c-part':'c-miss'}" title="${x.rel.n?`${x.rel.certifiee} certifiée(s) · ${x.rel.sure} sûre(s) · ${x.rel.probable} probable(s) · ${x.rel.averifier} à vérifier`:''}">${x.rel.pct===null?'—':`${x.rel.pct} % fiables`}</td>${x.cols.map(c=>`<td class="c-${c.st}" title="${escapeHtml(c.title||'')}">${escapeHtml(c.txt)}</td>`).join('')}<td class="${x.odds.length?'c-odd wrap':''}" title="${escapeHtml(x.odds.join('\n'))}">${x.odds.length?escapeHtml(x.odds.length===1?x.odds[0]:`${x.odds.length} valeurs : ${x.odds[0]}…`):''}</td></tr>`).join('');
   const legend='<div class="tone-legend"><span><i class="v-sf"></i>Salesforce</span><span><i class="v-doc"></i>Documents</span><span><i class="odd"></i>Inhabituelle</span><span><i style="background:#fff1dc"></i>Partielle (certains bâtiments)</span><span><i style="background:#fde8e6"></i>Manquante</span><span><i style="background:#eef6e9"></i>Position à la commune</span></div>';
   const focus=keepFocus&&document.activeElement?.matches?.('[data-synth-q]'), pos=focus?document.activeElement.selectionStart:0;
   dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Analyses</span><h3>Tableau de synthèse</h3><p>Données cruciales par opération : vides en rouge, partielles en orange, valeurs inhabituelles en jaune. Cliquez sur une ligne pour ouvrir l’opération.</p></div><button class="icon-btn" type="button" data-synth-close aria-label="Fermer">×</button></div>
@@ -15264,8 +15402,8 @@ function renderSynthesis(dlg,{keepFocus=false}={}){
 }
 function synthCsv(lines){
   const esc=v=>{ const s=String(v??''); return /[;"\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
-  const rows=[['Contrat','Opération','Maître d’ouvrage','Bâtiments','Documents','Complétude %',...SYN_COLS.map(c=>c[1]),'Valeurs inhabituelles']]
-    .concat(lines.map(x=>[x.id.contract,x.id.name||projectTitle(x.p),x.owner===NO_OWNER?'':x.owner,x.buildings,x.docs,x.pct,...x.cols.map(c=>c.st==='miss'?'MANQUE':c.txt),x.odds.join(' | ')]));
+  const rows=[['Contrat','Opération','Maître d’ouvrage','Bâtiments','Documents','Complétude %','Valeurs fiables %','Valeurs à vérifier',...SYN_COLS.map(c=>c[1]),'Valeurs inhabituelles']]
+    .concat(lines.map(x=>[x.id.contract,x.id.name||projectTitle(x.p),x.owner===NO_OWNER?'':x.owner,x.buildings,x.docs,x.pct,x.rel.pct??'',x.rel.averifier,...x.cols.map(c=>c.st==='miss'?'MANQUE':c.txt),x.odds.join(' | ')]));
   downloadBlob(new Blob(['﻿'+rows.map(r=>r.map(esc).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}),`ExtracTerre_synthese_${new Date().toISOString().slice(0,10)}.csv`);
 }
 
@@ -15724,6 +15862,8 @@ async function initializeApp(){
   initSpaceChooser();
   try{await initializeLearningMemory();}catch(err){console.warn('Learning memory init failed',err);}
   await initializeImprovementPatches();
+  // v2.34.0 — fiabilité mesurée par le banc de vérité Salesforce (statistiques par méthode de lecture).
+  try{ const r=await fetch(`./data/fiabilite-calibration.json?v=${APP_VERSION}`,{cache:'no-store'}); if(r.ok) setCalibration(await r.json()); }catch(e){ console.warn('Calibration de fiabilité indisponible',e); }
   wire(); setLocalSaveUi('Recherche de session…');
   try{
     // v2.19.2 — démarrage fluide : écran de progression pendant la lecture, puis l'accueil s'affiche tout de suite (tuiles

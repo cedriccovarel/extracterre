@@ -10,7 +10,7 @@ import {normalizeText} from './js/utils.js';
 import {insulationName} from './js/donnees-techniques.js';
 
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION, '2.33.2','version');
+eq(APP_VERSION, '2.34.0','version');
 eq(insulationName('ECOROCK MONO 134mm pour'),'Laine de roche','marque Rockwool'); eq(insulationName('EFIGREEN DUO+ 100 mm 600x600'),'PUR','marque PIR');
 
 const H='Simulation thermique dynamique -REHABILITATION FICTIVE', V='Pleiades, version 5.23.6.2';
@@ -45,7 +45,8 @@ const d={id:'za',name,read,familyMode:'auto',status:'ready',classification:{...c
 const occ=parseDocument(d); const res=analyzeDocuments([{...d,cachedOccurrences:occ}],structuredClone(DEFAULT_SOURCE_RULES));
 const f=k=>res.finals.filter(o=>o.field===k).map(o=>o.value); const o=k=>occ.filter(x=>x.field===k).map(x=>x.value);
 // Déjà lus avant la v2.3.21 : ne bougent pas.
-eq(f('cep_before'),[195.307],'Cep initial'); eq(f('cep'),[72.768],'Cep projet'); eq(f('cep_max'),[195.307],'Cep Ref = Cep initial (rénovation, état initial calculé)'); eq(f('ubat_before'),[1.96],'Ubat initial'); eq(f('ubat_after'),[0.68],'Ubat projet');
+eq(f('cep_before'),[195.307],'Cep initial'); eq(f('cep'),[72.768],'Cep projet'); // v2.34.0 — règle des évaluateurs (Salesforce) : Cep Ref = référence du document, gain sur l'état initial.
+eq(f('cep_max').includes(195.307),false,'Cep Ref ≠ Cep initial (rénovation : référence du document)'); eq(f('ubat_before'),[1.96],'Ubat initial'); eq(f('ubat_after'),[0.68],'Ubat projet');
 eq(f('housing_count'),[20],'logements'); eq(f('shab'),[1446],'SHAB'); eq(f('ventilation'),['VMC simple flux'],'ventilation projet');
 // Nouveaux.
 eq(f('tic'),[22.93],'Tic projet'); eq(f('tic_ref'),[33.69],'Tic référence'); eq(f('construction_year'),[1973],'« Annee deconstruction 1973 »');

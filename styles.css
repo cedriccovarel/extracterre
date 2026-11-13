@@ -1520,3 +1520,13 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .synth-table td.wrap{white-space:normal;min-width:160px;max-width:280px}
 /* v2.33.0 — À vérifier : relecture demandée */
 .ss-review.rereading{opacity:.75}.ss-review .ss-rereading{color:#2b6cb0;font-weight:600}
+
+/* v2.34.0 — fiabilité des valeurs : liseré à gauche de la cellule (la couleur de fond garde l'origine) */
+.summary-value.rel-certifiee,.rv-rel.rel-certifiee{box-shadow:inset 3px 0 0 #1f7a3a}
+.summary-value.rel-sure{box-shadow:inset 3px 0 0 #58a86b}
+.summary-value.rel-probable{box-shadow:inset 3px 0 0 #e0a84a}
+.summary-value.rel-averifier{box-shadow:inset 3px 0 0 #d4483b}
+.rel-legend i.rel-certifiee{background:#1f7a3a}.rel-legend i.rel-sure{background:#58a86b}.rel-legend i.rel-probable{background:#e0a84a}.rel-legend i.rel-averifier{background:#d4483b}
+.rel-legend i{width:4px!important;height:14px}
+.rv-rel{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;font-size:11px;font-weight:600;color:#fff}
+.rv-rel.rel-certifiee{background:#1f7a3a;box-shadow:none}.rv-rel.rel-sure{background:#58a86b}.rv-rel.rel-probable{background:#c98a25}.rv-rel.rel-averifier{background:#d4483b}

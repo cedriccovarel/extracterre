@@ -88,7 +88,7 @@ export function parseU48WinRtex(doc,occ,canonical=(s)=>s){
     const parois=[]; let cur=null;
     for(const x of P){ let m;
       if((m=x.t.match(/^Parois?\s+(\d+)\s*\/\s*(.+)$/i))){ cur={code:m[1],name:m[2].trim(),x,type:'',layers:[],renov:null}; parois.push(cur); continue; }
-      if((m=x.t.match(/^Type\s+de\s+paroi\s*:\s*(.+)$/i))) cur.renov=/neuve|renovee/i.test(m[1])&&!/non\s+renovee/i.test(m[1]);
+      if(cur&&(m=x.t.match(/^Type\s+de\s+paroi\s*:\s*(.+)$/i))) cur.renov=/neuve|renovee/i.test(m[1])&&!/non\s+renovee/i.test(m[1]);
       if(!cur) continue;
       if((m=x.t.match(/^Type\s*:\s*(.+?)\s*\(A\d\)/i))) cur.type=m[1];
       // Couche : « désignation ép. [λ] R proportion origine » (λ absent quand la résistance est donnée directement).

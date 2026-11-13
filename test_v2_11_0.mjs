@@ -9,7 +9,7 @@ import {readXmlText} from './js/readers.js';
 import {parseFreePaste,freePasteValues,salesforceEvaluationToPaste} from './js/collage-libre.js';
 import {textDoc,fictitiousRe2020Xml} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.33.2','version');
+eq(APP_VERSION,'2.34.0','version');
 
 // Schéma : DH ZT / DH ZNT à la place de DH (DH reste interne), 4 colonnes Oui / Non en fin.
 const cols=FIELD_DEFS.filter(f=>!f.hidden).map(f=>f.key);

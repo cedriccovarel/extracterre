@@ -1470,6 +1470,14 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.34.0 — fiabilité des données
+- Banc de vérité Salesforce (tools/qualite/banc-salesforce.mjs) : les valeurs Salesforce, vérifiées par les évaluateurs et ayant servi à la certification, servent de référence. Sur les 219 opérations communes (export « Opérations Toutes » × import massif) : 67,8 % de valeurs justes parmi celles lues dans les documents, 61,6 % de couverture. Rapports par champ, méthode de lecture et type de document dans ~/ExtracTerre-import/qualite/ (jamais versionnés).
+- Note de fiabilité de chaque valeur : Certifiée (Salesforce) · Sûre (lecture mesurée juste ≥ 95 %) · Probable (≥ 85 %) · À vérifier (non mesurée, peu fiable, ou contredite par un autre document, ex. deux versions d'étude). Mesurée par méthode de lecture ET par champ (data/fiabilite-calibration.json, statistiques seulement). Validation croisée : Sûre 95,7 % justes, Probable 91,5 %, À vérifier 64 %.
+- Affichage : liseré de couleur dans les tableaux, pastille dans la vue par bâtiment, colonne « Fiabilité » et filtre « Valeurs à vérifier » dans le tableau de synthèse. Export Excel : feuille « Fiabilité par bâtiment » et colonne « Fiabilité » de la traçabilité ; session JSON : « reliability » par opération (lus par TotalRecoll).
+- Rénovation, règle des évaluateurs (Salesforce) : Cep réf / Ubat réf = référence du document (ne sont plus remplacées par l'état initial) ; le gain se calcule sur l'état initial.
+- Lectures corrigées grâce au banc : SHAB prise sur la ligne « Nombre de logements » (SRT déclarée -1 m²), Bbio max pris sur « Besoins annuels en chaud ». Deux plantages de la consolidation sur données réelles (U48win « Type de paroi » avant toute paroi ; très gros documents).
+- « Charger depuis Box » : un fichier du sous-dossier CCTP classé dans un type incompatible (ex. RSET) est lu comme CCTP, comme dans l'import massif.
+
 ## v2.33.2
 - Bâtiments fantômes : une ligne de tableau ou un en-tête n'est plus pris pour un nom de bâtiment. « Bâtiment 3117.92 » (surface), « Bâtiment 0.66 0.80 », exigence « I4 ≤ 0,60 m3/h.m² », en-tête de courrier (« BP 30055 67061 STRASBOURG »), adresse (« 14 rue … ») : retirés, leurs valeurs passent en « Bâtiment unique ». « Bâtiment 1 COLLECTIF 16 0.60 OUI », « Bâtiment A (1811,3 m²) », « Bâtiment A 1516 » : ramenés à « Bâtiment 1 » / « Bâtiment A ». Les noms avec numéros de lots ou codes (« LUISA LOTS 5 6 », « A - HIBISCUS 00040 ») sont gardés.
 - Résultats déjà analysés réparés sans relecture (à la consolidation). Sur les 220 opérations importées : 2 393 → 2 252 bâtiments, 41 opérations nettoyées.

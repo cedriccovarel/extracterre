@@ -217,7 +217,10 @@ function parseBuildingSurface(doc){
         // du libellé et on ignore tout nombre < 10 (exposant, indice de zone, ratio...).
         const compactLabel=/^(?:shab(?:\s*(?:ou|\/)\s*(?:su|surt))?|s\s*ref(?:\s*\/\s*usage\s+principal)?|surt(?:\s+totale)?|srt(?:\s+totale)?|shonrt(?:\s+totale)?|surface(?:\s+(?:habitable|utile|r[eé]glementaire|thermique|totale|de\s+plancher|(?:de\s+)?r[eé]f[eé]rence|(?:totale\s+)?(?:du\s+)?b[aâ]timent))?)(?:\s*\([^)]*\))?\s*(?::|=)?\s*(?:m(?:2|²))?\s*$/i;
         if(compactLabel.test(raw) || /^s\s*ref\s*\/\s*usage\s+principal\b/i.test(raw) || /^srt\b/i.test(raw)){
-          const near=normalizeText([tail,...lines.slice(i+1,i+3).map(x=>x.text)].join(' | '));
+          // v2.34.0 — lignes suivantes seulement tant qu'elles commencent par une valeur (« SRT déclarée -1 m² » puis
+          // « Nombre de logements 32 » donnait une SHAB de 32 m² ; banc Salesforce).
+          const follow=[]; for(const x of lines.slice(i+1,i+3)){ const t=normalizeText(x.text); if(!/^\s*[-+]?\d/.test(t)) break; follow.push(t); }
+          const near=normalizeText([tail,...follow].join(' | '));
           const nearVals=numbersIn(near).filter(plausibleBuildingSurface);
           if(nearVals.length){
             const chosen=nearVals[0];
@@ -708,7 +711,10 @@ export function parseRset(doc){
         const narrative=/\b(?:article|art\.?|conforme|inferieur|inférieur|egal|égal|exigence)\b/i.test(s) || /-\s*b[aâ]t\.?\s*\d+\s*$/i.test(s);
         let vals=[];
         if(!narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(s).filter(x=>x>=0&&x<1000);
-        if(vals.length<2 && !narrative && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0&&x<1000);
+        // v2.34.0 — valeurs sur la ligne suivante seulement si elle commence par un nombre (sinon « Besoins annuels en chaud
+        // … 28,800 » devenait le Bbio max ; banc Salesforce : 8 erreurs sur 8).
+        const nextOnlyNumbers=/^\s*[-+]?\d/.test(normalizeText(lines[i+1]?.text||''));
+        if(vals.length<2 && !narrative && nextOnlyNumbers && /^\s*coefficient\s+bbio\b/i.test(s)) vals=numbersIn(lineWindow(page,i,0,1)).filter(x=>x>=0&&x<1000);
         if(vals.length>=2){ push(out,occ(doc,page,line,'bbio',vals[0],'rset:bbio-table',0.99)); push(out,occ(doc,page,line,'bbio_max',vals[1],'rset:bbio-table',0.99)); if(vals.length>=3) push(out,occ(doc,page,line,'bbio_gain',vals[2],'rset:bbio-table',0.98,'%')); }
       }
       if(/coefficients?\s+cep\s*\/\s*cep\s*(?:max)?/i.test(s)){
@@ -1898,28 +1904,30 @@ function typeForFamily(family,doc){
   if(family==='carbone') return [DOC_TYPES.RSENV,DOC_TYPES.CARBON].includes(t)?t:(t===DOC_TYPES.RSEE_RE2020?DOC_TYPES.RSENV:DOC_TYPES.CARBON);
   return DOCUMENT_FAMILIES[family]?.type||doc.type;
 }
+// v2.34.0 — ajout élément par élément : out.push(...tableau) dépasse la pile sur les gros documents (« Maximum call stack size exceeded »).
+function pushAll(out,...arrs){ for(const a of arrs) if(a) for(const x of a) out.push(x); return out; }
 function parseFamily(doc,family){
   const fdoc={...doc,type:typeForFamily(family,doc)};
   let out=[...parseTaggedFields(fdoc)];
   if(family==='rset'||family==='rt2012'){
-    out.push(...parseBuildingSurface(fdoc),...parseRset(fdoc),...parseRt2012Hierarchical(fdoc),...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseRset(fdoc),parseRt2012Hierarchical(fdoc),parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='carbone'){
-    out.push(...parseProgram(fdoc),...parseCarbon(fdoc)); addRsetCarbonBreakdown(fdoc,out);
+    pushAll(out,parseProgram(fdoc),parseCarbon(fdoc)); addRsetCarbonBreakdown(fdoc,out);
     const rsenvLike=fdoc.type===DOC_TYPES.RSENV||/chapitre\s*5\s*:/i.test(fdoc.read?.text||'');
-    if(rsenvLike) out.push(...parseRsenvHierarchical({...fdoc,type:DOC_TYPES.RSENV}));
+    if(rsenvLike) pushAll(out,parseRsenvHierarchical({...fdoc,type:DOC_TYPES.RSENV}));
   }else if(family==='thcex'){
-    out.push(...parseBuildingSurface(fdoc),...parseGenericRegulatory(fdoc));
-    if(isStructuredRenovationThermalDocument(fdoc)) out.push(...parseStructuredRenovationThermal(fdoc));
-    out.push(...parseThermalStudy(fdoc),...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseGenericRegulatory(fdoc));
+    if(isStructuredRenovationThermalDocument(fdoc)) pushAll(out,parseStructuredRenovationThermal(fdoc));
+    pushAll(out,parseThermalStudy(fdoc),parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='cctp'){
-    out.push(...parseBuildingSurface(fdoc),...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='dpgf'){
-    out.push(...parseProgram(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseProgram(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }else if(family==='dpe'){
     // DPE et 3CL fusionnés : classes + état existant ; recommandations exclues par parseSystems.
-    out.push(...parseBuildingSurface(fdoc),...parseProgram(fdoc),...parseDpe(fdoc),...parseEnvelope(fdoc),...parseSystems(fdoc));
+    pushAll(out,parseBuildingSurface(fdoc),parseProgram(fdoc),parseDpe(fdoc),parseEnvelope(fdoc),parseSystems(fdoc));
   }
-  out.push(...parsePatchOccurrences(fdoc));
+  pushAll(out,parsePatchOccurrences(fdoc));
   out=filterSpecializedOccurrences(family,out.filter(Boolean));
   out=pruneHierarchicalShadowed(fdoc,out);
   return annotateSemanticHierarchy(fdoc,out).map(o=>({...o,specializedFamily:family,specializedParser:true}));
