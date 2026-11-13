@@ -28,6 +28,11 @@ export function sfxColumns(headers){
     street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
 }
 
+// v2.33.0 — un export .xlsx peut commencer par des lignes de titre : l'en-tête est la 1re ligne qui porte le contrat ou le code interne.
+export function sfxHeaderRow(table){
+  for(let i=0;i<Math.min((table||[]).length,40);i++){ const c=sfxColumns(table[i]); if(c.contract>=0||c.code>=0) return i; }
+  return 0;
+}
 // Ligne → fiche (même texte que la page lue par le favori) + valeurs directes (contrat, statut de l'évaluation).
 export function sfxFiche(row,cols){
   const code=cols.code>=0?String(row[cols.code]||'').trim():'';

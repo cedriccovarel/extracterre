@@ -3,7 +3,7 @@
 import {APP_VERSION} from './js/config.js';
 import {boxFindOperation,boxListEvaluation} from './js/box-folder.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.32.2','version');
+eq(APP_VERSION,'2.33.0','version');
 const file=(name,t=1)=>({kind:'file',name,async getFile(){ return {name,size:100,lastModified:t}; }});
 const dir=(name,children=[])=>({kind:'directory',name,async *entries(){ for(const c of children) yield [c.name,c]; },async getDirectoryHandle(x){ const c=children.find(k=>k.name===x&&k.kind==='directory'); if(!c) throw new Error('absent'); return c; }});
 const root=dir('1 BEE Contrats',[

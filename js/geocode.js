@@ -49,20 +49,33 @@ export function folderCommune(folder){
   const city=dep&&i<segs.length?segs[i].replace(/\b(?:annul[ée]e?s?|cp|ap)\b/gi,' ').replace(/\s+/g,' ').trim():'';
   return dep&&city?{department:dep,city}:null;
 }
-export function communeVerdict(json,{department,city}){
-  const want=geo_norm(city);
-  for(const f of json?.features||[]){ const p=f.properties||{}, [lon,lat]=f.geometry?.coordinates||[];
-    if(p.type!=='municipality'||!Number.isFinite(lat)) continue;
-    if(!String(p.context||'').toUpperCase().startsWith(department+',')) continue;
-    const label=geo_norm(p.label||p.city); if(!label||!(want===label||want.startsWith(label+' '))) continue;
-    return {ok:true,lat:Math.round(lat*1e6)/1e6,lon:Math.round(lon*1e6)/1e6,insee:p.citycode||'',label:p.label||'',precision:'Commune (nom du dossier Box) — position approximative'};
-  }
+// v2.33.0 — appels IGN en file : un à la fois, 120 ms d'écart (limite du service : 50/s), nouvel essai si le service sature.
+export function throttledFetch(fetchImpl,{gap=120,retries=4,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){
+  let chain=Promise.resolve(), last=0;
+  const one=async url=>{ for(let a=0;;a++){ const wait=last+gap-Date.now(); if(wait>0) await sleep(wait); last=Date.now();
+      let r; try{ r=await fetchImpl(url); }catch(e){ if(a>=retries) throw e; await sleep(800*2**a); continue; }
+      if((r.status===429||r.status>=500)&&a<retries){ await sleep(1000*2**a); continue; } return r; } };
+  return url=>{ const p=chain.then(()=>one(url)); chain=p.catch(()=>{}); return p; };
+}
+const geo_saint=s=>s.replace(/\bste\b/g,'sainte').replace(/\bst\b/g,'saint').replace(/\bcedex\b.*$/,'').trim();
+export function communeVerdict(json,{department,city,postcode='',source=''}){
+  const want=geo_saint(geo_norm(city));
+  const feats=(json?.features||[]).filter(f=>f.properties?.type==='municipality'&&Number.isFinite(f.geometry?.coordinates?.[1]));
+  const label=p=>`Commune (${source==='Salesforce'?'ville et code postal Salesforce':'nom du dossier Box'}) — position approximative`;
+  const out=(f)=>{ const p=f.properties, [lon,lat]=f.geometry.coordinates; return {ok:true,lat:Math.round(lat*1e6)/1e6,lon:Math.round(lon*1e6)/1e6,insee:p.citycode||'',label:p.label||'',precision:label(p)}; };
+  const inDep=f=>{ const c=String(f.properties.context||'').toUpperCase(); return department==='20'?/^2[AB],/.test(c):c.startsWith(department+','); };
+  for(const f of feats){ if(!inDep(f)) continue;
+    const l=geo_saint(geo_norm(f.properties.label||f.properties.city)); if(l&&(want===l||want.startsWith(l+' '))) return out(f); }
+  // Code postal connu et une seule commune dans ce code postal : c'est elle (« ST DENIS 93200 » → Saint-Denis).
+  if(postcode){ const inCp=feats.filter(f=>inDep(f)&&(!f.properties.postcode||f.properties.postcode===postcode)); if(inCp.length===1) return out(inCp[0]); }
   return {ok:false,reason:`commune « ${city} » (${department}) introuvable`};
 }
 export async function geocodeCommune(fc,fetchImpl=fetch){
-  const u=new URL(GEOCODE_URL); u.searchParams.set('q',fc.city); u.searchParams.set('type','municipality'); u.searchParams.set('limit','10');
+  const u=new URL(GEOCODE_URL); u.searchParams.set('q',String(fc.city).replace(/\bSte\b\.?/gi,'Sainte').replace(/\bSt\b\.?/gi,'Saint')); u.searchParams.set('type','municipality'); u.searchParams.set('limit','10'); if(/^\d{5}$/.test(fc.postcode||'')) u.searchParams.set('postcode',fc.postcode);
   const r=await fetchImpl(u.toString()); if(!r.ok) throw new Error(`Géoplateforme IGN : HTTP ${r.status}`);
   const v=communeVerdict(await r.json(),fc); if(v.ok) return v;
+  // Code postal saisi faux (commune voisine) : même recherche sans lui, toujours limitée au département.
+  if(u.searchParams.has('postcode')){ u.searchParams.delete('postcode'); const r1=await fetchImpl(u.toString()); if(r1.ok){ const v1=communeVerdict(await r1.json(),{...fc,postcode:''}); if(v1.ok) return v1; } }
   // « Paris Rue des Amandiers » : la ville est suivie d'autre chose → on réessaie avec les premiers mots.
   const words=fc.city.split(/\s+/);
   for(let n=Math.min(words.length-1,4);n>=1;n--){ const city=words.slice(0,n).join(' '); u.searchParams.set('q',city);

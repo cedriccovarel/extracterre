@@ -1470,6 +1470,14 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.33.0
+- Liste de contrats collée avec le maître d'ouvrage (ex. « Contrat: Numéro du contrat · Code interne · Maître d'ouvrage: Groupe principal Nom ») : les tuiles sont regroupées par ce maître d'ouvrage. Le collage d'un tableau d'opérations regroupe aussi par groupe principal.
+- Export Salesforce .xlsx avec lignes de titre au-dessus des en-têtes : l'en-tête est trouvé (avant, ni le contrat ni l'adresse n'étaient lus).
+- Géolocalisation fiable : appels IGN en file (débit limité, nouvel essai si le service sature), lancée pour chaque opération dès l'import Salesforce et à la fin d'une analyse massive, et terminée avant chaque export Excel. Adresse introuvable : centre de la commune (ville + code postal Salesforce), puis commune du nom du dossier Box.
+- Couleur des valeurs dans les tableaux : vert = Salesforce (collage libre ou export .xlsx, prime sur les autres), jaune = valeur inhabituelle, bleu = lue dans les documents.
+- Tableau de synthèse (accueil, « ▦ Tableau de synthèse ») : une ligne par opération, données cruciales manquantes, valeurs inhabituelles, géolocalisation ; filtres, export .csv, géolocalisation des manquantes.
+- Suivi des sources, À vérifier : « Retirer » enlève le document de la liste tout de suite ; « Relancer » relit le document immédiatement et il quitte la liste s'il est lu correctement.
+
 ## v2.32.2
 - Les fichiers dont le nom contient « FDES » ne sont plus importés : ni par l'import massif (marqués « fiche FDES (non lue) » dans le registre), ni par « Charger depuis Box ». Un dépôt manuel reste possible.
 

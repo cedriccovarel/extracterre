@@ -205,7 +205,7 @@ async function main(){
     // Choix de version imposé dans l'appli (« À vérifier »)
     for(const f of kept){ const dec=decisions[`${contract}|${f.relPath}`]; if(dec?.current){ const g=ranks.get(f.relPath).group; for(const [id,r] of ranks) if(r.group===g){ r.current=id===f.relPath; r.ambiguous=false; r.reason=''; } } }
     const now=new Date().toISOString();
-    const seen=new Set();
+    const seen=new Set(); const reread=[];
 
     const handle=async f=>{
       if(stopping) return;
@@ -298,6 +298,7 @@ async function main(){
         const resultFile=extract.writeResult(workDir,sha,extract.serializeDoc(x.d,fullMeta));
         c.extracted++; if(status==='à vérifier') c.review++; if(status==='erreur') c.errors++;
         reg.putFile({...base,...ver,sha256:sha,docType:x.d.type,importType:j.k.type,method:j.k.method,status,reason,resultFile,processedAt:new Date().toISOString(),completeness:j.completeness,pages:x.pages,fields:j.fields,ocrPages:fullMeta.ocrPages,forcedFamily:forced?.family||null,decisionFamily:dec.family||null,decisionAccept:!!dec.accept});
+        if(dec.reprocess) reread.push(`${contract}|${f.relPath}`);
       }catch(err){
         c.errors++;
         reg.putFile({...base,...ver,status:'erreur',reason:`lecture impossible : ${err?.message||err}`,sha256:old?.sha256||null,resultFile:null});
@@ -320,6 +321,7 @@ async function main(){
       await reg.flush();
     }
     for(const k of Object.keys(c)) totals[k]+=c[k];
+    if(reread.length&&mode==='traitement') consumeReprocess(decisionsFile,reread);
     finalRows.push([contract,op.folder,stopping?'interrompu':mode==='dry-run'?'simulé':'traité',c.files,c.extracted,c.reused,c.ignored,c.review,c.errors,c.missing,c.ai]);
     prOps.tick(`${contract} · ${c.files} fichier(s)`); STATUS.parOp[contract]={r:stopping?'interrompu':c.errors?'erreurs':!s.retained.length?'vide':'ok',f:c.files,x:c.extracted,v:c.review,e:c.errors}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''},totaux:{...totals}});
   }
@@ -346,5 +348,13 @@ function combine(x,k,r,dec){
 function invRow(e,k){ return [e.contract,e.relDir,e.family,e.name,e.ext,e.size,e.docType||'',e.method||'',e.docKey||'',e.versionLabel||'',e.versionRank||'',e.isCurrent?'oui':'non',e.status,e.reason||'']; }
 
 // v2.31.4 — une erreur isolée dans un document (rendu PDF, OCR) ne doit jamais arrêter toute l'analyse : elle est notée et l'analyse continue.
+// v2.33.0 — « Relancer » (onglet À vérifier) : une fois le document relu, la demande est retirée de decisions.json (relu à
+// l'instant, pour ne pas écraser un choix fait dans l'appli pendant l'analyse).
+function consumeReprocess(file,keys){
+  try{ const o=JSON.parse(fs.readFileSync(file,'utf8')); let n=0;
+    for(const k of keys){ const d=o.files?.[k]; if(d?.reprocess){ delete d.reprocess; n++; if(!Object.keys(d).some(x=>x!=='at')) delete o.files[k]; } }
+    if(n){ const tmp=`${file}.tmp`; fs.writeFileSync(tmp,JSON.stringify(o,null,1)); fs.renameSync(tmp,file); } }
+  catch(err){ console.warn(`  ⚠ decisions.json non mis à jour : ${err?.message||err}`); }
+}
 process.on('unhandledRejection',err=>{ console.warn(`\n  ⚠ Erreur isolée ignorée (l'analyse continue) : ${err?.message||err}`); });
 main().catch(err=>{ console.error(`\nErreur : ${err?.message||err}`); status({etat:'erreur',erreur:String(err?.message||err)}); process.exit(1); });

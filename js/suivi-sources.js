@@ -115,12 +115,16 @@ export function ssParseContractPaste(text=''){
   const head=rows[0].findIndex(c=>/contrat/i.test(c||''));
   let col=head;
   if(col<0){ let best=-1; for(let c=0;c<width;c++){ const n=rows.filter(r=>/^\d{3,8}$/.test(digits(r[c]))).length; if(n>best){ best=n; col=c; } } }
-  const contracts=[],invalid=[];
+  // v2.33.0 — colonne maître d'ouvrage (« Maître d'ouvrage: Groupe principal Nom », « MOA »…) : sert au regroupement des tuiles.
+  let ownerCol=head>=0?rows[0].findIndex((c,i)=>i!==col&&/ouvrage|\bmoa\b|groupe principal|bailleur/i.test(c||'')):-1;
+  if(ownerCol<0&&head<0&&width>1){ let best=0; for(let c=0;c<width;c++){ if(c===col) continue; const n=rows.filter(r=>/[a-z]{3}/i.test(r[c]||'')&&!/^\s*OPE-\d+/i.test(r[c]||'')).length; if(n>best&&n>=rows.length*0.6){ best=n; ownerCol=c; } } }
+  const contracts=[],invalid=[],owners={};
   rows.forEach((r,i)=>{ if(i===0&&head>=0) return; const raw=String(r[col]||'').trim(); if(!raw) return;
     const d=digits(raw), v=d.replace(/^0+/,'');
     if(!/^\d+$/.test(d)||!v||v.length>8){ invalid.push(raw); return; }
-    const k=v.padStart(8,'0'); if(!contracts.includes(k)) contracts.push(k); });
-  return {contracts,invalid,column:col};
+    const k=v.padStart(8,'0'); if(!contracts.includes(k)) contracts.push(k);
+    const o=ownerCol>=0?String(r[ownerCol]||'').replace(/\s+/g,' ').trim():''; if(o&&!owners[k]) owners[k]=o; });
+  return {contracts,invalid,column:col,owners,ownerColumn:ownerCol};
 }
 async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
 export async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[],reread=false}={}){

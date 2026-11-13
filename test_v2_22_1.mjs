@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.32.2','version');
+eq(APP_VERSION,'2.33.0','version');
 const app=readFileSync('js/app.js','utf8');
 const src=app.slice(app.indexOf('async function readSessionFile('),app.indexOf('async function importSessionJson('));
 const readSessionFile=new Function('setLocalSaveUi',`${src}; return readSessionFile;`)(()=>{});

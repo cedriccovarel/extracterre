@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {parseFreePaste,freePasteValues,looksLikeSalesforceEvaluation} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.32.2','version');
+eq(APP_VERSION,'2.33.0','version');
 const page=`Performance thermique
 Logement 1 à 6
 Bbio=30 Bbiomax=80

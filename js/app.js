@@ -9,13 +9,13 @@ import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
 import {analyzeDocuments,catchUpDocument,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
-import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS,folderCommune,geocodeCommune} from './geocode.js';
+import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS,folderCommune,geocodeCommune,throttledFetch} from './geocode.js';
 import {oddValue} from './sanity.js';
 import {isPlanDoc,PLAN_QUANTITY_FIELDS,PLAN_KIND,planRowField,planOccurrences,defaultPlanBuilding} from './plans.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags,PROJECT_TAG_LIBRARY} from './tags.js';
 import {parseFreePaste,freePasteValues,freePastePrompt,applyFreePasteAi,looksLikeFreeText} from './collage-libre.js';
-import {sfxParseHtmlTable,sfxColumns,sfxFiche} from './sf-export.js';
+import {sfxHeaderRow,sfxParseHtmlTable,sfxColumns,sfxFiche} from './sf-export.js';
 import {sfPerimeterMap,SFP_MODES} from './sf-perimeter.js';
 import {canonicalBuilding} from './buildings.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
@@ -307,6 +307,15 @@ const projectIsEmpty=p=>!(p.docs||[]).length&&!p.result&&!(p.manualPasteRows||[]
 // v2.20.7 — Salesforce : opérations « remplies » (au moins un import Salesforce intégré), bâtiments qui n'existent que par
 // un import Salesforce (en rouge), compteur et liste des opérations remplies par les documents seuls.
 const SF_SRC=/salesforce/i;
+// v2.33.0 — origine d'une valeur retenue : 'sf' (collage libre d'une fiche Salesforce ou export .xlsx), 'doc' (analyse d'un
+// document), '' (saisie, géolocalisation, bibliothèque). Couleur de cellule : vert Salesforce > jaune inhabituelle > bleu documents.
+function valueOrigin(o,p=activeProject()){
+  if(!o) return ''; if(o.method==='manual:free-paste'||SF_SRC.test(o.fileName||'')) return 'sf';
+  if(o.libraryDerived||String(o.method||'').startsWith('geocode:')) return '';
+  return o.removedDocument||(p?.docs||[]).some(d=>d.id===o.docId)?'doc':'';
+}
+function cellTone(o,odd,p){ const k=valueOrigin(o,p); return k==='sf'?'v-sf':odd?'odd':k==='doc'?'v-doc':''; }
+const TONE_LEGEND='<div class="tone-legend"><span><i class="v-sf"></i>Salesforce (collage libre ou export .xlsx)</span><span><i class="odd"></i>Valeur inhabituelle, à vérifier</span><span><i class="v-doc"></i>Lue dans les documents</span></div>';
 function sfImports(p){ const xs=p?.salesforceImports||[]; if(xs.length) return xs; return Object.values(p?.manualSources||{}).some(m=>SF_SRC.test(m?.fileName||''))?[{at:0}]:[]; }
 const sfDayKey=t=>{ const d=new Date(t); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; };
 function sfAddedBuildings(p){
@@ -380,7 +389,7 @@ function renderTiles(wrap,{home=false}={}){
     <button type="button" class="op-tile action" data-home-act="sfx"><span class="op-tile-plus" aria-hidden="true">☁</span><strong>Export Salesforce</strong><span class="op-tile-meta">Évaluations « Opérations (détails) » : données techniques par bâtiment</span></button>
     <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
   if(home&&!items.length) sub='Aucune opération pour le moment';
-  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}${items.length?`<button type="button" class="btn light op-select-toggle" data-tile-select>${sel?'Terminer la sélection':'☑ Sélectionner'}</button>`:''}</div>${sel?`<div class="op-select-bar"><b>${state.tileSelected.size} opération(s) sélectionnée(s)</b>${visibleIds.length?`<button type="button" class="btn light" data-tile-selall>Tout sélectionner (${visibleIds.length} affichée(s))</button>`:'<span class="op-select-hint">Ouvrez un maître d’ouvrage ou faites une recherche pour cocher les opérations.</span>'}${state.tileSelected.size?'<button type="button" class="btn light" data-tile-selnone>Tout décocher</button><button type="button" class="btn primary danger-fill" data-tile-unload>Décharger la sélection</button>':''}</div>`:''}${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
+  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}${items.length?'<button type="button" class="btn light" data-synth-open title="Une ligne par opération : données cruciales manquantes, valeurs inhabituelles, géolocalisation">▦ Tableau de synthèse</button>':''}${items.length?`<button type="button" class="btn light op-select-toggle" data-tile-select>${sel?'Terminer la sélection':'☑ Sélectionner'}</button>`:''}</div>${sel?`<div class="op-select-bar"><b>${state.tileSelected.size} opération(s) sélectionnée(s)</b>${visibleIds.length?`<button type="button" class="btn light" data-tile-selall>Tout sélectionner (${visibleIds.length} affichée(s))</button>`:'<span class="op-select-hint">Ouvrez un maître d’ouvrage ou faites une recherche pour cocher les opérations.</span>'}${state.tileSelected.size?'<button type="button" class="btn light" data-tile-selnone>Tout décocher</button><button type="button" class="btn primary danger-fill" data-tile-unload>Décharger la sélection</button>':''}</div>`:''}${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
   const search=wrap.querySelector('[data-home-search]');
   if(search){ search.oninput=()=>{ state.homeQuery=search.value; rerender(); const s=wrap.querySelector('[data-home-search]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); }; search.onkeydown=e=>{ if(e.key==='Escape'&&search.value){ search.value=''; search.oninput(); } };
     // Liste collée depuis Excel ou un texte (une valeur par ligne) : les retours à la ligne deviennent des virgules.
@@ -388,6 +397,7 @@ function renderTiles(wrap,{home=false}={}){
       e.preventDefault(); search.value=parts.join(', '); search.oninput(); }; }
   const sortSel=wrap.querySelector('[data-tile-sort]'); if(sortSel) sortSel.onchange=()=>{ state.tileSort=sortSel.value; rerender(); };
   wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; rerender(); });
+  wrap.querySelector('[data-synth-open]')?.addEventListener('click',()=>openSynthesis());
   wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });
   wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='sfx') openSfxDialog(); else if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
@@ -429,9 +439,9 @@ function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
     if(p) updated++; else { p=state.projects.find(x=>projectIsEmpty(x)&&!Object.keys(x.manualValues||{}).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; } fresh.add(p.id);
     const v=rs[0].values||{}; const known=new Set((p.manualPasteColumns||[]).map(c=>c.key||c.header));
     p.manualPasteRows=merge(p,rs); p.manualPasteColumns=[...(p.manualPasteColumns||[]),...columns.filter(c=>!known.has(c.key||c.header))]; p.manualPasteRaw='';
-    if(!p.operationName) p.operationName=String(v.operation_name||v.project||k); const owner=String(v.owner_company||v.owner_main_company||'').trim(); if(owner&&!p.ownerName) p.ownerName=owner;
+    if(!p.operationName) p.operationName=String(v.operation_name||v.project||k); const owner=String(v.owner_main_company||v.owner_company||'').trim(); if(owner) p.ownerName=owner; // v2.33.0 — groupe principal d'abord ; le tableau collé fait foi
   }
-  if(conflicts.length&&confirm(`⚠️ ${conflicts.length} donnée(s) déjà collée(s) seraient modifiée(s) :\n${conflicts.slice(0,12).map(x=>x.text).join('\n')}${conflicts.length>12?'\n…':''}\n\nOK = remplacer · Annuler = conserver les valeurs existantes (les autres valeurs collées sont intégrées).`)) for(const x of conflicts){ x.row.values[x.f]=x.val; if(['owner_company','owner_main_company'].includes(x.f)) x.p.ownerName=String(x.row.values.owner_company||x.row.values.owner_main_company||'').trim(); }
+  if(conflicts.length&&confirm(`⚠️ ${conflicts.length} donnée(s) déjà collée(s) seraient modifiée(s) :\n${conflicts.slice(0,12).map(x=>x.text).join('\n')}${conflicts.length>12?'\n…':''}\n\nOK = remplacer · Annuler = conserver les valeurs existantes (les autres valeurs collées sont intégrées).`)) for(const x of conflicts){ x.row.values[x.f]=x.val; if(['owner_company','owner_main_company'].includes(x.f)) x.p.ownerName=String(x.row.values.owner_main_company||x.row.values.owner_company||'').trim(); }
   for(const id of fresh) computeProjectResult(state.projects.find(p=>p.id===id));
   lastImported=fresh; state.resultWorkspaceMode='overview'; state.overviewOwner=''; syncProjectInput(); switchTab('summary'); setHomeMode(true); renderAll(); scheduleWorkspaceCheckpoint('import opérations',80);
   learn('manual_paste',{rows:rows.length,operations:groups.size,created,updated,source,split:true},activeProject());
@@ -1571,7 +1581,7 @@ function projectSectionHeader(p,isActive=false){
 function staticProjectBody(p,fields){
   const r=p.result;
   if(!r) return '<div class="empty-small project-empty">Projet sans analyse.</div>';
-  return `<div class="table-scroll project-static-table"><table><thead><tr><th class="sticky building-head">Bâtiment</th>${fields.map(f=>`<th>${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong">${escapeHtml(row.building)}</td>${fields.map(f=>{ const odd=oddValue(f.key,row[f.key]); return `<td class="${row[f.key]===undefined?'missing':''}${odd?' odd':''}"${odd?` title="${escapeHtml(odd)}"`:''}>${escapeHtml(formatValue(row[f.key]))}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-scroll project-static-table"><table><thead><tr><th class="sticky building-head">Bâtiment</th>${fields.map(f=>`<th>${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong">${escapeHtml(row.building)}</td>${fields.map(f=>{ const odd=oddValue(f.key,row[f.key]); const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); return `<td class="${row[f.key]===undefined?'missing':cellTone(o,odd,p)}"${odd?` title="${escapeHtml(odd)}"`:''}>${escapeHtml(formatValue(row[f.key]))}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 function decorateProjectSections(wrap,fields){
   const active=activeProject();
@@ -1610,7 +1620,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${oddValue(f.key,v)?'odd':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${TONE_LEGEND}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${v===undefined?'':cellTone(o,oddValue(f.key,v))}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -1757,7 +1767,7 @@ function renderReview(){
   const rowHtml=e=>{ const k=e.def.key, editing=reviewState.editing===k; const u=unit(e.def);
     const value=editing?`<input class="rv-input" data-rv-input="${k}" value="${escapeHtml(isBlank(e.v)?'':String(e.v))}" placeholder="${escapeHtml(e.def.label)}" aria-label="Nouvelle valeur pour ${escapeHtml(e.def.label)}">`:(isBlank(e.v)?`<span class="rv-empty">${e.status==='review'?'Valeur proposée ci-dessous':'—'}</span>`:`<span class="rv-val">${escapeHtml(e.def.key==='construction_year'?String(e.v):formatValue(e.v))}</span>${u?`<span class="rv-unit">${escapeHtml(u)}</span>`:''}${k==='geocode_precision'?geoLinkHtml(B):''}`);
     const cands=e.status==='review'||(!editing&&e.cands.length&&e.status!=='ok'&&e.status!=='manual')?e.cands.slice(0,3).map((c,i)=>`<div class="rv-cand"><span class="rv-cand-val">${escapeHtml(k==='construction_year'?String(c.value):formatValue(c.value))}</span><span class="rv-cand-src">${escapeHtml(c.synthetic?c.fileName:`${c.fileName} · p. ${c.page} · ${Math.round(c.confidence*100)} %`)}</span><button type="button" class="rv-btn rv-accept" data-rv-accept="${k}" data-i="${i}">Valider</button><button type="button" class="rv-btn rv-ghost" data-rv-reject="${k}" data-i="${i}">Écarter</button>${c.synthetic?'':`<button type="button" class="rv-btn rv-ghost" data-rv-goto="${k}" data-i="${i}" title="Ouvrir la page du document">Voir</button>`}</div>`).join(''):'';
-    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value${!editing&&oddValue(k,e.v)?' odd':''}"${!editing&&oddValue(k,e.v)?` title="${escapeHtml(oddValue(k,e.v))}"`:''}>${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
+    return `<div class="rv-row st-${e.status}" tabindex="0" data-rv-field="${k}"><div class="rv-label">${escapeHtml(e.def.label)}</div><div class="rv-value${!editing&&!isBlank(e.v)?' '+cellTone(e.src,oddValue(k,e.v)):''}"${!editing&&oddValue(k,e.v)?` title="${escapeHtml(oddValue(k,e.v))}"`:''}>${value}</div><div class="rv-meta"><span class="rv-pill p-${e.status}">${pill[e.status]}</span>${conf(e)}<span class="rv-src" title="${escapeHtml(e.src?.provenanceNote||e.src?.excerpt||'')}">${escapeHtml(srcText(e))}</span></div>
       <div class="rv-actions">${editing?`<button type="button" class="rv-btn rv-accept" data-rv-save="${k}">Enregistrer</button><button type="button" class="rv-btn rv-ghost" data-rv-cancel="${k}">Annuler</button>`:`<button type="button" class="rv-btn" data-rv-edit="${k}" title="Saisir ou corriger (Entrée)">${isBlank(e.v)?'Saisir':'Modifier'}</button><button type="button" class="rv-btn rv-ghost" data-rv-doc="${k}" title="Surligner la valeur dans un document (D)">Dans le document</button>${e.manual?`<button type="button" class="rv-btn rv-ghost" data-rv-unset="${k}" title="Supprimer la donnée manuelle : l’analyse des documents reprend ce champ">Supprimer</button>`:''}${!isBlank(e.v)&&buildings.length>1?`<button type="button" class="rv-btn rv-ghost" data-rv-copy="${k}" title="Recopier cette valeur dans les bâtiments où elle manque">Copier aux autres</button>`:''}`}</div>${cands?`<div class="rv-cands">${cands}</div>`:''}</div>`; };
   const tabs=buildings.map(b=>{ const c=reviewCompletion(b,profile); return `<button type="button" class="rv-bld ${b===B?'active':''}" data-rv-building="${escapeHtml(b)}"><span>${escapeHtml(b.replace(/^Bâtiment\s+/,''))}</span><span class="rv-bld-bar" style="--p:${c.pct}%"></span><small>${c.filled}/${c.total}</small></button>`; }).join('');
   const comp=reviewCompletion(B,profile);
@@ -2256,38 +2266,73 @@ function applyGeocodes(project){
 }
 // v2.30.0 — secours : aucune position trouvée par l'adresse → centre de la commune lue dans le nom du dossier Box (position approximative).
 // Jamais à la place d'une adresse : seulement pour les bâtiments sans latitude, une fois les adresses en attente traitées.
+// v2.33.0 — commune d'un bâtiment sans position : ville + code postal (export Salesforce) d'abord, sinon nom du dossier Box.
+function rowCommune(project,row){
+  const cp=String(row?.postcode||'').replace(/\s/g,''), city=String(row?.city||'').trim();
+  if(/^\d{5}$/.test(cp)&&/[a-z]{2}/i.test(city)) return {department:cp.startsWith('97')?cp.slice(0,3):cp.slice(0,2),postcode:cp,city,source:'Salesforce'};
+  const fc=folderCommune(project?.importFolder||project?.boxFolder||''); return fc?{...fc,source:'dossier'}:null;
+}
+const communeKey=fc=>`commune|${fc.department}|${fc.postcode||''}|${fc.city}`;
+function communeTargets(project,pending=[]){
+  return (project?.result?.rows||[]).filter(r=>isBlank(r.latitude)&&!pending.includes(geocodeQuery(r))).map(row=>{ const fc=rowCommune(project,row); return fc?{row,fc,key:communeKey(fc)}:null; }).filter(Boolean);
+}
 function applyCommuneFallback(project,pending=[]){
-  const result=project?.result, fc=folderCommune(project?.importFolder||project?.boxFolder||''); if(!result||!fc) return;
-  const rows=(result.rows||[]).filter(r=>isBlank(r.latitude)&&!pending.includes(geocodeQuery(r)));
-  if(!rows.length) return;
-  const key=`commune|${fc.department}|${fc.city}`, g=project.geocodes?.[key];
-  if(g===undefined){ if(!geocodeInflight.has(key)&&typeof fetch==='function'){ geocodeInflight.add(key);
-      geocodeCommune(fc).then(v=>{ (project.geocodes||(project.geocodes={}))[key]=v; if(project.result){ applyGeocodes(project); if(project===activeProject()){ renderSummary(); updateUxMirrors(); } scheduleWorkspaceCheckpoint('géolocalisation',80); } })
-        .catch(e=>console.warn('Commune non géolocalisée (nouvel essai plus tard)',e)).finally(()=>geocodeInflight.delete(key)); }
-    return; }
-  if(!g.ok) return;
-  for(const row of rows){ const b=row.building;
+  const result=project?.result; const targets=communeTargets(project,pending); if(!result||!targets.length) return;
+  const missing=[...new Map(targets.filter(t=>project.geocodes?.[t.key]===undefined).map(t=>[t.key,t])).values()];
+  if(missing.length&&typeof fetch==='function') Promise.allSettled(missing.map(t=>geoLookup(project,t.key,()=>geocodeCommune(t.fc,geoFetch)))).then(rs=>{
+    if(!rs.some(x=>x.status==='fulfilled')||!project.result) return; applyGeocodes(project); refreshTileCache(project);
+    if(project===activeProject()){ renderSummary(); updateUxMirrors(); } scheduleWorkspaceCheckpoint('géolocalisation',80); });
+  for(const {row,fc,key} of targets){ const g=project.geocodes?.[key]; if(!g?.ok) continue; const b=row.building;
     const taken=f=>Object.prototype.hasOwnProperty.call(project.manualValues||{},`${b}|${f}`)||result.finals.some(o=>o.building===b&&o.field===f);
     if(taken('latitude')||taken('longitude')) continue;
+    const sf=fc.source==='Salesforce';
     const vals={latitude:g.lat,longitude:g.lon,insee_code:g.insee,geocode_precision:`${g.precision} — ${g.label}`};
     for(const field of GEOCODE_FIELDS){ const value=vals[field]; if(value===''||(field!=='geocode_precision'&&taken(field))) continue;
       row[field]=value;
-      result.finals.push({field,value,building:b,docId:'geocode',fileName:'Géoplateforme IGN — commune du nom du dossier',docType:'Géocodage',page:'',excerpt:`${project.importFolder||project.boxFolder} → ${g.label} (${fc.department})`,confidence:.6,method:'geocode:commune',sourceTier:'secondary',provenanceNote:'Position approximative : centre de la commune lue dans le nom du dossier Box (aucune adresse géolocalisée).'}); }
+      result.finals.push({field,value,building:b,docId:'geocode',fileName:sf?'Géoplateforme IGN — commune de l’export Salesforce':'Géoplateforme IGN — commune du nom du dossier',docType:'Géocodage',page:'',excerpt:sf?`${fc.postcode} ${fc.city} → ${g.label}`:`${project.importFolder||project.boxFolder} → ${g.label} (${fc.department})`,confidence:.6,method:'geocode:commune',sourceTier:'secondary',provenanceNote:sf?'Position approximative : centre de la commune (ville et code postal Salesforce), l’adresse n’a pas été trouvée par l’IGN.':'Position approximative : centre de la commune lue dans le nom du dossier Box (aucune adresse géolocalisée).'}); }
   }
 }
-const geocodeInflight=new Set();
+// Appels IGN partagés : une même adresse demandée par plusieurs consolidations n'est envoyée qu'une fois ; un échec n'est pas
+// mémorisé (nouvel essai plus tard), une réponse l'est (dans l'opération, sauvegardée).
+const geoFetch=throttledFetch(u=>fetch(u));
+const geocodeInflight=new Map();
+function geoLookup(project,key,fn){
+  if(project.geocodes?.[key]!==undefined) return Promise.resolve(project.geocodes[key]);
+  if(!geocodeInflight.has(key)) geocodeInflight.set(key,fn().finally(()=>geocodeInflight.delete(key)));
+  return geocodeInflight.get(key).then(v=>{ (project.geocodes||(project.geocodes={}))[key]=v; return v; });
+}
 async function geocodePending(project,queries,rows){
-  const todo=[...new Set(queries)].filter(q=>!geocodeInflight.has(q)); if(!todo.length||typeof fetch!=='function') return;
-  todo.forEach(q=>geocodeInflight.add(q)); let changed=false;
-  for(const q of todo){
-    try{ (project.geocodes||(project.geocodes={}))[q]=await geocodeAddress(q,rows.find(r=>geocodeQuery(r)===q)||{}); changed=true; }
-    catch(e){ console.warn('Géocodage IGN impossible (nouvel essai à la prochaine consolidation)',e); }
-    finally{ geocodeInflight.delete(q); }
-  }
-  if(!changed||!project.result) return;
-  applyGeocodes(project);
+  const todo=[...new Set(queries)]; if(!todo.length||typeof fetch!=='function') return;
+  const rs=await Promise.allSettled(todo.map(q=>geoLookup(project,q,()=>geocodeAddress(q,rows.find(r=>geocodeQuery(r)===q)||{},geoFetch))));
+  rs.filter(x=>x.status==='rejected').slice(0,1).forEach(x=>console.warn('Géocodage IGN impossible (nouvel essai à la prochaine consolidation)',x.reason));
+  if(!rs.some(x=>x.status==='fulfilled')||!project.result) return;
+  applyGeocodes(project); refreshTileCache(project);
   if(project===activeProject()){ renderSummary(); renderOccurrences(); updateUxMirrors(); }
   scheduleWorkspaceCheckpoint('géolocalisation',80);
+}
+// v2.33.0 — géolocalisation complète d'une opération, attendue (avant un export, après un import Salesforce) : adresses, puis
+// centre de la commune pour les bâtiments restés sans position. Renvoie {rows, located}.
+async function geocodeProjectNow(p){
+  if(p.pendingRebuild) await rebuildProject(p);
+  const r=p.result; if(!r||typeof fetch!=='function') return {rows:r?.rows?.length||0,located:0};
+  const qs=[...new Set(r.rows.map(geocodeQuery).filter(q=>q&&p.geocodes?.[q]===undefined))];
+  await Promise.allSettled(qs.map(q=>geoLookup(p,q,()=>geocodeAddress(q,r.rows.find(x=>geocodeQuery(x)===q)||{},geoFetch))));
+  applyGeocodes(p);
+  const ts=[...new Map(communeTargets(p,[]).filter(t=>p.geocodes?.[t.key]===undefined).map(t=>[t.key,t])).values()];
+  await Promise.allSettled(ts.map(t=>geoLookup(p,t.key,()=>geocodeCommune(t.fc,geoFetch))));
+  applyGeocodes(p); refreshTileCache(p);
+  const rows=p.result?.rows||[]; return {rows:rows.length,located:rows.filter(x=>!isBlank(x.latitude)).length};
+}
+let geocodeAllChain=Promise.resolve();
+function geocodeProjects(projects,{onStep=null,quiet=false}={}){
+  const job=async()=>{ let ops=0,okOps=0,rows=0,located=0; const list=projects.filter(p=>p&&!projectIsEmpty(p));
+    for(let i=0;i<list.length;i++){ const p=list[i]; onStep?.(i,list.length,p);
+      try{ const x=await geocodeProjectNow(p); if(x.rows){ ops++; rows+=x.rows; located+=x.located; if(x.located===x.rows) okOps++; } }catch(e){ console.warn('Géolocalisation',e); }
+      releaseProjectReads(p); if(i%10===9) await yieldToBrowser(); }
+    if(ops){ renderAll(); scheduleWorkspaceCheckpoint('géolocalisation',80); }
+    if(!quiet&&ops) toast(`Géolocalisation : ${okOps} / ${ops} opération(s) entièrement localisée(s) · ${located} / ${rows} bâtiment(s).`,okOps===ops?'success':'info');
+    return {ops,okOps,rows,located}; };
+  return geocodeAllChain=geocodeAllChain.then(job,job);
 }
 // v2.7.6 — une donnée manuelle est définitive : bâtiment fusionné → elle suit sa cible ; bâtiment absent de l'analyse → il est recréé (sauf suppression manuelle).
 function manualRow(result,building,deleted,alias){
@@ -2750,6 +2795,77 @@ async function exportObservatoryJson(){
   finally{ observatoryExporting=false; if(btn) btn.disabled=false; }
 }
 
+// ---------- v2.33.0 — tableau de synthèse des analyses : une ligne par opération, données cruciales et valeurs inhabituelles ----------
+// [clé, titre, champs (l'un suffit), profil où la donnée est attendue]
+const SYN_COLS=[['geo','Géolocalisation',['latitude']],['shab','SHAB',['shab']],['log','Logements',['housing_count','housing_total']],
+  ['bbio','Bbio',['bbio'],'neuf'],['cep','Cep / Cep,nr',['cep','cepnr','cep_after_final']],['ubat','Ubat après travaux',['ubat_after'],'reno'],
+  ['ic','IC construction',['ic_construction','ic_components'],'neuf'],['chauf','Chauffage',['heating_vector_after','heating_mode_after']],
+  ['ecs','ECS',['ecs','ecs_vector_after']],['vmc','Ventilation',['ventilation']],['murs','Isolant murs',['wall_insulation']]];
+const synthUi={q:'',filter:'',owner:''};
+function synthLine(p){
+  const id=projectIdentity(p), r=p.result, rows=r?.rows||[], prof=projectProfile(p);
+  const short=v=>{ const s=formatValue(v); return s.length>22?s.slice(0,21)+'…':s; };
+  const cols=SYN_COLS.map(([k,,keys,only])=>{
+    if(only&&only!==prof) return {k,st:'na',txt:'—',title:'Non attendu pour ce type d’opération'};
+    const has=rows.filter(row=>keys.some(f=>!isBlank(row[f])));
+    if(!has.length) return {k,st:'miss',txt:'manque',title:rows.length?'Aucun bâtiment renseigné':'Opération sans analyse'};
+    const f0=keys.find(f=>!isBlank(has[0][f])), v0=has[0][f0];
+    const o=r.finals.find(x=>x.field===f0&&(x.building===has[0].building||x.building==='Bâtiment unique'));
+    const odd=has.map(row=>keys.map(f=>oddValue(f,row[f])).find(Boolean)).find(Boolean)||'';
+    const part=has.length<rows.length, approx=k==='geo'&&has.every(row=>/approximative/i.test(String(row.geocode_precision||'')));
+    const st=part?'part':odd?'odd':approx?'approx':k==='geo'?'geo':valueOrigin(o,p)==='sf'?'sf':'ok';
+    const txt=part?`${has.length} / ${rows.length} bât.`:k==='geo'?(approx?'commune':'adresse'):rows.length>1?`✓ ${rows.length} bât.`:short(v0);
+    return {k,st,txt,title:[odd,k==='geo'?has[0].geocode_precision:'',o?`${o.fileName||''}`:''].filter(Boolean).join(' · ')};
+  });
+  const odds=[]; for(const row of rows) for(const f of FIELD_DEFS){ const why=oddValue(f.key,row[f.key]); if(why) odds.push(`${f.label} = ${formatValue(row[f.key])}${rows.length>1?` (${row.building})`:''} : ${why}`); }
+  const missing=cols.filter(c=>c.st==='miss'||c.st==='part').length;
+  return {p,id,cols,odds,missing,owner:id.owner||NO_OWNER,pct:projectCompletion(p),buildings:rows.length,docs:(p.docs||[]).length,geo:cols[0].st};
+}
+async function openSynthesis(){
+  let dlg=$('#synthDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='synthDialog'; dlg.className='search-integrate-dialog synth-dialog'; document.body.appendChild(dlg);
+    dlg.addEventListener('input',e=>{ if(e.target.matches('[data-synth-q]')){ synthUi.q=e.target.value; renderSynthesis(dlg,{keepFocus:true}); } });
+    dlg.addEventListener('change',e=>{ if(e.target.matches('[data-synth-filter]')){ synthUi.filter=e.target.value; renderSynthesis(dlg); } if(e.target.matches('[data-synth-owner]')){ synthUi.owner=e.target.value; renderSynthesis(dlg); } });
+    dlg.addEventListener('click',async e=>{
+      if(e.target.closest('[data-synth-close]')){ dlg.close(); return; }
+      if(e.target.closest('[data-synth-csv]')){ synthCsv(dlg._lines||[]); return; }
+      const geo=e.target.closest('[data-synth-geo]'); if(geo){ const todo=(dlg._lines||[]).filter(x=>x.geo!=='geo').map(x=>x.p); geo.disabled=true;
+        const res=await geocodeProjects(todo,{onStep:(i,n)=>{ geo.textContent=`Géolocalisation ${i+1} / ${n}…`; }}); renderSynthesis(dlg); if(!res.ops) toast('Aucune adresse ni commune à géolocaliser pour ces opérations.','info'); return; }
+      const tr=e.target.closest('[data-synth-go]'); if(tr){ dlg.close(); activateProject(tr.dataset.synthGo); } }); }
+  dlg.innerHTML='<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Analyses</span><h3>Tableau de synthèse</h3><p data-synth-prep>Préparation des opérations…</p></div><button class="icon-btn" type="button" data-synth-close aria-label="Fermer">×</button></div></div>';
+  if(!dlg.open) dlg.showModal();
+  await ensureAllRebuilt((i,n)=>{ const el=dlg.querySelector('[data-synth-prep]'); if(el) el.textContent=`Préparation des opérations : ${i+1} / ${n}…`; });
+  renderSynthesis(dlg);
+}
+function renderSynthesis(dlg,{keepFocus=false}={}){
+  const all=state.projects.filter(p=>!projectIsEmpty(p)).map(synthLine);
+  const owners=[...new Set(all.map(x=>x.owner))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
+  if(synthUi.owner&&!owners.includes(synthUi.owner)) synthUi.owner='';
+  const fold=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); const q=fold(synthUi.q||'').trim();
+  const lines=all.filter(x=>(!synthUi.owner||x.owner===synthUi.owner)&&(!q||fold([x.id.contract,x.id.name,projectTitle(x.p),x.id.code,x.owner].join(' ')).includes(q))
+    &&(!synthUi.filter||(synthUi.filter==='miss'&&x.missing)||(synthUi.filter==='odd'&&x.odds.length)||(synthUi.filter==='geo'&&x.geo!=='geo')))
+    .sort((a,b)=>(b.missing+2*b.odds.length)-(a.missing+2*a.odds.length)||String(a.id.contract).localeCompare(String(b.id.contract)));
+  dlg._lines=lines;
+  const n=k=>all.filter(k).length;
+  const kpi=`<div class="synth-kpis"><span><b>${all.length}</b>opération(s)</span><span class="${n(x=>x.geo==='miss')?'bad':''}"><b>${n(x=>x.geo==='miss'||x.geo==='part')}</b>sans géolocalisation complète</span><span><b>${n(x=>x.geo==='approx')}</b>localisée(s) à la commune</span><span class="${n(x=>x.missing)?'warn':''}"><b>${n(x=>x.missing)}</b>avec donnée(s) cruciale(s) manquante(s)</span><span class="${n(x=>x.odds.length)?'warn':''}"><b>${n(x=>x.odds.length)}</b>avec valeur(s) inhabituelle(s)</span></div>`;
+  const tools=`<div class="synth-tools"><input type="search" data-synth-q placeholder="Contrat, nom, code, maître d’ouvrage" value="${escapeHtml(synthUi.q)}" aria-label="Rechercher">
+    <select data-synth-filter aria-label="Filtrer">${[['','Toutes les opérations'],['miss','Données cruciales manquantes'],['odd','Valeurs inhabituelles'],['geo','Sans géolocalisation à l’adresse']].map(([v,l])=>`<option value="${v}"${synthUi.filter===v?' selected':''}>${l}</option>`).join('')}</select>
+    <select data-synth-owner aria-label="Maître d’ouvrage"><option value="">Tous les maîtres d’ouvrage</option>${owners.map(o=>`<option${o===synthUi.owner?' selected':''}>${escapeHtml(o)}</option>`).join('')}</select>
+    <span class="badge doc">${lines.length} affichée(s)</span><button class="btn light" type="button" data-synth-geo title="Interroge l’IGN pour les opérations affichées sans position à l’adresse">⌖ Géolocaliser les manquantes</button><button class="btn light" type="button" data-synth-csv>Exporter (.csv)</button></div>`;
+  const head=`<tr><th>Contrat</th><th>Opération</th><th>Maître d’ouvrage</th><th>Bât.</th><th>Docs</th><th>Complétude</th>${SYN_COLS.map(c=>`<th>${escapeHtml(c[1])}</th>`).join('')}<th>Valeurs inhabituelles</th></tr>`;
+  const body=lines.slice(0,3000).map(x=>`<tr data-synth-go="${x.p.id}" title="Ouvrir l’opération"><td><b>${escapeHtml(x.id.contract||'—')}</b></td><td class="wrap">${escapeHtml(x.id.name||projectTitle(x.p))}</td><td class="wrap">${escapeHtml(x.owner===NO_OWNER?'—':x.owner)}</td><td>${x.buildings||'—'}</td><td>${x.docs}</td><td>${x.pct} %</td>${x.cols.map(c=>`<td class="c-${c.st}" title="${escapeHtml(c.title||'')}">${escapeHtml(c.txt)}</td>`).join('')}<td class="${x.odds.length?'c-odd wrap':''}" title="${escapeHtml(x.odds.join('\n'))}">${x.odds.length?escapeHtml(x.odds.length===1?x.odds[0]:`${x.odds.length} valeurs : ${x.odds[0]}…`):''}</td></tr>`).join('');
+  const legend='<div class="tone-legend"><span><i class="v-sf"></i>Salesforce</span><span><i class="v-doc"></i>Documents</span><span><i class="odd"></i>Inhabituelle</span><span><i style="background:#fff1dc"></i>Partielle (certains bâtiments)</span><span><i style="background:#fde8e6"></i>Manquante</span><span><i style="background:#eef6e9"></i>Position à la commune</span></div>';
+  const focus=keepFocus&&document.activeElement?.matches?.('[data-synth-q]'), pos=focus?document.activeElement.selectionStart:0;
+  dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Analyses</span><h3>Tableau de synthèse</h3><p>Données cruciales par opération : vides en rouge, partielles en orange, valeurs inhabituelles en jaune. Cliquez sur une ligne pour ouvrir l’opération.</p></div><button class="icon-btn" type="button" data-synth-close aria-label="Fermer">×</button></div>
+    ${kpi}${tools}${legend}<div class="synth-scroll"><table class="synth-table"><thead>${head}</thead><tbody>${body||'<tr><td colspan="20">Aucune opération ne correspond.</td></tr>'}</tbody></table></div></div>`;
+  if(focus){ const el=dlg.querySelector('[data-synth-q]'); el.focus(); try{ el.setSelectionRange(pos,pos); }catch{} }
+}
+function synthCsv(lines){
+  const esc=v=>{ const s=String(v??''); return /[;"\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s; };
+  const rows=[['Contrat','Opération','Maître d’ouvrage','Bâtiments','Documents','Complétude %',...SYN_COLS.map(c=>c[1]),'Valeurs inhabituelles']]
+    .concat(lines.map(x=>[x.id.contract,x.id.name||projectTitle(x.p),x.owner===NO_OWNER?'':x.owner,x.buildings,x.docs,x.pct,...x.cols.map(c=>c.st==='miss'?'MANQUE':c.txt),x.odds.join(' | ')]));
+  downloadBlob(new Blob(['﻿'+rows.map(r=>r.map(esc).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}),`ExtracTerre_synthese_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
 async function openExportDialog(){
   await ensureAllRebuilt();
@@ -2766,7 +2882,10 @@ async function openExportDialog(){
   $('#expAll').onchange=e=>{ boxes().forEach(b=>b.checked=e.target.checked); sync(); };
   dlg.querySelectorAll('[data-exp-owner]').forEach(g=>g.onchange=()=>{ boxes().filter(b=>b.dataset.expG===g.dataset.expOwner).forEach(b=>b.checked=g.checked); sync(); });
   boxes().forEach(b=>b.onchange=sync);
-  $('#expGo').onclick=()=>{ const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.expP)); try{ exportProjectsExcel(state.projects.filter(p=>ids.has(p.id)),state.rules,{grids:loadGrids(),identity:projectIdentity}); dlg.close(); }catch(e){ toast(e.message,'error'); } };
+  $('#expGo').onclick=async()=>{ const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.expP)); const go=$('#expGo'); go.disabled=true;
+    // v2.33.0 — coordonnées complètes dans le fichier (TotalRecoll) : la géolocalisation en attente est terminée d'abord.
+    await geocodeProjects(state.projects.filter(p=>ids.has(p.id)),{quiet:true,onStep:(i,n)=>{ go.textContent=`Géolocalisation ${i+1} / ${n}…`; }}); go.disabled=false;
+    try{ exportProjectsExcel(state.projects.filter(p=>ids.has(p.id)),state.rules,{grids:loadGrids(),identity:projectIdentity}); dlg.close(); }catch(e){ toast(e.message,'error'); } };
   sync(); dlg.showModal();
 }
 
@@ -3285,21 +3404,25 @@ function ssRenderOpDetail(op){
       return line(cur,false)+(hist.length?`<details class="ss-history"><summary>${hist.length} version(s) antérieure(s) ou disparue(s)</summary>${hist.map(f=>line(f,true)).join('')}</details>`:''); }).join('')}`;
   }).join('')||'<p class="ss-empty">Aucun document retenu.</p>');
 }
-function ssReviewItems(){ return Object.values(ss.registry?.files||{}).filter(f=>!f.missing&&(f.status==='à vérifier'||f.status==='erreur')); }
+function ssReviewAll(){ return Object.values(ss.registry?.files||{}).filter(f=>!f.missing&&(f.status==='à vérifier'||f.status==='erreur')); }
+const ssRemoved=f=>!!ss.decisions?.files?.[`${f.contract}|${f.relPath}`]?.ignore;
+// v2.33.0 — un document retiré quitte la liste tout de suite (il ne sera plus lu) ; « Afficher les retirés » permet d'annuler.
+function ssReviewItems(){ return ssReviewAll().filter(f=>ss.showRemoved||!ssRemoved(f)); }
 function ssRenderReview(){
   const items=ssReviewItems(); const cats=[...new Set(items.map(f=>ssReasonCategory(f.reason)))].sort();
   const shown=items.filter(f=>!ss.filter||ssReasonCategory(f.reason)===ss.filter);
   const famOpts=Object.entries(DOCUMENT_FAMILIES).filter(([k])=>k!=='annex').map(([k,v])=>`<option value="${k}">${escapeHtml(v.label)}</option>`).join('');
-  return `<div class="ss-filter"><label>Motif <select data-ss-filter><option value="">Tous (${items.length})</option>${cats.map(c=>`<option ${c===ss.filter?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></label><span>Les choix sont enregistrés dans <code>decisions.json</code> du dossier de travail ; le script les applique au prochain passage.</span></div>
+  const nRemoved=ssReviewAll().filter(ssRemoved).length;
+  return `<div class="ss-filter"><label>Motif <select data-ss-filter><option value="">Tous (${items.length})</option>${cats.map(c=>`<option ${c===ss.filter?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></label>${nRemoved?`<label class="chk"><input type="checkbox" data-ss-showremoved${ss.showRemoved?' checked':''}> Afficher les retirés (${nRemoved})</label>`:''}<span>Les choix sont enregistrés dans <code>decisions.json</code> du dossier de travail ; le script les applique au prochain passage.</span></div>
     ${shown.length?shown.map(f=>{ const key=`${f.contract}|${f.relPath}`, dec=ss.decisions.files[key]||{};
-      return `<div class="ss-review" data-ss-key="${escapeHtml(key)}"><div class="ss-review-main">${ssStatusChip(f)} <b>${escapeHtml(f.contract)}</b> · <span class="ss-name">${escapeHtml(f.name)}</span><small>${escapeHtml(f.relDir||'')} · ${escapeHtml(f.docType||f.importType||'type inconnu')}${f.versionLabel?` · ${escapeHtml(f.versionLabel)}`:''}</small><small class="ss-reason">${escapeHtml(f.reason||ssReasonCategory(f.reason))}</small>
+      return `<div class="ss-review${dec.reprocess?' rereading':''}" data-ss-key="${escapeHtml(key)}"><div class="ss-review-main">${dec.reprocess?'<small class="ss-rereading">⟳ Relecture demandée : le document quittera la liste s’il est lu correctement</small>':''}${ssStatusChip(f)} <b>${escapeHtml(f.contract)}</b> · <span class="ss-name">${escapeHtml(f.name)}</span><small>${escapeHtml(f.relDir||'')} · ${escapeHtml(f.docType||f.importType||'type inconnu')}${f.versionLabel?` · ${escapeHtml(f.versionLabel)}`:''}</small><small class="ss-reason">${escapeHtml(f.reason||ssReasonCategory(f.reason))}</small>
         ${Object.keys(dec).length>1?`<small class="ss-decided">Choix enregistré : ${escapeHtml([dec.family?`type ${DOCUMENT_FAMILIES[dec.family]?.short||dec.family}`:'',dec.accept?'validé tel quel':'',dec.current?'version choisie':'',dec.ignore?'ignoré':'',dec.reprocess?'à relire':''].filter(Boolean).join(', '))}</small>`:''}</div>
         <div class="ss-review-actions"><select data-ss-family><option value="">Corriger le type…</option>${famOpts}</select>
           <button class="btn light" data-ss-act="accept" title="Garder le type et le résultat : le document est chargé dans l’opération">Valider tel quel</button>
           ${f.versionCount>1?'<button class="btn light" data-ss-act="current" title="Cette version devient la version courante">Choisir cette version</button>':''}
-          <button class="btn light" data-ss-act="reprocess" title="Relire au prochain passage du script">Relancer</button>
+          <button class="btn light" data-ss-act="reprocess" title="Relire ce document maintenant : s’il est lu correctement, il quitte la liste">Relancer</button>
           ${f.status==='à vérifier'&&f.resultFile?'<button class="btn light" data-ss-act="ai" title="Valider, charger dans l’opération et ouvrir les propositions de l’IA locale (✓ / ✕)">🤖 IA</button>':''}
-          <button class="btn light" data-ss-act="ignore">Ignorer</button><button class="btn light" data-ss-act="clear" title="Annuler le choix">↺</button></div></div>`; }).join(''):'<p class="ss-empty">Rien à vérifier.</p>'}`;
+          <button class="btn light" data-ss-act="ignore" title="Retirer de la liste : ce document ne sera plus lu">${dec.ignore?'Retiré':'Retirer'}</button><button class="btn light" data-ss-act="clear" title="Annuler le choix">↺</button></div></div>`; }).join(''):'<p class="ss-empty">Rien à vérifier.</p>'}`;
 }
 function renderSourcesView(){
   const dlg=$('#sourcesDialog'); if(!dlg) return;
@@ -3358,12 +3481,32 @@ async function ssClick(e){
   if(act==='clear'){ delete ss.decisions.files[key]; await ssWriteDecisions(ss.dir,ss.decisions); }
   else if(act==='accept') await ssDecide(key,{accept:true,ignore:null});
   else if(act==='current') await ssDecide(key,{current:true});
-  else if(act==='reprocess') await ssDecide(key,{reprocess:true});
-  else if(act==='ignore') await ssDecide(key,{ignore:true,accept:null});
+  else if(act==='reprocess'){ await ssDecide(key,{reprocess:true,ignore:null}); await ssRequestReread(key.slice(0,key.indexOf('|'))); }
+  else if(act==='ignore'){ await ssDecide(key,{ignore:true,accept:null,reprocess:null}); toast('Document retiré de la liste : il ne sera plus lu.','success'); }
   else if(act==='ai'){ await ssDecide(key,{accept:true}); const contract=key.slice(0,key.indexOf('|')); await ssRun(()=>loadImportOperations([contract])); await ssOpenAiProposals(key); return; }
   renderSourcesView();
 }
+// v2.33.0 — relecture d'un document « À vérifier » : petite demande pour son seul contrat (une par contrat en attente), suivie ici ;
+// à la fin, le registre est relu : un document bien lu n'est plus « à vérifier » et quitte la liste.
+async function ssRequestReread(contract){
+  ss.rereads=ss.rereads||new Map();
+  const prev=ss.rereads.get(contract); if(prev&&!(await ssReadStatus(ss.dir,prev))){ toast('Relecture déjà demandée pour ce contrat : ce document est ajouté.','info'); return; }
+  const id=await ssWriteRequest(ss.dir,[contract],'traitement',{ocr:true,cctpLots:ssCctpLots()});
+  ss.rereads.set(contract,id); toast(`Relecture du contrat ${contract} demandée : le document quittera la liste s’il est lu correctement.`,'success');
+  ssWatchRereads();
+}
+let ssRereadPoll=null;
+async function ssWatchRereads(){
+  clearTimeout(ssRereadPoll); if(!ss.rereads?.size||!ss.dir) return;
+  let finished=false;
+  for(const [contract,id] of [...ss.rereads]){ const st=await ssReadStatus(ss.dir,id).catch(()=>null);
+    if(st&&ssRequestDone(st)){ ss.rereads.delete(contract); finished=true;
+      if(st.etat==='terminé') await ssAutoLoad(ss.dir,{id,status:st,mode:'traitement'},{all:true}); } }
+  if(finished){ ss.registry=await ssReadRegistry(ss.dir); ss.decisions=await ssReadDecisions(ss.dir); if($('#sourcesDialog')?.open) renderSourcesView(); }
+  if(ss.rereads.size) ssRereadPoll=setTimeout(ssWatchRereads,4000);
+}
 async function ssChange(e){
+  if(e.target.matches('[data-ss-showremoved]')){ ss.showRemoved=e.target.checked; renderSourcesView(); return; }
   if(e.target.matches('[data-ss-filter]')){ ss.filter=e.target.value; renderSourcesView(); return; }
   if(e.target.matches('[data-ss-family]')&&e.target.value){ const key=e.target.closest('[data-ss-key]').dataset.ssKey; await ssDecide(key,{family:e.target.value,reprocess:true}); toast(`Type enregistré : ${DOCUMENT_FAMILIES[e.target.value]?.label}. Relancez le script pour relire ce document.`,'success'); renderSourcesView(); }
 }
@@ -3389,13 +3532,15 @@ const SS_LIST_KEY='extracterre.import.list';
 function ssWorkList(){ try{ return JSON.parse(localStorage.getItem(SS_LIST_KEY)||'null')?.contracts||[]; }catch{ return []; } }
 function ssSetWorkList(contracts){ try{ localStorage.setItem(SS_LIST_KEY,JSON.stringify({contracts,at:new Date().toISOString()})); }catch{} }
 // Étape 1 : une tuile par contrat de la liste, tout de suite (vide tant que Salesforce et les documents ne l'ont pas remplie).
-async function ssEnsureTiles(contracts){
-  const off=importUnloaded(); let created=0;
+async function ssEnsureTiles(contracts,owners={}){
+  const off=importUnloaded(); let created=0, named=0;
   for(const c of contracts){ off.delete(c); let p=ssProjectFor(c);
     if(!p){ p=createProject(state.projects.length+1); p.customTitle=c; p.expanded=false; state.projects.push(p); created++; }
-    if(!p.importContract) p.importContract=c; if(!p.contractNumber) p.contractNumber=c; }
+    if(!p.importContract) p.importContract=c; if(!p.contractNumber) p.contractNumber=c;
+    // v2.33.0 — maître d'ouvrage collé avec la liste : il fait foi pour le regroupement des tuiles.
+    const o=owners?.[c]; if(o&&p.ownerName!==o){ p.ownerName=o; named++; } }
   setImportUnloaded(off);
-  if(created){ renderAll(); await checkpointWorkspace('liste de contrats',true); }
+  if(created||named){ renderAll(); await checkpointWorkspace('liste de contrats',true); }
   return created;
 }
 async function loadImportOperations(contracts,{quiet=false}={}){
@@ -3438,7 +3583,8 @@ function ssCurrentRequest(){ try{ return localStorage.getItem(SS_REQ_KEY)||''; }
 function ssForgetRequest(){ try{ localStorage.setItem(SS_REQ_KEY,''); }catch{} }
 function ssPasteInfo(){
   const ta=$('#sourcesDialog [data-ss-paste]'); const r=ssParseContractPaste(ta?.value||''); const el=$('#sourcesDialog [data-ss-paste-info]');
-  if(el) el.innerHTML=r.contracts.length?`<b>${r.contracts.length}</b> contrat(s) reconnu(s)${r.invalid.length?` · <span class="ss-warn">${r.invalid.length} ligne(s) ignorée(s) : ${escapeHtml(r.invalid.slice(0,5).join(', '))}${r.invalid.length>5?'…':''}</span>`:''}`:'Collez la colonne des numéros de contrat (avec ou sans en-tête).';
+  const nOwners=new Set(Object.values(r.owners||{})).size;
+  if(el) el.innerHTML=r.contracts.length?`<b>${r.contracts.length}</b> contrat(s) reconnu(s)${nOwners?` · <b>${nOwners}</b> maître(s) d’ouvrage (regroupement des tuiles)`:''}${r.invalid.length?` · <span class="ss-warn">${r.invalid.length} ligne(s) ignorée(s) : ${escapeHtml(r.invalid.slice(0,5).join(', '))}${r.invalid.length>5?'…':''}</span>`:''}`:'Collez la colonne des numéros de contrat (avec ou sans en-tête).';
   $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=!r.contracts.length);
   return r;
 }
@@ -3507,7 +3653,7 @@ async function ssLaunch(mode){
       if(!keepOthers){ const off=importUnloaded(); for(const p of others){ if(p.importContract) off.add(p.importContract); await removeProject(p); } setImportUnloaded(off); }
     }
     ssSetWorkList(keepOthers?[...new Set([...ssWorkList(),...r.contracts])]:r.contracts);
-    const n=await ssEnsureTiles(r.contracts); if(n) toast(`${n} tuile(s) créée(s) pour la liste.`,'success');
+    const n=await ssEnsureTiles(r.contracts,r.owners); if(n) toast(`${n} tuile(s) créée(s) pour la liste.`,'success');
   }
   // Étape 2 : export Salesforce appliqué d'abord (contrats de la liste seulement ; opérations créées pour eux si absentes).
   const sfFile=$('#sourcesDialog [data-ss-sfx]')?.files?.[0];
@@ -3554,7 +3700,7 @@ async function ssWatchRequest(){
     ssForgetRequest();
     if(st.etat==='terminé'&&Array.isArray(st.contrats)&&st.contrats.length){
       await ssRun(()=>ssAutoLoad(ss.dir,{id,status:st,mode:'traitement'},{all:true}));
-      ss.tab='new'; renderSourcesView();
+      if(ss.tab!=='review') ss.tab='new'; renderSourcesView();
       const b=$('#sourcesDialog [data-ss-progress]'); if(b) b.innerHTML=ssProgressHtml(id,st)+'<p class="ss-ok">Opérations chargées dans ExtracTerre.</p>';
     }
     return;
@@ -3579,7 +3725,7 @@ function ssAutoLoad(dir,r,{all=false}={}){
         await loadImportOperations(batch,{quiet:true}); batch.forEach(c=>loaded.add(c)); n+=batch.length;
         try{ localStorage.setItem(ssLoadedKey(r.id),JSON.stringify([...loaded])); }catch{}
         if(!all) break; todo=ssContractsToLoad(r.status,loaded); }
-      if(r.status.etat==='terminé'&&!ssContractsToLoad(r.status,loaded).length) toast(`Analyse terminée : ${loaded.size} opération(s) chargée(s) dans leurs tuiles.`,'success');
+      if(r.status.etat==='terminé'&&!ssContractsToLoad(r.status,loaded).length){ toast(`Analyse terminée : ${loaded.size} opération(s) chargée(s) dans leurs tuiles.`,'success'); geocodeProjects([...loaded].map(ssProjectFor).filter(Boolean)); }
     }catch(err){ console.warn('Chargement automatique des résultats',err); }
     finally{ ssAutoRunning=false; }
     return n;
@@ -3662,14 +3808,14 @@ function sfxApplyToProject(p,vals,srcName,{replaceManual=false}={}){
   return {applied,kept};
 }
 async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContracts=null,onProgress=()=>{}}={}){
-  const table=await sfxReadFile(file); if(table.length<2) throw new Error('Fichier vide ou illisible.');
+  const table0=await sfxReadFile(file); const hi=sfxHeaderRow(table0), table=table0.slice(hi); if(table.length<2) throw new Error('Fichier vide ou illisible.');
   const cols=sfxColumns(table[0]);
   if(cols.contract<0&&cols.code<0) throw new Error('Colonne « Numéro du contrat » ou « Code interne » introuvable dans l’export.');
   if(!cols.sections.length) throw new Error('Aucune colonne technique reconnue (Performance thermique, Parois verticales, Chauffage…).');
   const byContract=new Map(), byCode=new Map();
   for(const p of state.projects){ const id=projectIdentity(p); const c=contractKey(id.contract), k=String(id.code||'').toUpperCase(); if(c&&/^\d+$/.test(c)){ if(!byContract.has(c)) byContract.set(c,[]); byContract.get(c).push(p); } if(/^OPE-\d{6}$/.test(k)){ if(!byCode.has(k)) byCode.set(k,[]); byCode.get(k).push(p); } }
   const srcName=`Salesforce — export du ${SFX_DATE()} (${file.name})`;
-  const res={rows:table.length-1,technical:0,updated:0,created:0,values:0,kept:0,noOperation:[],empty:0,duplicates:[]};
+  const res={rows:table.length-1,technical:0,updated:0,created:0,values:0,kept:0,noOperation:[],empty:0,duplicates:[]}; const touched=new Set();
   const data=table.slice(1);
   for(let i=0;i<data.length;i++){
     const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; if(!f.address&&!f.postcode&&!f.city) continue; } else res.technical++;
@@ -3681,10 +3827,12 @@ async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContr
     const extra={...(f.contract?{contract_number:f.contract}:{}),...(f.evaluationStatus?{evaluation_status:f.evaluationStatus}:{}),...(f.code?{internal_code:f.code}:{}),
       ...(f.address?{address:f.address}:{}),...(f.postcode?{postcode:f.postcode}:{}),...(f.city?{city:f.city}:{}),...(f.postcode&&!f.postcode.startsWith('20')?{department:f.postcode.startsWith('97')?f.postcode.slice(0,3):f.postcode.slice(0,2)}:{})};
     if(Object.keys(extra).length){ const c=vals.find(v=>!v.building); if(c) c.values={...extra,...c.values}; else vals.push({building:'',values:extra,sources:{}}); }
-    for(const p of ps.slice(0,1)){ await ensureProjectReads(p); const r=sfxApplyToProject(p,vals.map(v=>({...v,values:{...v.values}})),srcName,{replaceManual}); res.values+=r.applied; res.kept+=r.kept; if(r.applied) res.updated++; releaseProjectReads(p); }
+    for(const p of ps.slice(0,1)){ touched.add(p.id); await ensureProjectReads(p); const r=sfxApplyToProject(p,vals.map(v=>({...v,values:{...v.values}})),srcName,{replaceManual}); res.values+=r.applied; res.kept+=r.kept; if(r.applied) res.updated++; releaseProjectReads(p); }
     if(i%10===0){ onProgress(i+1,data.length); await yieldToBrowser(); }
   }
   renderAll(); scheduleWorkspaceCheckpoint('import export Salesforce',80);
+  // v2.33.0 — l'adresse vient d'arriver : chaque opération touchée est géolocalisée tout de suite (en arrière-plan, débit limité).
+  if(touched.size) geocodeProjects(state.projects.filter(p=>touched.has(p.id)));
   return res;
 }
 function openSfxDialog(){
