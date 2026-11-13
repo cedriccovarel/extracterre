@@ -61,7 +61,7 @@ function serializeDoc(d,meta){
   return {format:'extracterre-import-doc',appVersion:APP_VERSION,patches:PATCH_SIG,meta,
     doc:{name:d.name,size:d.size,lastModified:d.file?.lastModified||null,relativePath:d.relativePath,type:d.type,classification:d.classification,
       families:d.families||null,familyMode:d.familyMode||'auto',specializedFamily:d.specializedFamily||null,buildings:d.buildings,read:d.read,
-      cachedOccurrences:d.cachedOccurrences,analysisCachedAt:d.analysisCachedAt,rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:1,
+      cachedOccurrences:d.cachedOccurrences,analysisCachedAt:d.analysisCachedAt,rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:d.bldRead||2,
       ocrWarnings:d.ocrWarnings||null,llmProposals:d.llmProposals||null}};
 }
 export function writeResult(workDir,sha,payload){

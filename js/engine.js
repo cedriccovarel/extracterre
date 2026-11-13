@@ -1,7 +1,7 @@
 import {FIELD_DEFS,FIELD_MAP,FIELD_TAGS,REQUIRED_RSET_FIELDS,REQUIRED_RE2020_RSET_FIELDS,REQUIRED_RT2012_RSET_FIELDS,DOC_TYPES,MIN_RETAINED_CONFIDENCE,MIN_REVIEW_CONFIDENCE,DEFAULT_SOURCE_RULES,matchFieldByHeader} from './config.js';
 import {sourceTier,sourceRank} from './routing.js';
 import {formatValue,normLower,normalizeText,scoreTokens,unique,numbersIn,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
-import {operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
+import {BLD_READ,repairBuildingName,operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
 import {parseDocument,parseRsetOperationAddress} from './parsers.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags} from './tags.js';
@@ -349,7 +349,17 @@ export function catchUpDocument(d,buildingOverrides={}){
     if(bad.length){ const keep=names.filter(n=>!bad.includes(n)); d.buildings={...d.buildings,names:keep.length?keep:['Bâtiment unique'],hits:(d.buildings.hits||[]).filter(h=>!bad.includes(h.building))}; d.needsCheckpoint=true; }
     // Toute lecture rattachée à un faux nom (même si ce nom vient d'ailleurs que la liste du document).
     const own=new Set((d.buildings?.names||[]).map(String)), moved=o=>o&&!o.userValidated&&garbage(o.building)&&!own.has(String(o.building));
-    if(Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(moved)){ d.cachedOccurrences=d.cachedOccurrences.map(o=>moved(o)?{...o,building:'Bâtiment unique'}:o); d.needsCheckpoint=true; } }
+    if(Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(moved)){ d.cachedOccurrences=d.cachedOccurrences.map(o=>moved(o)?{...o,building:'Bâtiment unique'}:o); d.needsCheckpoint=true; } 
+    // v2.33.2 — fantômes numériques (« Bâtiment 3117.92 », adresse, unités) : retirés même seuls ; lignes de tableau
+    // (« Bâtiment 1 COLLECTIF 16 0.60 OUI ») ramenées à leur identifiant. Une valeur validée par l'utilisateur ne bouge pas.
+  }
+  if((Number(d.bldRead)||0)<BLD_READ){ d.bldRead=BLD_READ;
+    const manual=new Set(Object.entries(buildingOverrides||{}).flat().map(String));
+    { const fix=new Map(); for(const n of new Set([...(d.buildings?.names||[]),...(d.cachedOccurrences||[]).map(o=>o?.building)].filter(Boolean))){ if(manual.has(String(n))) continue; const r=repairBuildingName(n); if(r!==n) fix.set(n,r||'Bâtiment unique'); }
+      if(fix.size){ const names=[...new Set((d.buildings?.names||[]).map(n=>fix.get(n)||n))], real=names.filter(n=>n!=='Bâtiment unique');
+        if(d.buildings) d.buildings={...d.buildings,names:real.length?real:['Bâtiment unique'],hits:(d.buildings.hits||[]).filter(h=>fix.get(h.building)!=='Bâtiment unique').map(h=>fix.has(h.building)?{...h,building:fix.get(h.building)}:h)};
+        if(Array.isArray(d.cachedOccurrences)) d.cachedOccurrences=d.cachedOccurrences.map(o=>o&&!o.userValidated&&fix.has(o.building)?{...o,building:fix.get(o.building)}:o);
+        d.needsCheckpoint=true; } } }
   // v2.23.2 — brasseurs d'air : les lectures d'avant (titre de rubrique RSET, sommaire, PSE, suppression lus comme une présence)
   // sont refaites une fois avec les règles actuelles ; seules les lectures « brasseur » du document changent. Un document sans
   // lecture « brasseur » est marqué sans relire son texte (les règles corrigées n'ajoutent une lecture que sur une ligne qui en
@@ -360,7 +370,7 @@ export function catchUpDocument(d,buildingOverrides={}){
   const FAN_READ=2, fanDone=()=>Number(d.fanRead)>=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
@@ -371,7 +381,7 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

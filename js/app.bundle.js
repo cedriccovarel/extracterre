@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.33.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.33.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.33.1';
+const APP_VERSION='2.33.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -1139,6 +1139,41 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
   return BLD_TABLE.test(t)||BLD_VERB.test(t); };
 // v2.23.3 — nom déjà enregistré (« Bâtiment ET DES TRAVAUX PUBLICS », « Bâtiment REALISES SUR CHANTIERS. ») : faux bâtiment tiré d'une
 // phrase ou d'un en-tête de tableau ? Sert au rattrapage des opérations existantes (la casse d'origine n'est plus connue).
+// v2.33.2 — bâtiments fantômes lus sur des lignes de tableau ou des en-têtes : « Bâtiment 3117.92 » (surface à côté du mot),
+// « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
+// Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
+const BLD_READ=2; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
+const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
+function isNumericGhostBuilding(name){
+  if(!name||name==='Bâtiment unique') return false;
+  const id=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), toks=id.split(/\s+/);
+  if(BLD_DEC.test(toks[0])) return true;
+  // Exigence (« I4 ≤ 0,60 »), en-tête de courrier (BP, CEDEX, code postal — pas « 00040 », code de type de maison).
+  if(/[≤≥<>=]|\bcedex\b|\bbp\s*\d|(?:^|\s)(?:0[1-9]|[1-9]\d)\d{3}(?:\s|$)/i.test(id)) return true;
+  if(/(?:^|\s)\d+\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.?|boulevard|bd|chemin|all[ée]e|impasse|place|route|quai|cours)\b/i.test(id)) return true;
+  return false;
+}
+// Ligne de tableau « Bâtiment 1 Collectif 16 0.60 Oui », « Batiment 3 6556.8 5464 » : le bâtiment est le 1er mot.
+// rowInts (titres sans deux-points seulement) : deux nombres entiers ou plus après l'identifiant suffisent (« Batiment 1 3300 2750 »).
+function tableRowBuildingId(raw,{rowInts=false}={}){
+  const s=String(raw??'').trim(), toks=s.split(/\s+/); if(!s) return '';
+  if(BLD_DEC.test(toks[0])) return '';
+  const rest=toks.slice(1);
+  // Ligne de tableau : on ne garde que l'identifiant s'il en a la forme (A, B2, 1, L1/L2) ; sinon ce n'est pas un nom.
+  const id=/^(?:[A-Z]{1,3}\d{0,3}|\d{1,3}|[A-Z]\d?\/[A-Z]\d?)$/i.test(toks[0])?toks[0]:'';
+  // Unités ou nombres décimaux après l'identifiant : « A (1811,3 m²) », « 1 Collectif 16 0.60 Oui ».
+  if(rest.some(t=>BLD_HASDEC.test(t)||/%|²|m3\s*\/\s*h|kwh|w\s*\/\s*m/i.test(t))||(rowInts&&rest.filter(t=>BLD_NUM.test(t)).length>=2)) return id;
+  if(/^[A-Z]\d{0,2}$/i.test(toks[0])&&rest.length===1&&/^\d{3,}$/.test(rest[0])) return id; // « A 1516 » : surface en colonne
+  if(/^\d+$/.test(toks[0])&&rest.length&&rest.every(t=>BLD_NUM.test(t))) return id; // « 1 3300 2750 » : rangée de nombres
+  return s;
+}
+// Nom consolidé → nom réparé : '' (fantôme), identifiant seul (ligne de tableau) ou inchangé.
+function repairBuildingName(name){
+  if(!name||name==='Bâtiment unique') return name;
+  if(isNumericGhostBuilding(name)) return '';
+  const id=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), fixed=tableRowBuildingId(id);
+  return !fixed?'':fixed===id?name:canonicalBuilding(fixed);
+}
 function isGarbageBuildingName(name){
   if(!name||name==='Bâtiment unique') return false;
   const raw=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), t=normLower(raw).replace(/[.,;:!?]+\s*$/,'').trim(), words=t.split(/\s+/).filter(Boolean).length;
@@ -1248,6 +1283,8 @@ function detectBuildings(doc){
       if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m&&!bldProse(m[1],text)){raw=m[1];quality='building-heading';} }
       if(!raw) continue;
       raw=cleanCandidate(raw);
+      // v2.33.2 — ligne de tableau ou en-tête (nombres, unités, adresse) : identifiant seul, ou rien.
+      raw=tableRowBuildingId(raw,{rowInts:!/:/.test(text)}); if(!raw||isNumericGhostBuilding(`Bâtiment ${raw}`)) continue;
       if(isGenericBuildingHeading(raw)){ genericSingleHeadingSeen=true; continue; }
       if(!looksLikeBuildingId(raw)) continue;
       const building=canonicalBuilding(raw);
@@ -1271,7 +1308,7 @@ function detectBuildings(doc){
     for(const page of doc.read?.pages||[]){ for(const line of page.lines||[]){
       const text=normalizeText(line.text);
       const m=text.match(/^bat(?:iment)?\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80}?)(?:\s*\(\s*\d+\s+zones?\s*\))?$/i);
-      if(m&&!bldProse(m[1],text)){ const building=canonicalBuilding(`Bat ${m[1]}`); if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
+      if(m&&!bldProse(m[1],text)){ const id=tableRowBuildingId(m[1],{rowInts:true}); const building=id&&!isNumericGhostBuilding(`Bâtiment ${id}`)?canonicalBuilding(`Bat ${id}`):'Bâtiment unique'; if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
     }}
     const counts=new Map(); for(const h of candidates) counts.set(h.building,(counts.get(h.building)||0)+1);
     const reliable=unique(candidates.filter(h=>(counts.get(h.building)||0)>=2).map(h=>h.building));
@@ -8731,7 +8768,17 @@ function catchUpDocument(d,buildingOverrides={}){
     if(bad.length){ const keep=names.filter(n=>!bad.includes(n)); d.buildings={...d.buildings,names:keep.length?keep:['Bâtiment unique'],hits:(d.buildings.hits||[]).filter(h=>!bad.includes(h.building))}; d.needsCheckpoint=true; }
     // Toute lecture rattachée à un faux nom (même si ce nom vient d'ailleurs que la liste du document).
     const own=new Set((d.buildings?.names||[]).map(String)), moved=o=>o&&!o.userValidated&&garbage(o.building)&&!own.has(String(o.building));
-    if(Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(moved)){ d.cachedOccurrences=d.cachedOccurrences.map(o=>moved(o)?{...o,building:'Bâtiment unique'}:o); d.needsCheckpoint=true; } }
+    if(Array.isArray(d.cachedOccurrences)&&d.cachedOccurrences.some(moved)){ d.cachedOccurrences=d.cachedOccurrences.map(o=>moved(o)?{...o,building:'Bâtiment unique'}:o); d.needsCheckpoint=true; } 
+    // v2.33.2 — fantômes numériques (« Bâtiment 3117.92 », adresse, unités) : retirés même seuls ; lignes de tableau
+    // (« Bâtiment 1 COLLECTIF 16 0.60 OUI ») ramenées à leur identifiant. Une valeur validée par l'utilisateur ne bouge pas.
+  }
+  if((Number(d.bldRead)||0)<BLD_READ){ d.bldRead=BLD_READ;
+    const manual=new Set(Object.entries(buildingOverrides||{}).flat().map(String));
+    { const fix=new Map(); for(const n of new Set([...(d.buildings?.names||[]),...(d.cachedOccurrences||[]).map(o=>o?.building)].filter(Boolean))){ if(manual.has(String(n))) continue; const r=repairBuildingName(n); if(r!==n) fix.set(n,r||'Bâtiment unique'); }
+      if(fix.size){ const names=[...new Set((d.buildings?.names||[]).map(n=>fix.get(n)||n))], real=names.filter(n=>n!=='Bâtiment unique');
+        if(d.buildings) d.buildings={...d.buildings,names:real.length?real:['Bâtiment unique'],hits:(d.buildings.hits||[]).filter(h=>fix.get(h.building)!=='Bâtiment unique').map(h=>fix.has(h.building)?{...h,building:fix.get(h.building)}:h)};
+        if(Array.isArray(d.cachedOccurrences)) d.cachedOccurrences=d.cachedOccurrences.map(o=>o&&!o.userValidated&&fix.has(o.building)?{...o,building:fix.get(o.building)}:o);
+        d.needsCheckpoint=true; } } }
   // v2.23.2 — brasseurs d'air : les lectures d'avant (titre de rubrique RSET, sommaire, PSE, suppression lus comme une présence)
   // sont refaites une fois avec les règles actuelles ; seules les lectures « brasseur » du document changent. Un document sans
   // lecture « brasseur » est marqué sans relire son texte (les règles corrigées n'ajoutent une lecture que sur une ligne qui en
@@ -8742,7 +8789,7 @@ function catchUpDocument(d,buildingOverrides={}){
   const FAN_READ=2, fanDone=()=>Number(d.fanRead)>=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
@@ -8753,7 +8800,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; raw.push(...parsed); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; raw.push(...parsed); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -9467,7 +9514,7 @@ function prepareReadDocument(d){
   if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
   try{
     d.cachedOccurrences=d.read?.plan?[]:parseDocument(d); d.analysisCachedAt=Date.now();
-    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
+    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
     d.read=compactReadForRetention(d.read);
   }catch(parseErr){ d.cachedOccurrences=null; d.parseError=parseErr?.message||String(parseErr); }
   return d;
@@ -15658,7 +15705,8 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!d.bldRead)){ catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=2))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
+        catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);

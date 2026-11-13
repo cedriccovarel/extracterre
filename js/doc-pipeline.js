@@ -2,7 +2,7 @@
 // et par l'import massif (tools/import) : même classement, même détection des bâtiments, mêmes parseurs.
 import {DOC_TYPES} from './config.js';
 import {classifyDocument} from './classifier.js';
-import {detectBuildings} from './buildings.js';
+import {detectBuildings,BLD_READ} from './buildings.js';
 import {compactReadForRetention} from './readers.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType} from './parsers.js';
 
@@ -27,7 +27,7 @@ export function prepareReadDocument(d){
   if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
   try{
     d.cachedOccurrences=d.read?.plan?[]:parseDocument(d); d.analysisCachedAt=Date.now();
-    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
+    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
     d.read=compactReadForRetention(d.read);
   }catch(parseErr){ d.cachedOccurrences=null; d.parseError=parseErr?.message||String(parseErr); }
   return d;

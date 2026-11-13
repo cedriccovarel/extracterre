@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {salesforceEvaluationToPaste,parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.33.1','version');
+eq(APP_VERSION,'2.33.2','version');
 const page=`Évaluation
 EVA-009991
 Commentaires pré-analyse

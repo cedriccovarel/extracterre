@@ -124,6 +124,41 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
   return BLD_TABLE.test(t)||BLD_VERB.test(t); };
 // v2.23.3 — nom déjà enregistré (« Bâtiment ET DES TRAVAUX PUBLICS », « Bâtiment REALISES SUR CHANTIERS. ») : faux bâtiment tiré d'une
 // phrase ou d'un en-tête de tableau ? Sert au rattrapage des opérations existantes (la casse d'origine n'est plus connue).
+// v2.33.2 — bâtiments fantômes lus sur des lignes de tableau ou des en-têtes : « Bâtiment 3117.92 » (surface à côté du mot),
+// « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
+// Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
+export const BLD_READ=2; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
+const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
+export function isNumericGhostBuilding(name){
+  if(!name||name==='Bâtiment unique') return false;
+  const id=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), toks=id.split(/\s+/);
+  if(BLD_DEC.test(toks[0])) return true;
+  // Exigence (« I4 ≤ 0,60 »), en-tête de courrier (BP, CEDEX, code postal — pas « 00040 », code de type de maison).
+  if(/[≤≥<>=]|\bcedex\b|\bbp\s*\d|(?:^|\s)(?:0[1-9]|[1-9]\d)\d{3}(?:\s|$)/i.test(id)) return true;
+  if(/(?:^|\s)\d+\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.?|boulevard|bd|chemin|all[ée]e|impasse|place|route|quai|cours)\b/i.test(id)) return true;
+  return false;
+}
+// Ligne de tableau « Bâtiment 1 Collectif 16 0.60 Oui », « Batiment 3 6556.8 5464 » : le bâtiment est le 1er mot.
+// rowInts (titres sans deux-points seulement) : deux nombres entiers ou plus après l'identifiant suffisent (« Batiment 1 3300 2750 »).
+export function tableRowBuildingId(raw,{rowInts=false}={}){
+  const s=String(raw??'').trim(), toks=s.split(/\s+/); if(!s) return '';
+  if(BLD_DEC.test(toks[0])) return '';
+  const rest=toks.slice(1);
+  // Ligne de tableau : on ne garde que l'identifiant s'il en a la forme (A, B2, 1, L1/L2) ; sinon ce n'est pas un nom.
+  const id=/^(?:[A-Z]{1,3}\d{0,3}|\d{1,3}|[A-Z]\d?\/[A-Z]\d?)$/i.test(toks[0])?toks[0]:'';
+  // Unités ou nombres décimaux après l'identifiant : « A (1811,3 m²) », « 1 Collectif 16 0.60 Oui ».
+  if(rest.some(t=>BLD_HASDEC.test(t)||/%|²|m3\s*\/\s*h|kwh|w\s*\/\s*m/i.test(t))||(rowInts&&rest.filter(t=>BLD_NUM.test(t)).length>=2)) return id;
+  if(/^[A-Z]\d{0,2}$/i.test(toks[0])&&rest.length===1&&/^\d{3,}$/.test(rest[0])) return id; // « A 1516 » : surface en colonne
+  if(/^\d+$/.test(toks[0])&&rest.length&&rest.every(t=>BLD_NUM.test(t))) return id; // « 1 3300 2750 » : rangée de nombres
+  return s;
+}
+// Nom consolidé → nom réparé : '' (fantôme), identifiant seul (ligne de tableau) ou inchangé.
+export function repairBuildingName(name){
+  if(!name||name==='Bâtiment unique') return name;
+  if(isNumericGhostBuilding(name)) return '';
+  const id=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), fixed=tableRowBuildingId(id);
+  return !fixed?'':fixed===id?name:canonicalBuilding(fixed);
+}
 export function isGarbageBuildingName(name){
   if(!name||name==='Bâtiment unique') return false;
   const raw=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), t=normLower(raw).replace(/[.,;:!?]+\s*$/,'').trim(), words=t.split(/\s+/).filter(Boolean).length;
@@ -233,6 +268,8 @@ export function detectBuildings(doc){
       if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m&&!bldProse(m[1],text)){raw=m[1];quality='building-heading';} }
       if(!raw) continue;
       raw=cleanCandidate(raw);
+      // v2.33.2 — ligne de tableau ou en-tête (nombres, unités, adresse) : identifiant seul, ou rien.
+      raw=tableRowBuildingId(raw,{rowInts:!/:/.test(text)}); if(!raw||isNumericGhostBuilding(`Bâtiment ${raw}`)) continue;
       if(isGenericBuildingHeading(raw)){ genericSingleHeadingSeen=true; continue; }
       if(!looksLikeBuildingId(raw)) continue;
       const building=canonicalBuilding(raw);
@@ -256,7 +293,7 @@ export function detectBuildings(doc){
     for(const page of doc.read?.pages||[]){ for(const line of page.lines||[]){
       const text=normalizeText(line.text);
       const m=text.match(/^bat(?:iment)?\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80}?)(?:\s*\(\s*\d+\s+zones?\s*\))?$/i);
-      if(m&&!bldProse(m[1],text)){ const building=canonicalBuilding(`Bat ${m[1]}`); if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
+      if(m&&!bldProse(m[1],text)){ const id=tableRowBuildingId(m[1],{rowInts:true}); const building=id&&!isNumericGhostBuilding(`Bâtiment ${id}`)?canonicalBuilding(`Bat ${id}`):'Bâtiment unique'; if(building!=='Bâtiment unique') candidates.push({building,page:page.page,line:line.index,text:line.text,quality:'short-heading'}); }
     }}
     const counts=new Map(); for(const h of candidates) counts.set(h.building,(counts.get(h.building)||0)+1);
     const reliable=unique(candidates.filter(h=>(counts.get(h.building)||0)>=2).map(h=>h.building));

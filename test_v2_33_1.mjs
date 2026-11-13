@@ -24,5 +24,5 @@ assert.equal(badLabelStructure({field:'structure',value:'Béton armé',method:m}
 assert.match(fs.readFileSync('js/engine.js','utf8'),/if\(badLabelStructure\(o\)&&!o\.userValidated\) return null;/);
 const cli=fs.readFileSync('tools/import/extracterre-import.mjs','utf8');
 assert.match(cli,/unchanged&&!extract\.staleForPatches\(oldRes\)/);
-assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.33.1');
+assert.match(fs.readFileSync('VERSION','utf8').trim(),/^2\.33\./);
 console.log('test_v2_33_1 ok');

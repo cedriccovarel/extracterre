@@ -1470,6 +1470,10 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.33.2
+- Bâtiments fantômes : une ligne de tableau ou un en-tête n'est plus pris pour un nom de bâtiment. « Bâtiment 3117.92 » (surface), « Bâtiment 0.66 0.80 », exigence « I4 ≤ 0,60 m3/h.m² », en-tête de courrier (« BP 30055 67061 STRASBOURG »), adresse (« 14 rue … ») : retirés, leurs valeurs passent en « Bâtiment unique ». « Bâtiment 1 COLLECTIF 16 0.60 OUI », « Bâtiment A (1811,3 m²) », « Bâtiment A 1516 » : ramenés à « Bâtiment 1 » / « Bâtiment A ». Les noms avec numéros de lots ou codes (« LUISA LOTS 5 6 », « A - HIBISCUS 00040 ») sont gardés.
+- Résultats déjà analysés réparés sans relecture (à la consolidation). Sur les 220 opérations importées : 2 393 → 2 252 bâtiments, 41 opérations nettoyées.
+
 ## v2.33.1
 - Import massif aligné sur l'appli : le service d'import charge désormais les packs d'amélioration du site (data/patches), comme l'appli au démarrage. Même classement des documents (ex. rapport « RSEE/RSET » scanné lu comme RSET) et mêmes règles d'extraction. À la prochaine analyse, seuls les documents que ces packs changent sont relus (environ 1 300 sur 6 400) ; les autres sont réutilisés.
 - Lecture « libellé : valeur » : « Structure » n'est retenue que si elle décrit une structure (fini « • Caisson en tôle galvanisée… » lu dans un CCTP de VMC) ; un département entre parenthèses (« CHECY (45) ») n'est plus pris pour un nombre de logements. Appliqué aussi aux résultats déjà extraits.

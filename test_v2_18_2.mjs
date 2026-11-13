@@ -5,7 +5,7 @@ import {APP_VERSION,DOC_TYPES} from './js/config.js';
 import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.33.1','version');
+eq(APP_VERSION,'2.33.2','version');
 const mk=(name,type,lines)=>{ const ls=lines.map((t,i)=>({index:i,text:normalizeText(t),y:800-i*12})); const pg={page:1,text:ls.map(l=>l.text).join('\n'),lines:ls};
   return {id:'d',name,type,familyMode:'auto',read:{kind:'pdf',pages:[pg],text:pg.text},buildings:{names:['Bâtiment unique']}}; };
 const vals=(doc,f)=>[...new Set(parseDocument(doc).filter(o=>o?.field===f).map(o=>o.value))];
