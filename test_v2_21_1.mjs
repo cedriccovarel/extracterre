@@ -6,7 +6,7 @@ const {APP_VERSION}=await import('./js/config.js');
 const {importImprovementPatchObject,applyPasteRewrites}=await import('./js/patches.js');
 const {parseFreePaste,freePasteValues}=await import('./js/collage-libre.js');
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.36.0','version');
+eq(APP_VERSION,'2.36.1','version');
 
 const raw=`PLOT A : BAT A1 : 1 MI
 Bbio : 70 / Bbiomax 80 (gain 12,5 %)

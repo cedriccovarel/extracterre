@@ -217,7 +217,11 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
-        const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+        // v2.36.1 — le DH se lit dans le RSET : on cherche le groupe le plus défavorable parmi les lectures du meilleur niveau
+        // (tableau DH du RSET officiel, puis ligne de tableau DH, puis le reste : sorties logicielles, notes de synthèse).
+        const dhTier=o=>{ const m=String(o.method||''); if(o.manualDefinitive||/^manual:/.test(m)) return 0; if(![DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(o.docType)) return 4;
+          if(/^(?:cstb:dh-worst-group|xml:re2020:rset-dh)$/.test(m)) return 1; if(/^(?:rset:dh-row|rset:dh-explicit)$/.test(m)||/^patch:/.test(m)) return 2; return 3; };
+        const numeric=pool.filter(o=>typeof o.value==='number'); if(numeric.length){ const best=Math.min(...numeric.map(dhTier)); chosen=numeric.filter(o=>dhTier(o)===best).sort((a,b)=>b.value-a.value)[0]; } }
       // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
       if((f.key==='ventilation'||f.key==='ventilation_before')&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
       // v2.35.0 — occultations : « Volet avec gestion manuelle » (catégorie RSET) précisé par le CCTP (« Volet roulant »,

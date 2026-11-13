@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {ssProgressModel,ssDuration} from './js/suivi-sources.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.36.0','version');
+eq(APP_VERSION,'2.36.1','version');
 const now=Date.parse('2026-11-12T12:00:00Z');
 const st={etat:'en cours',etape:'extraction',debut:'2026-11-12T10:50:00Z',debutExtraction:'2026-11-12T11:00:00Z',majA:'2026-11-12T11:59:50Z',contrats:['A','B','C','D','E'],
   operations:{fait:2,total:5,courante:'C · C - 06 - VILLEFICTIVE'},fichiers:{fait:5,total:10,courant:'x.pdf'},parOp:{A:{r:'ok',f:3,x:3},B:{r:'inchangé'}}};

@@ -6,5 +6,5 @@ const cfg={readableExtensions:['pdf','xml','xlsx']};
 for(const n of ['FDES.pdf','fdes_isolant.pdf','FDES-Laine de verre.pdf','Fiche FDES ITE.pdf','01_FDES2.pdf']){ assert.ok(isFdesName(n),n); assert.match(fileIgnoreReason(n,cfg),/FDES/); }
 for(const n of ['CCTP lot 02.pdf','FDESIGN.pdf','RSET.xml','Etude thermique.pdf']) assert.equal(isFdesName(n),false,n);
 assert.match(fs.readFileSync('js/box-folder.js','utf8'),/isFdesName\(name\)\) continue/);
-assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.36.0');
+assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.36.1');
 console.log('test_v2_32_2 ok');

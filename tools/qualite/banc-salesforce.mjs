@@ -51,7 +51,7 @@ const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[]; const candO
 const bump=(o,k,r)=>{ (o[k]=o[k]||T())[r]++; };
 for(const c of contracts){
   // --relecture-legere : les lecteurs actuels sont relancés sur le texte conservé (sans relire le PDF ni refaire l'OCR).
-  const docs=byC[c].map(f=>{ const d={...JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(W,f.resultFile))).toString('utf8')).doc,status:'ready',file:null}; if(args['relecture-legere']&&d.read) d.cachedOccurrences=null; return d; });
+  const docs=byC[c].map(f=>{ const d={...JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(W,f.resultFile))).toString('utf8')).doc,status:'ready',file:null}; if(args['relecture-legere']&&d.read&&(!args['relecture-types']||String(args['relecture-types']).split(',').includes(d.type))) d.cachedOccurrences=null; return d; });
   let res; try{ res=analyzeDocuments(docs,DEFAULT_SOURCE_RULES,''); }catch(e){ console.warn(`  ⚠ ${c} : ${e.message}`); continue; }
   ops++; const comps=[];
   const {vals,status}=sf.get(c);

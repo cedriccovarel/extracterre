@@ -145,7 +145,8 @@ export function isObsoleteFolder(name){
   const i=t.findIndex(x=>x==='ancien'||x==='ancienne'||x==='anc');
   if(i>=0&&t.slice(i+1).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))&&t.slice(0,i).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))) return true;
   const s=t.join(' ');
-  return /\bversion (?:precedente|anterieure|obsolete)\b|\bne pas utiliser\b|\bnon valide\b|\ba (?:supprimer|jeter)\b/.test(s);
+  // v2.36.1 — « Hors périmètre de certification » : documents qui ne décrivent pas les bâtiments certifiés, jamais lus.
+  return /\bversion (?:precedente|anterieure|obsolete)\b|\bne pas utiliser\b|\bnon valide\b|\ba (?:supprimer|jeter)\b|\bhors? perimetre\b/.test(s); // « hors » ramené à « hor » par folderTokens
 }
 // Premier dossier périmé d'un chemin relatif au dossier de l'opération, ou null.
 export function obsoleteFolderOf(relDir){ return String(relDir??'').split('/').filter(Boolean).find(isObsoleteFolder)||null; }

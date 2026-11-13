@@ -2,7 +2,7 @@
 // Les valeurs sont lues directement dans les balises normalisées du schéma RE2020 :
 // aucune expression régulière sur du texte linéarisé, aucun décalage de colonne possible.
 import {canonicalBuilding} from './buildings.js';
-import {normalizeGlazingType} from './utils.js';
+import {normalizeGlazingType,envelopeLabelLayers} from './utils.js';
 import {parseFrAddress} from './geocode.js';
 import {vectorFromShares} from './vecteurs.js';
 import {roofStructureFrom} from './plancher-haut.js';
@@ -358,8 +358,11 @@ export function re2020Occurrences(doc,makeOcc){
     const e=b.envelope||{};
     for(const t of ['wall','roof','floor']){ const p=e[t]; if(!p) continue;
       const note=`Paroi dominante (${re20Round(p.surface,1)} m²) : « ${p.name} » — Datas_Comp/enveloppe.`;
-      if(p.thicknessCm>0&&p.thicknessCm<100) add(b,`${t}_insulation_thickness`,re20Round(p.thicknessCm*10,0),'dc-paroi-epaisseur','mm',/./,{confidence:0.97,note});
-      if(p.rTotal>0&&p.rTotal<25) add(b,`${t}_insulation_r`,re20Round(p.rTotal,2),'dc-paroi-r','m².K/W',/./,{confidence:0.97,note});
+      // v2.36.1 — épaisseur et R cumulés de tous les isolants : isolant principal lu dans le libellé ; plusieurs isolants → pas de R.
+      const L=envelopeLabelLayers(p.name), thMm=p.thicknessCm>0&&p.thicknessCm<100?p.thicknessCm*10:null;
+      const useL=L.principal&&(thMm===null||L.principal<=thMm+5), th=useL?L.principal:(L.multi?null:thMm), multi=L.multi;
+      if(th) add(b,`${t}_insulation_thickness`,re20Round(th,0),'dc-paroi-epaisseur','mm',/./,{confidence:0.97,note:useL&&th!==thMm?`${note} Isolant principal lu dans le libellé.`:note});
+      if(!multi&&p.rTotal>0&&p.rTotal<25) add(b,`${t}_insulation_r`,re20Round(p.rTotal,2),'dc-paroi-r','m².K/W',/./,{confidence:0.97,note});
       const nm=String(p.name||'').toLowerCase();
       if(t==='roof'){ const rs=roofStructureFrom(`${p.name||''} ${p.nature||''} ${p.system||''}`); if(rs) add(b,'roof_structure',rs,'dc-toiture','',/./,{confidence:0.93,note}); }
       if(t==='floor'){ const fs=/b[ée]ton|dalle/.test(nm)?'Dalle béton':/bois|solive/.test(nm)?'Plancher bois':null; if(fs) add(b,'floor_structure',fs,'dc-plancher','',/./,{confidence:0.93,note}); }

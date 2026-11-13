@@ -95,3 +95,20 @@ export function tokenize(s=''){ return normLower(s).split(/[^a-z0-9]+/).filter(x
 export function scoreTokens(query,text){ const q=tokenize(query), t=normLower(text); if(!q.length) return 0; return q.reduce((a,w)=>a+(t.includes(w)?1:0),0)/q.length; }
 export function findFirstMatch(text, pairs){ for(const [label,re] of pairs){ if(re.test(normalizeText(text))) return label; } return null; }
 export function formatValue(v){ if(v===null||v===undefined||v==='') return 'non précisé'; if(typeof v==='number') return new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(v); return String(v); }
+
+// v2.36.1 — libellé de paroi RSET (« PH_Toiture terrasse accessible_080mm+060mm laine de verre », « ME_MEXT_ITI_Béton
+// 16cm_140+13mm », « PH_Rampants_2x150mm », « PB_PB_SS_ISC +ISD ») : couches d'isolant. Le tableau donne l'épaisseur et le R
+// cumulés de tous les isolants ; l'évaluateur retient l'isolant principal (banc Salesforce). Plaques (≤ 15 mm) ignorées.
+export function envelopeLabelLayers(text){
+  const t=String(text||'').replace(/(\d),(\d)/g,'$1.$2'), layers=[];
+  for(const m of t.matchAll(/(?<![\d.])(\d{1,3}(?:\.\d)?)(?:\s*x\s*(\d{2,3}))?((?:\s*\+\s*\d{1,3}(?:\.\d)?)*)\s*mm(?![a-z])/gi)){
+    if(m[2]){ layers.push(Number(m[1])*Number(m[2])); continue; }
+    for(const v of [m[1],...(m[3]||'').split('+').map(x=>x.trim()).filter(Boolean)]) layers.push(Number(v));
+  }
+  const ins=layers.filter(v=>v>15&&v<=600);
+  // Plusieurs isolants seulement si au moins deux codes isolants (« ISC +ISD », « LDV + PU ») : « béton + PU » reste un seul isolant.
+  const codes=(t.match(/(?<![a-z])(?:IS[CD]|IT[EI]|ISO|LDV|LDR|PU|PSE|XPS|LM)(?![a-z])/gi)||[]).length>=2&&/\+/.test(t);
+  if(!ins.length) return {principal:null,multi:codes};
+  const principal=Math.max(...ins);
+  return {principal,multi:ins.length>1||codes};
+}

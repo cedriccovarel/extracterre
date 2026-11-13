@@ -42,7 +42,7 @@ export async function scanOperation(opDir,cfg,{allSubfolders=false}={}){
       const fam=allSubfolders?(family||directFamily||null):(family||directFamily);
       if(!allSubfolders&&!fam) continue; // fichier hors sous-dossier retenu : ni lu, ni haché
       const obs=obsoleteFolderOf(rel); // v2.36.0 — dossier « OLD / Ancien / Archives… » : fichiers périmés, jamais lus
-      const reason=obs?`dossier de fichiers périmés (« ${obs} »)`:fileIgnoreReason(e.name,cfg);
+      const reason=obs?(/hors\s+p[ée]rim[èe]tre/i.test(obs)?`dossier hors périmètre de certification (« ${obs} »)`:`dossier de fichiers périmés (« ${obs} »)`):fileIgnoreReason(e.name,cfg);
       let st=null; try{ st=await fs.promises.stat(childAbs); }catch(err){ errors.push({relDir:rel,file:e.name,error:err.code||err.message}); continue; }
       files.push({abs:childAbs,relPath:childRel,relDir:rel,name:e.name,family:fam,size:st.size,mtimeMs:Math.round(st.mtimeMs),ignoreReason:reason});
     }

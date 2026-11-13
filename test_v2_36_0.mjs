@@ -10,7 +10,7 @@ import {boxGroupOf} from './js/box-folder.js';
 import {scanOperation} from './tools/import/lib/scan.mjs';
 for(const n of ['OLD','Old','old','_OLD','Ancien','ANC','Anciennes versions','Ancien CCTP','RENO 6 LGTS old','Archives','Archivé','00 - Obsolète','Périmés','Caduc','Version précédente','Ne pas utiliser','z_old 2024'])
   assert.ok(isObsoleteFolder(n),n);
-for(const n of ['2. Ancienne Mairie','Bâtiment ancien collège','Hors périmètre de certification','Version 4','Version 3.1','CCTP','Étude thermique','Gold','14 11 25','Etat existant'])
+for(const n of ['2. Ancienne Mairie','Bâtiment ancien collège','Version 4','Version 3.1','CCTP','Étude thermique','Gold','14 11 25','Etat existant'])
   assert.ok(!isObsoleteFolder(n),n);
 assert.equal(obsoleteFolderOf('Évaluation/Étude thermique/OLD/2024'),'OLD');
 assert.equal(obsoleteFolderOf('Évaluation/2. Ancienne Mairie/CCTP'),null);
@@ -29,4 +29,11 @@ try{
   assert.equal(r['RSET.pdf'],null);
   assert.match(r['RSET v1.pdf'],/périmés.*OLD/);
 } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
+// v2.36.1 : isolant principal lu dans le libellé de paroi (Salesforce retient l’'isolant principal).
+const {envelopeLabelLayers:LL}=await import('./js/utils.js');
+assert.deepEqual(LL('accessible_080mm+060mm'),{principal:80,multi:true});
+assert.deepEqual(LL('16cm_140+13mm'),{principal:140,multi:false});
+assert.deepEqual(LL('Dalle béton sur LNC + PU'),{principal:null,multi:false});
+assert.deepEqual(LL('ISC +ISD'),{principal:null,multi:true});
+assert.ok(isObsoleteFolder('Hors périmètre de certification'));
 console.log('test_v2_36_0 ok');

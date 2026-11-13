@@ -1,5 +1,5 @@
 import {DOC_TYPES,FIELD_DEFS,FIELD_MAP,normalizeFieldHeader,matchFieldByHeader,MATERIALS,STRUCTURES,HVAC,COOLING,WINDOW_MATERIALS,GLAZINGS,SHADINGS,ENR_TYPES,FAN_TYPES,ELEMENT_PATTERNS} from './config.js';
-import {normalizeText,normLower,numbersIn,parseFrNumber,findFirstMatch,unique,clamp,maskNonDataNumerics,normalizeGlazingType,stripUnitExponents} from './utils.js';
+import {normalizeText,normLower,numbersIn,parseFrNumber,findFirstMatch,unique,clamp,maskNonDataNumerics,normalizeGlazingType,stripUnitExponents,envelopeLabelLayers} from './utils.js';
 import {buildingForPosition,canonicalBuilding} from './buildings.js';
 import {matchInsulationProduct,libraryNote} from './insulation-library.js';
 import {parsePatchOccurrences} from './patches.js';
@@ -343,7 +343,10 @@ function parseEnvelopeRowSegment(lines,start,category){
   surfCandidates.sort((a,b)=>b.score-a.score || b.sf-a.sf);
   if(surfCandidates.length) surface=surfCandidates[0].sf;
 
-  return {mat,struct,thickness,totalR,surface:surface||0,ctx,end};
+  // Libellé : lignes du segment, plus celles qui le précèdent après la fin de la ligne précédente (« … parois" »).
+  let pre=lines.slice(preStart,start).map(x=>x.text||''); const cut=pre.map(x=>/parois"?\s*$|^total\b|fascicule|l.ext[eé]rieur|solaris[eé]/i.test(normalizeText(x))).lastIndexOf(true); pre=pre.slice(cut+1);
+  const layers=envelopeLabelLayers([...pre,...seg.map(x=>x.text||'')].join(' '));
+  return {mat,struct,thickness,totalR,surface:surface||0,ctx,end,layers};
 }
 function representativeEnvelopeRecords(doc){
   const recs=[];
@@ -356,7 +359,12 @@ function representativeEnvelopeRecords(doc){
       if(!category) continue;
       const r=parseEnvelopeRowSegment(lines,i,category);
       if(r.totalR===null&&r.thickness===null&&!r.mat&&!r.struct) continue;
-      recs.push({building:buildingForPosition(doc,page.page,lines[i].index),category,mat:r.mat,struct:r.struct,thickness:r.thickness,totalR:r.totalR,surface:r.surface,page,line:lines[i],ctx:r.ctx});
+      // v2.36.1 — isolant principal : épaisseur du libellé quand le tableau cumule plusieurs isolants ; R cumulé écarté
+      // (il ne correspond à aucun isolant) — le R viendra d'une autre source (étude, puis CCTP).
+      let th=r.thickness, tr=r.totalR; const L=r.layers;
+      if(L?.principal&&(th===null||L.principal<=th+5)){ if(L.multi){ th=L.principal; tr=null; } else if(th===null||Math.abs(th-L.principal)>5) th=L.principal; }
+      else if(L?.multi&&!L.principal){ th=null; tr=null; }
+      recs.push({building:buildingForPosition(doc,page.page,lines[i].index),category,mat:r.mat,struct:r.struct,thickness:th,totalR:tr,surface:r.surface,page,line:lines[i],ctx:r.ctx,layers:L});
       i=Math.max(i,r.end-1);
     }
   }
@@ -373,7 +381,9 @@ function rsetEnvelopeStructured(doc){
       if(!pool.length) continue;
       // Par champ, prendre l'enregistrement de plus grande surface qui porte réellement l'information.
       const bestFor=(pred)=>pool.filter(pred).sort((a,b)=>(b.surface||0)-(a.surface||0))[0];
-      const rRec=bestFor(r=>r.totalR!==null&&r.totalR>0), thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
+      // v2.36.1 — paroi principale (plus grande surface portant un isolant) à plusieurs isolants : pas de R d'une autre paroi.
+      const dom=bestFor(r=>(r.thickness>0)||(r.totalR>0)||r.layers?.principal||r.layers?.multi);
+      const rRec=dom?.layers?.multi?null:bestFor(r=>r.totalR!==null&&r.totalR>0), thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
       const add=(rec,field,value,unit='')=>{ if(!rec||value===null||value===undefined||value==='') return; push(out,occ(doc,rec.page,rec.line,field,value,'rset:chapter4-envelope-dominant',0.995,unit,{building,origin:'RSET Chapitre 4',excerpt:rec.ctx.slice(0,420),provenanceNote:`Valeur lue dans le tableau « Données récapitulatives sur les parois » du bâtiment ; paroi représentative choisie par la plus grande surface${rec.surface?` (${rec.surface} m²)`:''}.`})); };
       add(matRec,`${category}_insulation`,matRec?.mat);
       add(stRec,`${category}_structure`,stRec?.struct);
@@ -746,7 +756,9 @@ export function parseRset(doc){
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:cep-summary-row',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:cep-summary-row',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:cep-summary-row',0.99,'%')); }
       }
       if(/\bdh\b|degres?[- ]heures?/i.test(s)){
-        const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */ if(explicit!==null) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
+        const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */
+        // v2.36.1 — « DH: 1250 °C.h », « DH: 350 °C.h », « DH: 0 °C.h » : seuils du schéma réglementaire ; « 1 » : numéro, pas un DH
+        if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
         const max=firstValueAfterLabel(s,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
       }
       if(/conforme|non\s+conforme/i.test(s) && i>0){

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.0';
+const APP_VERSION='2.36.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -432,7 +432,9 @@ for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PRO
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
-for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL],[DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
+// v2.36.1 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
+// l'étude thermique n'est qu'un secours quand aucun RSET n'est lu.
+for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 // v2.3.20 — une étude RT existant (Th-C-E ex) déclare explicitement ses zones traversantes, comme une étude thermique.
 for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type','fan_presence']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
@@ -722,6 +724,23 @@ function tokenize(s=''){ return normLower(s).split(/[^a-z0-9]+/).filter(x=>x.len
 function scoreTokens(query,text){ const q=tokenize(query), t=normLower(text); if(!q.length) return 0; return q.reduce((a,w)=>a+(t.includes(w)?1:0),0)/q.length; }
 function findFirstMatch(text, pairs){ for(const [label,re] of pairs){ if(re.test(normalizeText(text))) return label; } return null; }
 function formatValue(v){ if(v===null||v===undefined||v==='') return 'non précisé'; if(typeof v==='number') return new Intl.NumberFormat('fr-FR',{maximumFractionDigits:3}).format(v); return String(v); }
+
+// v2.36.1 — libellé de paroi RSET (« PH_Toiture terrasse accessible_080mm+060mm laine de verre », « ME_MEXT_ITI_Béton
+// 16cm_140+13mm », « PH_Rampants_2x150mm », « PB_PB_SS_ISC +ISD ») : couches d'isolant. Le tableau donne l'épaisseur et le R
+// cumulés de tous les isolants ; l'évaluateur retient l'isolant principal (banc Salesforce). Plaques (≤ 15 mm) ignorées.
+function envelopeLabelLayers(text){
+  const t=String(text||'').replace(/(\d),(\d)/g,'$1.$2'), layers=[];
+  for(const m of t.matchAll(/(?<![\d.])(\d{1,3}(?:\.\d)?)(?:\s*x\s*(\d{2,3}))?((?:\s*\+\s*\d{1,3}(?:\.\d)?)*)\s*mm(?![a-z])/gi)){
+    if(m[2]){ layers.push(Number(m[1])*Number(m[2])); continue; }
+    for(const v of [m[1],...(m[3]||'').split('+').map(x=>x.trim()).filter(Boolean)]) layers.push(Number(v));
+  }
+  const ins=layers.filter(v=>v>15&&v<=600);
+  // Plusieurs isolants seulement si au moins deux codes isolants (« ISC +ISD », « LDV + PU ») : « béton + PU » reste un seul isolant.
+  const codes=(t.match(/(?<![a-z])(?:IS[CD]|IT[EI]|ISO|LDV|LDR|PU|PSE|XPS|LM)(?![a-z])/gi)||[]).length>=2&&/\+/.test(t);
+  if(!ins.length) return {principal:null,multi:codes};
+  const principal=Math.max(...ins);
+  return {principal,multi:ins.length>1||codes};
+}
 
 /* ---- geocode.js ---- */
 // v2.9.0 — adresse de l'opération et géolocalisation (Géoplateforme IGN, Base Adresse Nationale).
@@ -5039,8 +5058,11 @@ function re2020Occurrences(doc,makeOcc){
     const e=b.envelope||{};
     for(const t of ['wall','roof','floor']){ const p=e[t]; if(!p) continue;
       const note=`Paroi dominante (${re20Round(p.surface,1)} m²) : « ${p.name} » — Datas_Comp/enveloppe.`;
-      if(p.thicknessCm>0&&p.thicknessCm<100) add(b,`${t}_insulation_thickness`,re20Round(p.thicknessCm*10,0),'dc-paroi-epaisseur','mm',/./,{confidence:0.97,note});
-      if(p.rTotal>0&&p.rTotal<25) add(b,`${t}_insulation_r`,re20Round(p.rTotal,2),'dc-paroi-r','m².K/W',/./,{confidence:0.97,note});
+      // v2.36.1 — épaisseur et R cumulés de tous les isolants : isolant principal lu dans le libellé ; plusieurs isolants → pas de R.
+      const L=envelopeLabelLayers(p.name), thMm=p.thicknessCm>0&&p.thicknessCm<100?p.thicknessCm*10:null;
+      const useL=L.principal&&(thMm===null||L.principal<=thMm+5), th=useL?L.principal:(L.multi?null:thMm), multi=L.multi;
+      if(th) add(b,`${t}_insulation_thickness`,re20Round(th,0),'dc-paroi-epaisseur','mm',/./,{confidence:0.97,note:useL&&th!==thMm?`${note} Isolant principal lu dans le libellé.`:note});
+      if(!multi&&p.rTotal>0&&p.rTotal<25) add(b,`${t}_insulation_r`,re20Round(p.rTotal,2),'dc-paroi-r','m².K/W',/./,{confidence:0.97,note});
       const nm=String(p.name||'').toLowerCase();
       if(t==='roof'){ const rs=roofStructureFrom(`${p.name||''} ${p.nature||''} ${p.system||''}`); if(rs) add(b,'roof_structure',rs,'dc-toiture','',/./,{confidence:0.93,note}); }
       if(t==='floor'){ const fs=/b[ée]ton|dalle/.test(nm)?'Dalle béton':/bois|solive/.test(nm)?'Plancher bois':null; if(fs) add(b,'floor_structure',fs,'dc-plancher','',/./,{confidence:0.93,note}); }
@@ -6402,7 +6424,10 @@ function parseEnvelopeRowSegment(lines,start,category){
   surfCandidates.sort((a,b)=>b.score-a.score || b.sf-a.sf);
   if(surfCandidates.length) surface=surfCandidates[0].sf;
 
-  return {mat,struct,thickness,totalR,surface:surface||0,ctx,end};
+  // Libellé : lignes du segment, plus celles qui le précèdent après la fin de la ligne précédente (« … parois" »).
+  let pre=lines.slice(preStart,start).map(x=>x.text||''); const cut=pre.map(x=>/parois"?\s*$|^total\b|fascicule|l.ext[eé]rieur|solaris[eé]/i.test(normalizeText(x))).lastIndexOf(true); pre=pre.slice(cut+1);
+  const layers=envelopeLabelLayers([...pre,...seg.map(x=>x.text||'')].join(' '));
+  return {mat,struct,thickness,totalR,surface:surface||0,ctx,end,layers};
 }
 function representativeEnvelopeRecords(doc){
   const recs=[];
@@ -6415,7 +6440,12 @@ function representativeEnvelopeRecords(doc){
       if(!category) continue;
       const r=parseEnvelopeRowSegment(lines,i,category);
       if(r.totalR===null&&r.thickness===null&&!r.mat&&!r.struct) continue;
-      recs.push({building:buildingForPosition(doc,page.page,lines[i].index),category,mat:r.mat,struct:r.struct,thickness:r.thickness,totalR:r.totalR,surface:r.surface,page,line:lines[i],ctx:r.ctx});
+      // v2.36.1 — isolant principal : épaisseur du libellé quand le tableau cumule plusieurs isolants ; R cumulé écarté
+      // (il ne correspond à aucun isolant) — le R viendra d'une autre source (étude, puis CCTP).
+      let th=r.thickness, tr=r.totalR; const L=r.layers;
+      if(L?.principal&&(th===null||L.principal<=th+5)){ if(L.multi){ th=L.principal; tr=null; } else if(th===null||Math.abs(th-L.principal)>5) th=L.principal; }
+      else if(L?.multi&&!L.principal){ th=null; tr=null; }
+      recs.push({building:buildingForPosition(doc,page.page,lines[i].index),category,mat:r.mat,struct:r.struct,thickness:th,totalR:tr,surface:r.surface,page,line:lines[i],ctx:r.ctx,layers:L});
       i=Math.max(i,r.end-1);
     }
   }
@@ -6432,7 +6462,9 @@ function rsetEnvelopeStructured(doc){
       if(!pool.length) continue;
       // Par champ, prendre l'enregistrement de plus grande surface qui porte réellement l'information.
       const bestFor=(pred)=>pool.filter(pred).sort((a,b)=>(b.surface||0)-(a.surface||0))[0];
-      const rRec=bestFor(r=>r.totalR!==null&&r.totalR>0), thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
+      // v2.36.1 — paroi principale (plus grande surface portant un isolant) à plusieurs isolants : pas de R d'une autre paroi.
+      const dom=bestFor(r=>(r.thickness>0)||(r.totalR>0)||r.layers?.principal||r.layers?.multi);
+      const rRec=dom?.layers?.multi?null:bestFor(r=>r.totalR!==null&&r.totalR>0), thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
       const add=(rec,field,value,unit='')=>{ if(!rec||value===null||value===undefined||value==='') return; push(out,occ(doc,rec.page,rec.line,field,value,'rset:chapter4-envelope-dominant',0.995,unit,{building,origin:'RSET Chapitre 4',excerpt:rec.ctx.slice(0,420),provenanceNote:`Valeur lue dans le tableau « Données récapitulatives sur les parois » du bâtiment ; paroi représentative choisie par la plus grande surface${rec.surface?` (${rec.surface} m²)`:''}.`})); };
       add(matRec,`${category}_insulation`,matRec?.mat);
       add(stRec,`${category}_structure`,stRec?.struct);
@@ -6805,7 +6837,9 @@ function parseRset(doc){
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:cep-summary-row',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:cep-summary-row',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:cep-summary-row',0.99,'%')); }
       }
       if(/\bdh\b|degres?[- ]heures?/i.test(s)){
-        const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */ if(explicit!==null) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
+        const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */
+        // v2.36.1 — « DH: 1250 °C.h », « DH: 350 °C.h », « DH: 0 °C.h » : seuils du schéma réglementaire ; « 1 » : numéro, pas un DH
+        if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
         const max=firstValueAfterLabel(s,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
       }
       if(/conforme|non\s+conforme/i.test(s) && i>0){
@@ -8824,7 +8858,11 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
-        const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
+        // v2.36.1 — le DH se lit dans le RSET : on cherche le groupe le plus défavorable parmi les lectures du meilleur niveau
+        // (tableau DH du RSET officiel, puis ligne de tableau DH, puis le reste : sorties logicielles, notes de synthèse).
+        const dhTier=o=>{ const m=String(o.method||''); if(o.manualDefinitive||/^manual:/.test(m)) return 0; if(![DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020].includes(o.docType)) return 4;
+          if(/^(?:cstb:dh-worst-group|xml:re2020:rset-dh)$/.test(m)) return 1; if(/^(?:rset:dh-row|rset:dh-explicit)$/.test(m)||/^patch:/.test(m)) return 2; return 3; };
+        const numeric=pool.filter(o=>typeof o.value==='number'); if(numeric.length){ const best=Math.min(...numeric.map(dhTier)); chosen=numeric.filter(o=>dhTier(o)===best).sort((a,b)=>b.value-a.value)[0]; } }
       // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
       if((f.key==='ventilation'||f.key==='ventilation_before')&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
       // v2.35.0 — occultations : « Volet avec gestion manuelle » (catégorie RSET) précisé par le CCTP (« Volet roulant »,
@@ -12166,7 +12204,8 @@ function isObsoleteFolder(name){
   const i=t.findIndex(x=>x==='ancien'||x==='ancienne'||x==='anc');
   if(i>=0&&t.slice(i+1).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))&&t.slice(0,i).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))) return true;
   const s=t.join(' ');
-  return /\bversion (?:precedente|anterieure|obsolete)\b|\bne pas utiliser\b|\bnon valide\b|\ba (?:supprimer|jeter)\b/.test(s);
+  // v2.36.1 — « Hors périmètre de certification » : documents qui ne décrivent pas les bâtiments certifiés, jamais lus.
+  return /\bversion (?:precedente|anterieure|obsolete)\b|\bne pas utiliser\b|\bnon valide\b|\ba (?:supprimer|jeter)\b|\bhors? perimetre\b/.test(s); // « hors » ramené à « hor » par folderTokens
 }
 // Premier dossier périmé d'un chemin relatif au dossier de l'opération, ou null.
 function obsoleteFolderOf(relDir){ return String(relDir??'').split('/').filter(Boolean).find(isObsoleteFolder)||null; }

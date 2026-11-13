@@ -5,7 +5,7 @@ import {APP_VERSION} from './js/config.js';
 import {sfxParseHtmlTable,sfxColumns,sfxFiche} from './js/sf-export.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.36.0','version');
+eq(APP_VERSION,'2.36.1','version');
 const html='<head><META http-equiv="Content-Type" content="text/html; charset=ISO-8859-1"></head><table><tr><th filter=all>Contrat: Num&eacute;ro du contrat</th><th>Code interne</th><th>&Eacute;valuation: Statut</th><th>&Eacute;valuation: Performance thermique</th><th>&Eacute;valuation: Parois verticales</th><th>&Eacute;valuation: Chauffage</th></tr>'
  +'<tr><td>4794</td><td>OPE-104794</td><td>Visite r&eacute;alis&eacute;e</td><td>* BAT A : 12x logements collectifs :<br>Bbio : 41,2 / 58,8 / -29,9 %<br>Cep : 59,9 / 75,6 / -20,8 %<br><br>* BAT B : 8x logements collectifs :<br>Bbio : 35,3 / 58,6 / -39,8 %</td><td>Murs sur ext&eacute;rieur :<br>140mm laine de roche R=3,85</td><td>chaudi&egrave;re gaz &agrave; condensation</td></tr>'
  +'<tr><td></td><td>OPE-100001</td><td></td><td></td><td></td><td></td></tr></table>';
