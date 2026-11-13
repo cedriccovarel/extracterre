@@ -1470,6 +1470,11 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.33.1
+- Import massif aligné sur l'appli : le service d'import charge désormais les packs d'amélioration du site (data/patches), comme l'appli au démarrage. Même classement des documents (ex. rapport « RSEE/RSET » scanné lu comme RSET) et mêmes règles d'extraction. À la prochaine analyse, seuls les documents que ces packs changent sont relus (environ 1 300 sur 6 400) ; les autres sont réutilisés.
+- Lecture « libellé : valeur » : « Structure » n'est retenue que si elle décrit une structure (fini « • Caisson en tôle galvanisée… » lu dans un CCTP de VMC) ; un département entre parenthèses (« CHECY (45) ») n'est plus pris pour un nombre de logements. Appliqué aussi aux résultats déjà extraits.
+- Comparaison sur 00005500 et 00004918 (mêmes fichiers, import massif contre version actuelle) : 101/101 et 85/85 valeurs identiques ; les 3 valeurs en plus dans la version actuelle viennent de CCTP lus à tort comme des RSET (176 logements du programme entier, etc.).
+
 ## v2.33.0
 - Liste de contrats collée avec le maître d'ouvrage (ex. « Contrat: Numéro du contrat · Code interne · Maître d'ouvrage: Groupe principal Nom ») : les tuiles sont regroupées par ce maître d'ouvrage. Le collage d'un tableau d'opérations regroupe aussi par groupe principal.
 - Export Salesforce .xlsx avec lignes de titre au-dessus des en-têtes : l'en-tête est trouvé (avant, ni le contrat ni l'adresse n'étaient lus).

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.33.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.33.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.33.0';
+const APP_VERSION='2.33.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -4932,6 +4932,17 @@ async function initializeImprovementPatches(){
   const local=[]; for(const p of readLocal()){ try{validPatch(p); local.push({...p,_origin:'local'});}catch(e){console.warn('Patch local ignoré',e);} }
   registry=uniqueById([...site,...local]); return registry;
 }
+// v2.33.1 — import massif (Node, sans fetch ni localStorage) : mêmes packs du site que l'appli, lus dans data/patches/manifest.json.
+function setSiteImprovementPatches(manifest){
+  const site=[]; for(const e of safeArray(manifest?.patches)){ try{ validPatch(e); site.push({...e,_origin:'site'}); }catch(err){ console.warn('Patch site ignoré',err?.message||err); } }
+  registry=uniqueById(site); return registry.length;
+}
+function improvementPatchSignature(){ return registry.map(p=>`${p.id}@${p.version||''}`).sort().join(','); }
+// Un pack ajoute-t-il des règles d'extraction à ce document (type et signatures) ?
+function patchesExtendDocument(doc){
+  const text=String(doc?.read?.text||'');
+  return registry.some(p=>safeArray(p.extractionRules).some(r=>!safeArray(r.docTypes).length||r.docTypes.includes(doc.type))&&patchMatchesDocument(p,doc,text));
+}
 function getImprovementPatches(){return registry.map(p=>({id:p.id,title:p.title||p.id,version:p.version||'1.0.0',origin:p._origin||'site',description:p.description||''}));}
 function importImprovementPatchObject(p){ validPatch(p); const clean=JSON.parse(JSON.stringify(p)); const local=readLocal().filter(x=>x?.id!==clean.id); local.push(clean); writeLocal(local); registry=uniqueById([...registry.filter(x=>x.id!==clean.id),{...clean,_origin:'local'}]); return clean; }
 async function importImprovementPatchFile(file){ const txt=await file.text(); return importImprovementPatchObject(JSON.parse(txt)); }
@@ -5777,10 +5788,28 @@ function numberOnlyGlued(value,excerpt=''){
   return any&&!standalone;
 }
 // Exposant isolé (« m² ») lu comme valeur, « Liens vers la CTA », département suivi d'autre texte…
+// v2.33.1 — « Structure » lue par libellé : valeur suivante prise telle quelle (ex. « • Caisson en tôle galvanisée… » d'un
+// CCTP de VMC). Elle n'est gardée que si elle décrit une structure (béton, bois, acier, maçonnerie, ossature…).
+const STRUCT_WORDS=/b[eé]ton|\bbois\b|acier|m[eé]tal|ma[cç]onn|brique|parpaing|agglo|ossature|\bclt\b|lamell|mixte|pierre|voiles?\b|poteaux?|poutres?|monomur|terre\s+crue|paille|chanvre|pr[eé]mur|pr[eé]dalle|charpente|\bba\b/i;
+// v2.33.1 — nombre lu par libellé qui n'est qu'un département entre parenthèses (« logements - Avenue de Gien à CHECY (45). »).
+const COUNT_FIELDS=new Set(['housing_count','housing_total','building_total','housing_collective_units','housing_grouped_units']);
+function deptInParens(o){
+  const n=String(o.value??'').trim(); if(!/^\d{1,3}$/.test(n)) return false;
+  const ex=normalizeText(String(o.excerpt||''));
+  const all=[...ex.matchAll(/\d+/g)].filter(m=>m[0]===n);
+  return all.length>0&&all.every(m=>/\(\s*$/.test(ex.slice(0,m.index))&&/^\s*\)/.test(ex.slice(m.index+n.length)));
+}
+function badLabelStructure(o){
+  if(!o||!/^tags:label-value/.test(String(o.method||''))) return false;
+  if(COUNT_FIELDS.has(o.field)) return deptInParens(o);
+  if(!['structure','wall_structure','floor_structure'].includes(o.field)) return false;
+  const v=normalizeText(String(o.value??'')); return !STRUCT_WORDS.test(v)||v.length>120||/^[•·\-–*]/.test(v);
+}
 function sanitizeOccurrence(o){
   if(!o) return null;
   const m=String(o.method||'');
   if(o.userValidated||/^manual:/.test(m)) return o;
+  if(badLabelStructure(o)) return null;
   // v2.20.2 — « Planchers hauts » : matériau du plancher haut, jamais le seul statut de la toiture (terrasse non accessible…).
   if(o.field==='roof_structure'){ const c=cleanRoofStructure(o.value); if(!c) return null; if(c!==o.value) o={...o,value:c}; }
   if(/^xml:/.test(m)||o.structuredXml) return o;
@@ -8715,7 +8744,8 @@ function catchUpDocument(d,buildingOverrides={}){
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; }
 }
-const engRoofClean=o=>{ if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
+const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
+  if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){

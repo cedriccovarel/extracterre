@@ -12,7 +12,20 @@ import {DOC_TYPES} from '../../../js/config.js';
 import {isDpeXmlText} from '../../../js/dpe-3cl.js';
 import {runLlmAssist} from '../../../js/llm-assist.js';
 import {APP_VERSION} from '../../../js/config.js';
+import {setSiteImprovementPatches,improvementPatchSignature,patchesExtendDocument} from '../../../js/patches.js';
+import {classifyForSelectedFamily} from '../../../js/doc-pipeline.js';
 const require=createRequire(import.meta.url);
+// v2.33.1 — packs d'amélioration du site (data/patches) : l'appli les charge au démarrage, l'import massif aussi
+// (classement des documents et règles d'extraction identiques).
+try{ setSiteImprovementPatches(JSON.parse(fs.readFileSync(new URL('../../../data/patches/manifest.json',import.meta.url),'utf8'))); }
+catch(err){ console.warn(`  ⚠ packs d'amélioration non chargés : ${err?.message||err}`); }
+export const PATCH_SIG=improvementPatchSignature();
+// Résultat extrait sans ces packs : à relire seulement s'ils changent le type du document ou lui ajoutent des règles.
+export function staleForPatches(res){
+  if(!res||res.patches===PATCH_SIG||!PATCH_SIG) return false;
+  const d=res.doc; if(!d?.read?.text) return false;
+  try{ if(classifyForSelectedFamily(d).type!==d.type) return true; return patchesExtendDocument(d); }catch{ return false; }
+}
 const LOT_TYPES=new Set([DOC_TYPES.CCTP,DOC_TYPES.DPGF]); // documents découpés par lot
 
 // Texte de la 1re page d'un PDF (classement, règle d). '' = page sans texte (scan).
@@ -45,7 +58,7 @@ export async function probeXml(abs){
 
 // Document « prêt » tel que l'appli le garde après analyse (sans le File).
 function serializeDoc(d,meta){
-  return {format:'extracterre-import-doc',appVersion:APP_VERSION,meta,
+  return {format:'extracterre-import-doc',appVersion:APP_VERSION,patches:PATCH_SIG,meta,
     doc:{name:d.name,size:d.size,lastModified:d.file?.lastModified||null,relativePath:d.relativePath,type:d.type,classification:d.classification,
       families:d.families||null,familyMode:d.familyMode||'auto',specializedFamily:d.specializedFamily||null,buildings:d.buildings,read:d.read,
       cachedOccurrences:d.cachedOccurrences,analysisCachedAt:d.analysisCachedAt,rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:1,

@@ -10,6 +10,7 @@ import {shouldOcrPdfPage} from './readers.js';
 import {applyLearningBoosts} from './learning-memory.js';
 import {applyCoherenceChecks} from './coherence.js';
 import {cleanRoofStructure} from './plancher-haut.js';
+import {badLabelStructure} from './sanity.js';
 import {isClimaWinInputReport} from './climawin.js';
 import {autoFamiliesForType,resolveDocumentFamilies,DOCUMENT_FAMILIES} from './parsers.js';
 
@@ -361,7 +362,8 @@ export function catchUpDocument(d,buildingOverrides={}){
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=1; }
 }
-const engRoofClean=o=>{ if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
+const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
+  if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){

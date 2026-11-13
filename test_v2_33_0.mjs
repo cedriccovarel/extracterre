@@ -43,5 +43,5 @@ assert.match(app,/ssEnsureTiles\(r\.contracts,r\.owners\)/);
 assert.match(app,/data-ss-act="ignore"[^>]*>\$\{dec\.ignore\?'Retiré':'Retirer'\}/);
 assert.match(app,/await ssRequestReread\(/);
 assert.match(cli,/consumeReprocess\(decisionsFile,reread\)/);
-assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.33.0');
+assert.match(fs.readFileSync('VERSION','utf8').trim(),/^2\.33\./);
 console.log('test_v2_33_0 ok');

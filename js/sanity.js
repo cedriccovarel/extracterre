@@ -57,10 +57,28 @@ export function numberOnlyGlued(value,excerpt=''){
   return any&&!standalone;
 }
 // Exposant isolé (« m² ») lu comme valeur, « Liens vers la CTA », département suivi d'autre texte…
+// v2.33.1 — « Structure » lue par libellé : valeur suivante prise telle quelle (ex. « • Caisson en tôle galvanisée… » d'un
+// CCTP de VMC). Elle n'est gardée que si elle décrit une structure (béton, bois, acier, maçonnerie, ossature…).
+const STRUCT_WORDS=/b[eé]ton|\bbois\b|acier|m[eé]tal|ma[cç]onn|brique|parpaing|agglo|ossature|\bclt\b|lamell|mixte|pierre|voiles?\b|poteaux?|poutres?|monomur|terre\s+crue|paille|chanvre|pr[eé]mur|pr[eé]dalle|charpente|\bba\b/i;
+// v2.33.1 — nombre lu par libellé qui n'est qu'un département entre parenthèses (« logements - Avenue de Gien à CHECY (45). »).
+const COUNT_FIELDS=new Set(['housing_count','housing_total','building_total','housing_collective_units','housing_grouped_units']);
+function deptInParens(o){
+  const n=String(o.value??'').trim(); if(!/^\d{1,3}$/.test(n)) return false;
+  const ex=normalizeText(String(o.excerpt||''));
+  const all=[...ex.matchAll(/\d+/g)].filter(m=>m[0]===n);
+  return all.length>0&&all.every(m=>/\(\s*$/.test(ex.slice(0,m.index))&&/^\s*\)/.test(ex.slice(m.index+n.length)));
+}
+export function badLabelStructure(o){
+  if(!o||!/^tags:label-value/.test(String(o.method||''))) return false;
+  if(COUNT_FIELDS.has(o.field)) return deptInParens(o);
+  if(!['structure','wall_structure','floor_structure'].includes(o.field)) return false;
+  const v=normalizeText(String(o.value??'')); return !STRUCT_WORDS.test(v)||v.length>120||/^[•·\-–*]/.test(v);
+}
 export function sanitizeOccurrence(o){
   if(!o) return null;
   const m=String(o.method||'');
   if(o.userValidated||/^manual:/.test(m)) return o;
+  if(badLabelStructure(o)) return null;
   // v2.20.2 — « Planchers hauts » : matériau du plancher haut, jamais le seul statut de la toiture (terrasse non accessible…).
   if(o.field==='roof_structure'){ const c=cleanRoofStructure(o.value); if(!c) return null; if(c!==o.value) o={...o,value:c}; }
   if(/^xml:/.test(m)||o.structuredXml) return o;

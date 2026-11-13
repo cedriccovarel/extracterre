@@ -258,14 +258,15 @@ async function main(){
       try{
         const scanWas=e=>/scan/.test(e?.reason||'');
         const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept&&!(ocrOn&&scanWas(old));
-        if(unchanged){
-          const res=extract.readResult(workDir,old.resultFile); const j=judge(res.doc,res.meta,old.sha256);
+        const oldRes=unchanged?extract.readResult(workDir,old.resultFile):null;
+        if(unchanged&&!extract.staleForPatches(oldRes)){
+          const res=oldRes; const j=judge(res.doc,res.meta,old.sha256);
           c.reused++; if(j.status==='à vérifier') c.review++;
           reg.putFile({...old,...base,...ver,docType:res.doc.type,importType:j.k.type,method:j.k.method,status:j.status,reason:j.reason,fields:j.fields,completeness:j.completeness}); return;
         }
         const sha=await withRetry(()=>sha256File(f.abs));
         const twin=!args.reextraire&&!dec.reprocess&&!dec.family?reg.byHash(sha):null;
-        if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))&&!(ocrOn&&scanWas(twin))){
+        if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))&&!(ocrOn&&scanWas(twin))&&!extract.staleForPatches(extract.readResult(workDir,twin.resultFile))){
           // Même contenu déjà extrait : résultat réutilisé, mais le classement dépend du sous-dossier et du nom de CE fichier.
           const res=extract.readResult(workDir,twin.resultFile); const j=judge(res.doc,res.meta,sha);
           c.reused++; if(j.status==='à vérifier') c.review++;

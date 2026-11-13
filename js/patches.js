@@ -64,6 +64,17 @@ export async function initializeImprovementPatches(){
   const local=[]; for(const p of readLocal()){ try{validPatch(p); local.push({...p,_origin:'local'});}catch(e){console.warn('Patch local ignoré',e);} }
   registry=uniqueById([...site,...local]); return registry;
 }
+// v2.33.1 — import massif (Node, sans fetch ni localStorage) : mêmes packs du site que l'appli, lus dans data/patches/manifest.json.
+export function setSiteImprovementPatches(manifest){
+  const site=[]; for(const e of safeArray(manifest?.patches)){ try{ validPatch(e); site.push({...e,_origin:'site'}); }catch(err){ console.warn('Patch site ignoré',err?.message||err); } }
+  registry=uniqueById(site); return registry.length;
+}
+export function improvementPatchSignature(){ return registry.map(p=>`${p.id}@${p.version||''}`).sort().join(','); }
+// Un pack ajoute-t-il des règles d'extraction à ce document (type et signatures) ?
+export function patchesExtendDocument(doc){
+  const text=String(doc?.read?.text||'');
+  return registry.some(p=>safeArray(p.extractionRules).some(r=>!safeArray(r.docTypes).length||r.docTypes.includes(doc.type))&&patchMatchesDocument(p,doc,text));
+}
 export function getImprovementPatches(){return registry.map(p=>({id:p.id,title:p.title||p.id,version:p.version||'1.0.0',origin:p._origin||'site',description:p.description||''}));}
 export function importImprovementPatchObject(p){ validPatch(p); const clean=JSON.parse(JSON.stringify(p)); const local=readLocal().filter(x=>x?.id!==clean.id); local.push(clean); writeLocal(local); registry=uniqueById([...registry.filter(x=>x.id!==clean.id),{...clean,_origin:'local'}]); return clean; }
 export async function importImprovementPatchFile(file){ const txt=await file.text(); return importImprovementPatchObject(JSON.parse(txt)); }
