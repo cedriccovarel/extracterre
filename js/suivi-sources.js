@@ -189,3 +189,10 @@ export function ssProgressModel(st,now=Date.now()){
     elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
 }
 export const SS_TILE_LABEL={ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
+
+// v2.32.0 — chargement au fil de l'eau : contrats dont l'analyse est finie (avec documents) et pas encore chargés dans l'appli.
+export function ssContractsToLoad(st,loaded=new Set()){
+  if(!st||!Array.isArray(st.contrats)) return [];
+  const par=st.parOp||{}, finished=st.etat==='terminé';
+  return st.contrats.filter(c=>!loaded.has(c)&&(finished?par[c]?.r!=='vide':['ok','erreurs','inchangé'].includes(par[c]?.r)));
+}

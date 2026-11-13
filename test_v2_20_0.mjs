@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.31.4','version');
+eq(APP_VERSION,'2.32.0','version');
 const html=readFileSync('index.html','utf8'), css=readFileSync('styles.css','utf8'), app=readFileSync('js/app.js','utf8');
 // Bouton dans l'en-tête, branché ; infobulle sur chaque entrée du menu (menu en icônes seules quand la fenêtre est étroite).
 eq(/id="miniWindowBtn"/.test(html)&&/miniBtn\.onclick=openMiniWindow/.test(app),true,'bouton mini-fenêtre');

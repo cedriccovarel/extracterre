@@ -6,7 +6,7 @@ import {detectVector,vectorFromShares,hybridLabel} from './js/vecteurs.js';
 import {buildBuildingGrouping} from './js/engine.js';
 import {buildingQualifiedCore} from './js/buildings.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.31.4','version');
+eq(APP_VERSION,'2.32.0','version');
 // Hybride écrit dans le document : vecteur principal d'abord, le générateur « d'appoint » / « en relève » ensuite.
 eq(detectVector('PAC hybride air/eau + chaudière gaz à condensation'),'Hybride Électricité/Gaz','PAC hybride + gaz');
 eq(detectVector('Chaudière gaz condensation + PAC air/eau en relève'),'Hybride Gaz/Électricité','gaz principal, PAC en relève');

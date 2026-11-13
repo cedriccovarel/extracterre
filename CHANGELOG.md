@@ -1,3 +1,15 @@
+# v2.32.0 — Import massif : la liste de contrats pilote tout
+
+1. **Liste de contrats.** Au lancement, une tuile est créée tout de suite pour chaque contrat de la liste, et pour eux seuls.
+   Les tuiles affichées hors liste peuvent être déchargées d'un clic (confirmation) ; le registre et les résultats sont conservés.
+2. **Export Salesforce** (.xls, .xlsx, .csv). Seules les lignes des contrats de la liste sont appliquées, dans les tuiles de la liste,
+   avec les outils existants (même décodeur que le favori).
+3. **Analyse des documents.** Chaque opération analysée remplit sa tuile au fil de l'eau, sans clic, même fenêtre fermée.
+   L'onglet ExtracTerre doit rester ouvert et l'accès au dossier de travail accordé. À la fin, le reste est chargé et un message le confirme.
+- Correction : une tuile créée par la liste ou par Salesforce n'était pas reconnue au chargement des documents. Une 2e tuile était créée
+  pour le même contrat, ce qui séparait les données Salesforce des données des documents. Désormais : une seule tuile par contrat.
+- « Charger toutes les opérations » (tout le registre, anciens tests compris) devient « Charger ma liste ».
+
 # v2.31.4 — Import massif : une erreur dans un document n'arrête plus l'analyse
 
 - Correction : « DOMMatrix is not defined ». Le rendu de certaines pages PDF pour l'OCR faisait planter tout le script ; c'est arrivé à l'opération 38/217.

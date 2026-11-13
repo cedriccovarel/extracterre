@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.31.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.32.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.31.4';
+const APP_VERSION='2.32.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -12298,6 +12298,13 @@ function ssProgressModel(st,now=Date.now()){
 }
 const SS_TILE_LABEL={ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
 
+// v2.32.0 — chargement au fil de l'eau : contrats dont l'analyse est finie (avec documents) et pas encore chargés dans l'appli.
+function ssContractsToLoad(st,loaded=new Set()){
+  if(!st||!Array.isArray(st.contrats)) return [];
+  const par=st.parOp||{}, finished=st.etat==='terminé';
+  return st.contrats.filter(c=>!loaded.has(c)&&(finished?par[c]?.r!=='vide':['ok','erreurs','inchangé'].includes(par[c]?.r)));
+}
+
 /* ---- plans.js ---- */
 // v2.15.0 — plans mesurés dans Ashton : la table de correspondance reçue (par document) devient, pour les quantités
 // reliées à une colonne, des occurrences de type Plan. Longueurs, largeurs et surfaces restent dans l'onglet Plans.
@@ -15611,7 +15618,7 @@ async function openSourcesView(){
   let dlg=$('#sourcesDialog');
   if(!dlg){
     dlg=document.createElement('dialog'); dlg.id='sourcesDialog'; dlg.className='search-integrate-dialog sources-dialog';
-    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Import massif</span><h3>Suivi des sources</h3><p data-ss-info></p></div><div class="ss-head-actions"><button class="btn light" data-ss-pick title="Changer de dossier de travail">Dossier…</button><button class="btn light" data-ss-refresh>Actualiser</button><button class="btn primary" data-ss-loadall title="Créer ou mettre à jour toutes les opérations du registre">Charger toutes les opérations</button><button class="icon-btn" type="button" data-ss-close aria-label="Fermer">×</button></div></div>
+    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Import massif</span><h3>Suivi des sources</h3><p data-ss-info></p></div><div class="ss-head-actions"><button class="btn light" data-ss-pick title="Changer de dossier de travail">Dossier…</button><button class="btn light" data-ss-refresh>Actualiser</button><button class="btn primary" data-ss-loadall title="Charger les résultats d’analyse des contrats de la dernière liste lancée">Charger ma liste</button><button class="icon-btn" type="button" data-ss-close aria-label="Fermer">×</button></div></div>
       <div class="ss-tabs"><button class="ss-tab" data-ss-tab="new">📋 Nouvelle analyse</button><button class="ss-tab" data-ss-tab="ops">Opérations</button><button class="ss-tab" data-ss-tab="review">À vérifier</button></div><div class="ss-body" data-ss-body></div><div class="ss-status" data-ss-status></div></div>`;
     document.body.appendChild(dlg);
     dlg.addEventListener('click',e=>ssClick(e).catch(err=>toast(err?.message||String(err),'error')));
@@ -15642,7 +15649,8 @@ async function ssClick(e){
   if(t.dataset.ssOpen){ ss.open=ss.open===t.dataset.ssOpen?null:t.dataset.ssOpen; renderSourcesView(); return; }
   if(t.dataset.ssGo){ $('#sourcesDialog').close(); activateProject(t.dataset.ssGo); return; }
   if(t.dataset.ssLoad){ await ssRun(()=>loadImportOperations([t.dataset.ssLoad])); return; }
-  if(t.matches('[data-ss-loadall]')){ const off=importUnloaded(), all=ssOperations(ss.registry).map(o=>o.contract), keep=all.filter(c=>!off.has(c));
+  if(t.matches('[data-ss-loadall]')){ const list=ssWorkList(); if(!list.length){ toast('Aucune liste lancée : collez d’abord votre liste de contrats dans « Nouvelle analyse ».','warn'); return; }
+    const reg=new Set(ssOperations(ss.registry).map(o=>o.contract)), all=list.filter(c=>reg.has(c)), keep=all; await ssEnsureTiles(list);
     await ssRun(()=>loadImportOperations(keep)); if(all.length>keep.length) toast(`${all.length-keep.length} opération(s) déchargée(s) non rechargée(s) : utilisez « Charger » sur leur ligne pour les remettre.`,'info'); return; }
   if(t.dataset.ssLinked){ await ssRun(()=>ssLinkedCheck(t.dataset.ssLinked)); return; }
   if(t.dataset.ssPickbox){ const c=t.dataset.ssPickbox; await boxPickRoot(); await ssRun(()=>ssLinkedCheck(c)); return; }
@@ -15674,14 +15682,32 @@ async function ssLinkedCheck(contract){
 }
 // Crée ou met à jour une opération par contrat : documents traités (et validés) du registre ; les documents ajoutés à la main,
 // les saisies et collages restent intacts et gardent leur priorité.
-async function loadImportOperations(contracts){
+// v2.32.0 — une seule tuile par contrat : retrouvée par importContract, sinon par son numéro (liste, Salesforce).
+function ssProjectFor(contract){ const k=contractKey(contract);
+  return state.projects.find(p=>p.importContract&&contractKey(p.importContract)===k)||state.projects.find(p=>contractKey(projectIdentity(p).contract)===k)||null; }
+// Liste de travail : les contrats collés au lancement. Seuls eux ont une tuile ; « Charger ma liste » ne charge qu'eux.
+const SS_LIST_KEY='extracterre.import.list';
+function ssWorkList(){ try{ return JSON.parse(localStorage.getItem(SS_LIST_KEY)||'null')?.contracts||[]; }catch{ return []; } }
+function ssSetWorkList(contracts){ try{ localStorage.setItem(SS_LIST_KEY,JSON.stringify({contracts,at:new Date().toISOString()})); }catch{} }
+// Étape 1 : une tuile par contrat de la liste, tout de suite (vide tant que Salesforce et les documents ne l'ont pas remplie).
+async function ssEnsureTiles(contracts){
+  const off=importUnloaded(); let created=0;
+  for(const c of contracts){ off.delete(c); let p=ssProjectFor(c);
+    if(!p){ p=createProject(state.projects.length+1); p.customTitle=c; p.expanded=false; state.projects.push(p); created++; }
+    if(!p.importContract) p.importContract=c; if(!p.contractNumber) p.contractNumber=c; }
+  setImportUnloaded(off);
+  if(created){ renderAll(); await checkpointWorkspace('liste de contrats',true); }
+  return created;
+}
+async function loadImportOperations(contracts,{quiet=false}={}){
   { const off=importUnloaded(); let n=off.size; contracts.forEach(c=>off.delete(c)); if(off.size!==n) setImportUnloaded(off); }
   const reg=ss.registry; let created=0,updated=0,added=0,removed=0,kept=0,failed=0;
   for(let i=0;i<contracts.length;i++){
     const contract=contracts[i]; const op=(reg.operations||{})[contract]||{contract,folder:''};
     ssStatus(`Chargement ${i+1}/${contracts.length} — ${contract} ${op.folder||''}`); await yieldToBrowser();
     const files=ssLoadableFiles(reg,contract,ss.decisions.files);
-    let p=state.projects.find(x=>x.importContract===contract);
+    let p=ssProjectFor(contract); if(p&&!p.importContract) p.importContract=contract;
+    if(p&&op.folder&&(!p.customTitle||contractKey(p.customTitle)===contractKey(contract))){ p.customTitle=op.folder; p.operationName=ssOperationName(op.folder); }
     if(!p){ if(!files.length) continue; p=createProject(state.projects.length+1); p.importContract=contract; p.importFolder=op.folder||''; p.customTitle=op.folder||contract; p.operationName=ssOperationName(op.folder||''); p.expanded=false; state.projects.push(p); created++; }
     else updated++;
     const want=new Map(files.map(f=>[`${f.contract}|${f.relPath}`,f]));
@@ -15703,7 +15729,7 @@ async function loadImportOperations(contracts){
     await checkpointWorkspace(`import ${contract}`,true);
     releaseProjectReads(p);
   }
-  renderAll();
+  renderAll(); if(quiet) return {created,updated,added,failed};
   toast(`Import : ${created} opération(s) créée(s), ${updated} mise(s) à jour · ${added} document(s) ajouté(s), ${removed} retiré(s), ${kept} inchangé(s)${failed?` · ${failed} résultat(s) illisible(s)`:''}.`,failed?'warn':'success');
 }
 // v2.24.1 — « Nouvelle analyse » : liste de contrats collée depuis Excel → demande pour le service d'import, avancement, chargement.
@@ -15756,6 +15782,13 @@ async function ssLaunch(mode){
   // Une demande à la fois : un double clic ne lance pas deux analyses.
   const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!ssRequestDone(st)&&(st||(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===cur))){ toast('Une analyse est déjà en cours : attendez la fin, ou arrêtez-la dans « File des analyses ».','warn'); return; } }
   $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=true);
+  if(mode==='traitement'){
+    const keys=new Set(r.contracts.map(contractKey)), others=state.projects.filter(p=>!keys.has(contractKey(projectIdentity(p).contract||p.importContract)));
+    if(others.length&&confirm(`${others.length} opération(s) affichée(s) ne sont pas dans cette liste.\nLes décharger pour ne garder que les ${r.contracts.length} contrat(s) de la liste ?\n(Le registre et les résultats sont conservés : elles peuvent être rechargées.)`)){
+      const off=importUnloaded(); for(const p of others){ if(p.importContract) off.add(p.importContract); await removeProject(p); } setImportUnloaded(off); }
+    ssSetWorkList(r.contracts);
+    const n=await ssEnsureTiles(r.contracts); if(n) toast(`${n} tuile(s) créée(s) pour la liste.`,'success');
+  }
   // Étape 2 : export Salesforce appliqué d'abord (contrats de la liste seulement ; opérations créées pour eux si absentes).
   const sfFile=$('#sourcesDialog [data-ss-sfx]')?.files?.[0];
   if(sfFile&&mode==='traitement'){ try{ const box=$('#sourcesDialog [data-ss-progress]'); if(box) box.innerHTML='<p class="ss-wait">Export Salesforce : application aux contrats de la liste…</p>';
@@ -15800,7 +15833,7 @@ async function ssWatchRequest(){
   if(st&&['terminé','erreur','interrompu','annulé'].includes(st.etat)){
     ssForgetRequest();
     if(st.etat==='terminé'&&Array.isArray(st.contrats)&&st.contrats.length){
-      ss.registry=await ssReadRegistry(ss.dir); await ssRun(()=>loadImportOperations(st.contrats));
+      await ssRun(()=>ssAutoLoad(ss.dir,{id,status:st,mode:'traitement'},{all:true}));
       ss.tab='new'; renderSourcesView();
       const b=$('#sourcesDialog [data-ss-progress]'); if(b) b.innerHTML=ssProgressHtml(id,st)+'<p class="ss-ok">Opérations chargées dans ExtracTerre.</p>';
     }
@@ -15809,6 +15842,30 @@ async function ssWatchRequest(){
   ssPoll=setTimeout(ssWatchRequest,3000);
 }
 
+// v2.32.0 — chargement au fil de l'eau : dès qu'une opération est analysée, ses résultats remplissent sa tuile (pas de clic).
+// Une seule file de chargement (verrou) ; contrats déjà chargés mémorisés par demande (reprise après rechargement de la page).
+let ssAutoChain=Promise.resolve(), ssAutoRunning=false;
+const ssLoadedKey=id=>`extracterre.import.loaded.${id}`;
+function ssAutoLoad(dir,r,{all=false}={}){
+  const job=async()=>{
+    if(!dir||!r?.status||r.mode==='check-only'||r.status.etat==='en attente') return 0;
+    let loaded; try{ loaded=new Set(JSON.parse(localStorage.getItem(ssLoadedKey(r.id))||'[]')); }catch{ loaded=new Set(); }
+    let todo=ssContractsToLoad(r.status,loaded); if(!todo.length) return 0;
+    ssAutoRunning=true; let n=0;
+    try{
+      ss.dir=ss.dir||dir; ss.registry=await ssReadRegistry(dir); ss.decisions=await ssReadDecisions(dir);
+      await ssEnsureTiles(r.status.contrats||[]);
+      while(todo.length){ const batch=todo.slice(0,all?20:6);
+        await loadImportOperations(batch,{quiet:true}); batch.forEach(c=>loaded.add(c)); n+=batch.length;
+        try{ localStorage.setItem(ssLoadedKey(r.id),JSON.stringify([...loaded])); }catch{}
+        if(!all) break; todo=ssContractsToLoad(r.status,loaded); }
+      if(r.status.etat==='terminé'&&!ssContractsToLoad(r.status,loaded).length) toast(`Analyse terminée : ${loaded.size} opération(s) chargée(s) dans leurs tuiles.`,'success');
+    }catch(err){ console.warn('Chargement automatique des résultats',err); }
+    finally{ ssAutoRunning=false; }
+    return n;
+  };
+  return ssAutoChain=ssAutoChain.then(job,job);
+}
 // v2.31.0 — indicateur permanent (barre du haut) : avancement de l'analyse en cours, même fenêtre fermée ; clic → Suivi des sources.
 let ssTrackerTimer=null, ssTrackerTitle=null;
 async function ssTrackerDir(){
@@ -15826,10 +15883,11 @@ async function ssTrackerTick(){
     else if(dir){
       const reqs=await ssListRequests(dir).catch(()=>[]);
       const r=reqs.find(x=>x.id===cur)||reqs.find(x=>x.status?.etat==='en cours')||reqs.find(x=>(!x.status||x.status.etat==='en attente')&&!x.stopAsked);
+      if(r&&r.status&&!ssAutoRunning&&!ss.busy) ssAutoLoad(dir,r);
       if(r){ const m=ssProgressModel(r.status);
         if(!r.status||r.status.etat==='en attente'){ html=`<span class="ss-dot"></span><b>Analyse</b> · ${r.status?.reprise?'reprise':'en attente du service'} (${r.contracts} contrat(s))`; cls='wait'; }
-        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b><span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %${m.step==='lecture'?' · lecture Box':''}`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
-        else if(r.id===cur){ const ok=r.status.etat==='terminé'; html=ok?'✓ <b>Analyse terminée</b> · cliquer pour charger':`⚠ <b>Analyse ${escapeHtml(r.status.etat)}</b>`; cls=ok?'ok':'warn'; }
+        else if(!m.done){ html=`<span class="ss-dot"></span><b>${m.total?`${m.fait}/${m.total}`:'Analyse'}</b>${ssAutoRunning?'<small>chargement…</small>':''}<span class="ss-tracker-bar"><i style="width:${m.pct}%"></i></span><span>${m.total?`${Math.floor(m.pct)} %${m.step==='lecture'?' · lecture Box':''}`:escapeHtml(SS_STEPS.find(x=>x[0]===m.step)?.[1]||'')}</span>${Number.isFinite(m.eta)?`<small>reste ~${ssDuration(m.eta)}</small>`:''}`; cls=m.stale?'warn':'run'; title=m.current?`En cours : ${m.current}`:''; }
+        else if(r.id===cur){ const ok=r.status.etat==='terminé'; html=ok?(ssAutoRunning?'<span class="ss-dot"></span><b>Analyse terminée</b> · chargement des tuiles…':'✓ <b>Analyse terminée</b> · opérations chargées'):`⚠ <b>Analyse ${escapeHtml(r.status.etat)}</b>`; cls=ok?'ok':'warn'; }
         if(!m.done&&r.status&&m.total) document.title=`(${Math.floor(m.pct)} %) ${ssTrackerTitle||(ssTrackerTitle=document.title.replace(/^\(\d+ %\) /,''))}`;
         else if(ssTrackerTitle){ document.title=ssTrackerTitle; ssTrackerTitle=null; }
       } else if(ssTrackerTitle){ document.title=ssTrackerTitle; ssTrackerTitle=null; }
@@ -15898,7 +15956,7 @@ async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContr
     const key=f.contract?contractKey(f.contract):''; if(onlyContracts&&!onlyContracts.has(key)) continue; let ps=(key&&byContract.get(key))||(f.code&&byCode.get(f.code.toUpperCase()))||[];
     if(ps.length>1){ res.duplicates.push(f.contract||f.code); }
     if(!ps.length){ if(!createMissing||!f.contract){ res.noOperation.push(f.contract||f.code); continue; }
-      const p=createProject(state.projects.length+1); p.contractNumber=f.contract; p.customTitle=f.contract; p.expanded=false; state.projects.push(p); byContract.set(key,[p]); ps=[p]; res.created++; }
+      const p=createProject(state.projects.length+1); p.contractNumber=f.contract; if(IMPORT_SPACE) p.importContract=f.contract; p.customTitle=f.contract; p.expanded=false; state.projects.push(p); byContract.set(key,[p]); ps=[p]; res.created++; }
     const parsed=parseFreePaste(f.text); const vals=freePasteValues(parsed);
     const extra={...(f.contract?{contract_number:f.contract}:{}),...(f.evaluationStatus?{evaluation_status:f.evaluationStatus}:{}),...(f.code?{internal_code:f.code}:{}),
       ...(f.address?{address:f.address}:{}),...(f.postcode?{postcode:f.postcode}:{}),...(f.city?{city:f.city}:{}),...(f.postcode&&!f.postcode.startsWith('20')?{department:f.postcode.startsWith('97')?f.postcode.slice(0,3):f.postcode.slice(0,2)}:{})};
