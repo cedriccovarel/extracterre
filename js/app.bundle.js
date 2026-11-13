@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.32.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.32.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.32.0';
+const APP_VERSION='2.32.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -12231,11 +12231,11 @@ function ssParseContractPaste(text=''){
   return {contracts,invalid,column:col};
 }
 async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
-async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[]}={}){
+async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[],reread=false}={}){
   const d=new Date(), p=n=>String(n).padStart(2,'0');
   const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
-  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,...(reread?{reextraire:true}:{}),contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
   return id;
 }
 async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }
@@ -12249,7 +12249,7 @@ async function ssListRequests(dir){
   for await (const [name,h] of d.entries()){ const m=h.kind==='file'&&name.match(/^(demande-[\w-]+)\.json$/); if(m&&!/\.statut$/.test(m[1])) ids.push(m[1]); }
   const out=[];
   for(const id of ids){ const req=await ss_json(dir,`${id}.json`), st=await ss_json(dir,`${id}.statut.json`); let stop=false; try{ await d.getFileHandle(`${id}.stop`); stop=true; }catch{}
-    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
+    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,reread:!!req?.reextraire,createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
   return out.sort((a,b)=>String(b.id).localeCompare(String(a.id)));
 }
 async function ssStopRequest(dir,id,{immediat=false}={}){
@@ -15753,6 +15753,7 @@ function ssRenderNew(body){
     <input type="file" data-ss-sfx accept=".xls,.xlsx,.csv">
     <div class="ss-step"><b>3.</b> Analyse des documents <small>(études thermiques et carbone ; lots de CCTP utiles aux Recherches : ${escapeHtml(ssCctpLots().slice(0,12).join(', '))}${ssCctpLots().length>12?'…':''})</small></div>
     <label class="chk ss-ocr"><input type="checkbox" data-ss-ocr checked> OCR des PDF scannés (plus lent : quelques secondes par page)</label>
+    <label class="chk ss-ocr" title="À utiliser après une amélioration des lecteurs de documents : les résultats déjà extraits sont remplacés. Beaucoup plus long."><input type="checkbox" data-ss-reread> Relire tous les documents, même déjà analysés (après une mise à jour d’ExtracTerre ; beaucoup plus long)</label>
     <div class="ss-new-actions"><button class="btn light" data-ss-launch="check-only" disabled title="Rapport de correspondance seulement : contrats trouvés, sans dossier, en double">Vérifier la correspondance</button><button class="btn primary" data-ss-launch="traitement" disabled>▶ Lancer l’analyse</button></div>
     <div data-ss-progress></div><div class="ss-queue" data-ss-queue></div></div>`;
   const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); ssPasteInfo();
@@ -15768,7 +15769,7 @@ async function ssRenderQueue(){
   const label=r=>{ const st=r.status; if(r.stopAsked&&!ssRequestDone(st)) return ['warn','arrêt demandé…']; if(!st) return ['muted','en attente']; return [{terminé:'ok',erreur:'bad',interrompu:'warn',annulé:'muted'}[st.etat]||'warn',st.etat==='en cours'?`en cours · ${st.operations?.fait??0}/${st.operations?.total??'?'}`:st.etat]; };
   const done=list.filter(r=>ssRequestDone(r.status));
   box.innerHTML=`<div class="ss-queue-head"><b>File des analyses</b>${done.length?`<button class="btn light" type="button" data-ss-qclear>Vider l’historique (${done.length})</button>`:''}</div>${list.slice(0,30).map(r=>{ const [cls,txt]=label(r), running=r.status?.etat==='en cours', waiting=!r.status||r.status.etat==='en attente';
-    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}</span>
+    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}${r.reread?' · relecture complète':''}</span>
       ${running&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}" title="Termine le document en cours, enregistre, puis s’arrête">Arrêter</button>`:''}${running&&r.stopAsked?`<button class="btn light" type="button" data-ss-qkill="${escapeHtml(r.id)}">Arrêt immédiat</button>`:''}${waiting&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}">Annuler</button>`:''}${ssRequestDone(r.status)?`<button class="icon-btn" type="button" data-ss-qdel="${escapeHtml(r.id)}" title="Supprimer de l’historique" aria-label="Supprimer">×</button>`:''}</div>`; }).join('')}`;
 }
 async function ssRefreshService(){
@@ -15777,6 +15778,18 @@ async function ssRefreshService(){
   el.className=`ss-service ${st.alive?'ok':'bad'}`;
   el.innerHTML=st.alive?`● Service d’import actif${st.info?.occupe?' — analyse en cours':''}`:'● Service d’import arrêté : les demandes attendront qu’il démarre. Pour l’installer (une fois), dans Terminal : <code>cd ~/Documents/GitHub/extracterre/tools/import &amp;&amp; ~/.local/node/bin/node installer-service.mjs</code>';
 }
+// v2.32.1 — choix à plusieurs boutons (remplace confirm() quand « Annuler » serait ambigu). Renvoie la valeur du bouton, ou null (Échap).
+function ssChoice(title,text,buttons,note=''){
+  return new Promise(resolve=>{
+    const dlg=document.createElement('dialog'); dlg.className='search-integrate-dialog ss-choice';
+    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p>${note?`<p class="muted"><small>${escapeHtml(note)}</small></p>`:''}</div></div>
+      <div class="ss-choice-actions">${buttons.map(([v,label,cls])=>`<button class="btn ${cls||'light'}" type="button" data-choice="${escapeHtml(v)}">${escapeHtml(label)}</button>`).join('')}</div></div>`;
+    let done=false; const finish=v=>{ if(done) return; done=true; dlg.close(); dlg.remove(); resolve(v); };
+    dlg.addEventListener('click',e=>{ const b=e.target.closest('[data-choice]'); if(b) finish(b.dataset.choice); });
+    dlg.addEventListener('cancel',e=>{ e.preventDefault(); finish(null); });
+    document.body.appendChild(dlg); dlg.showModal(); dlg.querySelector('[data-choice]')?.focus();
+  });
+}
 async function ssLaunch(mode){
   const r=ssPasteInfo(); if(!r.contracts.length) return;
   // Une demande à la fois : un double clic ne lance pas deux analyses.
@@ -15784,9 +15797,17 @@ async function ssLaunch(mode){
   $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=true);
   if(mode==='traitement'){
     const keys=new Set(r.contracts.map(contractKey)), others=state.projects.filter(p=>!keys.has(contractKey(projectIdentity(p).contract||p.importContract)));
-    if(others.length&&confirm(`${others.length} opération(s) affichée(s) ne sont pas dans cette liste.\nLes décharger pour ne garder que les ${r.contracts.length} contrat(s) de la liste ?\n(Le registre et les résultats sont conservés : elles peuvent être rechargées.)`)){
-      const off=importUnloaded(); for(const p of others){ if(p.importContract) off.add(p.importContract); await removeProject(p); } setImportUnloaded(off); }
-    ssSetWorkList(r.contracts);
+    // v2.32.1 — tuiles déjà présentes hors liste : les garder (ajout), ne garder que la nouvelle liste, ou annuler.
+    let keepOthers=true;
+    if(others.length){
+      const choice=await ssChoice('Tuiles déjà présentes',`${others.length} opération(s) affichée(s) ne font pas partie de cette liste de ${r.contracts.length} contrat(s).`,
+        [['keep','Garder les tuiles existantes et ajouter la liste','primary'],['replace','Ne garder que la nouvelle liste','light'],['cancel','Annuler le lancement','light']],
+        'Le registre et les résultats sont toujours conservés : une tuile retirée peut être rechargée.');
+      if(choice!=='keep'&&choice!=='replace'){ ssPasteInfo(); return; }
+      keepOthers=choice==='keep';
+      if(!keepOthers){ const off=importUnloaded(); for(const p of others){ if(p.importContract) off.add(p.importContract); await removeProject(p); } setImportUnloaded(off); }
+    }
+    ssSetWorkList(keepOthers?[...new Set([...ssWorkList(),...r.contracts])]:r.contracts);
     const n=await ssEnsureTiles(r.contracts); if(n) toast(`${n} tuile(s) créée(s) pour la liste.`,'success');
   }
   // Étape 2 : export Salesforce appliqué d'abord (contrats de la liste seulement ; opérations créées pour eux si absentes).
@@ -15795,7 +15816,7 @@ async function ssLaunch(mode){
       const res=await sfxImport(sfFile,{onlyContracts:new Set(r.contracts.map(c=>contractKey(c))),createMissing:true});
       toast(`Salesforce : ${res.updated} opération(s) mises à jour${res.created?`, ${res.created} créée(s)`:''} · ${res.values.toLocaleString('fr-FR')} valeur(s).`,'success'); }
     catch(err){ toast(`Export Salesforce non appliqué : ${err?.message||err}`,'error'); } }
-  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots()});
+  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots(),reread:!!$('#sourcesDialog [data-ss-reread]')?.checked});
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
 }

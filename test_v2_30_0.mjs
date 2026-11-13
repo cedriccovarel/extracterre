@@ -5,7 +5,7 @@ import {APP_VERSION} from './js/config.js';
 import {folderCommune,communeVerdict,geocodeCommune} from './js/geocode.js';
 import {sfxColumns,sfxFiche} from './js/sf-export.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.32.0','version');
+eq(APP_VERSION,'2.32.1','version');
 const fc=f=>{ const r=folderCommune(f); return r?`${r.department} ${r.city}`:null; };
 eq(fc('00009999 - 06 - VILLEFICTIVE - Résidence A'),'06 VILLEFICTIVE','contrat - dép - ville');
 eq(fc('75 - 9999 - Paris - Résidence B'),'75 Paris','ancien format dép - numéro');

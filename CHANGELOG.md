@@ -1,3 +1,11 @@
+# v2.32.1 — Nouvelle liste : garder les tuiles existantes ; relire tous les documents
+
+- Au lancement d'une nouvelle liste, si d'autres tuiles sont déjà affichées, 3 choix clairs remplacent la fenêtre « OK / Annuler » :
+  **Garder les tuiles existantes et ajouter la liste** (proposé par défaut), **Ne garder que la nouvelle liste**, **Annuler le lancement**.
+  Si tu gardes les tuiles, « Charger ma liste » couvre l'ancienne et la nouvelle liste.
+- Nouvelle case **« Relire tous les documents, même déjà analysés »**. Elle sert après une amélioration d'ExtracTerre : les résultats déjà extraits sont remplacés.
+  C'est beaucoup plus long. La file des analyses l'indique par « relecture complète ».
+
 # v2.32.0 — Import massif : la liste de contrats pilote tout
 
 1. **Liste de contrats.** Au lancement, une tuile est créée tout de suite pour chaque contrat de la liste, et pour eux seuls.

@@ -123,11 +123,11 @@ export function ssParseContractPaste(text=''){
   return {contracts,invalid,column:col};
 }
 async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
-export async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[]}={}){
+export async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[],reread=false}={}){
   const d=new Date(), p=n=>String(n).padStart(2,'0');
   const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
-  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,...(reread?{reextraire:true}:{}),contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
   return id;
 }
 async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }
@@ -141,7 +141,7 @@ export async function ssListRequests(dir){
   for await (const [name,h] of d.entries()){ const m=h.kind==='file'&&name.match(/^(demande-[\w-]+)\.json$/); if(m&&!/\.statut$/.test(m[1])) ids.push(m[1]); }
   const out=[];
   for(const id of ids){ const req=await ss_json(dir,`${id}.json`), st=await ss_json(dir,`${id}.statut.json`); let stop=false; try{ await d.getFileHandle(`${id}.stop`); stop=true; }catch{}
-    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
+    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,reread:!!req?.reextraire,createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
   return out.sort((a,b)=>String(b.id).localeCompare(String(a.id)));
 }
 export async function ssStopRequest(dir,id,{immediat=false}={}){

@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION,DOC_TYPES} from './js/config.js';
 import {analyzeEconomicData} from './js/economics.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.32.0','version');
+eq(APP_VERSION,'2.32.1','version');
 const dpgf=(id,name)=>({id,name,status:'ready',type:DOC_TYPES.DPGF,read:{kind:'spreadsheet',pages:[],text:''}});
 const docs=[dpgf('d1','DPGF lot 1.xlsx'),dpgf('d2','DPGF lot 2.xlsx')];
 eq(analyzeEconomicData(docs).sourceDocs.map(d=>d.id),['d1','d2'],'sources DPGF listées avec leur identifiant');

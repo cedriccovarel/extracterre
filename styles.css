@@ -1490,3 +1490,6 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 @keyframes ss-stripes{to{background-position:0 0,28px 0}}
 @media (prefers-reduced-motion:reduce){.ss-steps li.now i,.ss-dot,.ss-tile.encours,.ss-progress.is-run .ss-bar i{animation:none}}
 @media(max-width:760px){.ss-tracker small,.ss-tracker-bar{display:none}}
+
+/* v2.32.1 — choix à plusieurs boutons */
+.ss-choice .search-integrate-shell{max-width:560px}.ss-choice-actions{display:flex;flex-direction:column;gap:8px;padding:4px 18px 18px}.ss-choice-actions .btn{justify-content:flex-start}
