@@ -1,4 +1,4 @@
-import {folderContracts} from './import-rules.js';
+import {folderContracts,isFdesName} from './import-rules.js';
 // v2.12.1 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
 // son accès est gardé par Chrome (File System Access API) ; pour une opération, le dossier « 0000xxxx - … » de son contrat est
 // retrouvé et ses sous-dossiers d'évaluation CCTP, Étude carbone et Étude thermique sont proposés, les plus récents cochés.
@@ -55,7 +55,7 @@ async function bx_files(dir,path,kind,out,depth){
   for await (const [name,h] of dir.entries()){
     if(name.startsWith('.')) continue;
     if(h.kind==='directory'){ if(depth<3) await bx_files(h,`${path}/${name}`,kind,out,depth+1); continue; }
-    if(!BOX_EXTENSIONS.test(name)) continue;
+    if(!BOX_EXTENSIONS.test(name)||isFdesName(name)) continue; // v2.32.2 — fiches FDES jamais lues
     const f=await h.getFile(); out.push({kind,path:`${path}/${name}`,name,size:f.size,lastModified:f.lastModified,file:f});
   }
 }

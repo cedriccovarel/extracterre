@@ -143,8 +143,11 @@ export function isArchiveFolder(name,cfg={}){
 
 export function fileExtension(name){ const m=String(name).toLowerCase().match(/\.([a-z0-9]{1,6})$/); return m?m[1]:''; }
 // Motif d'exclusion d'un fichier, ou null s'il est à garder.
+// v2.32.2 — fiches FDES (fiches produit INIES) : jamais lues, elles ne décrivent pas le projet. Mot « FDES » dans le nom du fichier.
+export function isFdesName(name){ return /(^|[^a-z0-9])fdes([^a-z]|$)/.test(ir_norm(String(name??'').replace(/\.[a-z0-9]{1,6}$/i,'')).replace(/_/g,' ')); }
 export function fileIgnoreReason(name,cfg={}){
   const base=String(name??'');
+  if(isFdesName(base)) return 'fiche FDES (non lue)';
   if((cfg.ignoreFileNames||[]).some(x=>ir_norm(x)===ir_norm(base))) return 'fichier système';
   if((cfg.ignoreFilePrefixes||[]).some(p=>base.startsWith(p))) return 'fichier temporaire';
   const ext=fileExtension(base);

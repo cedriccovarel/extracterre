@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.32.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.32.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.32.1';
+const APP_VERSION='2.32.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11849,8 +11849,11 @@ function isArchiveFolder(name,cfg={}){
 
 function fileExtension(name){ const m=String(name).toLowerCase().match(/\.([a-z0-9]{1,6})$/); return m?m[1]:''; }
 // Motif d'exclusion d'un fichier, ou null s'il est à garder.
+// v2.32.2 — fiches FDES (fiches produit INIES) : jamais lues, elles ne décrivent pas le projet. Mot « FDES » dans le nom du fichier.
+function isFdesName(name){ return /(^|[^a-z0-9])fdes([^a-z]|$)/.test(ir_norm(String(name??'').replace(/\.[a-z0-9]{1,6}$/i,'')).replace(/_/g,' ')); }
 function fileIgnoreReason(name,cfg={}){
   const base=String(name??'');
+  if(isFdesName(base)) return 'fiche FDES (non lue)';
   if((cfg.ignoreFileNames||[]).some(x=>ir_norm(x)===ir_norm(base))) return 'fichier système';
   if((cfg.ignoreFilePrefixes||[]).some(p=>base.startsWith(p))) return 'fichier temporaire';
   const ext=fileExtension(base);
@@ -12088,7 +12091,7 @@ async function bx_files(dir,path,kind,out,depth){
   for await (const [name,h] of dir.entries()){
     if(name.startsWith('.')) continue;
     if(h.kind==='directory'){ if(depth<3) await bx_files(h,`${path}/${name}`,kind,out,depth+1); continue; }
-    if(!BOX_EXTENSIONS.test(name)) continue;
+    if(!BOX_EXTENSIONS.test(name)||isFdesName(name)) continue; // v2.32.2 — fiches FDES jamais lues
     const f=await h.getFile(); out.push({kind,path:`${path}/${name}`,name,size:f.size,lastModified:f.lastModified,file:f});
   }
 }

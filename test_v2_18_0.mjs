@@ -9,7 +9,7 @@ import {SECURITY_GRID,runSearchGrid,searchCellValue,ASHTON_CHECKS,hasAshtonCheck
 import {CHECKS,evaluateCheck} from './ashton/measure.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.32.1','version');
+eq(APP_VERSION,'2.32.2','version');
 
 // 1. Famille « Plan »
 eq(normalizeFamilyKey('plan'),'plan','famille plan reconnue');

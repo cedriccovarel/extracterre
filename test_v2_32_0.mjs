@@ -4,7 +4,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {ssContractsToLoad} from './js/suivi-sources.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.32.1','version');
+eq(APP_VERSION,'2.32.2','version');
 const st={etat:'en cours',contrats:['A','B','C','D','E'],parOp:{A:{r:'ok'},B:{r:'vide'},C:{r:'erreurs'},D:{r:'inchangé'}}};
 eq(ssContractsToLoad(st),['A','C','D'],'en cours : opérations finies avec documents');
 eq(ssContractsToLoad(st,new Set(['A'])),['C','D'],'déjà chargées : pas rechargées');
