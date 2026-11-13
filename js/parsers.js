@@ -758,7 +758,7 @@ export function parseRset(doc){
       if(/\bdh\b|degres?[- ]heures?/i.test(s)){
         const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */
         // v2.36.1 — « DH: 1250 °C.h », « DH: 350 °C.h », « DH: 0 °C.h » : seuils du schéma réglementaire ; « 1 » : numéro, pas un DH
-        if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
+        if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)&&!(Number.isInteger(explicit)&&explicit>=2020&&explicit<=2031)) /* « seuil 2025 » : une année, pas un DH */ push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
         const max=firstValueAfterLabel(s,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
       }
       if(/conforme|non\s+conforme/i.test(s) && i>0){

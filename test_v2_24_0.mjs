@@ -11,7 +11,7 @@ import {ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssParseCon
 const cfg=JSON.parse(fs.readFileSync(new URL('./tools/import/import.config.json',import.meta.url),'utf8'));
 let n=0; const eq=(a,b,label)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${label}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
 
-eq(APP_VERSION,'2.36.1','version');
+eq(APP_VERSION,'2.36.2','version');
 
 // --- Numéros de contrat
 eq(irContractKey(' 0000-5361 '),'00005361','clé : tirets et espaces');

@@ -13,6 +13,17 @@ import {readTechnicalData,technicalDataFields} from './donnees-techniques.js';
 // « 631 242 178 » est une suite de trois nombres, pas un seul.
 const cs_NUM_RE=/[-+]?\d{1,3}(?:[ \u00a0]\d{3})+[.,]\d+|[-+]?\d+(?:[.,]\d+)?/g;
 const cs_numbers=s=>(stripUnitExponents(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
+// Ligne du tableau DH « SRef DH h1 h2 h3 » où les milliers sont séparés par une espace (« 2 070 1 115,7 726 415 228 ») :
+// on cherche le seul découpage en 5 nombres plausible (heures ≤ 8760 et décroissantes, DH ≤ 5000).
+export function cs_dhRow(s){
+  const t=stripUnitExponents(s||'').trim().split(/[ \u00a0]+/).filter(Boolean); if(t.some(x=>!/^\d+(?:[.,]\d+)?$/.test(x))) return null;
+  const sols=[];
+  const go=(i,acc)=>{ if(sols.length>1) return; if(i===t.length){ const n=acc; if(n.length===5&&n.every(v=>v!==null)&&n[1]<=5000&&n[2]<=8760&&n[2]>=n[3]&&n[3]>=n[4]) sols.push(n); return; } if(acc.length===5) return;
+    for(let j=i;j<t.length;j++){ if(j>i&&!/^\d{3}(?:[.,]\d+)?$/.test(t[j])) break; if(j>i&&/[.,]/.test(t[j-1])) break; if(/^0\d/.test(t[i])) break;
+      go(j+1,[...acc,parseFrNumber(t.slice(i,j+1).join(''))]); } };
+  go(0,[]);
+  return sols.length===1?sols[0]:null;
+}
 // Les séparateurs de cellules « | » produits par l'OCR sont neutralisés.
 const cs_lineText=l=>normalizeText(String(l?.text||'').replace(/\s*\|\s*/g,' '));
 
@@ -83,9 +94,11 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
     if(!b) continue; let worst=null; const zones={};
-    for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[2]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
-      // colonne « Trav. » du tableau : Oui = zone traversante
-      const z=/^oui$/i.test(m[1])?'dh_zt':'dh_znt'; if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
+    for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_dhRow(m[2])||(()=>{ const v=cs_numbers(m[2]); return v.length===5?v:null; })(); if(!n) continue; /* OCR : heures mal lues → découpage simple */ const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
+      // colonne « Trav. » du tableau : Oui = zone traversante — sauf si le nom de la zone dit le contraire
+      // (« Zone 01 / NON Oui … » : groupe « NON TRAVERSANT » marqué Oui par le logiciel).
+      const name=x.t.slice(0,m.index), z=/non[\s-]*trav|\bnon\s*$/i.test(name)?'dh_znt':/^oui$/i.test(m[1])?'dh_zt':'dh_znt';
+      if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
     for(const [z,w] of Object.entries(zones)) emit(w.x,z,w.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:`Groupe le plus défavorable des zones ${z==='dh_zt'?'traversantes':'non traversantes'} (tableau DH).`});
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;

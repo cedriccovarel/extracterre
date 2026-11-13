@@ -27,5 +27,5 @@ assert.match(fs.readFileSync('js/engine.js','utf8'),/f\.key==='window_shading'&&
 assert.equal(typeof recoupement,'function'); assert.ok(!/recoupement\(/.test(fs.readFileSync('js/app.js','utf8')));
 assert.equal(typeof ENGINE_OPTIONS.versionByFileDate,'boolean'); // v2.36.0 : activée (règle métier)
 const cal=JSON.parse(fs.readFileSync('data/fiabilite-calibration.json','utf8')); assert.ok(cal.cands&&cal.pairs);
-assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.36.1');
+assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.36.2');
 console.log('test_v2_35_0 ok');

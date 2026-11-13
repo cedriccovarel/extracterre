@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {boxContractOf,boxContractKey,isEvaluationFolder,boxKindOf,boxPrecheck,boxFindOperation,boxListEvaluation} from './js/box-folder.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.36.1','version');
+eq(APP_VERSION,'2.36.2','version');
 eq([' 00002474 - 83 - LES ARCS','00005115 - 34 - MARSEILLAN','00 - Dossier type copie','Autres'].map(boxContractOf),['00002474','00005115','',''],'contrat du dossier');
 eq(['4723','00004723','OPE-1'].map(boxContractKey),['00004723','00004723',''],'contrat de l’opération');
 eq(['Évaluation','Evaluation thermique','Suivi environnemental'].map(isEvaluationFolder),[true,true,false]);

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.1';
+const APP_VERSION='2.36.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -432,7 +432,7 @@ for(const key of ['housing_count']) DEFAULT_SOURCE_RULES[key]=ordered(SOURCE_PRO
 DEFAULT_SOURCE_RULES.shab=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.RSENV,DOC_TYPES.MANUAL],[DOC_TYPES.RT_EXISTING,DOC_TYPES.NOTICE,DOC_TYPES.PERMIT,DOC_TYPES.CARBON]);
 DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.PROJECT_DESCRIPTION,DOC_TYPES.SURFACE,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.MANUAL]);
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
-// v2.36.1 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
+// v2.36.2 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
 // l'étude thermique n'est qu'un secours quand aucun RSET n'est lu.
 for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
@@ -2230,6 +2230,17 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
 // « 631 242 178 » est une suite de trois nombres, pas un seul.
 const cs_NUM_RE=/[-+]?\d{1,3}(?:[ \u00a0]\d{3})+[.,]\d+|[-+]?\d+(?:[.,]\d+)?/g;
 const cs_numbers=s=>(stripUnitExponents(s||'').match(cs_NUM_RE)||[]).map(x=>parseFrNumber(x.replace(/[ \u00a0]/g,''))).filter(v=>v!==null);
+// Ligne du tableau DH « SRef DH h1 h2 h3 » où les milliers sont séparés par une espace (« 2 070 1 115,7 726 415 228 ») :
+// on cherche le seul découpage en 5 nombres plausible (heures ≤ 8760 et décroissantes, DH ≤ 5000).
+function cs_dhRow(s){
+  const t=stripUnitExponents(s||'').trim().split(/[ \u00a0]+/).filter(Boolean); if(t.some(x=>!/^\d+(?:[.,]\d+)?$/.test(x))) return null;
+  const sols=[];
+  const go=(i,acc)=>{ if(sols.length>1) return; if(i===t.length){ const n=acc; if(n.length===5&&n.every(v=>v!==null)&&n[1]<=5000&&n[2]<=8760&&n[2]>=n[3]&&n[3]>=n[4]) sols.push(n); return; } if(acc.length===5) return;
+    for(let j=i;j<t.length;j++){ if(j>i&&!/^\d{3}(?:[.,]\d+)?$/.test(t[j])) break; if(j>i&&/[.,]/.test(t[j-1])) break; if(/^0\d/.test(t[i])) break;
+      go(j+1,[...acc,parseFrNumber(t.slice(i,j+1).join(''))]); } };
+  go(0,[]);
+  return sols.length===1?sols[0]:null;
+}
 // Les séparateurs de cellules « | » produits par l'OCR sont neutralisés.
 const cs_lineText=l=>normalizeText(String(l?.text||'').replace(/\s*\|\s*/g,' '));
 
@@ -2300,9 +2311,11 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
   // Tableau DH : lignes « Oui|Non SRef DH h1 h2 h3 Conforme » → groupe le plus défavorable du bâtiment.
   for(const [b,ls] of byBuilding){
     if(!b) continue; let worst=null; const zones={};
-    for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_numbers(m[2]); if(n.length<5) continue; const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
-      // colonne « Trav. » du tableau : Oui = zone traversante
-      const z=/^oui$/i.test(m[1])?'dh_zt':'dh_znt'; if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
+    for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_dhRow(m[2])||(()=>{ const v=cs_numbers(m[2]); return v.length===5?v:null; })(); if(!n) continue; /* OCR : heures mal lues → découpage simple */ const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
+      // colonne « Trav. » du tableau : Oui = zone traversante — sauf si le nom de la zone dit le contraire
+      // (« Zone 01 / NON Oui … » : groupe « NON TRAVERSANT » marqué Oui par le logiciel).
+      const name=x.t.slice(0,m.index), z=/non[\s-]*trav|\bnon\s*$/i.test(name)?'dh_znt':/^oui$/i.test(m[1])?'dh_zt':'dh_znt';
+      if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
     for(const [z,w] of Object.entries(zones)) emit(w.x,z,w.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:`Groupe le plus défavorable des zones ${z==='dh_zt'?'traversantes':'non traversantes'} (tableau DH).`});
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
       const lim=ls.find(x=>/Le\s+DH\s+max\s+est\s+de\s+\d+/i.test(x.t)); const v=lim?Number(lim.t.match(/DH\s+max\s+est\s+de\s+(\d+)/i)[1]):null;
@@ -6839,7 +6852,7 @@ function parseRset(doc){
       if(/\bdh\b|degres?[- ]heures?/i.test(s)){
         const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */
         // v2.36.1 — « DH: 1250 °C.h », « DH: 350 °C.h », « DH: 0 °C.h » : seuils du schéma réglementaire ; « 1 » : numéro, pas un DH
-        if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)) push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
+        if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)&&!(Number.isInteger(explicit)&&explicit>=2020&&explicit<=2031)) /* « seuil 2025 » : une année, pas un DH */ push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
         const max=firstValueAfterLabel(s,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
       }
       if(/conforme|non\s+conforme/i.test(s) && i>0){
