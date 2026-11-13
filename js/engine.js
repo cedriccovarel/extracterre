@@ -381,7 +381,7 @@ const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; 
 // (Box), pas la date écrite dans l'étude. À rang de source égal, la lecture du fichier le plus récent l'emporte, et le DH
 // le plus défavorable se cherche dans cette version. ENGINE_OPTIONS.versionCutoff (ms) : fichiers postérieurs à
 // l'évaluation écartés de ce choix quand la date d'évaluation est connue.
-export const ENGINE_OPTIONS={versionByFileDate:false,versionCutoff:null}; // banc : la date du fichier Box ne désigne pas la version transmise (gain nul) — en attente de la date d’évaluation
+export const ENGINE_OPTIONS={versionByFileDate:true,versionCutoff:null}; // v2.36.0 — règle métier : la date d'ajout du fichier dans le dossier désigne la version (banc : neutre au total, + Cep/Cepnr/gains/IC, − Bbio/DH)
 const VERSION_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
 function fileVersionDate(d){
   const t=Number(d?.lastModified); if(!(t>0)) return null;

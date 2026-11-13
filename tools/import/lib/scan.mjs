@@ -1,7 +1,7 @@
 // Parcours en lecture seule : noms de dossiers et métadonnées (taille, date). Aucun fichier n'est ouvert ici.
 import fs from 'fs';
 import path from 'path';
-import {folderFamilyMatch,isSkippedFolder,fileIgnoreReason,folderTokens} from '../../../js/import-rules.js';
+import {folderFamilyMatch,isSkippedFolder,fileIgnoreReason,folderTokens,obsoleteFolderOf} from '../../../js/import-rules.js';
 
 export async function listOperationFolders(root,extraRoots=[]){
   const entries=await fs.promises.readdir(root,{withFileTypes:true});
@@ -41,7 +41,8 @@ export async function scanOperation(opDir,cfg,{allSubfolders=false}={}){
       if(!e.isFile()) continue;
       const fam=allSubfolders?(family||directFamily||null):(family||directFamily);
       if(!allSubfolders&&!fam) continue; // fichier hors sous-dossier retenu : ni lu, ni haché
-      const reason=fileIgnoreReason(e.name,cfg);
+      const obs=obsoleteFolderOf(rel); // v2.36.0 — dossier « OLD / Ancien / Archives… » : fichiers périmés, jamais lus
+      const reason=obs?`dossier de fichiers périmés (« ${obs} »)`:fileIgnoreReason(e.name,cfg);
       let st=null; try{ st=await fs.promises.stat(childAbs); }catch(err){ errors.push({relDir:rel,file:e.name,error:err.code||err.message}); continue; }
       files.push({abs:childAbs,relPath:childRel,relDir:rel,name:e.name,family:fam,size:st.size,mtimeMs:Math.round(st.mtimeMs),ignoreReason:reason});
     }

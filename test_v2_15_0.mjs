@@ -9,7 +9,7 @@ import {parseDocument} from './js/parsers.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.35.0','version');
+eq(APP_VERSION,'2.36.0','version');
 
 // Plan : A2 et plus, ou A3 nommé comme un plan ; une pièce écrite n'en est jamais un.
 eq(planFormatOf('P02 - Plan généraux.pdf',3370,2384),'A0','A0');

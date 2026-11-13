@@ -13,6 +13,7 @@ import fs from 'node:fs'; import path from 'node:path'; import zlib from 'node:z
 import {createRequire} from 'node:module';
 import {analyzeDocuments,ENGINE_OPTIONS} from '../../js/engine.js';
 import {DEFAULT_SOURCE_RULES,FIELD_MAP} from '../../js/config.js';
+import {obsoleteFolderOf} from '../../js/import-rules.js';
 import {sfxParseHtmlTable,sfxColumns,sfxFiche,sfxHeaderRow} from '../../js/sf-export.js';
 import {parseFreePaste,freePasteValues} from '../../js/collage-libre.js';
 import {sfPerimeterMap} from '../../js/sf-perimeter.js';
@@ -22,9 +23,9 @@ import {compareToReference,reliabilityTable,RELIABILITY,recoupement} from '../..
 const require=createRequire(new URL('../import/package.json',import.meta.url));
 const args={}; for(let i=2;i<process.argv.length;i++){ const a=process.argv[i]; if(a.startsWith('--')){ const k=a.slice(2); const v=process.argv[i+1]&&!process.argv[i+1].startsWith('--')?process.argv[++i]:true; args[k]=v; } }
 const home=p=>String(p||'').replace(/^~(?=\/|$)/,os.homedir());
-if(!args.export){ console.log('Usage : node tools/qualite/banc-salesforce.mjs --export <export Salesforce .xlsx/.xls> [--dossier-travail <dossier>] [--contrats a,b]'); process.exit(1); }
+if(!args.export){ console.log('Usage : node tools/qualite/banc-salesforce.mjs --export <export Salesforce .xlsx/.xls> [--dossier-travail <dossier>] [--contrats a,b] [--sans-version-fichier] [--avec-perimes]'); process.exit(1); }
 const W=home(args['dossier-travail']||'~/ExtracTerre-import');
-if(args['version-fichier']) ENGINE_OPTIONS.versionByFileDate=true; // essai : version d'étude = fichier Box le plus récent
+if(args['sans-version-fichier']) ENGINE_OPTIONS.versionByFileDate=false; // comparaison : sans la règle « fichier le plus récemment ajouté »
 
 // 1. Export Salesforce → fiches par contrat
 function readTable(file){
@@ -40,7 +41,7 @@ for(const row of table0.slice(hi+1)){ const f=sfxFiche(row,cols); if(!f.contract
 
 // 2. Import massif → consolidation des documents seuls (sans Salesforce ni saisie)
 const reg=JSON.parse(fs.readFileSync(path.join(W,'registre.json'),'utf8'));
-const byC={}; for(const f of Object.values(reg.files)) if(f.isCurrent&&!f.missing&&f.resultFile&&f.status!=='ignoré'&&fs.existsSync(path.join(W,f.resultFile))) (byC[f.contract]=byC[f.contract]||[]).push(f);
+const byC={}; for(const f of Object.values(reg.files)) if(f.isCurrent&&!f.missing&&f.resultFile&&f.status!=='ignoré'&&(args['avec-perimes']||!obsoleteFolderOf(f.relDir))&&fs.existsSync(path.join(W,f.resultFile))) (byC[f.contract]=byC[f.contract]||[]).push(f);
 const only=args.contrats?new Set(String(args.contrats).split(',').map(s=>s.trim().replace(/^0+/,'').padStart(8,'0'))):null;
 const contracts=Object.keys(byC).filter(c=>sf.has(c)&&(!only||only.has(c))).sort();
 console.log(`Export Salesforce : ${sf.size} fiche(s) avec données techniques · import massif : ${Object.keys(byC).length} opération(s) · communes : ${contracts.length}`);

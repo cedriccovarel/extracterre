@@ -7,7 +7,7 @@ import {classifyDocument} from './js/classifier.js';
 import {detectBuildings} from './js/buildings.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.35.0','version');
+eq(APP_VERSION,'2.36.0','version');
 const prep=(id,name,type,txt)=>{ const d=textDoc(id,name,type,txt); const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind}); d.classification={...c,automaticType:c.type}; d.type=type; d.buildings=detectBuildings(d); d.status='ready'; return d; };
 const run=docs=>{ const r=analyzeDocuments(docs,structuredClone(DEFAULT_SOURCE_RULES),'Op'); applyComparisonBases(r); return r; };
 // Deux bâtiments (RSET), brasseurs décrits pour toute l'opération dans le CCTP.

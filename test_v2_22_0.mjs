@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 let n=0; const ok=(c,m)=>{ assert.ok(c,m); n++; };
-assert.equal(APP_VERSION,'2.35.0'); n++;
+assert.equal(APP_VERSION,'2.36.0'); n++;
 const app=readFileSync('js/app.js','utf8'), html=readFileSync('index.html','utf8'), rd=readFileSync('js/readers.js','utf8');
 ok(/\[data-analysis-pause\]'\)\.forEach\(b=>b\.onclick=toggleAnalysisPause\)/.test(app),'pause reliée');
 ok(/\[data-analysis-stop\]'\)\.forEach\(b=>b\.onclick=stopAnalysis\)/.test(app),'arrêt relié');

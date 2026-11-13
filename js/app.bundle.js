@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.35.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.35.0';
+const APP_VERSION='2.36.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -8988,7 +8988,7 @@ const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; 
 // (Box), pas la date écrite dans l'étude. À rang de source égal, la lecture du fichier le plus récent l'emporte, et le DH
 // le plus défavorable se cherche dans cette version. ENGINE_OPTIONS.versionCutoff (ms) : fichiers postérieurs à
 // l'évaluation écartés de ce choix quand la date d'évaluation est connue.
-const ENGINE_OPTIONS={versionByFileDate:false,versionCutoff:null}; // banc : la date du fichier Box ne désigne pas la version transmise (gain nul) — en attente de la date d’évaluation
+const ENGINE_OPTIONS={versionByFileDate:true,versionCutoff:null}; // v2.36.0 — règle métier : la date d'ajout du fichier dans le dossier désigne la version (banc : neutre au total, + Cep/Cepnr/gains/IC, − Bbio/DH)
 const VERSION_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
 function fileVersionDate(d){
   const t=Number(d?.lastModified); if(!(t>0)) return null;
@@ -12155,6 +12155,21 @@ function isSkippedFolder(name,cfg={}){
   const tokens=folderTokens(name);
   return (cfg.skipFolders||[]).some(x=>ir_hasSeq(tokens,folderTokens(x)));
 }
+// v2.36.0 — dossier de fichiers périmés, jamais lu : « OLD », « RENO 6 LGTS old », « Ancien », « Anciennes versions »,
+// « Archives », « Obsolète », « Périmé », « Caduc », « Version précédente », « Ne pas utiliser »…
+// « Ancien(ne) » suivi d'un autre mot (« 2. Ancienne Mairie », nom de bâtiment) reste lu.
+const IR_OBSOLETE_WORDS=new Set(['old','obsolete','perime','perimee','caduc','caduque','archive','archivee','archivage','superseded','outdated','deprecated','remplace','remplacee']);
+const IR_ANCIEN_GENERIC=new Set(['version','indice','ind','fichier','document','doc','dossier','etude','piece','cctp','rset','rsee','plan','note','envoi','v']);
+function isObsoleteFolder(name){
+  const t=folderTokens(name);
+  if(t.some(x=>IR_OBSOLETE_WORDS.has(x))) return true;
+  const i=t.findIndex(x=>x==='ancien'||x==='ancienne'||x==='anc');
+  if(i>=0&&t.slice(i+1).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))&&t.slice(0,i).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))) return true;
+  const s=t.join(' ');
+  return /\bversion (?:precedente|anterieure|obsolete)\b|\bne pas utiliser\b|\bnon valide\b|\ba (?:supprimer|jeter)\b/.test(s);
+}
+// Premier dossier périmé d'un chemin relatif au dossier de l'opération, ou null.
+function obsoleteFolderOf(relDir){ return String(relDir??'').split('/').filter(Boolean).find(isObsoleteFolder)||null; }
 function isArchiveFolder(name,cfg={}){
   const tokens=folderTokens(name);
   return (cfg.archiveFolders||[]).some(x=>ir_hasSeq(tokens,folderTokens(x)));
@@ -12365,10 +12380,10 @@ const isEvaluationFolder=name=>/^evaluation/.test(bx_norm(name));
 const boxKindOf=name=>{ const n=bx_norm(name); return BOX_KINDS.find(([,,re])=>re.test(n))?.[0]||null; };
 // Les plus récents : par groupe, les fichiers déposés dans les 45 jours qui précèdent le plus récent (un même envoi).
 // Un sous-dossier daté (« 2026 02 », « 02 2026 », « 2020_12 Etude thermique ») est une version du même groupe ;
-// « Old / Ancien / Archive » n'est jamais coché ; un autre sous-dossier (« Mitigeurs ») forme son propre groupe.
+// « Old / Ancien / Archives… » n'est jamais proposé (v2.36.0) ; un autre sous-dossier (« Mitigeurs ») forme son propre groupe.
 const BOX_RECENT_DAYS=45;
-const BX_VERSION=/^(?:\d{2,4}[\s._-]*\d{1,2}(?:[\s._-]*\d{2,4})?)(?:\b|_)/, BX_ARCHIVE=/^(?:old|anciens?|archives?|obsoletes?|perimes?)\b/;
-function boxGroupOf(path){ const parts=String(path).split('/').slice(2,-1).map(bx_norm); return {archived:parts.some(x=>BX_ARCHIVE.test(x)),group:parts.filter(x=>!BX_VERSION.test(x)&&!BX_ARCHIVE.test(x)).join('/')}; }
+const BX_VERSION=/^(?:\d{2,4}[\s._-]*\d{1,2}(?:[\s._-]*\d{2,4})?)(?:\b|_)/, BX_ARCHIVE={test:isObsoleteFolder}; // v2.36.0 — règle commune avec l'import massif
+function boxGroupOf(path){ const parts=String(path).split('/').slice(2,-1); return {archived:parts.some(x=>BX_ARCHIVE.test(x)),group:parts.filter(x=>!BX_VERSION.test(bx_norm(x))&&!BX_ARCHIVE.test(x)).map(bx_norm).join('/')}; }
 // CCTP : un fichier par lot, mis à jour lot par lot → la version la plus récente de chaque document (indice / révision mis à part).
 const boxDocKey=name=>bx_norm(name).replace(/\.[a-z0-9]+$/,'').replace(/\b(?:ind(?:ice)?|rev|v|version)\s*\.?\s*\d+\b/g,'').replace(/[\s_.-]+/g,' ').trim();
 function boxPrecheck(items){
@@ -12405,7 +12420,7 @@ async function bx_child(dir,test){ for await (const [name,h] of dir.entries()) i
 async function bx_files(dir,path,kind,out,depth){
   for await (const [name,h] of dir.entries()){
     if(name.startsWith('.')) continue;
-    if(h.kind==='directory'){ if(depth<3) await bx_files(h,`${path}/${name}`,kind,out,depth+1); continue; }
+    if(h.kind==='directory'){ if(depth<3&&!isObsoleteFolder(name)) await bx_files(h,`${path}/${name}`,kind,out,depth+1); continue; } // v2.36.0 — « OLD / Ancien / Archives… » jamais proposés
     if(!BOX_EXTENSIONS.test(name)||isFdesName(name)) continue; // v2.32.2 — fiches FDES jamais lues
     const f=await h.getFile(); out.push({kind,path:`${path}/${name}`,name,size:f.size,lastModified:f.lastModified,file:f});
   }

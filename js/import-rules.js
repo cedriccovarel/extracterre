@@ -134,6 +134,21 @@ export function isSkippedFolder(name,cfg={}){
   const tokens=folderTokens(name);
   return (cfg.skipFolders||[]).some(x=>ir_hasSeq(tokens,folderTokens(x)));
 }
+// v2.36.0 — dossier de fichiers périmés, jamais lu : « OLD », « RENO 6 LGTS old », « Ancien », « Anciennes versions »,
+// « Archives », « Obsolète », « Périmé », « Caduc », « Version précédente », « Ne pas utiliser »…
+// « Ancien(ne) » suivi d'un autre mot (« 2. Ancienne Mairie », nom de bâtiment) reste lu.
+const IR_OBSOLETE_WORDS=new Set(['old','obsolete','perime','perimee','caduc','caduque','archive','archivee','archivage','superseded','outdated','deprecated','remplace','remplacee']);
+const IR_ANCIEN_GENERIC=new Set(['version','indice','ind','fichier','document','doc','dossier','etude','piece','cctp','rset','rsee','plan','note','envoi','v']);
+export function isObsoleteFolder(name){
+  const t=folderTokens(name);
+  if(t.some(x=>IR_OBSOLETE_WORDS.has(x))) return true;
+  const i=t.findIndex(x=>x==='ancien'||x==='ancienne'||x==='anc');
+  if(i>=0&&t.slice(i+1).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))&&t.slice(0,i).every(x=>IR_ANCIEN_GENERIC.has(x)||/^\d+$/.test(x))) return true;
+  const s=t.join(' ');
+  return /\bversion (?:precedente|anterieure|obsolete)\b|\bne pas utiliser\b|\bnon valide\b|\ba (?:supprimer|jeter)\b/.test(s);
+}
+// Premier dossier périmé d'un chemin relatif au dossier de l'opération, ou null.
+export function obsoleteFolderOf(relDir){ return String(relDir??'').split('/').filter(Boolean).find(isObsoleteFolder)||null; }
 export function isArchiveFolder(name,cfg={}){
   const tokens=folderTokens(name);
   return (cfg.archiveFolders||[]).some(x=>ir_hasSeq(tokens,folderTokens(x)));
