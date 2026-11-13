@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.34.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.35.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.34.0';
+const APP_VERSION='2.35.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -893,7 +893,7 @@ function reliabilityOf(o,{calib=null,field=''}={}){
   if(m==='manual:free-paste'||Q_SF_SRC.test(o.fileName||'')) return 'certifiee';
   if(/^geocode:/.test(m)) return m==='geocode:ign'?'sure':'averifier';
   if(/^manual:/.test(m)||o.docType==='Correction manuelle') return 'sure'; // saisie ou validation de l'utilisateur
-  const acc=methodAccuracy(calib,m,f);
+  const acc=(o.agreeFiles>=2&&methodAccuracy(calib,`accord${Math.min(3,o.agreeFiles)}`,f))||methodAccuracy(calib,m,f);
   if(acc) return acc.rate>=CALIB_SURE?'sure':acc.rate>=CALIB_PROBABLE?'probable':'averifier';
   return 'averifier';
 }
@@ -928,6 +928,63 @@ function reliabilityCounts(table){
   const c={certifiee:0,sure:0,probable:0,averifier:0};
   for(const m of Object.values(table||{})) for(const k of Object.values(m)) if(c[k]!==undefined) c[k]++;
   return c;
+}
+
+// ---------- v2.35.0 — recoupement entre documents ----------
+// Pour chaque bâtiment et chaque champ, toutes les lectures des documents (retenues ou non) sont regroupées par valeur
+// (arrondi près, ou même catégorie). Score d'un groupe : somme, par fichier distinct, de la fiabilité mesurée de sa
+// meilleure lecture (log-cote). Le groupe le mieux soutenu remplace la valeur retenue quand elle n'en fait pas partie,
+// et complète un champ vide s'il est assez soutenu. Jamais sur une valeur Salesforce, saisie ou validée.
+const Q_SKIP=/^(?:manual:|geocode:|derive:|coherence:)/;
+const q_logit=p=>{ const x=Math.min(0.99,Math.max(0.5,p)); return Math.log(x/(1-x)); };
+function q_groupKey(field,v){
+  if(CAT_FIELDS[field]){ const c=categoriesOf(field,v); if(c&&c.size) return 'c:'+[...c].sort().join('+'); }
+  const n=q_number(v); if(n!==null) return null; // nombres : regroupés par proximité
+  return 't:'+q_norm(v);
+}
+// Fiabilité d'une lecture CANDIDATE (retenue ou non), mesurée par le banc : calib.cands['méthode|champ'].
+function candAccuracy(calib,method,field){
+  const m=calib?.cands?.[`${method}|${field}`]||calib?.cands?.[method]; if(!m) return null; const n=(m.juste||0)+(m.faux||0);
+  return n>=8?(m.juste||0)/n:null;
+}
+// Probabilité qu'une valeur soit juste : au moins une de ses sources (fichiers distincts) est juste (« ou » bruité).
+const q_noisyOr=ws=>1-ws.reduce((a,w)=>a*(1-Math.min(0.995,Math.max(0,w))),1);
+function recoupement(result,{calib=CALIB,prior=0.3,margin=0.15,fillMin=0.85,newestOnly=true}={}){
+  if(!result?.rows) return {replaced:0,filled:0};
+  const detailed=result.detailed||[], finals=result.finals||[]; let replaced=0, filled=0;
+  const weight=o=>candAccuracy(calib,String(o.method||''),o.field)??prior;
+  for(const row of result.rows){ const b=row.building;
+    const byField=new Map();
+    for(const d of detailed){ if(!d||!FIELD_MAP[d.field]||d.field==='building'||Q_SKIP.test(String(d.method||''))||d.userValidated||d.value===undefined||d.value===null||d.value==='') continue;
+      if(!(d.building===b||d.originalBuilding===b||d.building==='Bâtiment unique')) continue;
+      (byField.get(d.field)||byField.set(d.field,[]).get(d.field)).push(d); }
+    for(const [field,cands0] of byField){
+      const cur=finals.find(o=>o.field===field&&(o.building===b||o.building==='Bâtiment unique'));
+      if(cur&&(cur.userValidated||/^manual:/.test(String(cur.method||''))||Q_SF_SRC.test(cur.fileName||''))) continue;
+      let cands=cands0;
+      if(newestOnly){ const dated=cands.filter(c=>c.versionFromFile&&Date.parse(c.studyDate)); if(dated.length){ const top=Math.max(...dated.map(c=>Date.parse(c.studyDate)));
+        cands=cands.filter(c=>!(c.versionFromFile&&Date.parse(c.studyDate))||Date.parse(c.studyDate)>=top-36e5); } }
+      const groups=[];
+      for(const c of cands){ const k=q_groupKey(field,c.value);
+        let g=k?groups.find(x=>x.k===k):groups.find(x=>x.k===null&&sameValue(field,x.rep.value,c.value));
+        if(!g){ g={k,rep:c,files:new Map()}; groups.push(g); }
+        const w=weight(c), f=c.fileName||c.docId||'?'; if(!g.files.has(f)||g.files.get(f)<w) g.files.set(f,w); if(w>weight(g.rep)) g.rep=c; }
+      if(!groups.length) continue;
+      for(const g of groups) g.p=q_noisyOr([...g.files.values()]);
+      groups.sort((x,y)=>y.p-x.p||y.files.size-x.files.size);
+      const best=groups[0];
+      const has=row[field]!==undefined&&row[field]!==null&&row[field]!=='';
+      const curG=has?groups.find(g=>g.k?g.k===q_groupKey(field,row[field]):sameValue(field,g.rep.value,row[field])):null;
+      if(curG===best){ if(cur){ cur.agreeFiles=best.files.size; cur.agreeP=best.p; } continue; }
+      if(has&&!(best.p>=(curG?.p||0)+margin)) { if(cur&&curG){ cur.agreeFiles=curG.files.size; cur.agreeP=curG.p; } continue; }
+      if(!has&&best.p<fillMin) continue;
+      const rep=best.rep, o={...rep,building:b,status:'retenu',agreeFiles:best.files.size,agreeP:best.p,recoupe:true,
+        provenanceNote:`Recoupement : ${best.files.size} document(s) concordant(s)${has?` ; remplace « ${row[field]} »`:''}.`};
+      const idx=cur?finals.indexOf(cur):-1; if(idx>=0) finals.splice(idx,1); finals.push(o); row[field]=rep.value;
+      if(has) replaced++; else filled++;
+    }
+  }
+  return {replaced,filled};
 }
 
 /* ---- vecteurs.js ---- */
@@ -8770,6 +8827,9 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
       if((f.key==='ventilation'||f.key==='ventilation_before')&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
+      // v2.35.0 — occultations : « Volet avec gestion manuelle » (catégorie RSET) précisé par le CCTP (« Volet roulant »,
+      // « Volet battant ») quand une lecture le dit (banc Salesforce : l'évaluateur retient le type précis).
+      if(f.key==='window_shading'&&/^volet(?:s)?(?:\s+avec\s+gestion\s+(?:manuelle|motoris[ée]e|automatique))?$/i.test(String(chosen.value).trim())){ const fine=pool.find(o=>/^volets?\s+(?:roulants?|battants?|coulissants?)\b/i.test(String(o.value))); if(fine) chosen=fine; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
@@ -8924,14 +8984,26 @@ function catchUpDocument(d,buildingOverrides={}){
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
+// v2.35.0 — version d'étude de référence = la dernière transmise à l'évaluateur (règle métier) : date du fichier déposé
+// (Box), pas la date écrite dans l'étude. À rang de source égal, la lecture du fichier le plus récent l'emporte, et le DH
+// le plus défavorable se cherche dans cette version. ENGINE_OPTIONS.versionCutoff (ms) : fichiers postérieurs à
+// l'évaluation écartés de ce choix quand la date d'évaluation est connue.
+const ENGINE_OPTIONS={versionByFileDate:false,versionCutoff:null}; // banc : la date du fichier Box ne désigne pas la version transmise (gain nul) — en attente de la date d’évaluation
+const VERSION_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
+function fileVersionDate(d){
+  const t=Number(d?.lastModified); if(!(t>0)) return null;
+  const cut=Number(ENGINE_OPTIONS.versionCutoff); if(cut>0&&t>cut+864e5) return null;
+  return new Date(t).toISOString();
+}
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
-    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(o); newlyParsedCount++;
+    const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
+    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -9714,6 +9786,7 @@ function fp_envelope(bld,label,raw){
 // avec un mot de bâtiment ou suivie de lignes « libellé = valeur ».
 const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
 const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
+const fp_NOT_BUILDING=/^(?:bat(?:iment)?\.?|dh\b.*|.*\b(?:conforme|conformite|rsee|rset|rsenv|note de calcul|etude thermique|methode de calcul)\b.*|.*\bdu \d{1,2}\/\d{1,2}\/\d{2,4}.*|iment)$/;
 function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
 // v2.8.0 — fiche Salesforce (libellé sur une ligne, valeur sur la suivante) → « libellé = valeur ».
 // Seuls les libellés reconnus exactement (ou par alias) ouvrent une paire : un rapprochement approximatif ne suffit pas.
@@ -9745,6 +9818,9 @@ function parseFreePaste(text){
   for(let i=0;i<lines.length;i++){
     const line=lines[i]; if(!line.trim()) continue;
     const h=line.match(fp_HEADER);
+    // v2.35.0 — un en-tête qui n'est pas un bâtiment (« DH conforme », « RSEE- RSET du 14/11/2025 », « Note de calcul… »,
+    // « BAT » seul) ne crée pas de bâtiment : ses lignes restent rattachées au bloc courant (banc Salesforce : faux bâtiments).
+    if(h&&fp_NOT_BUILDING.test(normLower(h[1]).replace(/[’']/g,' ').trim())){ continue; }
     if(h){ const next=lines.slice(i+1).find(l=>l.trim())||''; if(fp_BUILDING.test(line)||fp_BUILDING_WORD.test(h[1])||/=/.test(next)){ ensure(fp_buildingName(h[1])); continue; } }
     const m=line.match(fp_PAIR);
     // « libellé = » sans valeur : rien à reporter.
@@ -10139,6 +10215,12 @@ function sfxFiche(row,cols){
 //   4. « Bâtiment unique » → le bâtiment Salesforce s'il n'y en a qu'un.
 
 const SFP_SINGLE=/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/;
+// Clé de rapprochement : sans mention du nombre de logements/lots, ni parenthèses ; plages « 3 a 7 » = « 3-7 ».
+const normLowerSfp=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function sfp_key(name){
+  return buildingMergeKey(String(name||'').replace(/\([^)]*\)/g,' ').replace(/\s+-\s+\d+\s*(?:logements?|lgts?|lots?|lgt)\b.*$/i,' ').replace(/\b(\d+)\s+(?:a|à)\s+(\d+)\b/gi,'$1-$2'))
+    .replace(/\b(\d+) (\d+)\b/g,'$1-$2').trim();
+}
 const SFP_MODES={exact:'même nom',core:'même identifiant',letter:'chiffre ↔ lettre',unique:'bâtiment unique',manual:'correction manuelle',none:'non retenu',sf:'bâtiment Salesforce'};
 
 // sfNames : bâtiments Salesforce ; detected : noms lus dans les documents ; manual : {nom: bâtiment Salesforce | '' (non retenu)}.
@@ -10168,8 +10250,14 @@ function sfPerimeterMap(sfNames,detected,manual={}){
       const h2=alt?cores.filter(c=>c.core===alt):[];
       if(h2.length===1){ map[raw]=h2[0].s; modes[raw]='letter'; continue; }
     }
+    // v2.35.0 — même bâtiment, nom plus ou moins détaillé : « BASSON I » ↔ « BASSON I - 40 LGTS », « LOGEMENT 5 » ↔
+    // « LOGEMENT 5 - 1 LOT (T3) », « BEG-3-7 » ↔ « BEG-3 A 7 », « EHPAD » ↔ « EHPAD SAINTE-MONIQUE RENOVE » (début de nom, un seul candidat).
+    const pk=sfp_key(d); const pre=pk.length>=3?S.filter(s=>{ const q=sfp_key(s); return q&&(q===pk||q.startsWith(pk+' ')||pk.startsWith(q+' ')); }):[];
+    if(pre.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=pre[0]; modes[raw]='prefix'; continue; }
     map[raw]=null; modes[raw]='none';
   }
+  // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.
+  if(S.length===1){ for(const raw of Object.keys(map)) if(map[raw]===null&&modes[raw]==='none'&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ const k=sfp_key(canonicalBuilding(raw)); if(/^(?:n ?)?(?:[a-z]|\d{1,2}|bat|batiment|ensemble|projet)$/.test(k)){ map[raw]=S[0]; modes[raw]='unique'; } } }
   return {sf:S,map,modes};
 }
 

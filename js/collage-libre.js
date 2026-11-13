@@ -65,6 +65,7 @@ function fp_envelope(bld,label,raw){
 // avec un mot de bâtiment ou suivie de lignes « libellé = valeur ».
 const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
 const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
+const fp_NOT_BUILDING=/^(?:bat(?:iment)?\.?|dh\b.*|.*\b(?:conforme|conformite|rsee|rset|rsenv|note de calcul|etude thermique|methode de calcul)\b.*|.*\bdu \d{1,2}\/\d{1,2}\/\d{2,4}.*|iment)$/;
 function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
 // v2.8.0 — fiche Salesforce (libellé sur une ligne, valeur sur la suivante) → « libellé = valeur ».
 // Seuls les libellés reconnus exactement (ou par alias) ouvrent une paire : un rapprochement approximatif ne suffit pas.
@@ -96,6 +97,9 @@ export function parseFreePaste(text){
   for(let i=0;i<lines.length;i++){
     const line=lines[i]; if(!line.trim()) continue;
     const h=line.match(fp_HEADER);
+    // v2.35.0 — un en-tête qui n'est pas un bâtiment (« DH conforme », « RSEE- RSET du 14/11/2025 », « Note de calcul… »,
+    // « BAT » seul) ne crée pas de bâtiment : ses lignes restent rattachées au bloc courant (banc Salesforce : faux bâtiments).
+    if(h&&fp_NOT_BUILDING.test(normLower(h[1]).replace(/[’']/g,' ').trim())){ continue; }
     if(h){ const next=lines.slice(i+1).find(l=>l.trim())||''; if(fp_BUILDING.test(line)||fp_BUILDING_WORD.test(h[1])||/=/.test(next)){ ensure(fp_buildingName(h[1])); continue; } }
     const m=line.match(fp_PAIR);
     // « libellé = » sans valeur : rien à reporter.

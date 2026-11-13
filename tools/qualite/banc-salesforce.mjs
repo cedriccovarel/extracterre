@@ -11,19 +11,20 @@ import '../import/lib/runtime.mjs';
 import '../import/lib/extract.mjs'; // packs d'amélioration chargés comme dans l'import massif
 import fs from 'node:fs'; import path from 'node:path'; import zlib from 'node:zlib'; import os from 'node:os';
 import {createRequire} from 'node:module';
-import {analyzeDocuments} from '../../js/engine.js';
+import {analyzeDocuments,ENGINE_OPTIONS} from '../../js/engine.js';
 import {DEFAULT_SOURCE_RULES,FIELD_MAP} from '../../js/config.js';
 import {sfxParseHtmlTable,sfxColumns,sfxFiche,sfxHeaderRow} from '../../js/sf-export.js';
 import {parseFreePaste,freePasteValues} from '../../js/collage-libre.js';
 import {sfPerimeterMap} from '../../js/sf-perimeter.js';
 import {canonicalBuilding} from '../../js/buildings.js';
-import {compareToReference,reliabilityTable,RELIABILITY} from '../../js/qualite.js';
+import {compareToReference,reliabilityTable,RELIABILITY,recoupement} from '../../js/qualite.js';
 
 const require=createRequire(new URL('../import/package.json',import.meta.url));
 const args={}; for(let i=2;i<process.argv.length;i++){ const a=process.argv[i]; if(a.startsWith('--')){ const k=a.slice(2); const v=process.argv[i+1]&&!process.argv[i+1].startsWith('--')?process.argv[++i]:true; args[k]=v; } }
 const home=p=>String(p||'').replace(/^~(?=\/|$)/,os.homedir());
 if(!args.export){ console.log('Usage : node tools/qualite/banc-salesforce.mjs --export <export Salesforce .xlsx/.xls> [--dossier-travail <dossier>] [--contrats a,b]'); process.exit(1); }
 const W=home(args['dossier-travail']||'~/ExtracTerre-import');
+if(args['version-fichier']) ENGINE_OPTIONS.versionByFileDate=true; // essai : version d'étude = fichier Box le plus récent
 
 // 1. Export Salesforce → fiches par contrat
 function readTable(file){
@@ -45,16 +46,17 @@ const contracts=Object.keys(byC).filter(c=>sf.has(c)&&(!only||only.has(c))).sort
 console.log(`Export Salesforce : ${sf.size} fiche(s) avec données techniques · import massif : ${Object.keys(byC).length} opération(s) · communes : ${contracts.length}`);
 
 const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
-const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[];
+const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[]; const candObs=[]; const oracle={}, oracleTot={};
 const bump=(o,k,r)=>{ (o[k]=o[k]||T())[r]++; };
 for(const c of contracts){
   // --relecture-legere : les lecteurs actuels sont relancés sur le texte conservé (sans relire le PDF ni refaire l'OCR).
   const docs=byC[c].map(f=>{ const d={...JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(W,f.resultFile))).toString('utf8')).doc,status:'ready',file:null}; if(args['relecture-legere']&&d.read) d.cachedOccurrences=null; return d; });
   let res; try{ res=analyzeDocuments(docs,DEFAULT_SOURCE_RULES,''); }catch(e){ console.warn(`  ⚠ ${c} : ${e.message}`); continue; }
-  ops++; const comps=[]; perOp.push({c,res,comps});
+  ops++; const comps=[];
   const {vals,status}=sf.get(c);
   const common=vals.find(v=>!v.building)?.values||{}; const named=vals.filter(v=>v.building);
   const sfB=named.length?named.map(v=>({name:canonicalBuilding(v.building),values:{...common,...v.values}})):[{name:'',values:common}];
+  perOp.push({c,res,comps,sfB,named:named.length>0,docs});
   const rows=res.rows||[]; const map=named.length?sfPerimeterMap(sfB.map(b=>b.name),rows.map(r=>r.building)).map:{};
   for(const b of sfB){
     const mine=named.length?rows.filter(r=>map[r.building]===b.name):rows;
@@ -66,10 +68,43 @@ for(const c of contracts){
       const o=hit?(res.finals||[]).find(x=>x.field===field&&(x.building===hit.building||x.building==='Bâtiment unique')):null;
       const method=o?.method||'', type=o?.docType||'';
       if((result==='juste'||result==='faux')&&hit) comps.push({b:hit.building,field,result,method});
+      { const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']); const seenF=new Set();
+        for(const d of (res.detailed||[])){ if(d.field!==field||!(names.has(d.building)||names.has(d.originalBuilding))||/^(?:manual:|geocode:|derive:|coherence:)/.test(String(d.method||''))) continue;
+          const key=`${d.method}|${d.fileName}|${String(d.value)}`; if(seenF.has(key)) continue; seenF.add(key);
+          const rr=compareToReference(field,d.value,sv); if(rr==='incomparable') continue; candObs.push({c,key:`${d.method}|${field}`,result:rr}); } }
+      // Potentiel : la bonne valeur est-elle parmi TOUTES les lectures des documents (retenues ou non) pour ce bâtiment ?
+      if(result!=='juste'&&result!=='incomparable'){ const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']);
+        const pool=(res.detailed||[]).filter(d=>d.field===field&&(names.has(d.building)||names.has(d.originalBuilding)));
+        const k=pool.some(d=>compareToReference(field,d.value,sv)==='juste')?(result==='faux'?'faux · bonne valeur présente':'manquant · bonne valeur présente'):(result==='faux'?'faux · absente des lectures':'manquant · aucune lecture juste');
+        (oracle[field]=oracle[field]||{})[k]=((oracle[field]||{})[k]||0)+1; oracleTot[k]=(oracleTot[k]||0)+1; }
       bump(byField,field,result); if(result==='juste'||result==='faux'){ bump(byMethod,method||'(inconnue)',result); bump(byType,type||'(inconnu)',result); }
       detail.push([c,status,b.name||'(opération)',FIELD_MAP[field].label,field,sv,hit?hit[field]:'',result,o?.fileName||'',o?.page??'',method,type,o?.confidence??'']);
     }
   }
+}
+
+// 2 bis. Recoupement entre documents, évalué en validation croisée (poids appris sur l'autre moitié des opérations).
+const SKIPF=['building','contract_number','internal_code','evaluation_status','address','postcode','city','department'];
+function compareOp(res,sfB,named){
+  const out=[]; const rows=res.rows||[]; const map=named?sfPerimeterMap(sfB.map(b=>b.name),rows.map(r=>r.building)).map:{};
+  for(const b of sfB){ const mine=named?rows.filter(r=>map[r.building]===b.name):rows;
+    for(const [field,sv] of Object.entries(b.values)){ if(!FIELD_MAP[field]||SKIPF.includes(field)) continue;
+      const cands=mine.filter(r=>r[field]!==undefined&&r[field]!==null&&r[field]!=='');
+      let result='manquant', hit=null;
+      if(cands.length){ const r2=cands.map(r=>[r,compareToReference(field,r[field],sv)]); const best=r2.find(x=>x[1]==='juste')||r2.find(x=>x[1]==='faux')||r2[0]; hit=best[0]; result=best[1]; }
+      const o=hit?(res.finals||[]).find(x=>x.field===field&&(x.building===hit.building||x.building==='Bâtiment unique')):null;
+      out.push({b:hit?.building||'',field,result,method:o?.method||'',agree:o?.agreeFiles||0,recoupe:!!o?.recoupe}); } }
+  return out;
+}
+const reco=T(), recoByField={}; let recoReplaced=0, recoFilled=0; const recoComps=[];
+for(const fold of [0,1]){
+  const pairs={}, methods={}, cands={};
+  for(const k of candObs) if(parseInt(k.c,10)%2!==fold){ const u=cands[k.key]=cands[k.key]||{juste:0,faux:0}; u[k.result]++; }
+  for(const o of perOp.filter(x=>parseInt(x.c,10)%2!==fold)) for(const k of o.comps){ const u=pairs[`${k.method}|${k.field}`]=pairs[`${k.method}|${k.field}`]||{juste:0,faux:0}; u[k.result]++; const v=methods[k.method]=methods[k.method]||{juste:0,faux:0}; v[k.result]++; }
+  for(const o of perOp.filter(x=>parseInt(x.c,10)%2===fold)){
+    let r2; try{ r2=analyzeDocuments(o.docs.map(d=>({...d})),DEFAULT_SOURCE_RULES,''); }catch{ continue; }
+    const st=recoupement(r2,{calib:{pairs,methods,cands}}); recoReplaced+=st.replaced; recoFilled+=st.filled;
+    for(const k of compareOp(r2,o.sfB,o.named)){ reco[k.result]++; (recoByField[k.field]=recoByField[k.field]||T())[k.result]++; if(k.result==='juste'||k.result==='faux') recoComps.push({...k,c:o.c}); } }
 }
 
 // 3. Sorties
@@ -86,7 +121,8 @@ fs.writeFileSync(path.join(out,'par-methode.csv'),csv([head,...sorted(byMethod).
 fs.writeFileSync(path.join(out,'par-type.csv'),csv([head,...sorted(byType).map(([k,t])=>stat(k,t))]));
 const tot=Object.values(byField).reduce((a,t)=>({juste:a.juste+t.juste,faux:a.faux+t.faux,manquant:a.manquant+t.manquant,incomparable:a.incomparable+t.incomparable}),T());
 const pairs={}; for(const o of perOp) for(const k of o.comps){ const u=pairs[`${k.method}|${k.field}`]=pairs[`${k.method}|${k.field}`]||{juste:0,faux:0}; u[k.result]++; }
-const calib={format:'extracterre-calibration',version:2,createdAt:new Date().toISOString(),operations:ops,pairs,methods:Object.fromEntries(Object.entries(byMethod).map(([k,t])=>[k,{juste:t.juste,faux:t.faux}])),fields:Object.fromEntries(Object.entries(byField).map(([k,t])=>[k,{juste:t.juste,faux:t.faux,manquant:t.manquant}]))};
+const candsAll={}; for(const k of candObs){ const u=candsAll[k.key]=candsAll[k.key]||{juste:0,faux:0}; u[k.result]++; }
+const calib={format:'extracterre-calibration',version:3,createdAt:new Date().toISOString(),operations:ops,pairs,cands:candsAll,methods:Object.fromEntries(Object.entries(byMethod).map(([k,t])=>[k,{juste:t.juste,faux:t.faux}])),fields:Object.fromEntries(Object.entries(byField).map(([k,t])=>[k,{juste:t.juste,faux:t.faux,manquant:t.manquant}]))};
 fs.writeFileSync(path.join(out,'calibration.json'),JSON.stringify(calib,null,1));
 // Validation croisée de la note de fiabilité : calibration sur une moitié des opérations, note évaluée sur l'autre.
 const byGrade={}, byGradeWhy={}, gradeRows=[]; const half=x=>parseInt(x.c,10)%2;
@@ -104,5 +140,10 @@ const lines=[`Banc de vérité Salesforce — ${new Date().toLocaleString('fr-FR
   'Champs les moins justes (≥ 10 valeurs lues) :',...sorted(byField).filter(([,t])=>t.juste+t.faux>=10).sort((a,b)=>a[1].juste/(a[1].juste+a[1].faux)-b[1].juste/(b[1].juste+b[1].faux)).slice(0,15).map(([k,t])=>`  ${pct(t.juste/(t.juste+t.faux)).padStart(7)}  ${FIELD_MAP[k]?.label||k} (${t.juste}/${t.juste+t.faux})`),'',
   'Méthodes de lecture (≥ 10 valeurs lues) :',...sorted(byMethod).filter(([,t])=>t.juste+t.faux>=10).map(([k,t])=>`  ${pct(t.juste/(t.juste+t.faux)).padStart(7)}  ${k} (${t.juste}/${t.juste+t.faux})`)];
 lines.push(...gradeLines);
+{ const n=reco.juste+reco.faux, all=n+reco.manquant;
+  lines.push('',`Avec recoupement entre documents (validation croisée) : ${recoReplaced} valeur(s) remplacée(s), ${recoFilled} complétée(s)`,
+    `  Exactitude : ${pct(reco.juste/Math.max(1,n))} (${reco.juste}/${n}) · couverture : ${pct(n/Math.max(1,all))}`,
+    '  Champs les moins justes après recoupement (≥ 10 lus) :',...Object.entries(recoByField).filter(([,t])=>t.juste+t.faux>=10).sort((a,b)=>a[1].juste/(a[1].juste+a[1].faux)-b[1].juste/(b[1].juste+b[1].faux)).slice(0,20).map(([k,t])=>`    ${pct(t.juste/(t.juste+t.faux)).padStart(7)}  ${FIELD_MAP[k]?.label||k} (${t.juste}/${t.juste+t.faux}) · manquants ${t.manquant}`)); }
+lines.push('','Potentiel (la bonne valeur figure-t-elle dans les lectures ?) :',...Object.entries(oracleTot).sort().map(([k,n])=>`  ${k.padEnd(40)} ${n}`),'','Par champ (faux / manquants dont la bonne valeur est lue quelque part) :',...Object.entries(oracle).map(([f,o])=>[f,o,(o['faux · bonne valeur présente']||0)+(o['manquant · bonne valeur présente']||0)]).sort((a,b)=>b[2]-a[2]).slice(0,25).map(([f,o,n])=>`  ${(FIELD_MAP[f]?.label||f).slice(0,40).padEnd(42)} récupérables ${String(n).padStart(4)} · faux non lus ${String(o['faux · absente des lectures']||0).padStart(4)} · manquants non lus ${o['manquant · aucune lecture juste']||0}`));
 fs.writeFileSync(path.join(out,'resume.txt'),lines.join('\n'));
 console.log(lines.join('\n')); console.log(`\nRapports : ${out}`);

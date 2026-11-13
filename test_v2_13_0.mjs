@@ -9,7 +9,7 @@ import {readXmlText} from './js/readers.js';
 import {dpePhaseOf,dpeBuildingOf} from './js/dpe-3cl.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.34.0','version');
+eq(APP_VERSION,'2.35.0','version');
 eq([dpePhaseOf('état initial 3CL/Bâtiment Z - EI.pdf'),dpePhaseOf('Bâtiment Z.pdf'),dpePhaseOf('Bâtiment Z - après travaux.pdf'),dpePhaseOf('Projet Les Fictifs.pdf')],['before',null,'after',null],'phase du chemin');
 eq([dpeBuildingOf('état initial 3CL/Bâtiment Z - EI.pdf'),dpeBuildingOf('Bat. 12.pdf'),dpeBuildingOf('Batiments.pdf'),dpeBuildingOf('Bâtiment Z.pdf'.normalize('NFD'))],['Bâtiment Z','Bâtiment 12','','Bâtiment Z'],'bâtiment du nom de fichier (macOS : NFD)');
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:d.read.kind}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.buildings=detectBuildings(d); d.status='ready'; return d; };

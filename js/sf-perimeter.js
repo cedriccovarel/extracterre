@@ -8,6 +8,12 @@
 import {canonicalBuilding,buildingMergeKey,buildingCoreId} from './buildings.js';
 
 const SFP_SINGLE=/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/;
+// Clé de rapprochement : sans mention du nombre de logements/lots, ni parenthèses ; plages « 3 a 7 » = « 3-7 ».
+const normLowerSfp=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function sfp_key(name){
+  return buildingMergeKey(String(name||'').replace(/\([^)]*\)/g,' ').replace(/\s+-\s+\d+\s*(?:logements?|lgts?|lots?|lgt)\b.*$/i,' ').replace(/\b(\d+)\s+(?:a|à)\s+(\d+)\b/gi,'$1-$2'))
+    .replace(/\b(\d+) (\d+)\b/g,'$1-$2').trim();
+}
 export const SFP_MODES={exact:'même nom',core:'même identifiant',letter:'chiffre ↔ lettre',unique:'bâtiment unique',manual:'correction manuelle',none:'non retenu',sf:'bâtiment Salesforce'};
 
 // sfNames : bâtiments Salesforce ; detected : noms lus dans les documents ; manual : {nom: bâtiment Salesforce | '' (non retenu)}.
@@ -37,7 +43,13 @@ export function sfPerimeterMap(sfNames,detected,manual={}){
       const h2=alt?cores.filter(c=>c.core===alt):[];
       if(h2.length===1){ map[raw]=h2[0].s; modes[raw]='letter'; continue; }
     }
+    // v2.35.0 — même bâtiment, nom plus ou moins détaillé : « BASSON I » ↔ « BASSON I - 40 LGTS », « LOGEMENT 5 » ↔
+    // « LOGEMENT 5 - 1 LOT (T3) », « BEG-3-7 » ↔ « BEG-3 A 7 », « EHPAD » ↔ « EHPAD SAINTE-MONIQUE RENOVE » (début de nom, un seul candidat).
+    const pk=sfp_key(d); const pre=pk.length>=3?S.filter(s=>{ const q=sfp_key(s); return q&&(q===pk||q.startsWith(pk+' ')||pk.startsWith(q+' ')); }):[];
+    if(pre.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=pre[0]; modes[raw]='prefix'; continue; }
     map[raw]=null; modes[raw]='none';
   }
+  // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.
+  if(S.length===1){ for(const raw of Object.keys(map)) if(map[raw]===null&&modes[raw]==='none'&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ const k=sfp_key(canonicalBuilding(raw)); if(/^(?:n ?)?(?:[a-z]|\d{1,2}|bat|batiment|ensemble|projet)$/.test(k)){ map[raw]=S[0]; modes[raw]='unique'; } } }
   return {sf:S,map,modes};
 }

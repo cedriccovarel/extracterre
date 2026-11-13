@@ -1470,6 +1470,13 @@ Validé sur un projet réel complet (XML RSET + 4 PDF) : les valeurs extraites d
 - Tic/TicRef : lecture par paire sur les tableaux CE1/CE2 afin d’ignorer les numéros de groupe (ex. 9).
 - Patch RT Existant CYPECAD renforcé pour limiter les vecteurs énergie hors contexte.
 
+## v2.35.0 — fiabilité (suite)
+- Rapprochement des bâtiments Salesforce ↔ documents : 61 bâtiments Salesforce sur 212 n'étaient rapprochés d'aucun bâtiment des documents (valeurs lues mais écartées) ; 14 aujourd'hui. Nom plus ou moins détaillé (« BASSON I » ↔ « BASSON I - 40 LGTS », « BEG-3-7 » ↔ « BEG-3 A 7 », « EHPAD » ↔ « EHPAD SAINTE-MONIQUE RENOVE »), et un seul bâtiment Salesforce pour les noms courts (« 1 », « N°1 »). Les listes (« 6 ET 7 ») ne sont jamais rattachées.
+- Fiches Salesforce : « DH conforme », « RSEE- RSET du 14/11/2025 », « Note de calcul… », « BAT » seul ne créent plus de faux bâtiments.
+- Occultations : le type précis lu dans le CCTP (« Volet roulant ») l'emporte sur la catégorie RSET (« Volet avec gestion manuelle »).
+- Banc : valeurs Salesforce retrouvées 61,7 % → 79,4 % ; valeurs justes 2 241 → 2 910 ; note de fiabilité toujours vérifiée (Sûre 95,5 %, Probable 91,4 %), deux fois plus de valeurs « Probable ».
+- Banc : mesure du potentiel (bonne valeur lue mais non retenue), lectures candidates calibrées, recoupement entre documents évalué en validation croisée (gain encore faible : non activé dans l'appli). Version d'étude par date du fichier Box testée : gain nul, désactivée en attendant la date de transmission à l'évaluateur.
+
 ## v2.34.0 — fiabilité des données
 - Banc de vérité Salesforce (tools/qualite/banc-salesforce.mjs) : les valeurs Salesforce, vérifiées par les évaluateurs et ayant servi à la certification, servent de référence. Sur les 219 opérations communes (export « Opérations Toutes » × import massif) : 67,8 % de valeurs justes parmi celles lues dans les documents, 61,6 % de couverture. Rapports par champ, méthode de lecture et type de document dans ~/ExtracTerre-import/qualite/ (jamais versionnés).
 - Note de fiabilité de chaque valeur : Certifiée (Salesforce) · Sûre (lecture mesurée juste ≥ 95 %) · Probable (≥ 85 %) · À vérifier (non mesurée, peu fiable, ou contredite par un autre document, ex. deux versions d'étude). Mesurée par méthode de lecture ET par champ (data/fiabilite-calibration.json, statistiques seulement). Validation croisée : Sûre 95,7 % justes, Probable 91,5 %, À vérifier 64 %.

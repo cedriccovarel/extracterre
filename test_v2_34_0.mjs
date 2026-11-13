@@ -55,5 +55,5 @@ assert.match(app,/reliability:p\.result\?reliabilityTable\(p\.result\):\{\}/);
 assert.match(exp,/'Fiabilité par bâtiment'/); assert.match(exp,/'Fiabilité','Source'/);
 const cal=fs.readFileSync('data/fiabilite-calibration.json','utf8'); assert.ok(JSON.parse(cal).pairs); assert.ok(!/\b000\d{5}\b/.test(cal),'aucun numéro de contrat dans la calibration');
 assert.ok(fs.existsSync('tools/qualite/banc-salesforce.mjs'));
-assert.equal(fs.readFileSync('VERSION','utf8').trim(),'2.34.0');
+assert.match(fs.readFileSync('VERSION','utf8').trim(),/^2\.\d+\.\d+$/);
 console.log('test_v2_34_0 ok');

@@ -81,7 +81,7 @@ export function reliabilityOf(o,{calib=null,field=''}={}){
   if(m==='manual:free-paste'||Q_SF_SRC.test(o.fileName||'')) return 'certifiee';
   if(/^geocode:/.test(m)) return m==='geocode:ign'?'sure':'averifier';
   if(/^manual:/.test(m)||o.docType==='Correction manuelle') return 'sure'; // saisie ou validation de l'utilisateur
-  const acc=methodAccuracy(calib,m,f);
+  const acc=(o.agreeFiles>=2&&methodAccuracy(calib,`accord${Math.min(3,o.agreeFiles)}`,f))||methodAccuracy(calib,m,f);
   if(acc) return acc.rate>=CALIB_SURE?'sure':acc.rate>=CALIB_PROBABLE?'probable':'averifier';
   return 'averifier';
 }
@@ -116,4 +116,61 @@ export function reliabilityCounts(table){
   const c={certifiee:0,sure:0,probable:0,averifier:0};
   for(const m of Object.values(table||{})) for(const k of Object.values(m)) if(c[k]!==undefined) c[k]++;
   return c;
+}
+
+// ---------- v2.35.0 — recoupement entre documents ----------
+// Pour chaque bâtiment et chaque champ, toutes les lectures des documents (retenues ou non) sont regroupées par valeur
+// (arrondi près, ou même catégorie). Score d'un groupe : somme, par fichier distinct, de la fiabilité mesurée de sa
+// meilleure lecture (log-cote). Le groupe le mieux soutenu remplace la valeur retenue quand elle n'en fait pas partie,
+// et complète un champ vide s'il est assez soutenu. Jamais sur une valeur Salesforce, saisie ou validée.
+const Q_SKIP=/^(?:manual:|geocode:|derive:|coherence:)/;
+const q_logit=p=>{ const x=Math.min(0.99,Math.max(0.5,p)); return Math.log(x/(1-x)); };
+function q_groupKey(field,v){
+  if(CAT_FIELDS[field]){ const c=categoriesOf(field,v); if(c&&c.size) return 'c:'+[...c].sort().join('+'); }
+  const n=q_number(v); if(n!==null) return null; // nombres : regroupés par proximité
+  return 't:'+q_norm(v);
+}
+// Fiabilité d'une lecture CANDIDATE (retenue ou non), mesurée par le banc : calib.cands['méthode|champ'].
+function candAccuracy(calib,method,field){
+  const m=calib?.cands?.[`${method}|${field}`]||calib?.cands?.[method]; if(!m) return null; const n=(m.juste||0)+(m.faux||0);
+  return n>=8?(m.juste||0)/n:null;
+}
+// Probabilité qu'une valeur soit juste : au moins une de ses sources (fichiers distincts) est juste (« ou » bruité).
+const q_noisyOr=ws=>1-ws.reduce((a,w)=>a*(1-Math.min(0.995,Math.max(0,w))),1);
+export function recoupement(result,{calib=CALIB,prior=0.3,margin=0.15,fillMin=0.85,newestOnly=true}={}){
+  if(!result?.rows) return {replaced:0,filled:0};
+  const detailed=result.detailed||[], finals=result.finals||[]; let replaced=0, filled=0;
+  const weight=o=>candAccuracy(calib,String(o.method||''),o.field)??prior;
+  for(const row of result.rows){ const b=row.building;
+    const byField=new Map();
+    for(const d of detailed){ if(!d||!FIELD_MAP[d.field]||d.field==='building'||Q_SKIP.test(String(d.method||''))||d.userValidated||d.value===undefined||d.value===null||d.value==='') continue;
+      if(!(d.building===b||d.originalBuilding===b||d.building==='Bâtiment unique')) continue;
+      (byField.get(d.field)||byField.set(d.field,[]).get(d.field)).push(d); }
+    for(const [field,cands0] of byField){
+      const cur=finals.find(o=>o.field===field&&(o.building===b||o.building==='Bâtiment unique'));
+      if(cur&&(cur.userValidated||/^manual:/.test(String(cur.method||''))||Q_SF_SRC.test(cur.fileName||''))) continue;
+      let cands=cands0;
+      if(newestOnly){ const dated=cands.filter(c=>c.versionFromFile&&Date.parse(c.studyDate)); if(dated.length){ const top=Math.max(...dated.map(c=>Date.parse(c.studyDate)));
+        cands=cands.filter(c=>!(c.versionFromFile&&Date.parse(c.studyDate))||Date.parse(c.studyDate)>=top-36e5); } }
+      const groups=[];
+      for(const c of cands){ const k=q_groupKey(field,c.value);
+        let g=k?groups.find(x=>x.k===k):groups.find(x=>x.k===null&&sameValue(field,x.rep.value,c.value));
+        if(!g){ g={k,rep:c,files:new Map()}; groups.push(g); }
+        const w=weight(c), f=c.fileName||c.docId||'?'; if(!g.files.has(f)||g.files.get(f)<w) g.files.set(f,w); if(w>weight(g.rep)) g.rep=c; }
+      if(!groups.length) continue;
+      for(const g of groups) g.p=q_noisyOr([...g.files.values()]);
+      groups.sort((x,y)=>y.p-x.p||y.files.size-x.files.size);
+      const best=groups[0];
+      const has=row[field]!==undefined&&row[field]!==null&&row[field]!=='';
+      const curG=has?groups.find(g=>g.k?g.k===q_groupKey(field,row[field]):sameValue(field,g.rep.value,row[field])):null;
+      if(curG===best){ if(cur){ cur.agreeFiles=best.files.size; cur.agreeP=best.p; } continue; }
+      if(has&&!(best.p>=(curG?.p||0)+margin)) { if(cur&&curG){ cur.agreeFiles=curG.files.size; cur.agreeP=curG.p; } continue; }
+      if(!has&&best.p<fillMin) continue;
+      const rep=best.rep, o={...rep,building:b,status:'retenu',agreeFiles:best.files.size,agreeP:best.p,recoupe:true,
+        provenanceNote:`Recoupement : ${best.files.size} document(s) concordant(s)${has?` ; remplace « ${row[field]} »`:''}.`};
+      const idx=cur?finals.indexOf(cur):-1; if(idx>=0) finals.splice(idx,1); finals.push(o); row[field]=rep.value;
+      if(has) replaced++; else filled++;
+    }
+  }
+  return {replaced,filled};
 }

@@ -14,5 +14,5 @@ assert.equal(BLD_READ,2);
 const eng=fs.readFileSync('js/engine.js','utf8');
 assert.match(eng,/if\(!d\.bldRead\)\{ d\.bldRead=1;/); // l'ancien filtre ne repasse pas sur les lectures déjà nettoyées
 assert.match(eng,/if\(\(Number\(d\.bldRead\)\|\|0\)<BLD_READ\)\{ d\.bldRead=BLD_READ;/);
-assert.match(fs.readFileSync('VERSION','utf8').trim(),/^2\.3[34]\./);
+assert.match(fs.readFileSync('VERSION','utf8').trim(),/^2\.\d+\.\d+$/);
 console.log('test_v2_33_2 ok');

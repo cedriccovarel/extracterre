@@ -220,6 +220,9 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         const dhRows=pool.filter(o=>o.method==='rset:dh-row'||/^climawin:dh/.test(o.method||'')); const numeric=(dhRows.length?dhRows:pool).filter(o=>typeof o.value==='number'); if(numeric.length) chosen=numeric.sort((a,b)=>b.value-a.value)[0]; }
       // v2.3.16 — valeur compatible plus précise : « VMC simple flux » (fiche RSET) est précisée par « VMC Hygro A / B » (notice).
       if((f.key==='ventilation'||f.key==='ventilation_before')&&/^VMC simple flux$/i.test(String(chosen.value))){ const fine=pool.find(o=>/^VMC Hygro [AB]$/i.test(String(o.value))); if(fine) chosen=fine; }
+      // v2.35.0 — occultations : « Volet avec gestion manuelle » (catégorie RSET) précisé par le CCTP (« Volet roulant »,
+      // « Volet battant ») quand une lecture le dit (banc Salesforce : l'évaluateur retient le type précis).
+      if(f.key==='window_shading'&&/^volet(?:s)?(?:\s+avec\s+gestion\s+(?:manuelle|motoris[ée]e|automatique))?$/i.test(String(chosen.value).trim())){ const fine=pool.find(o=>/^volets?\s+(?:roulants?|battants?|coulissants?)\b/i.test(String(o.value))); if(fine) chosen=fine; }
       { const {_globalCandidate,...clean}=chosen; row[f.key]=chosen.value; finals.push({...clean,status:'retenu',operation,...(_globalCandidate?{appliedFromUnattributed:true}:{})}); }
     }
     if(row.operation===undefined) row.operation=operation;
@@ -374,14 +377,26 @@ export function catchUpDocument(d,buildingOverrides={}){
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
+// v2.35.0 — version d'étude de référence = la dernière transmise à l'évaluateur (règle métier) : date du fichier déposé
+// (Box), pas la date écrite dans l'étude. À rang de source égal, la lecture du fichier le plus récent l'emporte, et le DH
+// le plus défavorable se cherche dans cette version. ENGINE_OPTIONS.versionCutoff (ms) : fichiers postérieurs à
+// l'évaluation écartés de ce choix quand la date d'évaluation est connue.
+export const ENGINE_OPTIONS={versionByFileDate:false,versionCutoff:null}; // banc : la date du fichier Box ne désigne pas la version transmise (gain nul) — en attente de la date d’évaluation
+const VERSION_TYPES=new Set([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.RSENV,DOC_TYPES.CARBON]);
+function fileVersionDate(d){
+  const t=Number(d?.lastModified); if(!(t>0)) return null;
+  const cut=Number(ENGINE_OPTIONS.versionCutoff); if(cut>0&&t>cut+864e5) return null;
+  return new Date(t).toISOString();
+}
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
     // v2.10.1 — rattrapage : un document analysé avant cette version reçoit l'adresse du bloc « Opération » de son RSET.
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
-    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(c); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(o); newlyParsedCount++;
+    const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
+    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

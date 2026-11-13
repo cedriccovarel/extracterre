@@ -6,7 +6,7 @@ import {classifyDocument} from './js/classifier.js';
 import {parseDocument} from './js/parsers.js';
 import {normalizeText} from './js/utils.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const ok=(v,m)=>{ assert.ok(v,m); n++; };
-eq(APP_VERSION,'2.34.0','version');
+eq(APP_VERSION,'2.35.0','version');
 
 // En-tête « CCTP 04 - Lot … » répété : CCTP, malgré « existant », « contrat », « DPE », « RE2020 » dans les clauses.
 const page='CCTP 04 - Lot Etancheite VILLE FICTIVE - Résidence test\nRénovation thermique du bâtiment existant. Le contrat de l’entreprise. DPE après travaux. RE2020.\n';
