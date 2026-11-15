@@ -2,7 +2,7 @@ import {FIELD_DEFS,FIELD_MAP,FIELD_TAGS,REQUIRED_RSET_FIELDS,REQUIRED_RE2020_RSE
 import {sourceTier,sourceRank} from './routing.js';
 import {formatValue,normLower,normalizeText,scoreTokens,unique,numbersIn,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
 import {BLD_READ,DH_READ,repairBuildingName,operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
-import {parseDocument,parseRsetOperationAddress} from './parsers.js';
+import {parseDocument,parseRsetOperationAddress,coolingContextKept} from './parsers.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags} from './tags.js';
 import {classifyDocument} from './classifier.js';
@@ -390,6 +390,7 @@ export function catchUpDocument(d,buildingOverrides={}){
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
+  if(o?.field==='cooling'&&o.value!=='Aucun'&&o.method==='systems:cooling-context'&&!o.userValidated&&!coolingContextKept(o.value,o.excerpt)) return null; // v2.36.6 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 // v2.35.0 — version d'étude de référence = la dernière transmise à l'évaluateur (règle métier) : date du fichier déposé
 // (Box), pas la date écrite dans l'étude. À rang de source égal, la lecture du fichier le plus récent l'emporte, et le DH

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.5 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.6 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.5';
+const APP_VERSION='2.36.6';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -7439,7 +7439,7 @@ function parseSystems(doc){
       // v2.23.0 — intitulés de lot, indicateurs (besoins, consommations, IC, points, kWhEP), définition du DH (« … l'on retire le
       // système de climatisation. Le DH max est de 1250 °C.h »), composants ACV : pas une description du système installé.
       if(/\blot\s*(?:n\W{0,2}\s*\d+\s*)?:|chauffage\s*[-–,\/]+\s*ventilation\s*[-–,\/]+\s*(?:et\s+)?climatisation|(?:en|de|du)\s+chauffage\s+et\s+(?:de\s+)?climatisation|besoins?\s+(?:de\s+|en\s+)?(?:climatisation|refroidissement|froid)|consommations?\s+(?:de\s+|en\s+)?(?:climatisation|refroidissement)|\bic\s+climatisation|kwh\s*ep|kwh\s*\/\s*m|\(\s*\d+(?:[.,]\d+)?\s*pts|reprise\s+climatisation|relance\s+en\s+(?:climatisation|refroidissement)|\bplomberie\b|d.?etudes\s+de\s+climatisation|chauffage,?\s+(?:de\s+l.?)?ecs\s+et\s+(?:de\s+)?climatisation|chauffage\s+climatisation\s+eau\s+chaude|\blorsque\b|^\W*(?:[\d.]+\W*)?(?:climatisation|refroidissement|rafraichissement)\W*(?:\||$)|\bdh\s*max\b|l.?on\s+retire|donnee\s+environnementale|composant\s+pce|contributors|sous-lot|mise\s+a\s+disposition\s+d.?un\s+kwh/i.test(coolLow)) cool=null;
-      if(envInventoryNoise||/degres?[- ]?heures?|si\s+l.?on\s+retire|groupes?\s+climatises?,|chauffage,?\s+ventilation,?\s+(?:et\s+)?climatisation|\bcvcd?\b/i.test(coolLow)||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|espace\s+non\s+refroidi|pas\s+de\s+climatisation(?:\s+active)?|absence\s+de\s+climatisation|sans\s+climatisation|\bclimatisation\s*:?\s*non\b|\brefroidissement\s*:?\s*non\b/i.test(coolLow)&&!/\bnon\s+(?:climatis|refroidi)\w*\s*(?:,|et|\/)\s*(?:\w+\s+)?climatis/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
+      if(envInventoryNoise||/degres?[- ]?heures?|si\s+l.?on\s+retire|groupes?\s+climatises?,|chauffage,?\s+ventilation,?\s+(?:et\s+)?climatisation|\bcvcd?\b/i.test(coolLow)||/(?:inconnu|non\s+specifie|non\s+spécifié|sans\s+objet|non\s+concerne|non\s+concerné)/i.test(coolLow)) cool=null; if(/sans\s+systeme\s+de\s+refroidissement|sans\s+système\s+de\s+refroidissement|zone\s+non\s+refroidie|espace\s+non\s+refroidi|pas\s+de\s+climatisation(?:\s+active)?|absence\s+de\s+climatisation|sans\s+climatisation|\bclimatisation\s*:?\s*non\b|\brefroidissement\s*:?\s*non\b/i.test(coolLow)&&!/\bnon\s+(?:climatis|refroidi)\w*\s*(?:,|et|\/)\s*(?:\w+\s+)?climatis/i.test(coolLow)) cool='Aucun'; if(/chauffe[- ]eau\s+thermodynamique|\bcet\b/i.test(coolLow) && /\bsplit\b/i.test(coolLow) && !/climatisation|refroidissement\s+actif|rafraichissement\s+actif/i.test(coolLow)) cool=null; if(cool&&cool!=='Aucun'&&!coolingContextKept(cool,coolCtx)) cool=null; const coolPhase=resolvedPhase(coolCtx); if(cool && coolPhase!=='before') push(out,occ(doc,page,line,'cooling',cool,'systems:cooling-context',coolPhase==='after'?0.95:0.93,'',{excerpt:coolCtx.slice(0,420)})); }
 
     let enr=findFirstMatch(base,ENR_TYPES), enrCtx=base; if(!enr && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(baseLow)){ enrCtx=normalizeText(`${base} | ${next}`); enr=findFirstMatch(enrCtx,ENR_TYPES); } const enrLow=normLower(enrCtx); const enrNoise=/(?:autres?\s+solutions?|exemples?|possibilit[eé]s?|recommandations?|peut\s+etre|peut\s+être|pourrait|envisager|liste\s+non\s+exhaustive)/i.test(enrLow); const enrInstalled=/(?:pr[eé]sence|installation\s+(?:photovolta|solaire|bois|biomasse|g[eé]otherm)|install[eé]e?s?|mis(?:e)?\s+en\s+place|sera\s+install[eé]|g[eé]n[eé]rateurs?\s+photovolta|panneaux?\s+(?:solaires?\s+)?photovolta|capteurs?\s+solaires?|[eé]quipements?\s+solaires?)\b/i.test(enrLow); if(enr && !enrNoise && enrInstalled && /enr|renouvel|photovolta|solaire|biomasse|geotherm|recuperation|chaleur/i.test(enrLow)){ push(out,occ(doc,page,line,'enr','Oui','enr:installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); push(out,occ(doc,page,line,'enr_type',enr,'enr:type-installed-context',0.93,'',{excerpt:enrCtx.slice(0,420)})); }
 
@@ -8406,6 +8406,21 @@ function parseDocumentCore(doc){
   return annotateSemanticHierarchy(doc,out);
 }
 
+// v2.36.6 — le mot « climatisation » seul (titre de lot, notice acoustique « chauffage ou climatisation », charte de chantier,
+// alimentation électrique, local VDI…) ne prouve pas qu'une clim équipe les logements : il faut une phrase qui la décrit installée.
+// Autres faux systèmes de froid : « Calypso Split » / « ECS sur SPLIT » (chauffe-eau thermodynamique), qualification QUALIBAT
+// « pompe à chaleur et groupe froid », fourreaux « pour climatisation future », sommaire (points de suite), « … adiabatique Absent ».
+const COOL_NOISE=/calypso|ecs\s+sur\s+split|chauffe[- ]eau|qualibat|\bfutur|en\s+attente|fourreaux|reservations?\b|\.{8,}|\b(?:absent|absente|inexistant)\b|pas\s+de\s+(?:rafraichissement|refroidissement)/;
+function coolingContextKept(value,text){
+  if(COOL_NOISE.test(normLower(String(text||'')))) return false;
+  return value!=='Climatisation active'||coolingWordAffirmed(text);
+}
+function coolingWordAffirmed(text){
+  const t=normLower(String(text||''));
+  if(/acousti|bruits?\s+d.?equipement|arretes?\s+chauffage|aerodrome|charte|local\s+(?:technique|vdi|informatique|serveur|onduleur|ascenseur|poubelles?)|\bvdi\b|caisson\s+climatiseur|eurovent|autres?\s+que\s+d.?habitation|dediee?\b|\bnon\s+climatise/.test(t)) return false;
+  return /(?:assurer\w*|se\s+fera|sera\s+(?:assuree?|realisee?|equipee?)|seront\s+(?:equipes|climatises)|equipee?s?\s+d.?(?:une?\s+)?(?:climatis|systeme\s+de\s+climatis)|climatisation\s+(?:reversible|par\s+(?:split|pac|pompe|systeme|detente|drv|vrv|unite)|des\s+(?:logements|sejours|chambres|pieces)|du\s+logement|individuelle|collective)|logements?\s+(?:sont\s+|seront\s+)?climatises|climatisation\s*:?\s*oui\b|climatisation\s+active)/.test(t);
+}
+
 /* ---- tags.js ---- */
 const PROJECT_TAG_LIBRARY = [
   {label:'Traitement / réemploi des eaux grises',category:'Eau',patterns:[/eaux?\s+grises?/i,/reutilisation\s+des?\s+eaux?\s+usees?/i,/réutilisation\s+des?\s+eaux?\s+usées?/i,/recyclage\s+des?\s+eaux?/i]},
@@ -9058,6 +9073,7 @@ function catchUpDocument(d,buildingOverrides={}){
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
+  if(o?.field==='cooling'&&o.value!=='Aucun'&&o.method==='systems:cooling-context'&&!o.userValidated&&!coolingContextKept(o.value,o.excerpt)) return null; // v2.36.6 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 // v2.35.0 — version d'étude de référence = la dernière transmise à l'évaluateur (règle métier) : date du fichier déposé
 // (Box), pas la date écrite dans l'étude. À rang de source égal, la lecture du fichier le plus récent l'emporte, et le DH

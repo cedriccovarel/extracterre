@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {applyComparisonBases} from './js/engine.js';
 import {cstbBuildingNames} from './js/rset-cstb.js';
-assert.equal(APP_VERSION,'2.36.5');
+assert.equal(APP_VERSION,'2.36.6');
 const fin=(building,field,value,method)=>({building,field,value,method,docId:'d1',fileName:'RSET fictif.pdf'});
 const res={rows:[{building:'Bâtiment A',dh_zt:420.5,dh_znt:610},{building:'Bâtiment B',dh:700},{building:'Bâtiment C',dh_zt:380,cross_ventilated:'Non'}],
   finals:[fin('Bâtiment A','dh_zt',420.5,'cstb:dh-worst-group'),fin('Bâtiment A','dh_znt',610,'cstb:dh-worst-group'),fin('Bâtiment B','dh',700,'generic:regulatory-label'),fin('Bâtiment C','dh_zt',380,'cstb:dh-worst-group'),fin('Bâtiment C','cross_ventilated','Non','saisie')]};
