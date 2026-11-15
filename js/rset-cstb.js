@@ -99,7 +99,11 @@ export function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_dhRow(m[2])||(()=>{ const v=cs_numbers(m[2]); return v.length===5?v:null; })(); if(!n) continue; /* OCR : heures mal lues → découpage simple */ const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
       // colonne « Trav. » du tableau : Oui = zone traversante — sauf si le nom de la zone dit le contraire
       // (« Zone 01 / NON Oui … » : groupe « NON TRAVERSANT » marqué Oui par le logiciel).
-      const name=x.t.slice(0,m.index), z=/non[\s-]*trav|\bnon\s*$/i.test(name)?'dh_znt':/^oui$/i.test(m[1])?'dh_zt':'dh_znt';
+      // À l'inverse, un groupe nommé « traversant » (sans « non » dans tout son nom, lignes voisines comprises)
+      // marqué Non est une zone traversante (ex. « Batiment A traversant / Non … Traversant 1 »).
+      const name=x.t.slice(0,m.index), nonName=/non[\s_-]*trav|\bnon\s*$/i, xi=ls.indexOf(x);
+      const around=[ls[xi-1],ls[xi+1]].filter(y=>y&&!/^Zone(?:\(s\))?\s+(?:non\s+)?traversante|Conforme\b/i.test(y.t)).map(y=>y.t).join(' ');
+      const z=nonName.test(name)?'dh_znt':/^oui$/i.test(m[1])?'dh_zt':(/travers/i.test(name+' '+around)&&!/\bnon\b|non[\s_-]*trav/i.test(around))?'dh_zt':'dh_znt';
       if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
     for(const [z,w] of Object.entries(zones)) emit(w.x,z,w.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:`Groupe le plus défavorable des zones ${z==='dh_zt'?'traversantes':'non traversantes'} (tableau DH).`});
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});

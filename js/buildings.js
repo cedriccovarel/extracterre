@@ -127,6 +127,7 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
 // v2.33.2 — bâtiments fantômes lus sur des lignes de tableau ou des en-têtes : « Bâtiment 3117.92 » (surface à côté du mot),
 // « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
 // Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
+export const DH_READ=1; // v2.36.4 — version des règles de lecture DH (rattrapage, cf. engine.catchUpDocument)
 export const BLD_READ=3; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
 const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
 export function isNumericGhostBuilding(name){

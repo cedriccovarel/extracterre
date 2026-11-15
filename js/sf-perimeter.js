@@ -14,6 +14,12 @@ function sfp_key(name){
   return buildingMergeKey(String(name||'').replace(/\([^)]*\)/g,' ').replace(/\s+-\s+\d+\s*(?:logements?|lgts?|lots?|lgt)\b.*$/i,' ').replace(/\b(\d+)\s+(?:a|à)\s+(\d+)\b/gi,'$1-$2'))
     .replace(/\b(\d+) (\d+)\b/g,'$1-$2').trim();
 }
+// Clé souple : « I »/« l » collé à un nombre = 1, pluriels et lettres doublées neutralisés, séparateurs de nombres ignorés.
+function sfp_loose(name){
+  const t=sfp_key(name).replace(/-/g,' ').split(' ').filter(w=>w&&!/^(?:batiment|bat)$/.test(w));
+  return t.map((w,i)=>/^[il]$/.test(w)&&(/^\d+$/.test(t[i+1]||'')||/^\d+$/.test(t[i-1]||''))?'1':w)
+    .map(w=>/^\d+$/.test(w)?String(parseInt(w,10)):w.length>=4?w.replace(/([a-z])\1+/g,'$1').replace(/(?<=..)(?:e?s|x)$/,''):w).join(' ');
+}
 export const SFP_MODES={exact:'même nom',core:'même identifiant',letter:'chiffre ↔ lettre',unique:'bâtiment unique',manual:'correction manuelle',none:'non retenu',sf:'bâtiment Salesforce'};
 
 // sfNames : bâtiments Salesforce ; detected : noms lus dans les documents ; manual : {nom: bâtiment Salesforce | '' (non retenu)}.
@@ -47,6 +53,10 @@ export function sfPerimeterMap(sfNames,detected,manual={}){
     // « LOGEMENT 5 - 1 LOT (T3) », « BEG-3-7 » ↔ « BEG-3 A 7 », « EHPAD » ↔ « EHPAD SAINTE-MONIQUE RENOVE » (début de nom, un seul candidat).
     const pk=sfp_key(d); const pre=pk.length>=3?S.filter(s=>{ const q=sfp_key(s); return q&&(q===pk||q.startsWith(pk+' ')||pk.startsWith(q+' ')); }):[];
     if(pre.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=pre[0]; modes[raw]='prefix'; continue; }
+    // v2.36.4 — écritures voisines, un seul candidat : « MAISON I-01 » ↔ « MAISON 1-01 », « MAISONS 01 & 02 » ↔ « MAISON 01&02 »,
+    // « COLECTIF A » ↔ « COLLECTIF A », « ACCESSION » ↔ « C - BATIMENT ACCESSION » (code devant le nom).
+    const lk=sfp_loose(d); const loose=lk.length>=4?S.filter(s=>{ const q=sfp_loose(s); return q===lk||(/^[a-z]{1,2}\d{0,2} /.test(q)&&q.slice(q.indexOf(' ')+1)===lk&&lk.length>=5); }):[];
+    if(loose.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=loose[0]; modes[raw]='prefix'; continue; }
     map[raw]=null; modes[raw]='none';
   }
   // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.

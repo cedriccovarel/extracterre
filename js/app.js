@@ -4,7 +4,7 @@ import {classifyForSelectedFamily} from './doc-pipeline.js';
 import {IMPORT_SPACE,ssSupported,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState,ssListRequests,ssStopRequest,ssDeleteRequest,ssRequestDone,ssContractsToLoad,ssProgressModel,ssDuration,SS_STEPS,SS_TILE_LABEL} from './suivi-sources.js';
 import {BOX_KINDS,boxSupported,boxSavedRoot,boxPickRoot,boxEnsureAccess,boxFindOperation,boxListEvaluation,boxContractKey} from './box-folder.js';
 import {readFile,readSpreadsheet,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
-import {detectBuildings} from './buildings.js';
+import {detectBuildings,DH_READ} from './buildings.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
 import {analyzeDocuments,catchUpDocument,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
 import {exportExcel,exportProjectsExcel} from './exporter.js';
@@ -3320,7 +3320,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3)||!(Number(d.dhRead)>=DH_READ))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
         catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }

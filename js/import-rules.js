@@ -334,6 +334,10 @@ export function classifyImportFile({family=null,name='',xml=null,text,appType=nu
   const ok=[[T,'contenu (1re page)'],[N,'nom du fichier'],[A,'lecture complète (appli)']].find(([t])=>compatible(t));
   if(ok&&fam) return {type:ok[0],method:ok[1],status:'à traiter',doubt:'',note:'',steps};
   if(!fam){ const any=[[T,'contenu (1re page)'],[N,'nom du fichier'],[A,'lecture complète (appli)']].find(([t])=>t); return any?{type:any[0],method:any[1],status:'à traiter',doubt:'',note:'',steps}:{type:unknownType,method:'aucune',status:'à vérifier',doubt:'aucun indice de type (nom ou contenu)',note:'',steps}; }
+  // v2.36.4 — plan reconnu à la lecture complète : c'est un plan, quel que soit le sous-dossier (mesuré dans Ashton).
+  if(A&&A===(cfg.types?.plan||'Plan architectural')&&(!T||T===A)) return {type:A,method:'lecture complète (appli)',status:'à traiter',doubt:'',note:`plan rangé dans « ${fam.label} »`,steps};
+  // v2.36.4 — lecture complète de l'appli seule (1re page muette, nom muet) : son type est retenu, avec une note.
+  if(A&&!T&&!N) return {type:A,method:'lecture complète (appli)',status:'à traiter',doubt:'',note:`rangé dans « ${fam.label} » mais lu comme ${A}`,steps};
   // 2. Le contenu (1re page et document entier) désigne un autre type : document rangé ailleurs, accepté avec une note.
   const votes=[T,N,A].filter(Boolean), major=votes.find(t=>votes.filter(x=>x===t).length>=2);
   if(major) return {type:major,method:T===major?'contenu (1re page)':'lecture complète (appli)',status:'à traiter',doubt:'',note:`rangé dans « ${fam.label} » mais lu comme ${major}`,steps};

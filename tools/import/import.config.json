@@ -231,7 +231,8 @@
     "rsee": "RSEE RE2020",
     "dpe": "DPE",
     "rtex": "RT Existant",
-    "thermal": "Étude thermique"
+    "thermal": "Étude thermique",
+    "plan": "Plan architectural"
   },
   "_aide_extraction": "incompleteBelow : en dessous de cette part de champs attendus trouvés, le document passe « à vérifier ». parallelisme : documents lus en même temps.",
   "incompleteBelow": 0.5,

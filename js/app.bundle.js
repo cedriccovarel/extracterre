@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.4 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.3';
+const APP_VERSION='2.36.4';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -1340,6 +1340,7 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
 // v2.33.2 — bâtiments fantômes lus sur des lignes de tableau ou des en-têtes : « Bâtiment 3117.92 » (surface à côté du mot),
 // « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
 // Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
+const DH_READ=1; // v2.36.4 — version des règles de lecture DH (rattrapage, cf. engine.catchUpDocument)
 const BLD_READ=3; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
 const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
 function isNumericGhostBuilding(name){
@@ -2168,7 +2169,11 @@ function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     const dhStart=block.findIndex(l=>/^Exigence\s+de\s+resultat\s*:\s*Degres-?Heures/i.test(l.t));
     if(dhStart>=0){
       let worst=null;
-      for(const l of block.slice(dhStart+1)){ const m=l.t.match(new RegExp(`^(.+?)\\s+${pl_N}\\s*°C\\.h\\s+${pl_N}\\s*°C\\.h\\s*$`,'i')); if(!m) { if(worst&&/^Exigences\s+de\s+moyens/i.test(l.t)) break; continue; } const v=pl_num(m[2]),mx=pl_num(m[3]); if(v!==null&&(!worst||v>worst.v)) worst={x:l,v,mx,group:m[1]}; }
+      for(const l of block.slice(dhStart+1)){ const m=l.t.match(new RegExp(`^(.+?)\\s+${pl_N}\\s*°C\\.h\\s+${pl_N}\\s*°C\\.h\\s*$`,'i')); if(!m) { if(worst&&/^Exigences\s+de\s+moyens/i.test(l.t)) break; continue; } let v=pl_num(m[2]),mx=pl_num(m[3]), group=m[1];
+        // v2.36.4 — « Groupe 1 483,4 °C.h » : le numéro du groupe n'est pas un millier (1 483,4 > DH max) → 483,4.
+        const s2=l.t.match(new RegExp(`^(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s*°C\\.h\\s+${pl_N}\\s*°C\\.h\\s*$`,'i'));
+        if(s2&&mx!==null&&v>mx&&pl_num(s2[2])<=mx&&/(?:groupe|zone|lot|logements?|b[aâ]t(?:iment)?|n°)\s+\d{1,3}$/i.test(s2[1])){ v=pl_num(s2[2]); group=s2[1]; }
+        if(v!==null&&(!worst||v>worst.v)) worst={x:l,v,mx,group}; }
       if(worst){ const note=`Groupe le plus défavorable : ${worst.group}.`; emit(worst.x,b,'dh',worst.v,'dh-worst-group',0.99,'°C.h',{provenanceNote:note}); emit(worst.x,b,'dh_max',worst.mx,'dh-max-worst-group',0.99,'°C.h',{provenanceNote:note}); }
     }
   });
@@ -2318,7 +2323,11 @@ function parseCstbRseeFiche(doc,occ,canonical=(s)=>s){
     for(const x of ls){ const m=x.t.match(/(?:^|\s)(Oui|Non)\s+([\d ,.]+?)\s+(?:Non\s+)?Conforme\b/i); if(!m) continue; const n=cs_dhRow(m[2])||(()=>{ const v=cs_numbers(m[2]); return v.length===5?v:null; })(); if(!n) continue; /* OCR : heures mal lues → découpage simple */ const dh=n[1]; if(!(dh>=0&&dh<=2000)) continue; if(!worst||dh>worst.dh) worst={x,dh};
       // colonne « Trav. » du tableau : Oui = zone traversante — sauf si le nom de la zone dit le contraire
       // (« Zone 01 / NON Oui … » : groupe « NON TRAVERSANT » marqué Oui par le logiciel).
-      const name=x.t.slice(0,m.index), z=/non[\s-]*trav|\bnon\s*$/i.test(name)?'dh_znt':/^oui$/i.test(m[1])?'dh_zt':'dh_znt';
+      // À l'inverse, un groupe nommé « traversant » (sans « non » dans tout son nom, lignes voisines comprises)
+      // marqué Non est une zone traversante (ex. « Batiment A traversant / Non … Traversant 1 »).
+      const name=x.t.slice(0,m.index), nonName=/non[\s_-]*trav|\bnon\s*$/i, xi=ls.indexOf(x);
+      const around=[ls[xi-1],ls[xi+1]].filter(y=>y&&!/^Zone(?:\(s\))?\s+(?:non\s+)?traversante|Conforme\b/i.test(y.t)).map(y=>y.t).join(' ');
+      const z=nonName.test(name)?'dh_znt':/^oui$/i.test(m[1])?'dh_zt':(/travers/i.test(name+' '+around)&&!/\bnon\b|non[\s_-]*trav/i.test(around))?'dh_zt':'dh_znt';
       if(!zones[z]||dh>zones[z].dh) zones[z]={x,dh}; }
     for(const [z,w] of Object.entries(zones)) emit(w.x,z,w.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:`Groupe le plus défavorable des zones ${z==='dh_zt'?'traversantes':'non traversantes'} (tableau DH).`});
     if(worst){ emit(worst.x,'dh',worst.dh,'dh-worst-group',0.98,'°C.h',{ocrOk:true,provenanceNote:'Groupe le plus défavorable du tableau DH (valeurs contrôlées 0–2000 °C.h).'});
@@ -9040,7 +9049,13 @@ function catchUpDocument(d,buildingOverrides={}){
   const FAN_READ=2, fanDone=()=>Number(d.fanRead)>=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; }
+  // v2.36.4 — DH des tableaux CSTB (groupe nommé « traversant » marqué Non) et des sorties Pléiades (« Groupe 1 483,4 °C.h ») :
+  // les lectures DH de ces documents sont refaites une fois ; une valeur validée par l'utilisateur ne bouge pas.
+  if((Number(d.dhRead)||0)<DH_READ&&Array.isArray(d.cachedOccurrences)){ d.dhRead=DH_READ;
+    const dhOcc=o=>o&&/^dh(?:_zt|_znt|_max)?$/.test(o.field)&&!o.userValidated;
+    if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh/.test(String(o.method||'')))&&d.read?.pages){
+      const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
@@ -9063,7 +9078,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -9118,8 +9133,10 @@ function applyComparisonBases(result){
     for(const [dhf,f,lab] of [['dh_zt','cross_ventilated','traversantes'],['dh_znt','non_cross_ventilated','non traversantes']]){
       const s=fin(dhf); if(!empty(dhf)&&s&&!String(s.method||'').startsWith('derive:')) derive(f,'Oui',dhf,`DH des zones ${lab} lu dans le document.`); }
     // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.1).
-    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
-      derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
+    // v2.36.4 — maison individuelle (« MAISONS », « VILLA 2 »…) : DH ZT, comme pour les fiches Salesforce (v2.22.3).
+    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const house=/^(?:B[aâ]timent\s+)?(?:maisons?|villas?|pavillons?)\b/i.test(String(row.building||''))&&!yes('non_cross_ventilated');
+      const onlyZt=house||yes('cross_ventilated')&&!yes('non_cross_ventilated');
+      derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',house?'Maison individuelle : DH du bâtiment reporté en DH ZT (comme les fiches Salesforce).':onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
     for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
       if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }
@@ -9777,7 +9794,7 @@ function prepareReadDocument(d){
   if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
   try{
     d.cachedOccurrences=d.read?.plan?[]:parseDocument(d); d.analysisCachedAt=Date.now();
-    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
+    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
     d.read=compactReadForRetention(d.read);
   }catch(parseErr){ d.cachedOccurrences=null; d.parseError=parseErr?.message||String(parseErr); }
   return d;
@@ -10285,6 +10302,12 @@ function sfp_key(name){
   return buildingMergeKey(String(name||'').replace(/\([^)]*\)/g,' ').replace(/\s+-\s+\d+\s*(?:logements?|lgts?|lots?|lgt)\b.*$/i,' ').replace(/\b(\d+)\s+(?:a|à)\s+(\d+)\b/gi,'$1-$2'))
     .replace(/\b(\d+) (\d+)\b/g,'$1-$2').trim();
 }
+// Clé souple : « I »/« l » collé à un nombre = 1, pluriels et lettres doublées neutralisés, séparateurs de nombres ignorés.
+function sfp_loose(name){
+  const t=sfp_key(name).replace(/-/g,' ').split(' ').filter(w=>w&&!/^(?:batiment|bat)$/.test(w));
+  return t.map((w,i)=>/^[il]$/.test(w)&&(/^\d+$/.test(t[i+1]||'')||/^\d+$/.test(t[i-1]||''))?'1':w)
+    .map(w=>/^\d+$/.test(w)?String(parseInt(w,10)):w.length>=4?w.replace(/([a-z])\1+/g,'$1').replace(/(?<=..)(?:e?s|x)$/,''):w).join(' ');
+}
 const SFP_MODES={exact:'même nom',core:'même identifiant',letter:'chiffre ↔ lettre',unique:'bâtiment unique',manual:'correction manuelle',none:'non retenu',sf:'bâtiment Salesforce'};
 
 // sfNames : bâtiments Salesforce ; detected : noms lus dans les documents ; manual : {nom: bâtiment Salesforce | '' (non retenu)}.
@@ -10318,6 +10341,10 @@ function sfPerimeterMap(sfNames,detected,manual={}){
     // « LOGEMENT 5 - 1 LOT (T3) », « BEG-3-7 » ↔ « BEG-3 A 7 », « EHPAD » ↔ « EHPAD SAINTE-MONIQUE RENOVE » (début de nom, un seul candidat).
     const pk=sfp_key(d); const pre=pk.length>=3?S.filter(s=>{ const q=sfp_key(s); return q&&(q===pk||q.startsWith(pk+' ')||pk.startsWith(q+' ')); }):[];
     if(pre.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=pre[0]; modes[raw]='prefix'; continue; }
+    // v2.36.4 — écritures voisines, un seul candidat : « MAISON I-01 » ↔ « MAISON 1-01 », « MAISONS 01 & 02 » ↔ « MAISON 01&02 »,
+    // « COLECTIF A » ↔ « COLLECTIF A », « ACCESSION » ↔ « C - BATIMENT ACCESSION » (code devant le nom).
+    const lk=sfp_loose(d); const loose=lk.length>=4?S.filter(s=>{ const q=sfp_loose(s); return q===lk||(/^[a-z]{1,2}\d{0,2} /.test(q)&&q.slice(q.indexOf(' ')+1)===lk&&lk.length>=5); }):[];
+    if(loose.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=loose[0]; modes[raw]='prefix'; continue; }
     map[raw]=null; modes[raw]='none';
   }
   // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.
@@ -11080,6 +11107,7 @@ function serializeDocMeta(doc={}){
     dhZonesRead:!!doc.dhZonesRead,
     fanRead:Number(doc.fanRead)||0,
     bldRead:Number(doc.bldRead)||0,
+    dhRead:Number(doc.dhRead)||0,
     lowText:typeof doc.lowText==='boolean'?doc.lowText:undefined,
     climaWinInput:typeof doc.climaWinInput==='boolean'?doc.climaWinInput:undefined,
     ocrWarnings:safeJsonClone(doc.ocrWarnings,[]),
@@ -12419,6 +12447,10 @@ function classifyImportFile({family=null,name='',xml=null,text,appType=null,unkn
   const ok=[[T,'contenu (1re page)'],[N,'nom du fichier'],[A,'lecture complète (appli)']].find(([t])=>compatible(t));
   if(ok&&fam) return {type:ok[0],method:ok[1],status:'à traiter',doubt:'',note:'',steps};
   if(!fam){ const any=[[T,'contenu (1re page)'],[N,'nom du fichier'],[A,'lecture complète (appli)']].find(([t])=>t); return any?{type:any[0],method:any[1],status:'à traiter',doubt:'',note:'',steps}:{type:unknownType,method:'aucune',status:'à vérifier',doubt:'aucun indice de type (nom ou contenu)',note:'',steps}; }
+  // v2.36.4 — plan reconnu à la lecture complète : c'est un plan, quel que soit le sous-dossier (mesuré dans Ashton).
+  if(A&&A===(cfg.types?.plan||'Plan architectural')&&(!T||T===A)) return {type:A,method:'lecture complète (appli)',status:'à traiter',doubt:'',note:`plan rangé dans « ${fam.label} »`,steps};
+  // v2.36.4 — lecture complète de l'appli seule (1re page muette, nom muet) : son type est retenu, avec une note.
+  if(A&&!T&&!N) return {type:A,method:'lecture complète (appli)',status:'à traiter',doubt:'',note:`rangé dans « ${fam.label} » mais lu comme ${A}`,steps};
   // 2. Le contenu (1re page et document entier) désigne un autre type : document rangé ailleurs, accepté avec une note.
   const votes=[T,N,A].filter(Boolean), major=votes.find(t=>votes.filter(x=>x===t).length>=2);
   if(major) return {type:major,method:T===major?'contenu (1re page)':'lecture complète (appli)',status:'à traiter',doubt:'',note:`rangé dans « ${fam.label} » mais lu comme ${major}`,steps};
@@ -16022,7 +16054,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3)||!(Number(d.dhRead)>=DH_READ))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
         catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }

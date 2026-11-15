@@ -79,7 +79,11 @@ export function parsePleiadesThermalOutput(doc,occ,canonical=(s)=>s){
     const dhStart=block.findIndex(l=>/^Exigence\s+de\s+resultat\s*:\s*Degres-?Heures/i.test(l.t));
     if(dhStart>=0){
       let worst=null;
-      for(const l of block.slice(dhStart+1)){ const m=l.t.match(new RegExp(`^(.+?)\\s+${pl_N}\\s*°C\\.h\\s+${pl_N}\\s*°C\\.h\\s*$`,'i')); if(!m) { if(worst&&/^Exigences\s+de\s+moyens/i.test(l.t)) break; continue; } const v=pl_num(m[2]),mx=pl_num(m[3]); if(v!==null&&(!worst||v>worst.v)) worst={x:l,v,mx,group:m[1]}; }
+      for(const l of block.slice(dhStart+1)){ const m=l.t.match(new RegExp(`^(.+?)\\s+${pl_N}\\s*°C\\.h\\s+${pl_N}\\s*°C\\.h\\s*$`,'i')); if(!m) { if(worst&&/^Exigences\s+de\s+moyens/i.test(l.t)) break; continue; } let v=pl_num(m[2]),mx=pl_num(m[3]), group=m[1];
+        // v2.36.4 — « Groupe 1 483,4 °C.h » : le numéro du groupe n'est pas un millier (1 483,4 > DH max) → 483,4.
+        const s2=l.t.match(new RegExp(`^(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s*°C\\.h\\s+${pl_N}\\s*°C\\.h\\s*$`,'i'));
+        if(s2&&mx!==null&&v>mx&&pl_num(s2[2])<=mx&&/(?:groupe|zone|lot|logements?|b[aâ]t(?:iment)?|n°)\s+\d{1,3}$/i.test(s2[1])){ v=pl_num(s2[2]); group=s2[1]; }
+        if(v!==null&&(!worst||v>worst.v)) worst={x:l,v,mx,group}; }
       if(worst){ const note=`Groupe le plus défavorable : ${worst.group}.`; emit(worst.x,b,'dh',worst.v,'dh-worst-group',0.99,'°C.h',{provenanceNote:note}); emit(worst.x,b,'dh_max',worst.mx,'dh-max-worst-group',0.99,'°C.h',{provenanceNote:note}); }
     }
   });

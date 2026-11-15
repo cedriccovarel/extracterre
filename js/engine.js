@@ -1,7 +1,7 @@
 import {FIELD_DEFS,FIELD_MAP,FIELD_TAGS,REQUIRED_RSET_FIELDS,REQUIRED_RE2020_RSET_FIELDS,REQUIRED_RT2012_RSET_FIELDS,DOC_TYPES,MIN_RETAINED_CONFIDENCE,MIN_REVIEW_CONFIDENCE,DEFAULT_SOURCE_RULES,matchFieldByHeader} from './config.js';
 import {sourceTier,sourceRank} from './routing.js';
 import {formatValue,normLower,normalizeText,scoreTokens,unique,numbersIn,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
-import {BLD_READ,repairBuildingName,operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
+import {BLD_READ,DH_READ,repairBuildingName,operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
 import {parseDocument,parseRsetOperationAddress} from './parsers.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags} from './tags.js';
@@ -381,7 +381,13 @@ export function catchUpDocument(d,buildingOverrides={}){
   const FAN_READ=2, fanDone=()=>Number(d.fanRead)>=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&!d.cachedOccurrences.some(fanOcc)) d.fanRead=FAN_READ;
   if(!fanDone()&&Array.isArray(d.cachedOccurrences)&&d.read?.pages){ d.fanRead=FAN_READ; const fresh=parseDocument(d).filter(fanOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!fanOcc(o)),...fresh]; d.needsCheckpoint=true; }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; }
+  // v2.36.4 — DH des tableaux CSTB (groupe nommé « traversant » marqué Non) et des sorties Pléiades (« Groupe 1 483,4 °C.h ») :
+  // les lectures DH de ces documents sont refaites une fois ; une valeur validée par l'utilisateur ne bouge pas.
+  if((Number(d.dhRead)||0)<DH_READ&&Array.isArray(d.cachedOccurrences)){ d.dhRead=DH_READ;
+    const dhOcc=o=>o&&/^dh(?:_zt|_znt|_max)?$/.test(o.field)&&!o.userValidated;
+    if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh/.test(String(o.method||'')))&&d.read?.pages){
+      const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
@@ -404,7 +410,7 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -459,8 +465,10 @@ export function applyComparisonBases(result){
     for(const [dhf,f,lab] of [['dh_zt','cross_ventilated','traversantes'],['dh_znt','non_cross_ventilated','non traversantes']]){
       const s=fin(dhf); if(!empty(dhf)&&s&&!String(s.method||'').startsWith('derive:')) derive(f,'Oui',dhf,`DH des zones ${lab} lu dans le document.`); }
     // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.1).
-    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
-      derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
+    // v2.36.4 — maison individuelle (« MAISONS », « VILLA 2 »…) : DH ZT, comme pour les fiches Salesforce (v2.22.3).
+    if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const house=/^(?:B[aâ]timent\s+)?(?:maisons?|villas?|pavillons?)\b/i.test(String(row.building||''))&&!yes('non_cross_ventilated');
+      const onlyZt=house||yes('cross_ventilated')&&!yes('non_cross_ventilated');
+      derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',house?'Maison individuelle : DH du bâtiment reporté en DH ZT (comme les fiches Salesforce).':onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
     for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
       if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }

@@ -237,6 +237,10 @@ async function main(){
         if(ext==='xml'&&extract) xml=await extract.probeXml(f.abs);
         if(ext==='pdf'&&mode==='dry-run'&&extract) text=await extract.firstPageText(f.abs);
       }catch(err){ text=undefined; }
+      if(xml?.other==='epdc'){ c.ignored++;
+        const e={...base,...ver,status:'ignoré',reason:`FDES configurée (${xml.configurator||'configurateur'}) : composant de l’ACV, rien à lire`,docType:null,method:'structure XML',sha256:old?.sha256||null,resultFile:null};
+        if(mode==='dry-run') inventory.push(invRow(e,{})); else reg.putFile(e);
+        return; }
       if(mode==='dry-run'){
         const k=classifyImportFile({family:f.family,name:f.name,xml,text},classifyDocument,cfg);
         const known=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.resultFile;

@@ -51,6 +51,8 @@ export async function probeXml(abs){
   }
   // v2.25.0 — autres XML connus : entrée ThCEx (<Projet><Calcul_ThE>), dossier de contrôle thermique, index de DCE.
   if(/<Projet[\s>]/.test(head)&&/<Calcul_(ThE|projet)[\s>/]/i.test(t.slice(0,20000))) return {re2020:null,dpe:false,other:'thcex'};
+  // v2.36.4 — FDES / PEP configurée (BETie, …) exportée avec le RSEE : composant de l'ACV, rien à lire.
+  if(/<EPDC[\s>]/.test(head)) return {re2020:null,dpe:false,other:'epdc',configurator:(head.match(/<ConfiguratorName>\s*([^<]{1,40})/)||[])[1]?.trim()||''};
   if(/<dossier_controle[\s>/]/i.test(head)) return {re2020:null,dpe:false,other:'controle'};
   if(/<dce[\s>/]/i.test(head)&&/<document[\s>/]/i.test(t.slice(0,20000))) return {re2020:null,dpe:false,other:'dce'};
   return {re2020:null,dpe:false};
@@ -61,7 +63,7 @@ function serializeDoc(d,meta){
   return {format:'extracterre-import-doc',appVersion:APP_VERSION,patches:PATCH_SIG,meta,
     doc:{name:d.name,size:d.size,lastModified:d.file?.lastModified||null,relativePath:d.relativePath,type:d.type,classification:d.classification,
       families:d.families||null,familyMode:d.familyMode||'auto',specializedFamily:d.specializedFamily||null,buildings:d.buildings,read:d.read,
-      cachedOccurrences:d.cachedOccurrences,analysisCachedAt:d.analysisCachedAt,rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:d.bldRead||2,
+      cachedOccurrences:d.cachedOccurrences,analysisCachedAt:d.analysisCachedAt,rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:d.bldRead||2,dhRead:d.dhRead||0,
       ocrWarnings:d.ocrWarnings||null,llmProposals:d.llmProposals||null}};
 }
 export function writeResult(workDir,sha,payload){
