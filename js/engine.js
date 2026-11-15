@@ -385,7 +385,7 @@ export function catchUpDocument(d,buildingOverrides={}){
   // les lectures DH de ces documents sont refaites une fois ; une valeur validée par l'utilisateur ne bouge pas.
   if((Number(d.dhRead)||0)<DH_READ&&Array.isArray(d.cachedOccurrences)){ d.dhRead=DH_READ;
     const dhOcc=o=>o&&/^dh(?:_zt|_znt|_max)?$/.test(o.field)&&!o.userValidated;
-    if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh/.test(String(o.method||'')))&&d.read?.pages){
+    if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh|^rset:(?:dh-|fallback-label)/.test(String(o.method||'')))&&d.read?.pages){
       const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
 }
@@ -479,7 +479,10 @@ export function applyComparisonBases(result){
     else if(!empty('fan_type')&&empty('fan_presence')){ // type lu pour le bâtiment, ou pour toute l'opération (CCTP) et appliqué au bâtiment
       const src=fin('fan_type')||result.finals.find(o=>o.field==='fan_type'&&o.appliedFromUnattributed&&String(o.value)===String(row.fan_type));
       if(src){ result.finals.push({...src,building:b,field:'fan_presence',value:'Oui',unit:'',method:'derive:fan_presence',derivedFromDocument:true,provenanceNote:src.building===b?'Brasseurs d’air lus dans le document.':'Brasseurs d’air prévus pour toute l’opération (document sans bâtiment précisé).'}); row.fan_presence='Oui'; } }
-    if(!empty('cooling')) derive('cooling_active',/^(?:aucun|non|sans)\b/i.test(String(row.cooling))?'Non':'Oui','cooling',`Refroidissement : ${row.cooling}.`);
+    // v2.36.4 — Oui seulement pour un vrai système de froid ; « Ventouse ou conduit », « Poêle », « • autres »… ne disent rien (case vide).
+    if(!empty('cooling')){ const cv=normalizeText(String(row.cooling)).toLowerCase();
+      const ca=/^(?:aucun|non|sans|pas de)\b/.test(cv)?'Non':/clim|split|r[eé]versible|rafra[iî]chiss|froid|adiabatique|geocooling|free[\s-]?cooling|\bvrv\b|\bdrv\b|ventilo[\s-]?convecteur|thermo[\s-]?frigo/.test(cv)?'Oui':null;
+      if(ca) derive('cooling_active',ca,'cooling',`Refroidissement : ${row.cooling}.`); }
   }
   return result;
 }

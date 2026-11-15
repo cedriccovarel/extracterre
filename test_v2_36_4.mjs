@@ -5,7 +5,7 @@ import {APP_VERSION} from './js/config.js';
 import {parseCstbRseeFiche} from './js/rset-cstb.js';
 import {parsePleiadesThermalOutput} from './js/pleiades-sortie.js';
 import {sfPerimeterMap} from './js/sf-perimeter.js';
-assert.equal(APP_VERSION,'2.36.4');
+assert.equal(APP_VERSION,'2.36.5');
 const doc=(pages)=>{ const ps=pages.map((t,i)=>({page:i+1,text:t,lines:t.split('\n').map((text,index)=>({text,index,items:[]}))})); return {id:'d1',name:'RSET fictif.pdf',read:{pages:ps,text:pages.join('\n')}}; };
 const occ=(d,page,line,field,value,method,confidence,unit,extra={})=>({field,value,method,confidence,unit,...extra});
 // 1. Tableau DH CSTB
@@ -37,7 +37,7 @@ const occ=(d,page,line,field,value,method,confidence,unit,extra={})=>({field,val
   const head="Recapitulatif Standardise Energie Environnement\nPartie Etude thermique\nBatiment : Batiment A\nZone / Groupes Trav. SRef Indicateur";
   const d={...doc([head+"\nZone(s) non traversante(s)\nBatiment A\ntraversant / Non 604,6 176,7 146 78 26 Conforme\nTraversant 1\nL'indicateur degres-heures (DH)"]),type:DOC_TYPES.RSEE_RE2020,status:'ready',rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:3,
     cachedOccurrences:[{field:'dh_znt',value:176.7,method:'cstb:dh-worst-group',building:'Bâtiment A'},{field:'bbio',value:50,method:'cstb:bbio'}]};
-  catchUpDocument(d,{}); assert.equal(d.dhRead,1); assert.ok(d.cachedOccurrences.some(o=>o.field==='dh_zt'&&o.value===176.7)); assert.ok(!d.cachedOccurrences.some(o=>o.field==='dh_znt'));
+  catchUpDocument(d,{}); assert.equal(d.dhRead,2); assert.ok(d.cachedOccurrences.some(o=>o.field==='dh_zt'&&o.value===176.7)); assert.ok(!d.cachedOccurrences.some(o=>o.field==='dh_znt'));
   assert.ok(d.cachedOccurrences.some(o=>o.field==='bbio'),'autres lectures gardées'); assert.ok(d.needsCheckpoint);
   const v={...d,dhRead:0,cachedOccurrences:[{field:'dh_znt',value:176.7,method:'cstb:dh-worst-group',userValidated:true}]}; catchUpDocument(v,{}); assert.equal(v.cachedOccurrences.filter(o=>o.field==='dh_znt'&&o.userValidated).length,1); }
 // 5. DH sans type de zone d'une maison individuelle → DH ZT ; d'un collectif → DH ZNT.
@@ -54,4 +54,14 @@ const occ=(d,page,line,field,value,method,confidence,unit,extra={})=>({field,val
   const {probeXml}=await import('./tools/import/lib/extract.mjs'); const os=await import('node:os'); const pth=await import('node:path');
   const f=pth.join(fs.mkdtempSync(pth.join(os.tmpdir(),'xt-')),'fiche.xml'); fs.writeFileSync(f,'<?xml version="1.0"?><EPDC><EPDCId>X</EPDCId><Name>Béton fictif</Name><ConfiguratorName>Betie</ConfiguratorName></EPDC>');
   const x=await probeXml(f); assert.equal(x.other,'epdc'); assert.equal(x.configurator,'Betie'); }
+// 7. Climatisation active : Oui seulement pour un vrai système de froid ; sinon case vide (jamais de valeur inventée).
+{ const {applyComparisonBases}=await import('./js/engine.js'); const f=(b,v)=>({building:b,field:'cooling',value:v,method:'systems:cooling-context',docId:'d1',fileName:'CCTP fictif.pdf'});
+  const vals=['Ventouse ou conduit','Poêle','Split / multisplit','Aucun','PAC réversible','Chauffage électrique direct'];
+  const r={rows:vals.map((v,i)=>({building:'Bâtiment '+i,cooling:v})),finals:vals.map((v,i)=>f('Bâtiment '+i,v))}; applyComparisonBases(r);
+  assert.deepEqual(r.rows.map(x=>x.cooling_active),[undefined,undefined,'Oui','Non','Oui',undefined]); }
+// 8. DH lu avant la v2.36.1 (« Liaison ME/DH garage 0,290 ») : relu une fois, la fausse valeur disparaît.
+{ const {catchUpDocument}=await import('./js/engine.js'); const {DOC_TYPES}=await import('./js/config.js');
+  const d={...doc(["Ponts thermiques\nLiaison ME/DH garage 0,290 0,95"]),type:DOC_TYPES.RSET_RE2020,status:'ready',rsetAddressRead:true,dhZonesRead:true,fanRead:2,bldRead:3,dhRead:1,
+    cachedOccurrences:[{field:'dh',value:0.29,method:'rset:dh-explicit',building:'Bâtiment unique'}]};
+  catchUpDocument(d,{}); assert.ok(!d.cachedOccurrences.some(o=>o.field==='dh'&&o.value===0.29)); }
 console.log('test_v2_36_4 OK');

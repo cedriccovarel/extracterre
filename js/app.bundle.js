@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.5 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.4';
+const APP_VERSION='2.36.5';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -1340,7 +1340,7 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
 // v2.33.2 — bâtiments fantômes lus sur des lignes de tableau ou des en-têtes : « Bâtiment 3117.92 » (surface à côté du mot),
 // « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
 // Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
-const DH_READ=1; // v2.36.4 — version des règles de lecture DH (rattrapage, cf. engine.catchUpDocument)
+const DH_READ=2; // v2.36.4 — version des règles de lecture DH (rattrapage, cf. engine.catchUpDocument)
 const BLD_READ=3; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
 const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
 function isNumericGhostBuilding(name){
@@ -6904,7 +6904,7 @@ function parseRset(doc){
 function fallbackRset(doc,current){
   const have=new Set(current.map(o=>`${o.building}|${o.field}`)); const out=[...current];
   for(const page of doc.read.pages){ for(const line of page.lines||[]){ const s=normalizeText(line.text), building=buildingForPosition(doc,page.page,line.index); if(/certification|referentiel|référentiel|performance|niveau|label|objectif|seuil|article|\bart\.?\s*\d+|représente|represente/i.test(normLower(s))) continue; const patterns={bbio:/\bbbio\b(?!\s*max)/i,bbio_max:/\bbbio\s*max\b/i,cep:/\bcep\b(?!\s*,?\s*nr|\s*max)/i,cep_max:/\bcep\s*max\b/i,cepnr:/\bcep\s*,?\s*nr\b(?!\s*max)/i,cepnr_max:/\bcep\s*,?\s*nr\s*max\b/i,dh:/\bdh\b|degres?[- ]heures?/i};
-    for(const [field,re] of Object.entries(patterns)){ const key=`${building}|${field}`; if(have.has(key)||!re.test(s)||field==='dh'&&/\bDH\s*(?:max|seuil)/i.test(s)) continue; const val=firstValueAfterLabel(s,re); if(val!==null){ push(out,occ(doc,page,line,field,val,'rset:fallback-label',0.87,'',{building})); have.add(key); } }
+    for(const [field,re] of Object.entries(patterns)){ const key=`${building}|${field}`; if(have.has(key)||!re.test(s)||field==='dh'&&/\bDH\s*(?:max|seuil)/i.test(s)) continue; const val=firstValueAfterLabel(s,re); if(field==='dh'&&(val===null||val<5||[350,1250,1850].includes(val)||/liaison|pont|ψ|psi\b|garage/i.test(s))) continue; /* v2.36.4 — « Liaison ME/DH garage 0,290 » : DH = dalle haute d'un pont thermique */ if(val!==null){ push(out,occ(doc,page,line,field,val,'rset:fallback-label',0.87,'',{building})); have.add(key); } }
   }} return out;
 }
 
@@ -9053,7 +9053,7 @@ function catchUpDocument(d,buildingOverrides={}){
   // les lectures DH de ces documents sont refaites une fois ; une valeur validée par l'utilisateur ne bouge pas.
   if((Number(d.dhRead)||0)<DH_READ&&Array.isArray(d.cachedOccurrences)){ d.dhRead=DH_READ;
     const dhOcc=o=>o&&/^dh(?:_zt|_znt|_max)?$/.test(o.field)&&!o.userValidated;
-    if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh/.test(String(o.method||'')))&&d.read?.pages){
+    if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh|^rset:(?:dh-|fallback-label)/.test(String(o.method||'')))&&d.read?.pages){
       const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
 }
@@ -9147,7 +9147,10 @@ function applyComparisonBases(result){
     else if(!empty('fan_type')&&empty('fan_presence')){ // type lu pour le bâtiment, ou pour toute l'opération (CCTP) et appliqué au bâtiment
       const src=fin('fan_type')||result.finals.find(o=>o.field==='fan_type'&&o.appliedFromUnattributed&&String(o.value)===String(row.fan_type));
       if(src){ result.finals.push({...src,building:b,field:'fan_presence',value:'Oui',unit:'',method:'derive:fan_presence',derivedFromDocument:true,provenanceNote:src.building===b?'Brasseurs d’air lus dans le document.':'Brasseurs d’air prévus pour toute l’opération (document sans bâtiment précisé).'}); row.fan_presence='Oui'; } }
-    if(!empty('cooling')) derive('cooling_active',/^(?:aucun|non|sans)\b/i.test(String(row.cooling))?'Non':'Oui','cooling',`Refroidissement : ${row.cooling}.`);
+    // v2.36.4 — Oui seulement pour un vrai système de froid ; « Ventouse ou conduit », « Poêle », « • autres »… ne disent rien (case vide).
+    if(!empty('cooling')){ const cv=normalizeText(String(row.cooling)).toLowerCase();
+      const ca=/^(?:aucun|non|sans|pas de)\b/.test(cv)?'Non':/clim|split|r[eé]versible|rafra[iî]chiss|froid|adiabatique|geocooling|free[\s-]?cooling|\bvrv\b|\bdrv\b|ventilo[\s-]?convecteur|thermo[\s-]?frigo/.test(cv)?'Oui':null;
+      if(ca) derive('cooling_active',ca,'cooling',`Refroidissement : ${row.cooling}.`); }
   }
   return result;
 }
