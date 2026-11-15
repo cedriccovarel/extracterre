@@ -1530,3 +1530,6 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .rel-legend i{width:4px!important;height:14px}
 .rv-rel{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9px;font-size:11px;font-weight:600;color:#fff}
 .rv-rel.rel-certifiee{background:#1f7a3a;box-shadow:none}.rv-rel.rel-sure{background:#58a86b}.rv-rel.rel-probable{background:#c98a25}.rv-rel.rel-averifier{background:#d4483b}
+
+/* v2.36.3 — valeur Salesforce différente du document le plus récent : coin orange, détail au survol */
+td.sf-diff{position:relative}td.sf-diff::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 7px 7px 0;border-color:transparent #d9822b transparent transparent;pointer-events:none}

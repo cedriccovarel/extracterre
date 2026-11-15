@@ -360,6 +360,10 @@ export function catchUpDocument(d,buildingOverrides={}){
     // v2.33.2 — fantômes numériques (« Bâtiment 3117.92 », adresse, unités) : retirés même seuls ; lignes de tableau
     // (« Bâtiment 1 COLLECTIF 16 0.60 OUI ») ramenées à leur identifiant. Une valeur validée par l'utilisateur ne bouge pas.
   }
+  // v2.36.3 — fiche RSEE CSTB : « CO , … à l'échelle du bâtiment 12 » (indice ₂ de CO₂ glissé) créait un faux « Bâtiment 12 »
+  // qui rendait incertaines toutes les valeurs du bâtiment (32 opérations). Bâtiments redétectés une fois, lectures refaites si besoin.
+  if((Number(d.bldRead)||0)<3&&d.buildings?.source==='cstb-rsee-sections'&&d.read?.pages){ const nb=detectBuildings(d);
+    if(JSON.stringify(nb.names)!==JSON.stringify(d.buildings.names)){ d.buildings=nb; d.cachedOccurrences=null; d.needsCheckpoint=true; } }
   if((Number(d.bldRead)||0)<BLD_READ){ d.bldRead=BLD_READ;
     const manual=new Set(Object.entries(buildingOverrides||{}).flat().map(String));
     { const fix=new Map(); for(const n of new Set([...(d.buildings?.names||[]),...(d.cachedOccurrences||[]).map(o=>o?.building)].filter(Boolean))){ if(manual.has(String(n))) continue; const r=repairBuildingName(n); if(r!==n) fix.set(n,r||'Bâtiment unique'); }
@@ -450,6 +454,10 @@ export function applyComparisonBases(result){
     const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
     const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
     const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
+    // v2.36.3 — un DH lu pour un type de zone (pas déduit d'un DH sans zone) atteste que le bâtiment a ce type de logements,
+    // comme sur les fiches Salesforce (« DH ZT = … » → Logement traversant Oui) : 20 « traversant » manquants sur 37 au banc.
+    for(const [dhf,f,lab] of [['dh_zt','cross_ventilated','traversantes'],['dh_znt','non_cross_ventilated','non traversantes']]){
+      const s=fin(dhf); if(!empty(dhf)&&s&&!String(s.method||'').startsWith('derive:')) derive(f,'Oui',dhf,`DH des zones ${lab} lu dans le document.`); }
     // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.1).
     if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
       derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }

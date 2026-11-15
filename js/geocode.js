@@ -83,3 +83,5 @@ export async function geocodeCommune(fc,fetchImpl=fetch){
   return v;
 }
 export const mapLink=(lat,lon)=>`https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;
+// v2.36.3 — département d'un code INSEE ou d'un numéro de département (Corse 2A / 2B / 20 → « 20 », outre-mer sur 3 chiffres).
+export function geoDepOf(code){ const s=String(code??'').trim().toUpperCase(); if(!s) return ''; if(/^97\d/.test(s)) return s.slice(0,3); if(/^(?:2A|2B|20)/.test(s)) return '20'; return /^\d{2}/.test(s)?s.slice(0,2):''; }

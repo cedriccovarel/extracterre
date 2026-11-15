@@ -668,13 +668,14 @@ function addRsetCarbonBreakdown(doc,out){
   let mode=null,currentLot=null,currentEnergy=null;
   for(const page of doc.read.pages||[]){
     const lines=page.lines||[];
+    // Les pages de résultats ACV utilisent des titres numérotés « 1-VRD », « 8-CVC », etc.
+    // Les sections d'entrée du logiciel utilisent aussi « Lot 11 : ... » : ne pas les confondre
+    // avec le tableau de résultats, sinon un Total sans rapport peut être attribué au mauvais lot.
+    // v2.36.3 — calculé une fois par page (il l'était à chaque ligne : 30 min sur un RSET XML d'une seule « page » de 19 Mo).
+    const pageLow=normLower(page.text||'');
+    const carbonSummaryPage=/total\s+lot\s*:/.test(pageLow) && ((pageLow.match(/total\s*:/g)||[]).length>=2);
     for(let i=0;i<lines.length;i++){
       const line=lines[i], t=normalizeText(line.text), low=normLower(t);
-      // Les pages de résultats ACV utilisent des titres numérotés « 1-VRD », « 8-CVC », etc.
-      // Les sections d'entrée du logiciel utilisent aussi « Lot 11 : ... » : ne pas les confondre
-      // avec le tableau de résultats, sinon un Total sans rapport peut être attribué au mauvais lot.
-      const pageLow=normLower(page.text||'');
-      const carbonSummaryPage=/total\s+lot\s*:/.test(pageLow) && ((pageLow.match(/total\s*:/g)||[]).length>=2);
       const numberedLot=t.match(/^\s*(1[0-3]|[1-9])\s*[-–—]\s*(.+)$/i);
       const namedLot=carbonSummaryPage?t.match(/^\s*lot\s*(1[0-3]|[1-9])\s*[:\-–—]\s*(.+)$/i):null;
       const lot=numberedLot||namedLot;

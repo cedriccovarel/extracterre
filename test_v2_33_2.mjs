@@ -10,7 +10,7 @@ const cases={'Bâtiment 3117.92':'','Bâtiment 0.66 0.80':'','Bâtiment I4 ≤ 0
   'Bâtiment A':'Bâtiment A','Bâtiment SUR RUE':'Bâtiment SUR RUE','Bâtiment B1.2':'Bâtiment B1.2','Bâtiment unique':'Bâtiment unique'};
 for(const [k,v] of Object.entries(cases)) assert.equal(r(k),v,k);
 assert.equal(t('1 3300 2750',{rowInts:true}),'1'); assert.equal(t('Luisa lots 5 6'),'Luisa lots 5 6');
-assert.equal(BLD_READ,2);
+assert.ok(BLD_READ>=2); // 3 depuis la v2.36.3 (redétection des fiches RSEE CSTB)
 const eng=fs.readFileSync('js/engine.js','utf8');
 assert.match(eng,/if\(!d\.bldRead\)\{ d\.bldRead=1;/); // l'ancien filtre ne repasse pas sur les lectures déjà nettoyées
 assert.match(eng,/if\(\(Number\(d\.bldRead\)\|\|0\)<BLD_READ\)\{ d\.bldRead=BLD_READ;/);

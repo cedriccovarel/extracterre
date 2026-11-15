@@ -49,7 +49,9 @@ export function cstbBuildingContext(doc){
     else if(afterTech&&(m=x.t.match(/^["“](.+)["”]$/))) set(m[1]);
     else if((m=x.t.match(/Resultats\s+sorties\s+detaillees\s*-\s*\((.+)\)/i))) set(m[1]);
     else if((m=x.t.match(/^Nom\s+du\s+batiment\s+(.+)$/i))) set(m[1]);
-    else if((m=x.t.match(/a\s+l'echelle\s+du\s+batiment\s+(\d+)\b/i))) set(`Batiment ${m[1]}`);
+    else if((m=x.t.match(/a\s+l'echelle\s+du\s+batiment\s+(\d+)\b/i))){
+      // v2.36.3 — « Indicateur dynamique CO , … bâtiment 12 » : l'indice ₂ de CO₂ a glissé en fin de ligne (bâtiment 1, pas 12).
+      const n=/\bCO\s*,/.test(x.t)&&m[1].length>1&&m[1].endsWith('2')?m[1].slice(0,-1):m[1]; set(`Batiment ${n}`); }
     afterTech=/^Donnees\s+techniques\s+du\s+batiment/i.test(x.t);
     if(/^Batiment\s*:|echelle\s+du\s+batiment|niveau\s+batiment\b/i.test(x.t)) scope='building';
     else if(/^Exigences?\s+de\s+moyens|^Chapitres\s+et\s+articles\b/i.test(x.t)) scope='requirements';

@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.3 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.2';
+const APP_VERSION='2.36.3';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -828,6 +828,8 @@ async function geocodeCommune(fc,fetchImpl=fetch){
   return v;
 }
 const mapLink=(lat,lon)=>`https://www.geoportail.gouv.fr/carte?c=${lon},${lat}&z=19&l0=ORTHOIMAGERY.ORTHOPHOTOS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;
+// v2.36.3 — département d'un code INSEE ou d'un numéro de département (Corse 2A / 2B / 20 → « 20 », outre-mer sur 3 chiffres).
+function geoDepOf(code){ const s=String(code??'').trim().toUpperCase(); if(!s) return ''; if(/^97\d/.test(s)) return s.slice(0,3); if(/^(?:2A|2B|20)/.test(s)) return '20'; return /^\d{2}/.test(s)?s.slice(0,2):''; }
 
 /* ---- qualite.js ---- */
 // ExtracTerre v2.34.0 — fiabilité des données : comparaison d'une valeur extraite à la valeur de référence Salesforce
@@ -1338,7 +1340,7 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
 // v2.33.2 — bâtiments fantômes lus sur des lignes de tableau ou des en-têtes : « Bâtiment 3117.92 » (surface à côté du mot),
 // « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
 // Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
-const BLD_READ=2; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
+const BLD_READ=3; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
 const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
 function isNumericGhostBuilding(name){
   if(!name||name==='Bâtiment unique') return false;
@@ -2266,7 +2268,9 @@ function cstbBuildingContext(doc){
     else if(afterTech&&(m=x.t.match(/^["“](.+)["”]$/))) set(m[1]);
     else if((m=x.t.match(/Resultats\s+sorties\s+detaillees\s*-\s*\((.+)\)/i))) set(m[1]);
     else if((m=x.t.match(/^Nom\s+du\s+batiment\s+(.+)$/i))) set(m[1]);
-    else if((m=x.t.match(/a\s+l'echelle\s+du\s+batiment\s+(\d+)\b/i))) set(`Batiment ${m[1]}`);
+    else if((m=x.t.match(/a\s+l'echelle\s+du\s+batiment\s+(\d+)\b/i))){
+      // v2.36.3 — « Indicateur dynamique CO , … bâtiment 12 » : l'indice ₂ de CO₂ a glissé en fin de ligne (bâtiment 1, pas 12).
+      const n=/\bCO\s*,/.test(x.t)&&m[1].length>1&&m[1].endsWith('2')?m[1].slice(0,-1):m[1]; set(`Batiment ${n}`); }
     afterTech=/^Donnees\s+techniques\s+du\s+batiment/i.test(x.t);
     if(/^Batiment\s*:|echelle\s+du\s+batiment|niveau\s+batiment\b/i.test(x.t)) scope='building';
     else if(/^Exigences?\s+de\s+moyens|^Chapitres\s+et\s+articles\b/i.test(x.t)) scope='requirements';
@@ -6762,13 +6766,14 @@ function addRsetCarbonBreakdown(doc,out){
   let mode=null,currentLot=null,currentEnergy=null;
   for(const page of doc.read.pages||[]){
     const lines=page.lines||[];
+    // Les pages de résultats ACV utilisent des titres numérotés « 1-VRD », « 8-CVC », etc.
+    // Les sections d'entrée du logiciel utilisent aussi « Lot 11 : ... » : ne pas les confondre
+    // avec le tableau de résultats, sinon un Total sans rapport peut être attribué au mauvais lot.
+    // v2.36.3 — calculé une fois par page (il l'était à chaque ligne : 30 min sur un RSET XML d'une seule « page » de 19 Mo).
+    const pageLow=normLower(page.text||'');
+    const carbonSummaryPage=/total\s+lot\s*:/.test(pageLow) && ((pageLow.match(/total\s*:/g)||[]).length>=2);
     for(let i=0;i<lines.length;i++){
       const line=lines[i], t=normalizeText(line.text), low=normLower(t);
-      // Les pages de résultats ACV utilisent des titres numérotés « 1-VRD », « 8-CVC », etc.
-      // Les sections d'entrée du logiciel utilisent aussi « Lot 11 : ... » : ne pas les confondre
-      // avec le tableau de résultats, sinon un Total sans rapport peut être attribué au mauvais lot.
-      const pageLow=normLower(page.text||'');
-      const carbonSummaryPage=/total\s+lot\s*:/.test(pageLow) && ((pageLow.match(/total\s*:/g)||[]).length>=2);
       const numberedLot=t.match(/^\s*(1[0-3]|[1-9])\s*[-–—]\s*(.+)$/i);
       const namedLot=carbonSummaryPage?t.match(/^\s*lot\s*(1[0-3]|[1-9])\s*[:\-–—]\s*(.+)$/i):null;
       const lot=numberedLot||namedLot;
@@ -9014,6 +9019,10 @@ function catchUpDocument(d,buildingOverrides={}){
     // v2.33.2 — fantômes numériques (« Bâtiment 3117.92 », adresse, unités) : retirés même seuls ; lignes de tableau
     // (« Bâtiment 1 COLLECTIF 16 0.60 OUI ») ramenées à leur identifiant. Une valeur validée par l'utilisateur ne bouge pas.
   }
+  // v2.36.3 — fiche RSEE CSTB : « CO , … à l'échelle du bâtiment 12 » (indice ₂ de CO₂ glissé) créait un faux « Bâtiment 12 »
+  // qui rendait incertaines toutes les valeurs du bâtiment (32 opérations). Bâtiments redétectés une fois, lectures refaites si besoin.
+  if((Number(d.bldRead)||0)<3&&d.buildings?.source==='cstb-rsee-sections'&&d.read?.pages){ const nb=detectBuildings(d);
+    if(JSON.stringify(nb.names)!==JSON.stringify(d.buildings.names)){ d.buildings=nb; d.cachedOccurrences=null; d.needsCheckpoint=true; } }
   if((Number(d.bldRead)||0)<BLD_READ){ d.bldRead=BLD_READ;
     const manual=new Set(Object.entries(buildingOverrides||{}).flat().map(String));
     { const fix=new Map(); for(const n of new Set([...(d.buildings?.names||[]),...(d.cachedOccurrences||[]).map(o=>o?.building)].filter(Boolean))){ if(manual.has(String(n))) continue; const r=repairBuildingName(n); if(r!==n) fix.set(n,r||'Bâtiment unique'); }
@@ -9104,6 +9113,10 @@ function applyComparisonBases(result){
     const empty=f=>row[f]===undefined||row[f]===null||row[f]===''||row[f]==='non précisé';
     const derive=(f,val,from,note)=>{ const src=fin(from); if(val===null||!src||!empty(f)) return; result.finals.push({...src,field:f,value:val,unit:f.startsWith('dh_')?'°C.h':'',method:'derive:'+f,derivedFromDocument:true,provenanceNote:note}); row[f]=val; };
     const yes=f=>!empty(f)&&!/^(?:non|aucun|0)$/i.test(String(row[f]));
+    // v2.36.3 — un DH lu pour un type de zone (pas déduit d'un DH sans zone) atteste que le bâtiment a ce type de logements,
+    // comme sur les fiches Salesforce (« DH ZT = … » → Logement traversant Oui) : 20 « traversant » manquants sur 37 au banc.
+    for(const [dhf,f,lab] of [['dh_zt','cross_ventilated','traversantes'],['dh_znt','non_cross_ventilated','non traversantes']]){
+      const s=fin(dhf); if(!empty(dhf)&&s&&!String(s.method||'').startsWith('derive:')) derive(f,'Oui',dhf,`DH des zones ${lab} lu dans le document.`); }
     // DH sans type de zone : DH ZT si le bâtiment n'a que des zones traversantes, sinon DH ZNT (choix métier, v2.12.1).
     if(empty('dh_zt')&&empty('dh_znt')&&!empty('dh')){ const onlyZt=yes('cross_ventilated')&&!yes('non_cross_ventilated');
       derive(onlyZt?'dh_zt':'dh_znt',row.dh,'dh',onlyZt?'Le bâtiment n’a que des zones traversantes : DH du bâtiment.':'DH lu sans type de zone : reporté en DH ZNT.'); }
@@ -14275,7 +14288,7 @@ function projectSectionHeader(p,isActive=false){
 function staticProjectBody(p,fields){
   const r=p.result;
   if(!r) return '<div class="empty-small project-empty">Projet sans analyse.</div>';
-  return `<div class="table-scroll project-static-table"><table><thead><tr><th class="sticky building-head">Bâtiment</th>${fields.map(f=>`<th>${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong">${escapeHtml(row.building)}</td>${fields.map(f=>{ const odd=oddValue(f.key,row[f.key]); const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); return `<td class="${row[f.key]===undefined?'missing':cellTone(o,odd,p)}"${odd?` title="${escapeHtml(odd)}"`:''}>${escapeHtml(formatValue(row[f.key]))}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-scroll project-static-table"><table><thead><tr><th class="sticky building-head">Bâtiment</th>${fields.map(f=>`<th>${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr><td class="sticky strong">${escapeHtml(row.building)}</td>${fields.map(f=>{ const odd=oddValue(f.key,row[f.key]); const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const tip=[sfDiffTip(o),odd].filter(Boolean).join(' · '); return `<td class="${row[f.key]===undefined?'missing':cellTone(o,odd,p)}${sfDiffTip(o)?' sf-diff':''}"${tip?` title="${escapeHtml(tip)}"`:''}>${escapeHtml(formatValue(row[f.key]))}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 function decorateProjectSections(wrap,fields){
   const active=activeProject();
@@ -14314,7 +14327,7 @@ function renderSummary(){
   const tagChips=state.projectTags.map((t,i)=>`<span class="project-tag tag-${escapeHtml((t.category||'autre').toLowerCase().replace(/[^a-z0-9]+/g,'-'))}" title="${escapeHtml([t.category,t.building,t.document,t.page?`p.${t.page}`:'',t.excerpt].filter(Boolean).join(' · '))}">${escapeHtml(t.label)}${t.manual?`<button class="remove-project-tag" data-tag-index="${i}" aria-label="Supprimer">×</button>`:''}</span>`).join('');
   const tagPanel=`<section class="project-tags-card"><div class="project-tags-head"><div><h3>Tags projet</h3><p>Signaux descriptifs détectés dans les documents · <b>non exportés dans Excel</b></p></div><span class="badge doc">${state.projectTags.length} tag(s)</span></div><div class="project-tags-wrap">${tagChips||'<span class="empty-small">Aucun signal projet détecté pour le moment.</span>'}</div><div class="project-tag-add"><input id="projectTagInput" list="projectTagLibrary" placeholder="Ajouter un tag manuel…"><datalist id="projectTagLibrary">${PROJECT_TAG_LIBRARY.map(t=>`<option value="${escapeHtml(t.label)}"></option>`).join('')}</datalist><button id="addProjectTagBtn" class="btn light">+ Ajouter</button><small>Bibliothèque automatique : eau, biodiversité, usage, QAI, carbone, énergie, mobilité, labels et performances.</small></div></section>`;
   const uncertainCount=visibleUncertain().length; const comp=r.completeness; const compText=comp?.expected?`${comp.percent}% · ${comp.found}/${comp.expected} champs attendus`:'non calculable';
-  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${TONE_LEGEND}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${v===undefined?'':cellTone(o,oddValue(f.key,v))} ${v===undefined?'':`rel-${relT[row.building]?.[f.key]||'none'}`}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([v===undefined?'':`Fiabilité : ${RELIABILITY[relT[row.building]?.[f.key]]?.label||'—'}`,oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
+  wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(activeProject()))}</h3><small>${(activeProject().docs||[]).length} document(s) · ${r.rows?.length||0} bâtiment(s)</small>${sfPerimeterChip(activeProject())}</div><button id="detailBackOverview" type="button">← Synthèse projets</button></div><div class="kpis"><div class="kpi"><b>${r.documentsCount}</b><span>documents lus</span></div><div class="kpi"><b>${r.buildings.length}</b><span>bâtiments consolidés</span></div><div class="kpi"><b>${r.finals.length}</b><span>valeurs retenues</span></div><div class="kpi ${r.alerts.length?'alert':''}"><b>${r.alerts.length}</b><span>alertes</span></div></div><div class="completeness-strip"><div><span>Analyse technique terminée</span><strong>Complétude : ${escapeHtml(compText)}</strong></div>${uncertainCount?`<button class="btn secondary" id="reviewUncertainBtn">✓/✕ Vérifier ${uncertainCount} candidat${uncertainCount>1?'s':''} (65–89 %)</button>`:'<span class="badge ok">Aucun candidat incertain</span>'}</div>${tagPanel}<div class="edit-hint"><b>Seuil automatique : 90 %.</b> Les candidats de ${Math.round(MIN_REVIEW_CONFIDENCE*100)} à 89 % sont conservés pour validation ✓/✕. L’ordre des sources est appliqué avant le score de confiance.${ownerBetaEnabled()?' <span class="beta-owner-hint">Mode bêta propriétaire : utilisez ✕ pour signaler un résultat erroné.</span>':''}</div><div class="building-merge-bar"><div class="building-search-row"><input type="search" id="buildingSearch" class="building-search" placeholder="Rechercher un bâtiment… (ex. « 1 est », « aile »)" aria-label="Rechercher un bâtiment" autocomplete="off" value="${escapeHtml(state.buildingSearch||'')}"><button class="btn light" id="selectFoundBuildings" type="button" disabled>☑ Sélectionner les résultats</button><span class="building-search-count" id="buildingSearchCount" aria-live="polite"></span></div><div><button class="btn secondary" id="mergeBuildingsBtn" disabled>⇄ Fusionner les bâtiments sélectionnés</button><button class="btn danger-light" id="deleteBuildingsBtn" disabled>⌫ Supprimer les bâtiments sélectionnés</button><button class="btn light" id="resetBuildingLinksBtn" ${hasManual?'':'disabled'}>Réinitialiser les fusions manuelles</button></div><small>Ex. « Bât A », « Bâtiment A » et « BAT A » sont fusionnés automatiquement, « Bâtiment 1 Est » rejoint « Bâtiment 1 ». « B » et « B1 » nécessitent une validation manuelle : recherchez, sélectionnez, fusionnez.</small></div>${groupingInfo}${suggestionInfo}${TONE_LEGEND}${groups.map((group,groupIndex)=>`<section class="result-data-group"><div class="result-data-group-head"><h3>${escapeHtml(group.title)}</h3><span>${group.fields.length} donnée${group.fields.length>1?'s':''}</span></div><div class="table-scroll"><table><thead><tr><th class="sticky building-head">${groupIndex===0?'<label><input type="checkbox" id="selectAllBuildings"> Bâtiment</label>':'Bâtiment'}</th>${group.fields.map(f=>`<th title="${escapeHtml(f.family)}">${escapeHtml(f.label)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(row=>`<tr data-building-row="${escapeHtml(row.building)}"${sfAdded.has(row.building)?' class="sf-added"':''}><td class="sticky strong building-cell"${sfAdded.has(row.building)?' title="Bâtiment ajouté depuis Salesforce : aucune donnée des documents"':''}>${groupIndex===0?`<label><input type="checkbox" class="building-select" value="${escapeHtml(row.building)}"> <span>${escapeHtml(row.building)}</span>${sfAdded.has(row.building)?' <b class="sf-tag">Salesforce</b>':''}</label>`:escapeHtml(row.building)}</td>${group.fields.map(f=>{const v=row[f.key]; const o=r.finals.find(x=>x.field===f.key&&(x.building===row.building||x.building==='Bâtiment unique')); const title=o?`${o.fileName} · p.${o.page} · confiance ${Math.round(o.confidence*100)}%${o.originalBuilding&&o.originalBuilding!==o.building?' · source : '+o.originalBuilding:''}${o.provenanceNote?' · '+o.provenanceNote:''}`:'Double-cliquez pour corriger'; return `<td class="summary-value ${sfDiffTip(o)?'sf-diff':''} ${v===undefined?'missing':''} ${o?.libraryDerived?'from-library':''} ${v===undefined?'':cellTone(o,oddValue(f.key,v))} ${v===undefined?'':`rel-${relT[row.building]?.[f.key]||'none'}`}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${escapeHtml([sfDiffTip(o),v===undefined?'':`Fiabilité : ${RELIABILITY[relT[row.building]?.[f.key]]?.label||'—'}`,oddValue(f.key,v),title].filter(Boolean).join(' · '))}">${escapeHtml(formatValue(v))}<button class="cell-edit summary-edit" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="Modifier manuellement">✎</button>${ownerBetaEnabled()?`<button class="cell-beta-error ${v===undefined?'cell-beta-missing':''}" data-building="${escapeHtml(row.building)}" data-field="${f.key}" title="${v===undefined?'Renseigner cette donnée depuis un document':'Corriger cette donnée depuis un document'}" aria-label="${v===undefined?'Renseigner une donnée manquante':'Signaler une erreur'}">${v===undefined?'＋':'✕'}</button>`:''}${o?`<span class="mini-conf ${o.confidence>=.9?'high':o.confidence>=.7?'mid':'low'}">${Math.round(o.confidence*100)}%</span>`:''}${o?.libraryDerived?'<span class="library-tag">bibliothèque</span>':''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div></section>`).join('')}${libraryNotes.length?`<div class="library-notes"><b>Valeurs complétées depuis la bibliothèque isolants</b>${libraryNotes.map(o=>`<div><strong>${escapeHtml(o.building)} — ${escapeHtml(FIELD_MAP[o.field]?.label||o.field)} :</strong> ${escapeHtml(o.provenanceNote)}</div>`).join('')}</div>`:''}`;
 
   $$('#summaryView .summary-value').forEach(td=>td.ondblclick=()=>manualOverride(td.dataset.building,td.dataset.field)); $$('#summaryView .summary-edit').forEach(b=>b.onclick=e=>{e.stopPropagation();manualOverride(b.dataset.building,b.dataset.field)});
   $$('#summaryView .cell-beta-error').forEach(b=>b.onclick=e=>{e.stopPropagation();openBetaErrorDialog(b.dataset.building,b.dataset.field)});
@@ -14920,6 +14933,11 @@ function manualOverride(building,field){
 }
 
 
+// v2.36.3 — Salesforce et le document le plus récent diffèrent : les deux valeurs au survol de la cellule.
+// Nombres : toute différence au-delà de l'arrondi (916,8 ≠ 916,6) ; textes : comparaison du banc Salesforce.
+function sfDocDiffers(field,a,b){ const n=v=>{ const m=String(v??'').replace(/\s/g,'').replace(',','.'); return /^-?\d+(?:\.\d+)?$/.test(m)?Number(m):null; }, x=n(a), y=n(b);
+  return x!==null&&y!==null?Math.abs(x-y)>0.051:!sameValue(field,a,b); }
+function sfDiffTip(o){ return o&&o.documentValue!==undefined?`Salesforce : ${formatValue(o.value)} — document le plus récent : ${formatValue(o.documentValue)} (${o.documentFile||'document'}${o.documentPage?' p.'+o.documentPage:''})`:''; }
 function applyManualValuesToProject(project){
   const result=project?.result; if(!result) return;
   const deleted=new Set(project.deletedBuildings||[]), alias=Object.fromEntries((result.buildingAliases||[]).map(a=>[a.source,a.target]));
@@ -14928,9 +14946,11 @@ function applyManualValuesToProject(project){
     if(sfPerimeterOn(project)){ const S=project.sfBuildings.map(canonicalBuilding), t=alias[raw]||raw; if(!S.includes(canonicalBuilding(t))&&!(S.length===1&&t==='Bâtiment unique')) continue; }
     const row=manualRow(result,raw,deleted,alias); if(!row) continue; const building=row.building;
     if(building!==raw&&Object.prototype.hasOwnProperty.call(project.manualValues,`${building}|${field}`)) continue;
+    // v2.36.3 — valeur Salesforce différente de celle du document retenu (le plus récent) : gardée pour l'info-bulle.
+    const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
-    const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; result.finals.push(manual); result.detailed.push(manual);
+    const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; if(docFinal&&SF_SRC.test(manual.fileName)&&sfDocDiffers(field,value,docFinal.value)) Object.assign(manual,{documentValue:docFinal.value,documentFile:docFinal.fileName,documentPage:docFinal.page}); result.finals.push(manual); result.detailed.push(manual);
   }
   applyGeocodes(project);
   applyComparisonBases(result);
@@ -14950,6 +14970,10 @@ function applyGeocodes(project){
     const taken=f=>Object.prototype.hasOwnProperty.call(project.manualValues||{},`${b}|${f}`)||result.finals.some(o=>o.building===b&&o.field===f)||!isBlank(row[f]);
     if(!g.ok){ if(!taken('geocode_precision')&&!taken('latitude')) row.geocode_precision=`Non géolocalisée : ${g.reason}`; continue; }
     if(taken('latitude')||taken('longitude')) continue;
+    // v2.36.3 — adresse lue hors du département du dossier Box (adresse du bureau d'études, d'une autre opération…) : refusée,
+    // la commune du dossier prend le relais (3 opérations sur 217 : dossier en 76 géolocalisé à Salon-de-Provence…).
+    { const fd=folderCommune(project?.importFolder||project?.boxFolder||'')?.department, gd=geoDepOf(g.insee);
+      if(fd&&gd&&gd!==geoDepOf(fd)){ if(!taken('geocode_precision')) row.geocode_precision=`Non géolocalisée : adresse hors du département du dossier (${g.label})`; continue; } }
     const vals={latitude:g.lat,longitude:g.lon,insee_code:g.insee,geocode_precision:`${g.precision} — ${g.label} (score ${String(g.score).replace('.',',')})`};
     for(const field of GEOCODE_FIELDS){ const value=vals[field]; if(value===''||taken(field)) continue;
       row[field]=value;
@@ -15998,7 +16022,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=2))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
         catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
