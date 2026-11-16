@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.36.6 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.36.7 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.36.6';
+const APP_VERSION='2.36.7';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -10948,6 +10948,32 @@ const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des 
   ]});
 
 /* ---- exporter.js ---- */
+// Résultats de la recherche confort d'été, dans l'ordre de la fiche.
+const CONFORT_KEYS=['dh_zt','dh_znt','dh_max','tic','tic_ref','cross_ventilated','non_cross_ventilated','fan_presence','fan_count','fan_type','cooling','cooling_active'];
+// Système constructif, mêmes catégories et mêmes règles que la carte TotalRecoll (recoll.js confortOf) : structure des murs
+// (sinon « Structure »), puis ITE / ITI (colonne Oui / Non, sinon isolant ITE / ITI lu, sinon mention dans le type d'isolant).
+// Rien de deviné : catégorie vide quand la structure ou l'isolation ne permet pas de trancher, la raison va dans « précision ».
+const CONSTRUCTIVE_KEYS=['wall_structure','wall_ite','wall_iti','wall_insulation'];
+const SYSTEMS={iti:'Béton ou brique + isolation intérieure ou isolation répartie',ite:'Béton ou brique + isolation extérieure',bois:'Ossature bois'};
+const ntx=v=>String(v??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const RE_BOIS=/ossature\s*bois|\bmob\b|\bcob\b|\bclt\b|bois\s*massif|colombage|pans?\s*de\s*bois/;
+const RE_MASS=/beton|brique|parpaing|\bblocs?\b|pierre|meuliere|moellon|maconn|porotherm|monomur|banche|prefabriqu|\bvoiles?\b|terre\s*cuite|agglo/;
+const RE_REPART=/monomur|beton\s*cellulaire|isolation\s*repartie|thermo\s*brique|brique\s*isolante/;
+const blankV=v=>v===undefined||v===null||String(v).trim()==='';
+function constructiveSystem(row){
+  const yn=v=>{ const s=ntx(v); return /^oui\b/.test(s)?true:/^non\b/.test(s)?false:null; };
+  const cands=[row.wall_structure,row.structure].filter(v=>!blankV(v)), raw=cands.find(v=>RE_BOIS.test(ntx(v))||RE_MASS.test(ntx(v)))??cands[0], struct=ntx(raw);
+  const ins=ntx(row.wall_insulation), side=(k,iso,re)=>yn(row[k])??(!blankV(row[iso])||re.test(ins)?true:null);
+  const ite=side('wall_ite','wall_ite_insulation',/\bite\b|exterieur|isofacade/), iti=side('wall_iti','wall_iti_insulation',/\biti\b|interieur|doublage|doublissimo|complexe isolant/);
+  if(RE_BOIS.test(struct)) return {system:SYSTEMS.bois,note:''};
+  if(RE_MASS.test(struct)){
+    if(ite&&iti) return {system:'',note:'ITE et ITI : à trancher'};
+    if(ite) return {system:SYSTEMS.ite,note:''};
+    if(iti||RE_REPART.test(struct)) return {system:SYSTEMS.iti,note:''};
+    return {system:'',note:'isolation des murs non précisée'}; }
+  if(struct) return {system:'',note:`structure hors catégories : ${raw}`};
+  return {system:'',note:ite||iti?'structure non renseignée':''};
+}
 function aoaSheet(rows){ return XLSX.utils.aoa_to_sheet(rows); }
 function autoWidth(ws,max=42){ const range=XLSX.utils.decode_range(ws['!ref']||'A1:A1'); const widths=[]; for(let c=range.s.c;c<=range.e.c;c++){ let m=10; for(let r=range.s.r;r<=Math.min(range.e.r,250);r++){ const cell=ws[XLSX.utils.encode_cell({r,c})]; if(cell?.v!=null) m=Math.max(m,String(cell.v).length+2); } widths.push({wch:Math.min(max,m)}); } ws['!cols']=widths; }
 function projectTagsText(p){ return (p?.projectTags||[]).map(t=>t?.label).filter(Boolean).join(' ; '); }
@@ -10996,15 +11022,23 @@ function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   usable.forEach((p,idx)=>{ const pname=projectName(p,idx); for(const a of p.result.buildingAliases||[]) bg.push([pname,a.source,a.target,a.mode]); });
   const wsBg=aoaSheet(bg); autoWidth(wsBg); XLSX.utils.book_append_sheet(wb,wsBg,'Regroupement bâtiments');
 
-  // v2.6.0 — recherches personnalisées : une feuille par grille ayant au moins un résultat, puis les citations.
+  // v2.36.7 — une feuille par recherche, toujours présente : « Confort d'été » (une ligne par bâtiment, une colonne par résultat),
+  // puis chaque grille de recherche (« Sécurité des logements »…), même sans résultat trouvé.
+  const contract=x=>(identity?identity(x.p).contract:'')||'', used=new Set(wb.SheetNames);
+  const sheetName=n=>{ const b=String(n).replace(/[\\/?*[\]:]/g,' ').slice(0,31); let s=b,i=2; while(used.has(s)) s=`${b.slice(0,28)} ${i++}`; used.add(s); return s; };
+  const cf=CONFORT_KEYS.filter(k=>FIELD_MAP[k]);
+  const ck=CONSTRUCTIVE_KEYS.filter(k=>FIELD_MAP[k]);
+  const conf=[['Code interne','Nom opération','Contrat','Bâtiment','Système constructif','Système constructif — précision',...ck.map(k=>FIELD_MAP[k].label),...cf.map(k=>FIELD_MAP[k].label)]];
+  for(const x of eco) for(const row of x.p.result.rows){ const s=constructiveSystem(row);
+    conf.push([x.code,x.name,contract(x),row.building??'',s.system,s.note,...ck.map(k=>row[k]??''),...cf.map(k=>row[k]??'')]); }
+  { const ws=aoaSheet(conf); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,sheetName('Confort d’été')); }
   const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
   for(const grid of grids||[]){
     const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables,x.p.planChecks,x.p.result)}));
-    if(!res.some(({r})=>Object.values(r.criteria).some(c=>c.evidence.length||c.manual))) continue;
-    const g=res[0].r.grid, contract=x=>(identity?identity(x.p).contract:'')||'';
+    const g=res[0].r.grid;
     const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
     const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([k])=>r.criteria[c.id].stats?.[k]??''):[searchCellValue(c,r.criteria[c.id])])])];
-    const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,`Rech. ${g.name}`.replace(/[\\/?*[\]:]/g,' ').slice(0,31));
+    const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,sheetName(g.name));
     for(const {x,r} of res) for(const c of g.criteria) for(const ev of r.criteria[c.id].evidence) cites.push([x.code,x.name,contract(x),g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]);
   }
   if(cites.length>1){ const ws=aoaSheet(cites); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,'Recherches — citations'); }
