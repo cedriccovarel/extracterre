@@ -51,7 +51,7 @@ const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
 const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[]; const candObs=[]; const oracle={}, oracleTot={};
 const bump=(o,k,r)=>{ (o[k]=o[k]||T())[r]++; };
 // v2.36.9 — fiabilité Prestaterre (fiable / non fiable, par catégorie), voir sfReliability dans js/qualite.js.
-const relCat={}, relByField={};
+const relCat={}, relByField={}, calMethods={};
 for(const c of contracts){
   // --relecture-legere : les lecteurs actuels sont relancés sur le texte conservé (sans relire le PDF ni refaire l'OCR).
   const docs=byC[c].map(f=>{ const d={...JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(W,f.resultFile))).toString('utf8')).doc,status:'ready',file:null}; if(args['relecture-legere']&&d.read&&(!args['relecture-types']||String(args['relecture-types']).split(',').includes(d.type))) d.cachedOccurrences=null; return d; });
@@ -71,7 +71,6 @@ for(const c of contracts){
       if(cands.length){ const res2=cands.map(r=>[r,compareToReference(field,r[field],sv)]); const best=res2.find(x=>x[1]==='juste')||res2.find(x=>x[1]==='faux')||res2[0]; hit=best[0]; result=best[1]; }
       const o=hit?(res.finals||[]).find(x=>x.field===field&&(x.building===hit.building||x.building==='Bâtiment unique')):null;
       const method=o?.method||'', type=o?.docType||'';
-      if((result==='juste'||result==='faux')&&hit) comps.push({b:hit.building,field,result,method});
       { const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']); const seenF=new Set();
         for(const d of (res.detailed||[])){ if(d.field!==field||!(names.has(d.building)||names.has(d.originalBuilding))||/^(?:manual:|geocode:|derive:|coherence:)/.test(String(d.method||''))) continue;
           const key=`${d.method}|${d.fileName}|${String(d.value)}`; if(seenF.has(key)) continue; seenF.add(key);
@@ -85,6 +84,9 @@ for(const c of contracts){
         (oracle[field]=oracle[field]||{})[k]=((oracle[field]||{})[k]||0)+1; oracleTot[k]=(oracleTot[k]||0)+1; }
       bump(byField,field,result); if(result==='juste'||result==='faux'){ bump(byMethod,method||'(inconnue)',result); bump(byType,type||'(inconnu)',result); }
       const rel=sfReliability(field,sv,hit?hit[field]:'',result,{goodValuePresent:present,oddValue});
+      // v2.37.0 — calibration des niveaux de fiabilité sur la définition Prestaterre : une lecture « fiable » (juste, écart
+      // mineur, autre version, notion différente, saisie Salesforce aberrante) compte comme juste ; écart majeur / aberrante = faux.
+      if((result==='juste'||result==='faux')&&hit){ const calRes=rel?(rel.fiable?'juste':'faux'):result; comps.push({b:hit.building,field,result:calRes,method}); bump(calMethods,method||'(inconnue)',calRes); }
       if(rel){ relCat[rel.cat]=(relCat[rel.cat]||0)+1; const f=relByField[field]=relByField[field]||{fiable:0,non:0}; f[rel.fiable?'fiable':'non']++; }
       detail.push([c,status,b.name||'(opération)',FIELD_MAP[field].label,field,sv,hit?hit[field]:'',result,rel?(rel.fiable?'fiable':'non fiable'):'',rel?SF_RELIABILITY[rel.cat]:'',o?.fileName||'',o?.page??'',method,type,o?.confidence??'']);
     }
@@ -130,7 +132,7 @@ fs.writeFileSync(path.join(out,'par-type.csv'),csv([head,...sorted(byType).map((
 const tot=Object.values(byField).reduce((a,t)=>({juste:a.juste+t.juste,faux:a.faux+t.faux,manquant:a.manquant+t.manquant,incomparable:a.incomparable+t.incomparable}),T());
 const pairs={}; for(const o of perOp) for(const k of o.comps){ const u=pairs[`${k.method}|${k.field}`]=pairs[`${k.method}|${k.field}`]||{juste:0,faux:0}; u[k.result]++; }
 const candsAll={}; for(const k of candObs){ const u=candsAll[k.key]=candsAll[k.key]||{juste:0,faux:0}; u[k.result]++; }
-const calib={format:'extracterre-calibration',version:3,createdAt:new Date().toISOString(),operations:ops,pairs,cands:candsAll,methods:Object.fromEntries(Object.entries(byMethod).map(([k,t])=>[k,{juste:t.juste,faux:t.faux}])),fields:Object.fromEntries(Object.entries(byField).map(([k,t])=>[k,{juste:t.juste,faux:t.faux,manquant:t.manquant}]))};
+const calib={format:'extracterre-calibration',version:3,createdAt:new Date().toISOString(),operations:ops,pairs,cands:candsAll,methods:Object.fromEntries(Object.entries(calMethods).map(([k,t])=>[k,{juste:t.juste,faux:t.faux}])),definition:'prestaterre-fiable-v1',fields:Object.fromEntries(Object.entries(byField).map(([k,t])=>[k,{juste:t.juste,faux:t.faux,manquant:t.manquant}]))};
 fs.writeFileSync(path.join(out,'calibration.json'),JSON.stringify(calib,null,1));
 // Validation croisée de la note de fiabilité : calibration sur une moitié des opérations, note évaluée sur l'autre.
 const byGrade={}, byGradeWhy={}, gradeRows=[]; const half=x=>parseInt(x.c,10)%2;

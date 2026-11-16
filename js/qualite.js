@@ -72,6 +72,7 @@ export function methodAccuracy(calib,method,field=''){
   return (field&&pick(calib?.pairs?.[`${method}|${field}`]))||pick(calib?.methods?.[method]);
 }
 export const CALIB_MIN=12, CALIB_SURE=0.95, CALIB_PROBABLE=0.85;
+export const CONF_PROBABLE=0.85; // confiance de lecture minimale d'une lecture non mesurée pour « probable »
 // Niveau d'une valeur : Salesforce = certifiée ; sinon le niveau MESURÉ par le banc de vérité pour cette méthode de
 // lecture et ce champ ; une lecture non mesurée reste « à vérifier ». (Banc, validation croisée : la confirmation par un
 // 2e document ou le seul fait d'être un XML ne prédisaient pas une valeur juste — 76 % et 33 %.)
@@ -83,6 +84,9 @@ export function reliabilityOf(o,{calib=null,field=''}={}){
   if(/^manual:/.test(m)||o.docType==='Correction manuelle') return 'sure'; // saisie ou validation de l'utilisateur
   const acc=(o.agreeFiles>=2&&methodAccuracy(calib,`accord${Math.min(3,o.agreeFiles)}`,f))||methodAccuracy(calib,m,f);
   if(acc) return acc.rate>=CALIB_SURE?'sure':acc.rate>=CALIB_PROBABLE?'probable':'averifier';
+  // v2.37.0 — méthode non mesurée : la confiance de lecture décide. Banc du 16/11/2026 : une lecture non mesurée de
+  // confiance ≥ 85 % est fiable dans 88–89 % des cas (748 valeurs) → « probable » (pas « sûre » : 95 % non atteints).
+  if(Number(o.confidence)>=CONF_PROBABLE) return 'probable';
   return 'averifier';
 }
 
@@ -94,8 +98,24 @@ export function getCalibration(){ return CALIB; }
 const Q_NO_CONFIRM=/^(?:manual:|geocode:|derive:|coherence:|library:)/;
 const Q_STUDY_DOC=/RSET|RSEE|RSENV|RT2012|RT Existant|[ÉE]tude thermique|[ÉE]tude carbone/i;
 // Fiabilité de chaque valeur d'un résultat : {bâtiment: {champ: niveau}}.
+// v2.37.0 — consommations par poste : jamais dans Salesforce, donc jamais mesurées par le banc. Contrôle de cohérence
+// dans l'étude elle-même : si la somme Cep électricité + gaz + réseau de chaleur + bois retombe sur le Cep total (±5 %),
+// le tableau a été bien lu → ces valeurs, et les postes par usage lus dans le même fichier (chacun ≤ Cep), passent
+// « probable ». Mesuré sur l'import : 732 bâtiments cohérents sur 826. Une valeur contestée reste « à vérifier ».
+export const CEP_BY_ENERGY=['cep_electricity','cep_gas','cep_district','cep_biomass'], CEP_BY_USE=['cep_cooling','cep_lighting','cep_aux_vent','cep_aux_dist','cep_mobility'];
+const q_num=v=>{ if(typeof v==='number') return Number.isFinite(v)?v:null; const s=String(v??'').replace(/[\s ]/g,'').replace(',','.'); return /^-?\d+(?:\.\d+)?$/.test(s)?Number(s):null; };
+function q_cepCoherence(row,m,finals,contested,why){
+  const cep=q_num(row.cep); if(!(cep>0)) return;
+  const energies=CEP_BY_ENERGY.filter(k=>q_num(row[k])!==null); if(!energies.length) return;
+  const sum=energies.reduce((a,k)=>a+q_num(row[k]),0); if(Math.abs(sum/cep-1)>0.05) return;
+  const fileOf=k=>(finals.find(x=>x.field===k&&x.building===row.building)||finals.find(x=>x.field===k&&x.building==='Bâtiment unique'))?.fileName||'';
+  const files=new Set(energies.map(fileOf).filter(Boolean));
+  for(const k of [...CEP_BY_ENERGY,...CEP_BY_USE]){ const v=q_num(row[k]);
+    if(v===null||m[k]!=='averifier'||contested.has(k)||v>cep*1.0001||!files.has(fileOf(k))) continue;
+    m[k]='probable'; if(why) why[k]='cohérence (somme par énergie = Cep)'; }
+}
 export function reliabilityTable(result,{calib=CALIB,reasons=null}={}){
-  const out={}, finals=result?.finals||[], detailed=result?.detailed||[];
+  const out={}, finals=result?.finals||[], detailed=result?.detailed||[], contestedSet=new Set();
   for(const row of result?.rows||[]){ const b=row.building, m={};
     for(const [f,v] of Object.entries(row)){
       if(f==='building'||v===undefined||v===null||v===''||!FIELD_MAP[f]) continue;
@@ -106,8 +126,11 @@ export function reliabilityTable(result,{calib=CALIB,reasons=null}={}){
       const contested=!!o.fileName&&detailed.some(d=>d.field===f&&(d.building===b||d.originalBuilding===b)&&d.fileName&&d.fileName!==o.fileName&&Q_STUDY_DOC.test(String(d.docType||''))&&!Q_NO_CONFIRM.test(String(d.method||''))&&d.value!==undefined&&d.value!==null&&d.value!==''&&!sameValue(f,d.value,v));
       const lvl=reliabilityOf(o,{calib,field:f});
       m[f]=contested&&lvl!=='certifiee'&&!/^manual:/.test(String(o.method||''))?'averifier':lvl;
+      if(contested) contestedSet.add(f);
       if(reasons) (reasons[b]=reasons[b]||{})[f]=contested?'contestée':methodAccuracy(calib,String(o.method||''),f)?'mesure':'non mesurée';
     }
+    q_cepCoherence(row,m,finals,contestedSet,reasons&&(reasons[b]=reasons[b]||{}));
+    contestedSet.clear();
     out[b]=m;
   }
   return out;
