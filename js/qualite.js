@@ -67,6 +67,12 @@ export const RELIABILITY=Object.freeze({
 });
 const Q_SF_SRC=/salesforce/i;
 // Exactitude mesurée d'une méthode de lecture pour un champ (sinon pour la méthode tous champs confondus).
+export function contestedAccuracy(calib,field){
+  const pick=m=>{ if(!m) return null; const n=(m.juste||0)+(m.faux||0); return n>=CALIB_MIN?{rate:(m.juste||0)/n,n}:null; };
+  const own=calib?.contested?.[field], n=own?(own.juste||0)+(own.faux||0):0;
+  // Peu d'exemples pour cette donnée : la moyenne générale ne sert que si ces exemples ne la contredisent pas (≥ 85 %).
+  return pick(own)||(n>=5&&(own.juste||0)/n<CALIB_PROBABLE?null:pick(calib?.contested?.['*']));
+}
 export function methodAccuracy(calib,method,field=''){
   const pick=m=>{ if(!m) return null; const n=(m.juste||0)+(m.faux||0); return n>=CALIB_MIN?{rate:(m.juste||0)/n,n}:null; };
   return (field&&pick(calib?.pairs?.[`${method}|${field}`]))||pick(calib?.methods?.[method]);
@@ -125,9 +131,13 @@ export function reliabilityTable(result,{calib=CALIB,reasons=null}={}){
       // (ex. deux versions d'étude). Sans Salesforce, impossible de savoir laquelle a été certifiée → « à vérifier ».
       const contested=!!o.fileName&&detailed.some(d=>d.field===f&&(d.building===b||d.originalBuilding===b)&&d.fileName&&d.fileName!==o.fileName&&Q_STUDY_DOC.test(String(d.docType||''))&&!Q_NO_CONFIRM.test(String(d.method||''))&&d.value!==undefined&&d.value!==null&&d.value!==''&&!sameValue(f,d.value,v));
       const lvl=reliabilityOf(o,{calib,field:f});
-      m[f]=contested&&lvl!=='certifiee'&&!/^manual:/.test(String(o.method||''))?'averifier':lvl;
-      if(contested) contestedSet.add(f);
-      if(reasons) (reasons[b]=reasons[b]||{})[f]=contested?'contestée':methodAccuracy(calib,String(o.method||''),f)?'mesure':'non mesurée';
+      // v2.37.1 — valeur contestée : « à vérifier », sauf si le banc mesure que, pour cette donnée, la valeur retenue (version
+      // la plus récente) reste fiable ≥ 85 % malgré la contradiction → « probable » au plus (jamais au-dessus du niveau de la méthode).
+      const open=contested&&lvl!=='certifiee'&&!/^manual:/.test(String(o.method||''));
+      const cacc=open?contestedAccuracy(calib,f):null, keep=open&&cacc&&cacc.rate>=CALIB_PROBABLE&&(lvl==='sure'||lvl==='probable');
+      m[f]=open?(keep?'probable':'averifier'):lvl;
+      if(open&&!keep) contestedSet.add(f);
+      if(reasons) (reasons[b]=reasons[b]||{})[f]=contested?(keep?'contestée, version récente fiable':'contestée'):methodAccuracy(calib,String(o.method||''),f)?'mesure':'non mesurée';
     }
     q_cepCoherence(row,m,finals,contestedSet,reasons&&(reasons[b]=reasons[b]||{}));
     contestedSet.clear();

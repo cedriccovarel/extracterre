@@ -132,7 +132,10 @@ fs.writeFileSync(path.join(out,'par-type.csv'),csv([head,...sorted(byType).map((
 const tot=Object.values(byField).reduce((a,t)=>({juste:a.juste+t.juste,faux:a.faux+t.faux,manquant:a.manquant+t.manquant,incomparable:a.incomparable+t.incomparable}),T());
 const pairs={}; for(const o of perOp) for(const k of o.comps){ const u=pairs[`${k.method}|${k.field}`]=pairs[`${k.method}|${k.field}`]||{juste:0,faux:0}; u[k.result]++; }
 const candsAll={}; for(const k of candObs){ const u=candsAll[k.key]=candsAll[k.key]||{juste:0,faux:0}; u[k.result]++; }
-const calib={format:'extracterre-calibration',version:3,createdAt:new Date().toISOString(),operations:ops,pairs,cands:candsAll,methods:Object.fromEntries(Object.entries(calMethods).map(([k,t])=>[k,{juste:t.juste,faux:t.faux}])),definition:'prestaterre-fiable-v1',fields:Object.fromEntries(Object.entries(byField).map(([k,t])=>[k,{juste:t.juste,faux:t.faux,manquant:t.manquant}]))};
+// v2.37.1 — valeurs contestées (un autre document donne une autre valeur) : part fiable mesurée par donnée.
+const contestedStats={};
+for(const o of perOp){ const why={}; reliabilityTable(o.res,{calib:null,reasons:why}); for(const k of o.comps){ if(why[k.b]?.[k.field]!=='contestée') continue; for(const key of [k.field,'*']){ const u=contestedStats[key]=contestedStats[key]||{juste:0,faux:0}; u[k.result]++; } } }
+const calib={format:'extracterre-calibration',version:3,contested:contestedStats,createdAt:new Date().toISOString(),operations:ops,pairs,cands:candsAll,methods:Object.fromEntries(Object.entries(calMethods).map(([k,t])=>[k,{juste:t.juste,faux:t.faux}])),definition:'prestaterre-fiable-v1',fields:Object.fromEntries(Object.entries(byField).map(([k,t])=>[k,{juste:t.juste,faux:t.faux,manquant:t.manquant}]))};
 fs.writeFileSync(path.join(out,'calibration.json'),JSON.stringify(calib,null,1));
 // Validation croisée de la note de fiabilité : calibration sur une moitié des opérations, note évaluée sur l'autre.
 const byGrade={}, byGradeWhy={}, gradeRows=[]; const half=x=>parseInt(x.c,10)%2;

@@ -2,7 +2,7 @@
  "format": "extracterre-calibration",
  "version": 3,
  "definition": "prestaterre-fiable-v1",
- "createdAt": "2026-11-16T14:25:40.991500",
+ "createdAt": "2026-11-16T14:54:48.191995",
  "operations": 334,
  "pairs": {
   "envelope:thickness-context|wall_insulation_thickness": {
@@ -5589,6 +5589,208 @@
    "juste": 1,
    "faux": 0,
    "manquant": 0
+  }
+ },
+ "contested": {
+  "ventilation": {
+   "juste": 120,
+   "faux": 0
+  },
+  "*": {
+   "juste": 1488,
+   "faux": 133
+  },
+  "housing_count": {
+   "juste": 84,
+   "faux": 1
+  },
+  "roof_insulation_thickness": {
+   "juste": 22,
+   "faux": 12
+  },
+  "roof_insulation_r": {
+   "juste": 21,
+   "faux": 10
+  },
+  "ecs_vector_after": {
+   "juste": 22,
+   "faux": 1
+  },
+  "tic": {
+   "juste": 21,
+   "faux": 0
+  },
+  "tic_ref": {
+   "juste": 11,
+   "faux": 0
+  },
+  "bbio": {
+   "juste": 100,
+   "faux": 3
+  },
+  "cep": {
+   "juste": 129,
+   "faux": 9
+  },
+  "cep_max": {
+   "juste": 46,
+   "faux": 7
+  },
+  "cep_gain": {
+   "juste": 71,
+   "faux": 6
+  },
+  "wall_insulation_thickness": {
+   "juste": 18,
+   "faux": 14
+  },
+  "wall_insulation_r": {
+   "juste": 16,
+   "faux": 15
+  },
+  "window_shading": {
+   "juste": 51,
+   "faux": 1
+  },
+  "heating_mode_after": {
+   "juste": 72,
+   "faux": 3
+  },
+  "ecs": {
+   "juste": 40,
+   "faux": 0
+  },
+  "heating_vector_after": {
+   "juste": 35,
+   "faux": 0
+  },
+  "bbio_gain": {
+   "juste": 53,
+   "faux": 4
+  },
+  "cepnr": {
+   "juste": 80,
+   "faux": 5
+  },
+  "cepnr_gain": {
+   "juste": 50,
+   "faux": 5
+  },
+  "dh": {
+   "juste": 47,
+   "faux": 11
+  },
+  "shab": {
+   "juste": 64,
+   "faux": 3
+  },
+  "bbio_max": {
+   "juste": 24,
+   "faux": 0
+  },
+  "cepnr_max": {
+   "juste": 28,
+   "faux": 1
+  },
+  "ic_construction": {
+   "juste": 20,
+   "faux": 1
+  },
+  "ic_construction_max": {
+   "juste": 7,
+   "faux": 3
+  },
+  "roof_insulation": {
+   "juste": 27,
+   "faux": 1
+  },
+  "window_material": {
+   "juste": 55,
+   "faux": 0
+  },
+  "wall_structure": {
+   "juste": 15,
+   "faux": 1
+  },
+  "cep_before": {
+   "juste": 6,
+   "faux": 1
+  },
+  "floor_insulation_thickness": {
+   "juste": 13,
+   "faux": 2
+  },
+  "wall_iti_insulation": {
+   "juste": 1,
+   "faux": 0
+  },
+  "wall_insulation": {
+   "juste": 17,
+   "faux": 0
+  },
+  "floor_insulation": {
+   "juste": 15,
+   "faux": 0
+  },
+  "dh_znt": {
+   "juste": 11,
+   "faux": 1
+  },
+  "window_glazing": {
+   "juste": 10,
+   "faux": 0
+  },
+  "wall_ite_insulation": {
+   "juste": 1,
+   "faux": 0
+  },
+  "wall_ite_thickness": {
+   "juste": 1,
+   "faux": 0
+  },
+  "ic_energy": {
+   "juste": 11,
+   "faux": 1
+  },
+  "dh_zt": {
+   "juste": 18,
+   "faux": 1
+  },
+  "wall_iti_thickness": {
+   "juste": 0,
+   "faux": 2
+  },
+  "ubat_before": {
+   "juste": 2,
+   "faux": 0
+  },
+  "ubat_after": {
+   "juste": 7,
+   "faux": 0
+  },
+  "cep_after_final": {
+   "juste": 6,
+   "faux": 1
+  },
+  "floor_insulation_r": {
+   "juste": 14,
+   "faux": 6
+  },
+  "floor_structure": {
+   "juste": 1,
+   "faux": 0
+  },
+  "ic_energy_max": {
+   "juste": 3,
+   "faux": 0
+  },
+  "wall_iti_r": {
+   "juste": 1,
+   "faux": 1
+  },
+  "enr": {
+   "juste": 1,
+   "faux": 0
   }
  }
 }
