@@ -150,6 +150,7 @@ async function main(){
   console.log(`\nCorrespondance\n  contrats sans sous-dossier de famille : ${noFamily.length}${noFamily.length?` (${noFamily.slice(0,10).join(', ')}${noFamily.length>10?'…':''})`:''}`);
   if(match.multiple.length) console.log(`  plusieurs dossiers : ${match.multiple.slice(0,10).map(m=>m.contract).join(', ')}`);
   if(match.missing.length) console.log(`  sans dossier : ${match.missing.slice(0,15).join(', ')}${match.missing.length>15?'…':''}`);
+  { const bad=match.found.filter(f=>scans.get(f.folder)?.errors.length); if(bad.length) console.log(`  ATTENTION : ${bad.length} opération(s) avec des dossiers illisibles (Box) — fichiers non lus, relancer l'analyse : ${bad.slice(0,10).map(f=>f.contract).join(', ')}${bad.length>10?'…':''}`); }
   console.log(`  sous-dossiers ignorés les plus fréquents : ${ign.slice(0,12).map(([k,e])=>`${k} (${e.n})`).join(' · ')||'aucun'}`);
   console.log(`  rapports : ${runDir}`);
   status({etape:'correspondance',correspondance:{demandes:wanted?.length??null,trouves:match.found.length,sansDossier:match.missing,plusieursDossiers:match.multiple.map(m=>m.contract),annules:match.onlyCancelled.map(m=>m.contract),illisibles:(listInfo?.invalid||[]).map(x=>x.value),sansSousDossier:noFamily},rapports:runDir});

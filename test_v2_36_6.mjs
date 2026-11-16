@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {coolingContextKept} from './js/parsers.js';
-assert.equal(APP_VERSION,'2.36.7');
+assert.equal(APP_VERSION,'2.36.8');
 const K=(v,t)=>coolingContextKept(v,t);
 // Mentions sans clim installée
 for(const t of ["LOT N°09 – CHAUFFAGE – CLIMATISATION","Respect des arrêtés chauffage ou de climatisation","Chauffage ou climatisation Pièce principale 40,0",

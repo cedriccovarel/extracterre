@@ -20,9 +20,14 @@ export async function scanOperation(opDir,cfg,{allSubfolders=false}={}){
   const retained=[],files=[],ignoredDirs=[],errors=[];
   const maxDepth=cfg.profondeurMax||8;
   async function walk(abs,rel,depth,family,directFamily){
+    // v2.36.8 — Box (fichiers à la demande) refuse parfois de lister un dossier pas encore téléchargé : 4 essais espacés
+    // (2, 5, 10 s) avant de le déclarer illisible. Le 16/11/2026, 89 opérations sur 106 avaient 0 fichier pour cette raison.
     let entries;
-    try{ entries=await fs.promises.readdir(abs,{withFileTypes:true}); }
-    catch(err){ errors.push({relDir:rel,error:err.code||err.message}); return; }
+    for(let attempt=0;;attempt++){
+      try{ entries=await fs.promises.readdir(abs,{withFileTypes:true}); break; }
+      catch(err){ if(err.code==='ENOENT'||err.code==='ENOTDIR'||attempt>=3){ errors.push({relDir:rel,error:err.code||err.message}); return; }
+        await new Promise(r=>setTimeout(r,[2000,5000,10000][attempt])); }
+    }
     for(const e of entries){
       const childAbs=path.join(abs,e.name), childRel=rel?`${rel}/${e.name}`:e.name;
       if(e.isSymbolicLink()) continue;
