@@ -18,7 +18,8 @@ import {sfxParseHtmlTable,sfxColumns,sfxFiche,sfxHeaderRow} from '../../js/sf-ex
 import {parseFreePaste,freePasteValues} from '../../js/collage-libre.js';
 import {sfPerimeterMap} from '../../js/sf-perimeter.js';
 import {canonicalBuilding} from '../../js/buildings.js';
-import {compareToReference,reliabilityTable,RELIABILITY,recoupement} from '../../js/qualite.js';
+import {compareToReference,reliabilityTable,RELIABILITY,recoupement,sfReliability,SF_RELIABILITY} from '../../js/qualite.js';
+import {oddValue} from '../../js/sanity.js';
 
 const require=createRequire(new URL('../import/package.json',import.meta.url));
 const args={}; for(let i=2;i<process.argv.length;i++){ const a=process.argv[i]; if(a.startsWith('--')){ const k=a.slice(2); const v=process.argv[i+1]&&!process.argv[i+1].startsWith('--')?process.argv[++i]:true; args[k]=v; } }
@@ -49,6 +50,8 @@ console.log(`Export Salesforce : ${sf.size} fiche(s) avec données techniques ·
 const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
 const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[]; const candObs=[]; const oracle={}, oracleTot={};
 const bump=(o,k,r)=>{ (o[k]=o[k]||T())[r]++; };
+// v2.36.9 — fiabilité Prestaterre (fiable / non fiable, par catégorie), voir sfReliability dans js/qualite.js.
+const relCat={}, relByField={};
 for(const c of contracts){
   // --relecture-legere : les lecteurs actuels sont relancés sur le texte conservé (sans relire le PDF ni refaire l'OCR).
   const docs=byC[c].map(f=>{ const d={...JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(W,f.resultFile))).toString('utf8')).doc,status:'ready',file:null}; if(args['relecture-legere']&&d.read&&(!args['relecture-types']||String(args['relecture-types']).split(',').includes(d.type))) d.cachedOccurrences=null; return d; });
@@ -74,12 +77,16 @@ for(const c of contracts){
           const key=`${d.method}|${d.fileName}|${String(d.value)}`; if(seenF.has(key)) continue; seenF.add(key);
           const rr=compareToReference(field,d.value,sv); if(rr==='incomparable') continue; candObs.push({c,key:`${d.method}|${field}`,result:rr}); } }
       // Potentiel : la bonne valeur est-elle parmi TOUTES les lectures des documents (retenues ou non) pour ce bâtiment ?
+      let present=false;
       if(result!=='juste'&&result!=='incomparable'){ const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']);
         const pool=(res.detailed||[]).filter(d=>d.field===field&&(names.has(d.building)||names.has(d.originalBuilding)));
-        const k=pool.some(d=>compareToReference(field,d.value,sv)==='juste')?(result==='faux'?'faux · bonne valeur présente':'manquant · bonne valeur présente'):(result==='faux'?'faux · absente des lectures':'manquant · aucune lecture juste');
+        present=pool.some(d=>compareToReference(field,d.value,sv)==='juste');
+        const k=present?(result==='faux'?'faux · bonne valeur présente':'manquant · bonne valeur présente'):(result==='faux'?'faux · absente des lectures':'manquant · aucune lecture juste');
         (oracle[field]=oracle[field]||{})[k]=((oracle[field]||{})[k]||0)+1; oracleTot[k]=(oracleTot[k]||0)+1; }
       bump(byField,field,result); if(result==='juste'||result==='faux'){ bump(byMethod,method||'(inconnue)',result); bump(byType,type||'(inconnu)',result); }
-      detail.push([c,status,b.name||'(opération)',FIELD_MAP[field].label,field,sv,hit?hit[field]:'',result,o?.fileName||'',o?.page??'',method,type,o?.confidence??'']);
+      const rel=sfReliability(field,sv,hit?hit[field]:'',result,{goodValuePresent:present,oddValue});
+      if(rel){ relCat[rel.cat]=(relCat[rel.cat]||0)+1; const f=relByField[field]=relByField[field]||{fiable:0,non:0}; f[rel.fiable?'fiable':'non']++; }
+      detail.push([c,status,b.name||'(opération)',FIELD_MAP[field].label,field,sv,hit?hit[field]:'',result,rel?(rel.fiable?'fiable':'non fiable'):'',rel?SF_RELIABILITY[rel.cat]:'',o?.fileName||'',o?.page??'',method,type,o?.confidence??'']);
     }
   }
 }
@@ -115,7 +122,7 @@ const csv=(rows)=>'﻿'+rows.map(r=>r.map(v=>{ const s=String(v??''); return /[;
 const pct=x=>x===null?'':`${Math.round(x*1000)/10} %`;
 const stat=(k,t)=>{ const n=t.juste+t.faux; return [k,t.juste,t.faux,t.manquant,t.incomparable,pct(n?t.juste/n:null),pct((t.juste+t.faux+t.manquant)?(t.juste+t.faux)/(t.juste+t.faux+t.manquant):null)]; };
 const head=['clé','justes','faux','manquants','non comparables','exactitude (justes / lus)','couverture (lus / Salesforce)'];
-fs.writeFileSync(path.join(out,'detail.csv'),csv([['contrat','statut évaluation','bâtiment Salesforce','champ','clé','valeur Salesforce','valeur documents','résultat','document','page','méthode','type de document','confiance'],...detail]));
+fs.writeFileSync(path.join(out,'detail.csv'),csv([['contrat','statut évaluation','bâtiment Salesforce','champ','clé','valeur Salesforce','valeur documents','résultat','fiabilité','catégorie','document','page','méthode','type de document','confiance'],...detail]));
 const sorted=o=>Object.entries(o).sort((a,b)=>(b[1].juste+b[1].faux+b[1].manquant)-(a[1].juste+a[1].faux+a[1].manquant));
 fs.writeFileSync(path.join(out,'par-champ.csv'),csv([head,...sorted(byField).map(([k,t])=>stat(`${FIELD_MAP[k]?.label||k} (${k})`,t))]));
 fs.writeFileSync(path.join(out,'par-methode.csv'),csv([head,...sorted(byMethod).map(([k,t])=>stat(k,t))]));
@@ -138,6 +145,11 @@ fs.writeFileSync(path.join(out,'par-niveau.csv'),csv([head,...Object.entries(byG
 const lines=[`Banc de vérité Salesforce — ${new Date().toLocaleString('fr-FR')}`,`Opérations comparées : ${ops}`,
   `Valeurs Salesforce : ${tot.juste+tot.faux+tot.manquant+tot.incomparable} · justes ${tot.juste} · fausses ${tot.faux} · non trouvées ${tot.manquant} · non comparables ${tot.incomparable}`,
   `Exactitude (justes / valeurs lues) : ${pct(tot.juste/Math.max(1,tot.juste+tot.faux))} · couverture : ${pct((tot.juste+tot.faux)/Math.max(1,tot.juste+tot.faux+tot.manquant))}`,'',
+  ...(()=>{ const F=['juste','mineur','version','notion','sfDouteux'], N=['manquant','majeur','aberrant'], nf=F.reduce((a,k)=>a+(relCat[k]||0),0), nn=N.reduce((a,k)=>a+(relCat[k]||0),0), all=Math.max(1,nf+nn);
+    return [`FIABILITÉ (valeurs Salesforce comparables : ${nf+nn}) : ${pct(nf/all)} fiables · ${pct(nn/all)} non fiables`,
+      ...F.map(k=>`  fiable     · ${SF_RELIABILITY[k].padEnd(32)} ${String(relCat[k]||0).padStart(5)}  (${pct((relCat[k]||0)/all)})`),
+      ...N.map(k=>`  non fiable · ${SF_RELIABILITY[k].padEnd(32)} ${String(relCat[k]||0).padStart(5)}  (${pct((relCat[k]||0)/all)})`),'',
+      'Champs les moins fiables (≥ 10 valeurs) :',...Object.entries(relByField).filter(([,t])=>t.fiable+t.non>=10).sort((a,b)=>a[1].fiable/(a[1].fiable+a[1].non)-b[1].fiable/(b[1].fiable+b[1].non)).slice(0,15).map(([k,t])=>`  ${pct(t.fiable/(t.fiable+t.non)).padStart(7)}  ${FIELD_MAP[k]?.label||k} (${t.fiable}/${t.fiable+t.non})`),'']; })(),
   'Champs les moins justes (≥ 10 valeurs lues) :',...sorted(byField).filter(([,t])=>t.juste+t.faux>=10).sort((a,b)=>a[1].juste/(a[1].juste+a[1].faux)-b[1].juste/(b[1].juste+b[1].faux)).slice(0,15).map(([k,t])=>`  ${pct(t.juste/(t.juste+t.faux)).padStart(7)}  ${FIELD_MAP[k]?.label||k} (${t.juste}/${t.juste+t.faux})`),'',
   'Méthodes de lecture (≥ 10 valeurs lues) :',...sorted(byMethod).filter(([,t])=>t.juste+t.faux>=10).map(([k,t])=>`  ${pct(t.juste/(t.juste+t.faux)).padStart(7)}  ${k} (${t.juste}/${t.juste+t.faux})`)];
 lines.push(...gradeLines);

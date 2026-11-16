@@ -174,3 +174,29 @@ export function recoupement(result,{calib=CALIB,prior=0.3,margin=0.15,fillMin=0.
   }
   return {replaced,filled};
 }
+
+// v2.36.9 — Fiabilité face à Salesforce (règle Prestaterre). Salesforce est une donnée d'entrée vérifiée : une valeur lue
+// est FIABLE si elle est juste, ou si l'écart n'est pas une vraie erreur de lecture ; NON FIABLE si elle n'est pas trouvée,
+// s'écarte fortement de Salesforce, ou est aberrante.
+//   fiable    : juste ; écart mineur (nombre à ±10 %) ; autre version / autre document (la valeur Salesforce est lue dans
+//               un autre document du dossier) ; notion différente (planchers hauts : Salesforce note le type de toiture,
+//               ExtracTerre le matériau) ; saisie Salesforce aberrante alors que la lecture est plausible.
+//   non fiable: non trouvée ; valeur aberrante (hors des plages de sanity.js) ; écart majeur.
+// Les valeurs non comparables (catégories non reconnues) ne comptent pas.
+export const SF_RELIABILITY={juste:'juste',mineur:'écart mineur (±10 %)',version:'autre version / autre document',notion:'notion différente',sfDouteux:'saisie Salesforce aberrante',
+  manquant:'non trouvée',aberrant:'valeur aberrante',majeur:'écart majeur'};
+const SF_MINOR_REL=.10;
+const asNumber=v=>{ if(typeof v==='number') return Number.isFinite(v)?v:null; const s=String(v??'').replace(/[\s ]/g,'').replace(',','.'); return /^-?\d+(?:\.\d+)?$/.test(s)?Number(s):null; };
+export function sfReliability(field,sfValue,docValue,result,{goodValuePresent=false,oddValue=null}={}){
+  if(result==='incomparable') return null;
+  if(result==='juste') return {fiable:true,cat:'juste'};
+  if(result==='manquant') return {fiable:false,cat:'manquant'};
+  const odd=k=>v=>oddValue?oddValue(k,v):'';
+  if(odd(field)(docValue)&&!odd(field)(sfValue)) return {fiable:false,cat:'aberrant'};
+  if(odd(field)(sfValue)&&!odd(field)(docValue)) return {fiable:true,cat:'sfDouteux'};
+  const a=asNumber(docValue), b=asNumber(sfValue);
+  if(a!==null&&b!==null&&Math.abs(a-b)<=Math.abs(b)*SF_MINOR_REL) return {fiable:true,cat:'mineur'};
+  if(field==='roof_structure'&&/toiture|terrasse|comble|plafond|rampant|dernier niveau/i.test(String(sfValue))&&!/toiture|terrasse|comble|plafond|rampant/i.test(String(docValue))) return {fiable:true,cat:'notion'};
+  if(goodValuePresent) return {fiable:true,cat:'version'};
+  return {fiable:false,cat:'majeur'};
+}
