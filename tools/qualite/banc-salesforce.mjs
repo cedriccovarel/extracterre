@@ -76,10 +76,14 @@ for(const c of contracts){
           const key=`${d.method}|${d.fileName}|${String(d.value)}`; if(seenF.has(key)) continue; seenF.add(key);
           const rr=compareToReference(field,d.value,sv); if(rr==='incomparable') continue; candObs.push({c,key:`${d.method}|${field}`,result:rr}); } }
       // Potentiel : la bonne valeur est-elle parmi TOUTES les lectures des documents (retenues ou non) pour ce bâtiment ?
-      let present=false;
+      let present=false, goodDiag='';
       if(result!=='juste'&&result!=='incomparable'){ const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']);
         const pool=(res.detailed||[]).filter(d=>d.field===field&&(names.has(d.building)||names.has(d.originalBuilding)));
         present=pool.some(d=>compareToReference(field,d.value,sv)==='juste');
+        // v2.39.0 — diagnostic : la bonne lecture, et pourquoi elle n'a pas été retenue (statut, motif, source).
+        { const g=pool.find(d=>compareToReference(field,d.value,sv)==='juste'); if(g) goodDiag=[g.status||'',g.rejectionReason||'',g.sourceTier||'',g.docType||'',g.method||'',g.fileName||'',g.building||'',g.confidence??''].join(' | ');
+          // Lue, mais pour un autre bâtiment de l'opération (rattachement) ?
+          else { const o2=(res.detailed||[]).find(d=>d.field===field&&compareToReference(field,d.value,sv)==='juste'); if(o2) goodDiag=['AUTRE BÂTIMENT',o2.status||'',o2.sourceTier||'',o2.docType||'',o2.method||'',o2.fileName||'',`${o2.building||''} (Salesforce : ${b.name||'opération'})`,o2.confidence??''].join(' | '); } }
         const k=present?(result==='faux'?'faux · bonne valeur présente':'manquant · bonne valeur présente'):(result==='faux'?'faux · absente des lectures':'manquant · aucune lecture juste');
         (oracle[field]=oracle[field]||{})[k]=((oracle[field]||{})[k]||0)+1; oracleTot[k]=(oracleTot[k]||0)+1; }
       bump(byField,field,result); if(result==='juste'||result==='faux'){ bump(byMethod,method||'(inconnue)',result); bump(byType,type||'(inconnu)',result); }
@@ -88,7 +92,7 @@ for(const c of contracts){
       // mineur, autre version, notion différente, saisie Salesforce aberrante) compte comme juste ; écart majeur / aberrante = faux.
       if((result==='juste'||result==='faux')&&hit){ const calRes=rel?(rel.fiable?'juste':'faux'):result; comps.push({b:hit.building,field,result:calRes,method}); bump(calMethods,method||'(inconnue)',calRes); }
       if(rel){ relCat[rel.cat]=(relCat[rel.cat]||0)+1; const f=relByField[field]=relByField[field]||{fiable:0,non:0}; f[rel.fiable?'fiable':'non']++; }
-      detail.push([c,status,b.name||'(opération)',FIELD_MAP[field].label,field,sv,hit?hit[field]:'',result,rel?(rel.fiable?'fiable':'non fiable'):'',rel?SF_RELIABILITY[rel.cat]:'',o?.fileName||'',o?.page??'',method,type,o?.confidence??'']);
+      detail.push([c,status,b.name||'(opération)',FIELD_MAP[field].label,field,sv,hit?hit[field]:'',result,rel?(rel.fiable?'fiable':'non fiable'):'',rel?SF_RELIABILITY[rel.cat]:'',goodDiag,o?.fileName||'',o?.page??'',method,type,o?.confidence??'']);
     }
   }
 }
@@ -124,7 +128,7 @@ const csv=(rows)=>'﻿'+rows.map(r=>r.map(v=>{ const s=String(v??''); return /[;
 const pct=x=>x===null?'':`${Math.round(x*1000)/10} %`;
 const stat=(k,t)=>{ const n=t.juste+t.faux; return [k,t.juste,t.faux,t.manquant,t.incomparable,pct(n?t.juste/n:null),pct((t.juste+t.faux+t.manquant)?(t.juste+t.faux)/(t.juste+t.faux+t.manquant):null)]; };
 const head=['clé','justes','faux','manquants','non comparables','exactitude (justes / lus)','couverture (lus / Salesforce)'];
-fs.writeFileSync(path.join(out,'detail.csv'),csv([['contrat','statut évaluation','bâtiment Salesforce','champ','clé','valeur Salesforce','valeur documents','résultat','fiabilité','catégorie','document','page','méthode','type de document','confiance'],...detail]));
+fs.writeFileSync(path.join(out,'detail.csv'),csv([['contrat','statut évaluation','bâtiment Salesforce','champ','clé','valeur Salesforce','valeur documents','résultat','fiabilité','catégorie','bonne lecture non retenue (statut | motif | niveau | type | méthode | fichier | bâtiment | confiance)','document','page','méthode','type de document','confiance'],...detail]));
 const sorted=o=>Object.entries(o).sort((a,b)=>(b[1].juste+b[1].faux+b[1].manquant)-(a[1].juste+a[1].faux+a[1].manquant));
 fs.writeFileSync(path.join(out,'par-champ.csv'),csv([head,...sorted(byField).map(([k,t])=>stat(`${FIELD_MAP[k]?.label||k} (${k})`,t))]));
 fs.writeFileSync(path.join(out,'par-methode.csv'),csv([head,...sorted(byMethod).map(([k,t])=>stat(k,t))]));

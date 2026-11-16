@@ -23,7 +23,7 @@ import {canonicalBuilding} from './buildings.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
-import {gridCctpLots,normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
+import {gridCctpLots,withEnvelopeLots,normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,loadDocumentReads,unloadDocumentRead,docReadLoaded,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
@@ -2476,7 +2476,7 @@ function renderSearchEditor(g){
   const crits=g.criteria, themes=g.themes, opt=(v,cur)=>`<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>`;
   return `<section class="eco-group srch-editor"><h4>Paramétrage de la grille</h4>
   <div class="srch-grid-meta"><label>Nom<input data-g="name" value="${escapeHtml(g.name)}"></label><label>Limiter aux documents dont le nom ou le type contient <small>(virgules ; vide = tous)</small><input data-g="docFilter" value="${escapeHtml(g.docFilter)}" placeholder="ex. CCTP, menuiserie"></label>
-  <label class="wide">Lots de CCTP à lire (import massif) <small>(virgules ; vide = déduits des thèmes : ${escapeHtml(gridCctpLots({...g,cctpLots:[]}).join(', ')||'aucun')})</small><input data-g="cctpLots" value="${escapeHtml((g.cctpLots||[]).join(', '))}" placeholder="ex. menuiserie, serrurerie, electricite"></label><label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
+  <label class="wide">Lots de CCTP à lire (import massif) <small>(virgules ; vide = déduits des thèmes : ${escapeHtml(gridCctpLots({...g,cctpLots:[]}).join(', ')||'aucun')} ; les lots d’enveloppe — isolation, façade, plâtrerie, charpente, couverture, gros œuvre, menuiseries extérieures — sont toujours lus)</small><input data-g="cctpLots" value="${escapeHtml((g.cctpLots||[]).join(', '))}" placeholder="ex. menuiserie, serrurerie, electricite"></label><label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
   <h5>Thèmes</h5><div class="table-scroll"><table class="srch-table"><thead><tr><th>Thème</th><th>Critères à trouver (minimum)</th><th>Applicable seulement si</th></tr></thead><tbody>${themes.map((t,i)=>`<tr data-theme-row="${i}"><td><input data-t="name" value="${escapeHtml(t.name)}"></td><td><input data-t="min" type="number" min="0" value="${t.min}"></td><td><select data-t="applicableIf">${opt('',t.applicableIf)}toujours</option>${crits.map(c=>`${opt(c.id,t.applicableIf)}${escapeHtml(c.label.slice(0,70))}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
   <h5>Critères <small>mots-clés séparés par des virgules ; sans accents ni majuscules obligatoires ; « re: » = expression régulière</small></h5>
   <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
@@ -3628,7 +3628,7 @@ function ssRenderNew(body){
 }
 // v2.28.0 — file des analyses : statut de chaque demande, arrêter / annuler / supprimer, vider l'historique.
 // Lots de CCTP utiles : réunion des lots des grilles de Recherches (déduits des thèmes si la grille n'en précise pas).
-function ssCctpLots(){ try{ return [...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]; }catch{ return []; } }
+function ssCctpLots(){ try{ return withEnvelopeLots([...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]); }catch{ return []; } }
 async function ssRenderQueue(){
   const box=$('#sourcesDialog [data-ss-queue]'); if(!box||!ss.dir) return;
   let list=[]; try{ list=await ssListRequests(ss.dir); }catch{ box.innerHTML=''; return; }

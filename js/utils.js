@@ -108,7 +108,8 @@ export function envelopeLabelLayers(text){
   const ins=layers.filter(v=>v>15&&v<=600);
   // Plusieurs isolants seulement si au moins deux codes isolants (« ISC +ISD », « LDV + PU ») : « béton + PU » reste un seul isolant.
   const codes=(t.match(/(?<![a-z])(?:IS[CD]|IT[EI]|ISO|LDV|LDR|PU|PSE|XPS|LM)(?![a-z])/gi)||[]).length>=2&&/\+/.test(t);
-  if(!ins.length) return {principal:null,multi:codes};
+  if(!ins.length) return {principal:null,total:null,multi:codes};
   const principal=Math.max(...ins);
-  return {principal,multi:ins.length>1||codes};
+  // v2.39.0 — complexe d'isolation (règle métier) : épaisseur retenue = somme des couches isolantes (ITE 120 + ITI 10 = 130).
+  return {principal,total:ins.reduce((a,b)=>a+b,0),multi:ins.length>1||codes};
 }

@@ -7,7 +7,7 @@
     "extracterre-import": "./extracterre-import.mjs"
   },
   "dependencies": {
-    "@napi-rs/canvas": "0.1.65",
+    "@napi-rs/canvas": "0.1.100",
     "pdfjs-dist": "3.11.174",
     "tesseract.js": "7.0.0",
     "xlsx": "0.18.5"

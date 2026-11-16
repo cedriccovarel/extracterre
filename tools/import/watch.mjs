@@ -24,6 +24,46 @@ const writeJson=(f,o)=>{ const tmp=`${f}.tmp`; fs.writeFileSync(tmp,JSON.stringi
 const readJson=f=>{ try{ return JSON.parse(fs.readFileSync(f,'utf8')); }catch{ return null; } };
 const heartbeat=extra=>{ try{ fs.mkdirSync(dir,{recursive:true}); writeJson(path.join(dir,'service.json'),{format:'extracterre-import-service',version:VERSION,pid:process.pid,vu:new Date().toISOString(),occupe:busy,...extra}); }catch{} };
 
+// v2.39.1 — champs de suivi des plantages gardés d'une relance à l'autre.
+const KEEP=['tentatives','plantages','sansOcr','exclus','derniereErreur','debutDemande'];
+const MAX_TENTATIVES=60;
+function crashPlan(st,code,signal){
+  const cause=signal?`signal ${signal}`:`code ${code}`;
+  const n=(st.tentatives||0)+1, op=st.operations?.contratCourant||String(st.operations?.courante||'').split(' · ')[0]||'';
+  const plantages={...(st.plantages||{})}; const sansOcr=[...(st.sansOcr||[])], exclus=[...(st.exclus||[])];
+  let note='';
+  if(op&&st.etape==='extraction'){ plantages[op]=(plantages[op]||0)+1;
+    if(plantages[op]===2&&!sansOcr.includes(op)){ sansOcr.push(op); note=`${op} relancée sans OCR`; }
+    else if(plantages[op]>=3&&!exclus.includes(op)){ exclus.push(op); note=`${op} mise de côté`; } }
+  const next={tentatives:n,plantages,sansOcr,exclus,derniereErreur:st.erreur||cause,debutDemande:st.debutDemande||st.debut};
+  // Plantage avant l'extraction (lecture Box, registre) : 3 relances au plus, comme avant.
+  const retry=n<=MAX_TENTATIVES&&(st.etape==='extraction'||n<=3);
+  return {retry,cause,note,next};
+}
+
+// v2.39.1 — fin d'analyse (ou plantage définitif) : rapport par iMessage au numéro de <dossier de travail>/notif/notif.json
+// ({"imessage":"+33…"}), fichier local hors dépôt. Sans ce fichier : rien n'est envoyé.
+function report(id,st){
+  const t=st.totaux||{}, o=st.operations||{}, par=Object.values(st.parOp||{});
+  const nb=r=>par.filter(x=>x.r===r).length;
+  const min=st.debutDemande?Math.round((Date.now()-Date.parse(st.debutDemande))/60000):null;
+  const dur=min==null?'':` en ${min>=60?`${Math.floor(min/60)} h ${String(min%60).padStart(2,'0')}`:`${min} min`}`;
+  const head=st.etat==='terminé'?'✅ Analyse terminée':st.etat==='interrompu'?'⏸ Analyse arrêtée':'❌ Analyse en échec (plantage)';
+  const L=[`ExtracTerre — ${head}${dur}`,`Opérations : ${o.fait??0}/${o.total??'?'} (traitées ${t.ops??0}, inchangées ${t.opsSkipped??0}, en erreur ${nb('erreurs')}, sans sous-dossier ${nb('vide')})`,
+    `Fichiers : ${t.files??0} · extraits ${t.extracted??0} · réutilisés ${t.reused??0} · à vérifier ${t.review??0} · erreurs ${t.errors??0}`];
+  if(st.tentatives) L.push(`Plantages rattrapés : ${st.tentatives}${st.sansOcr?.length?` · sans OCR : ${st.sansOcr.join(', ')}`:''}${st.exclus?.length?` · mis de côté : ${st.exclus.join(', ')}`:''}`);
+  if(st.etat==='erreur') L.push(`Erreur : ${String(st.erreur||st.derniereErreur||'inconnue').slice(0,200)}`,`Arrêt sur : ${o.courante||st.etape||'?'}`);
+  L.push(`Demande ${id}`);
+  return L.join('\n');
+}
+function notify(id,st){
+  const conf=readJson(path.join(workDir,'notif','notif.json'));
+  const to=String(conf?.imessage||'').trim(); if(!to||process.platform!=='darwin') return;
+  const msg=report(id,st);
+  try{ const p=spawn('/usr/bin/osascript',['-e','on run argv','-e','with timeout of 60 seconds','-e','tell application "Messages" to send (item 1 of argv) to participant (item 2 of argv) of (1st account whose service type = iMessage)','-e','end timeout','-e','end run',msg,to],{stdio:'ignore'});
+    p.on('exit',c=>console.log(`${id} : rapport iMessage ${c===0?'envoyé':`non envoyé (code ${c})`}.`)); }catch(err){ console.log(`${id} : rapport iMessage non envoyé (${err?.message||err}).`); }
+}
+
 const stopFile=id=>path.join(dir,`${id}.stop`);
 function pending(){
   let names=[]; try{ names=fs.readdirSync(dir); }catch{ return []; }
@@ -51,7 +91,10 @@ function run(req){
     if(r.ocr===false) args.push('--sans-ocr');
     if(r.reextraire===true) args.push('--reextraire');
     if(Array.isArray(r.cctpLots)&&r.cctpLots.length) args.push('--lots-cctp',r.cctpLots.map(String).join(','));
-    { const prev=readJson(statut); writeJson(statut,{etat:'en cours',etape:'démarrage',debut:new Date().toISOString(),...(prev?.tentatives?{tentatives:prev.tentatives}:{})}); }
+    const prev=readJson(statut)||{};
+    if(prev.sansOcr?.length) args.push('--sans-ocr-contrats',prev.sansOcr.join(','));
+    if(prev.exclus?.length) args.push('--exclure',prev.exclus.join(','));
+    { const keep={}; for(const k of KEEP) if(prev[k]!=null) keep[k]=prev[k]; writeJson(statut,{etat:'en cours',etape:'démarrage',debut:new Date().toISOString(),debutDemande:prev.debutDemande||new Date().toISOString(),...keep}); }
     const log=fs.openSync(path.join(dir,`${req.id}.log`),'a');
     const child=spawn(process.execPath,args,{cwd:HERE,stdio:['ignore',log,log],env:{...process.env}});
     // v2.31.3 — Mac gardé éveillé pendant l'analyse (sinon la veille la met en pause la nuit) ; s'arrête avec elle.
@@ -59,11 +102,15 @@ function run(req){
     current={id:req.id,child,stopAsked:0};
     child.on('exit',(code,signal)=>{ fs.closeSync(log); const st=readJson(statut)||{}; const stopped=current?.stopAsked; current=null;
       if(stopped&&st.etat!=='terminé') writeJson(statut,{...st,etat:'interrompu',etape:'arrêté à la demande',finA:new Date().toISOString()});
-      // v2.31.4 — arrêt inattendu : relance automatique (3 fois au plus) ; les opérations déjà traitées sont sautées.
-      else if(code!==0&&['en cours','erreur'].includes(st.etat)&&(st.tentatives||0)<3){ const n=(st.tentatives||0)+1;
-        console.log(`${req.id} : arrêt inattendu (code ${code}), relance automatique ${n}/3.`);
-        writeJson(statut,{etat:'en attente',etape:'attente',reprise:true,tentatives:n,derniereErreur:st.erreur||`code ${code}`}); }
-      else if(code!==0&&st.etat==='en cours') writeJson(statut,{...st,etat:'erreur',erreur:st.erreur||`Arrêt inattendu (code ${code}) : voir ${req.id}.log`});
+      // v2.39.1 — arrêt inattendu (plantage du moteur natif de l'OCR, aléatoire) : relance tant que l'analyse avance.
+      // L'opération en cours au plantage est notée : 2e plantage sur elle → relancée sans OCR ; 3e → mise de côté.
+      else if(code!==0&&['en cours','erreur'].includes(st.etat)){
+        const plan=crashPlan(st,code,signal);
+        if(plan.retry){ console.log(`${req.id} : arrêt inattendu (${plan.cause}), relance automatique ${plan.next.tentatives}${plan.note?` — ${plan.note}`:''}.`);
+          writeJson(statut,{etat:'en attente',etape:'attente',reprise:true,...plan.next}); }
+        else { const fin={...st,...plan.next,etat:'erreur',erreur:st.erreur||`Arrêt inattendu (${plan.cause}) sans avancer : voir ${req.id}.log`,finA:new Date().toISOString()}; writeJson(statut,fin); notify(req.id,fin); }
+      }
+      else if(['terminé','interrompu','erreur'].includes(st.etat)) notify(req.id,readJson(statut)||st);
       try{ fs.unlinkSync(stopFile(req.id)); }catch{}
       resolve(); });
   });

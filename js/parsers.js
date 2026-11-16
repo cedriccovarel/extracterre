@@ -362,9 +362,11 @@ function representativeEnvelopeRecords(doc){
       if(r.totalR===null&&r.thickness===null&&!r.mat&&!r.struct) continue;
       // v2.36.1 — isolant principal : épaisseur du libellé quand le tableau cumule plusieurs isolants ; R cumulé écarté
       // (il ne correspond à aucun isolant) — le R viendra d'une autre source (étude, puis CCTP).
+      // v2.39.0 — règle métier : l'évaluateur retient le complexe d'isolation entier. Plusieurs couches : épaisseur = somme des
+      // couches, R = R cumulé du tableau (avant v2.39 : isolant principal seul, R écarté).
       let th=r.thickness, tr=r.totalR; const L=r.layers;
-      if(L?.principal&&(th===null||L.principal<=th+5)){ if(L.multi){ th=L.principal; tr=null; } else if(th===null||Math.abs(th-L.principal)>5) th=L.principal; }
-      else if(L?.multi&&!L.principal){ th=null; tr=null; }
+      if(L?.principal&&(th===null||L.principal<=th+5)){ if(L.multi) th=L.total; else if(th===null||Math.abs(th-L.principal)>5) th=L.principal; }
+      else if(L?.multi&&!L.principal){ th=null; }
       recs.push({building:buildingForPosition(doc,page.page,lines[i].index),category,mat:r.mat,struct:r.struct,thickness:th,totalR:tr,surface:r.surface,page,line:lines[i],ctx:r.ctx,layers:L});
       i=Math.max(i,r.end-1);
     }
@@ -384,7 +386,7 @@ function rsetEnvelopeStructured(doc){
       const bestFor=(pred)=>pool.filter(pred).sort((a,b)=>(b.surface||0)-(a.surface||0))[0];
       // v2.36.1 — paroi principale (plus grande surface portant un isolant) à plusieurs isolants : pas de R d'une autre paroi.
       const dom=bestFor(r=>(r.thickness>0)||(r.totalR>0)||r.layers?.principal||r.layers?.multi);
-      const rRec=dom?.layers?.multi?null:bestFor(r=>r.totalR!==null&&r.totalR>0), thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
+      const rRec=bestFor(r=>r.totalR!==null&&r.totalR>0) /* v2.39.0 : R cumulé du complexe, même à plusieurs couches */, thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
       const add=(rec,field,value,unit='')=>{ if(!rec||value===null||value===undefined||value==='') return; push(out,occ(doc,rec.page,rec.line,field,value,'rset:chapter4-envelope-dominant',0.995,unit,{building,origin:'RSET Chapitre 4',excerpt:rec.ctx.slice(0,420),provenanceNote:`Valeur lue dans le tableau « Données récapitulatives sur les parois » du bâtiment ; paroi représentative choisie par la plus grande surface${rec.surface?` (${rec.surface} m²)`:''}.`})); };
       add(matRec,`${category}_insulation`,matRec?.mat);
       add(stRec,`${category}_structure`,stRec?.struct);
@@ -1257,6 +1259,16 @@ function cctpLineNoise(doc,text){
 const cctpNoiseAt=(doc,lines,i)=>cctpLineNoise(doc,lines[i]?.text||'')||(/^\s*[a-zà-ÿ(]/.test(lines[i]?.text||'')&&cctpLineNoise(doc,lines[i-1]?.text||''));
 const cctpDemolitionLot=doc=>doc.type===DOC_TYPES.CCTP&&/demolition|curage|desamiantage/.test(normLower(`${doc.name} ${(doc.read?.pages?.[0]?.text||'').slice(0,300)}`));
 
+// v2.39.0 — position d'un isolant d'après le contexte (et le lot du CCTP) ; null si rien ne l'indique.
+export function insulationPosition(target,ctx,fam=''){
+  // v2.39.1 — banc : l'ITE lue améliore les cases ITE ; l'ITI (doublages pris pour un isolant) et le plancher haut sur dalle /
+  // faux plafond n'apportaient rien → seule l'ITE est repérée.
+  if(target!=='wall') return null;
+  const c=normLower(String(ctx||''));
+  const ite=/\bite\b|isolation\s+(?:thermique\s+)?(?:par\s+l.?)?exterieur|\bbardages?\b|\betics\b|vetages?|vetures?|enduits?\s+(?:minces?\s+)?sur\s+isolant|isolants?\s+exterieurs?/.test(c)||fam==='facade';
+  const iti=/\biti\b|doublages?|contre[\s-]*cloisons?|isolation\s+(?:thermique\s+)?(?:par\s+l.?)?interieur|complexes?\s+(?:de\s+)?doublage|isolants?\s+interieurs?/.test(c);
+  return ite&&!iti?'wall_ite':null;
+}
 function parseEnvelope(doc){
   const out=[];
   if(cctpDemolitionLot(doc)) return out;
@@ -1285,6 +1297,7 @@ function parseEnvelope(doc){
     // v2.38.0 — répertoire d'exclusions (échafaudage, clôture, support d'équipement…) : ni structure ni isolation.
     const excluded=envelopeExclusion(base); // la ligne elle-même, pas ses voisines
     if(struct && hasEnvelope && !excluded && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; if(lotOk(field)) push(out,occ(doc,page,line,field,struct,'envelope:structure-context',(target?0.91:0.87)+lotBonus(field),'',{excerpt:ctx.slice(0,420)})); }
+    const before=out.length;
     if(mat && target && hasEnvelope && !excluded && lotOk(target)){
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
       push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',productMatch?0.96:0.93,'',{excerpt:ctx.slice(0,420),...productExtra}));
@@ -1298,6 +1311,9 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
+    // v2.39.0 — isolant par l'extérieur (ITE) repéré : ses lectures sont recopiées dans les cases ITE ; le complexe ITE + ITI est
+    // calculé ensuite (engine, complexe d'isolation).
+    if(out.length>before&&target){ const pos=insulationPosition(target,ctx,fam); if(pos) for(const o of out.slice(before)){ const m2=String(o.field).match(/^wall_insulation(_thickness|_r)?$/); if(m2) out.push({...o,field:`${pos}${m2[1]||'_insulation'}`,provenanceNote:o.provenanceNote}); } }
     if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm&&lotOk('window')) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl&&lotOk('window')) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
@@ -2319,3 +2335,6 @@ export function coolingWordAffirmed(text){
   if(/acousti|bruits?\s+d.?equipement|arretes?\s+chauffage|aerodrome|charte|local\s+(?:technique|vdi|informatique|serveur|onduleur|ascenseur|poubelles?)|\bvdi\b|caisson\s+climatiseur|eurovent|autres?\s+que\s+d.?habitation|dediee?\b|\bnon\s+climatise/.test(t)) return false;
   return /(?:assurer\w*|se\s+fera|sera\s+(?:assuree?|realisee?|equipee?)|seront\s+(?:equipes|climatises)|equipee?s?\s+d.?(?:une?\s+)?(?:climatis|systeme\s+de\s+climatis)|climatisation\s+(?:reversible|par\s+(?:split|pac|pompe|systeme|detente|drv|vrv|unite)|des\s+(?:logements|sejours|chambres|pieces)|du\s+logement|individuelle|collective)|logements?\s+(?:sont\s+|seront\s+)?climatises|climatisation\s*:?\s*oui\b|climatisation\s+active)/.test(t);
 }
+
+// Accès de diagnostic (banc, scripts d analyse) : lignes du tableau des parois du RSET chapitre 4.
+export const _chapter4Records=doc=>representativeEnvelopeRecords(doc);

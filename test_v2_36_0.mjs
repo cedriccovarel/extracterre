@@ -31,9 +31,9 @@ try{
 } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 // v2.36.1 : isolant principal lu dans le libellé de paroi (Salesforce retient l’'isolant principal).
 const {envelopeLabelLayers:LL}=await import('./js/utils.js');
-assert.deepEqual(LL('accessible_080mm+060mm'),{principal:80,multi:true});
-assert.deepEqual(LL('16cm_140+13mm'),{principal:140,multi:false});
-assert.deepEqual(LL('Dalle béton sur LNC + PU'),{principal:null,multi:false});
-assert.deepEqual(LL('ISC +ISD'),{principal:null,multi:true});
+assert.deepEqual(LL('accessible_080mm+060mm'),{principal:80,total:140,multi:true}); // v2.39.0 : complexe = 140
+assert.deepEqual(LL('16cm_140+13mm'),{principal:140,total:140,multi:false});
+assert.deepEqual(LL('Dalle béton sur LNC + PU'),{principal:null,total:null,multi:false});
+assert.deepEqual(LL('ISC +ISD'),{principal:null,total:null,multi:true});
 assert.ok(isObsoleteFolder('Hors périmètre de certification'));
 console.log('test_v2_36_0 ok');

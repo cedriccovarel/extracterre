@@ -390,7 +390,7 @@ export function catchUpDocument(d,buildingOverrides={}){
       const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
   // v2.38.0 — enveloppe : hiérarchie des lots et exclusions (envelope-rules.js) appliquées une fois aux lectures conservées.
   if((Number(d.envRead)||0)<ENV_READ&&Array.isArray(d.cachedOccurrences)){ d.envRead=ENV_READ;
-    const envOcc=o=>o&&!o.userValidated&&/^(?:envelope:|library:insulation|windows:)/.test(String(o.method||''));
+    const envOcc=o=>o&&!o.userValidated&&/^(?:envelope:|library:insulation|windows:|rset:chapter4)/.test(String(o.method||''));
     if(d.cachedOccurrences.some(envOcc)&&d.read?.pages){ const fresh=parseDocument(d).filter(envOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!envOcc(o)),...fresh]; d.needsCheckpoint=true; } }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; }
 }
@@ -479,6 +479,17 @@ export function applyComparisonBases(result){
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
     for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
       if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }
+    // v2.39.0 — complexe d'isolation (règle métier) : l'évaluateur retient l'ensemble des isolants. ITE 120 + ITI 10 = 130 mm. Épaisseurs et R additionnés quand les deux parts sont connues ; jamais à la
+    // place d'une valeur Salesforce, saisie ou validée.
+    for(const [tot,parts,lab] of [['wall',['wall_ite','wall_iti'],'ITE + ITI']]){
+      for(const kind of ['thickness','r']){
+        const ks=parts.map(p=>`${p}_${kind}`), vals=ks.map(k=>numOrNull(row[k]));
+        if(vals.some(v=>v===null||v<=0)) continue;
+        const tf=`${tot}_insulation_${kind}`, sum=Math.round(vals.reduce((x,y)=>x+y,0)*100)/100, src=fin(ks[0]), cur=fin(tf);
+        if(!src||numOrNull(row[tf])===sum||(cur&&(cur.userValidated||/^manual:/.test(String(cur.method||''))))) continue;
+        result.finals=result.finals.filter(o=>!(o.building===b&&o.field===tf));
+        result.finals.push({...src,field:tf,value:sum,unit:kind==='r'?'m².K/W':'mm',method:'derive:complexe-isolant',derivedFromDocument:true,provenanceNote:`Complexe d’isolation ${lab} : ${vals.map(v=>String(v).replace('.',',')).join(' + ')} = ${String(sum).replace('.',',')}.`});
+        row[tf]=sum; } }
     const fc=numOrNull(row.fan_count);
     // v2.23.3 — « 0 brasseur » lu pour le bâtiment (RSET) prime sur un type lu pour toute l'opération.
     if(fc===0) derive('fan_presence','Non','fan_count','Nombre de brasseurs d’air = 0.');

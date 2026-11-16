@@ -37,6 +37,8 @@ Options
   --parallelisme <n>       documents lus en même temps (défaut : configuration)
   --sans-ocr               ne pas faire l'OCR des PDF scannés (plus rapide)
   --lots-cctp <a,b,c>      lots de CCTP à lire (les autres lots ne sont pas lus) ; vide = tous
+  --sans-ocr-contrats <a,b> pas d'OCR pour ces contrats (posé par le service après un plantage)
+  --exclure <a,b>          contrats mis de côté (plantages répétés, posé par le service)
   --reextraire             relire même les fichiers déjà connus (après une mise à jour des parseurs)
   --local                  ne pas utiliser Supabase (registre local seulement)
   --racine <dossier>       dossier racine (défaut : configuration)
@@ -93,7 +95,7 @@ const FAMILY_LABEL=cfg=>Object.fromEntries((cfg.families||[]).map(f=>[f.id,f.lab
 async function main(){
   const args=parseArgs(process.argv.slice(2));
   if(args.statut) STATUS_FILE=path.resolve(home(args.statut));
-  if(STATUS_FILE){ try{ const prev=JSON.parse(fs.readFileSync(STATUS_FILE,'utf8')); if(prev?.tentatives) STATUS.tentatives=prev.tentatives; }catch{} }
+  if(STATUS_FILE){ try{ const prev=JSON.parse(fs.readFileSync(STATUS_FILE,'utf8')); for(const k of ['tentatives','plantages','sansOcr','exclus','debutDemande']) if(prev?.[k]!=null) STATUS[k]=prev[k]; }catch{} }
   if(args.aide||args.help){ console.log(AIDE); return; }
   const cfgPath=path.resolve(args.config||path.join(HERE,'import.config.json'));
   const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
@@ -179,6 +181,10 @@ async function main(){
   // v2.25.0 — OCR des scans (même moteur que l'appli).
   let ocrOn=false;
   if(mode==='traitement'&&cfg.ocr!==false&&!args['sans-ocr']){ ocrOn=!!extract?.enableOcr?.(); console.log(ocrOn?'  OCR des PDF scannés : activé':'  OCR indisponible (bibliothèques absentes : npm install).'); }
+  const listArg=k=>new Set(String(args[k]||'').split(',').map(x=>x.trim()).filter(Boolean));
+  const noOcr=listArg('sans-ocr-contrats'), excluded=listArg('exclure');
+  if(noOcr.size) console.log(`  Sans OCR après plantage : ${[...noOcr].join(', ')}`);
+  if(excluded.size) console.log(`  Mis de côté après plantages répétés : ${[...excluded].join(', ')}`);
   let stopping=false;
   process.on('SIGINT',()=>{ if(stopping) process.exit(130); stopping=true; console.log('\nArrêt demandé : fin du document en cours, registre enregistré, puis arrêt (relancer reprendra ici).'); });
 
@@ -195,9 +201,12 @@ async function main(){
     const s=scans.get(op.folder); const contract=op.contract;
     const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,cctpLots,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
+    // v2.39.1 — plantages répétés sur une opération : le service la relance sans OCR, puis la met de côté.
+    if(excluded.has(contract)){ STATUS.parOp[contract]={r:'erreurs',exclu:true}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''}}); finalRows.push([contract,op.folder,'mis de côté (plantages répétés)',0,0,0,0,0,0,0]); prOps.tick(`${contract} mis de côté`); continue; }
+    const ocrOp=ocrOn&&!noOcr.has(contract);
     if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); STATUS.parOp[contract]={r:'inchangé'}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
     totals.ops++;
-    status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`,debutOp:new Date().toISOString()}});
+    status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`,contratCourant:contract,debutOp:new Date().toISOString()}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
     // v2.29.0 — lots de CCTP hors thèmes des Recherches : non lus (liste transmise par l'appli, option --lots-cctp).
     if(cctpLots.length) for(const f of s.files){ if(f.family!=='cctp'||f.ignoreReason) continue; const d=cctpLotDecision(f.name,cctpLots); if(!d.read) f.ignoreReason=d.reason; }
@@ -262,7 +271,7 @@ async function main(){
       };
       try{
         const scanWas=e=>/scan/.test(e?.reason||'');
-        const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept&&!(ocrOn&&scanWas(old));
+        const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept&&!(ocrOp&&scanWas(old));
         const oldRes=unchanged?extract.readResult(workDir,old.resultFile):null;
         if(unchanged&&!extract.staleForPatches(oldRes)){
           const res=oldRes; const j=judge(res.doc,res.meta,old.sha256);
@@ -271,14 +280,14 @@ async function main(){
         }
         const sha=await withRetry(()=>sha256File(f.abs));
         const twin=!args.reextraire&&!dec.reprocess&&!dec.family?reg.byHash(sha):null;
-        if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))&&!(ocrOn&&scanWas(twin))&&!extract.staleForPatches(extract.readResult(workDir,twin.resultFile))){
+        if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))&&!(ocrOp&&scanWas(twin))&&!extract.staleForPatches(extract.readResult(workDir,twin.resultFile))){
           // Même contenu déjà extrait : résultat réutilisé, mais le classement dépend du sous-dossier et du nom de CE fichier.
           const res=extract.readResult(workDir,twin.resultFile); const j=judge(res.doc,res.meta,sha);
           c.reused++; if(j.status==='à vérifier') c.review++;
           reg.putFile({...base,...ver,sha256:sha,docType:res.doc.type,importType:j.k.type,method:j.k.method,status:j.status,reason:j.reason,resultFile:twin.resultFile,processedAt:twin.processedAt,completeness:j.completeness,fields:j.fields,pages:twin.pages,reusedFrom:twin.contract===contract?null:twin.contract,decisionAccept:!!dec.accept});
           return;
         }
-        const opts={familyOverride:dec.family||null,ocr:ocrOn,ocrOptions:{ocrMaxPages:Number(cfg.ocrMaxPagesParDocument??40),ocrFullScale:Number(cfg.ocrEchelle??2),ocrFullMaxPixels:Number(cfg.ocrPixelsMax??4500000),scale:Math.min(1.85,Number(cfg.ocrEchelle??2))}};
+        const opts={familyOverride:dec.family||null,ocr:ocrOp,ocrOptions:{ocrMaxPages:Number(cfg.ocrMaxPagesParDocument??40),ocrFullScale:Number(cfg.ocrEchelle??2),ocrFullMaxPixels:Number(cfg.ocrPixelsMax??4500000),scale:Math.min(1.85,Number(cfg.ocrEchelle??2))}};
         let x=await extract.extractFile(f,opts);
         let meta={scan:x.scan,xml};
         let j=judge(x.d,meta,sha);
@@ -312,7 +321,9 @@ async function main(){
     };
     const queue=kept.concat(s.files.filter(f=>f.ignoreReason)); let fileDone=0,lastFileStatus=0; const fileTotal=queue.length;
     status({fichiers:{fait:0,total:fileTotal,courant:''}});
-    await pool(queue,parallel,handle);
+    // v2.39.1 — registre enregistré tous les 10 documents : un plantage ne fait plus perdre toute l'opération en cours.
+    let sinceFlush=0;
+    await pool(queue,parallel,async f=>{ await handle(f); if(mode==='traitement'&&++sinceFlush>=10){ sinceFlush=0; await reg.flush(); } });
 
     if(mode==='traitement'){
       // v2.25.0 — contrôle par opération : une famille dont aucun document lisible n'a donné de valeur est signalée une fois.

@@ -35,6 +35,10 @@ const SRCH_LOT_RULES=[
   [/clim|refroidi/i,['cvc','chauffage','ventilation','vmc','climatisation','plomberie']],
   [/mode constructif|structure|constructi/i,['gros oeuvre','gros-oeuvre','maconnerie','structure','ossature bois','beton']]
 ];
+// v2.39.0 — lots de CCTP toujours lus quand l'import massif filtre les lots : ils portent les isolants et les parois (colonnes
+// d'enveloppe), indépendamment des grilles de Recherches.
+export const CCTP_ENVELOPE_LOTS=['isolation','isolation thermique','ite','facade','facades','ravalement','bardage','platrerie','doublage','doublages','cloison','faux plafond','plafond','charpente','couverture','etancheite','chape','chapes','gros oeuvre','gros-oeuvre','maconnerie','structure','ossature bois','menuiseries exterieures'];
+export function withEnvelopeLots(lots){ return lots?.length?[...new Set([...lots,...CCTP_ENVELOPE_LOTS])]:[]; }
 export function gridCctpLots(g){
   if(Array.isArray(g?.cctpLots)&&g.cctpLots.length) return g.cctpLots;
   const names=[...(g?.themes||[]).map(t=>t.name),...(g?.criteria||[]).map(c=>c.theme)].join(' | ');

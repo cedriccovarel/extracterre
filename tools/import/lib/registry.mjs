@@ -95,16 +95,17 @@ export class Registry{
     this.data.updatedAt=new Date().toISOString();
     fs.mkdirSync(this.workDir,{recursive:true});
     atomicWrite(this.filePath,JSON.stringify(this.data));
-    if(this.store&&this.keys&&(this.dirtyFiles.size||this.dirtyOps.size)){
-      const files=[...this.dirtyFiles].map(id=>this.data.files[id]).filter(Boolean).map(e=>({
+    // v2.39.1 — liste figée avant l'envoi : une écriture faite pendant l'envoi (documents lus en parallèle) n'est plus perdue.
+    const dirtyFiles=[...this.dirtyFiles], dirtyOps=[...this.dirtyOps]; this.dirtyFiles.clear(); this.dirtyOps.clear();
+    if(this.store&&this.keys&&(dirtyFiles.length||dirtyOps.length)) try{
+      const files=dirtyFiles.map(id=>this.data.files[id]).filter(Boolean).map(e=>({
         file_key:hmac(this.keys,`${e.contract}|${e.relPath}`),contract_key:hmac(this.keys,e.contract),content_key:e.sha256?hmac(this.keys,e.sha256):null,
         family:e.family||null,status:e.status,is_current:!!e.isCurrent,missing:!!e.missing,payload:encryptJson(this.keys,e),
         processed_at:e.processedAt||null,missing_since:e.missingSince||null,updated_at:e.updatedAt}));
-      const ops=[...this.dirtyOps].map(c=>this.data.operations[c]).filter(Boolean).map(o=>({
+      const ops=dirtyOps.map(c=>this.data.operations[c]).filter(Boolean).map(o=>({
         contract_key:hmac(this.keys,o.contract),status:o.status||null,fingerprint:o.fingerprint?hmac(this.keys,o.fingerprint):null,payload:encryptJson(this.keys,o),updated_at:o.updatedAt}));
       if(files.length) await this.store.upsert('extracterre_import_files',files,'file_key');
       if(ops.length) await this.store.upsert('extracterre_import_operations',ops,'contract_key');
-    }
-    this.dirtyFiles.clear(); this.dirtyOps.clear();
+    }catch(err){ for(const id of dirtyFiles) this.dirtyFiles.add(id); for(const c of dirtyOps) this.dirtyOps.add(c); throw err; }
   }
 }

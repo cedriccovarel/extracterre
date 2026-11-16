@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.38.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.39.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.38.0';
+const APP_VERSION='2.39.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -737,9 +737,10 @@ function envelopeLabelLayers(text){
   const ins=layers.filter(v=>v>15&&v<=600);
   // Plusieurs isolants seulement si au moins deux codes isolants (« ISC +ISD », « LDV + PU ») : « béton + PU » reste un seul isolant.
   const codes=(t.match(/(?<![a-z])(?:IS[CD]|IT[EI]|ISO|LDV|LDR|PU|PSE|XPS|LM)(?![a-z])/gi)||[]).length>=2&&/\+/.test(t);
-  if(!ins.length) return {principal:null,multi:codes};
+  if(!ins.length) return {principal:null,total:null,multi:codes};
   const principal=Math.max(...ins);
-  return {principal,multi:ins.length>1||codes};
+  // v2.39.0 — complexe d'isolation (règle métier) : épaisseur retenue = somme des couches isolantes (ITE 120 + ITI 10 = 130).
+  return {principal,total:ins.reduce((a,b)=>a+b,0),multi:ins.length>1||codes};
 }
 
 /* ---- geocode.js ---- */
@@ -6530,9 +6531,11 @@ function representativeEnvelopeRecords(doc){
       if(r.totalR===null&&r.thickness===null&&!r.mat&&!r.struct) continue;
       // v2.36.1 — isolant principal : épaisseur du libellé quand le tableau cumule plusieurs isolants ; R cumulé écarté
       // (il ne correspond à aucun isolant) — le R viendra d'une autre source (étude, puis CCTP).
+      // v2.39.0 — règle métier : l'évaluateur retient le complexe d'isolation entier. Plusieurs couches : épaisseur = somme des
+      // couches, R = R cumulé du tableau (avant v2.39 : isolant principal seul, R écarté).
       let th=r.thickness, tr=r.totalR; const L=r.layers;
-      if(L?.principal&&(th===null||L.principal<=th+5)){ if(L.multi){ th=L.principal; tr=null; } else if(th===null||Math.abs(th-L.principal)>5) th=L.principal; }
-      else if(L?.multi&&!L.principal){ th=null; tr=null; }
+      if(L?.principal&&(th===null||L.principal<=th+5)){ if(L.multi) th=L.total; else if(th===null||Math.abs(th-L.principal)>5) th=L.principal; }
+      else if(L?.multi&&!L.principal){ th=null; }
       recs.push({building:buildingForPosition(doc,page.page,lines[i].index),category,mat:r.mat,struct:r.struct,thickness:th,totalR:tr,surface:r.surface,page,line:lines[i],ctx:r.ctx,layers:L});
       i=Math.max(i,r.end-1);
     }
@@ -6552,7 +6555,7 @@ function rsetEnvelopeStructured(doc){
       const bestFor=(pred)=>pool.filter(pred).sort((a,b)=>(b.surface||0)-(a.surface||0))[0];
       // v2.36.1 — paroi principale (plus grande surface portant un isolant) à plusieurs isolants : pas de R d'une autre paroi.
       const dom=bestFor(r=>(r.thickness>0)||(r.totalR>0)||r.layers?.principal||r.layers?.multi);
-      const rRec=dom?.layers?.multi?null:bestFor(r=>r.totalR!==null&&r.totalR>0), thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
+      const rRec=bestFor(r=>r.totalR!==null&&r.totalR>0) /* v2.39.0 : R cumulé du complexe, même à plusieurs couches */, thRec=bestFor(r=>r.thickness!==null&&r.thickness>0), matRec=bestFor(r=>!!r.mat), stRec=bestFor(r=>!!r.struct);
       const add=(rec,field,value,unit='')=>{ if(!rec||value===null||value===undefined||value==='') return; push(out,occ(doc,rec.page,rec.line,field,value,'rset:chapter4-envelope-dominant',0.995,unit,{building,origin:'RSET Chapitre 4',excerpt:rec.ctx.slice(0,420),provenanceNote:`Valeur lue dans le tableau « Données récapitulatives sur les parois » du bâtiment ; paroi représentative choisie par la plus grande surface${rec.surface?` (${rec.surface} m²)`:''}.`})); };
       add(matRec,`${category}_insulation`,matRec?.mat);
       add(stRec,`${category}_structure`,stRec?.struct);
@@ -7425,6 +7428,16 @@ function cctpLineNoise(doc,text){
 const cctpNoiseAt=(doc,lines,i)=>cctpLineNoise(doc,lines[i]?.text||'')||(/^\s*[a-zà-ÿ(]/.test(lines[i]?.text||'')&&cctpLineNoise(doc,lines[i-1]?.text||''));
 const cctpDemolitionLot=doc=>doc.type===DOC_TYPES.CCTP&&/demolition|curage|desamiantage/.test(normLower(`${doc.name} ${(doc.read?.pages?.[0]?.text||'').slice(0,300)}`));
 
+// v2.39.0 — position d'un isolant d'après le contexte (et le lot du CCTP) ; null si rien ne l'indique.
+function insulationPosition(target,ctx,fam=''){
+  // v2.39.1 — banc : l'ITE lue améliore les cases ITE ; l'ITI (doublages pris pour un isolant) et le plancher haut sur dalle /
+  // faux plafond n'apportaient rien → seule l'ITE est repérée.
+  if(target!=='wall') return null;
+  const c=normLower(String(ctx||''));
+  const ite=/\bite\b|isolation\s+(?:thermique\s+)?(?:par\s+l.?)?exterieur|\bbardages?\b|\betics\b|vetages?|vetures?|enduits?\s+(?:minces?\s+)?sur\s+isolant|isolants?\s+exterieurs?/.test(c)||fam==='facade';
+  const iti=/\biti\b|doublages?|contre[\s-]*cloisons?|isolation\s+(?:thermique\s+)?(?:par\s+l.?)?interieur|complexes?\s+(?:de\s+)?doublage|isolants?\s+interieurs?/.test(c);
+  return ite&&!iti?'wall_ite':null;
+}
 function parseEnvelope(doc){
   const out=[];
   if(cctpDemolitionLot(doc)) return out;
@@ -7453,6 +7466,7 @@ function parseEnvelope(doc){
     // v2.38.0 — répertoire d'exclusions (échafaudage, clôture, support d'équipement…) : ni structure ni isolation.
     const excluded=envelopeExclusion(base); // la ligne elle-même, pas ses voisines
     if(struct && hasEnvelope && !excluded && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; if(lotOk(field)) push(out,occ(doc,page,line,field,struct,'envelope:structure-context',(target?0.91:0.87)+lotBonus(field),'',{excerpt:ctx.slice(0,420)})); }
+    const before=out.length;
     if(mat && target && hasEnvelope && !excluded && lotOk(target)){
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
       push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',productMatch?0.96:0.93,'',{excerpt:ctx.slice(0,420),...productExtra}));
@@ -7466,6 +7480,9 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
+    // v2.39.0 — isolant par l'extérieur (ITE) repéré : ses lectures sont recopiées dans les cases ITE ; le complexe ITE + ITI est
+    // calculé ensuite (engine, complexe d'isolation).
+    if(out.length>before&&target){ const pos=insulationPosition(target,ctx,fam); if(pos) for(const o of out.slice(before)){ const m2=String(o.field).match(/^wall_insulation(_thickness|_r)?$/); if(m2) out.push({...o,field:`${pos}${m2[1]||'_insulation'}`,provenanceNote:o.provenanceNote}); } }
     if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm&&lotOk('window')) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl&&lotOk('window')) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
@@ -8488,6 +8505,9 @@ function coolingWordAffirmed(text){
   return /(?:assurer\w*|se\s+fera|sera\s+(?:assuree?|realisee?|equipee?)|seront\s+(?:equipes|climatises)|equipee?s?\s+d.?(?:une?\s+)?(?:climatis|systeme\s+de\s+climatis)|climatisation\s+(?:reversible|par\s+(?:split|pac|pompe|systeme|detente|drv|vrv|unite)|des\s+(?:logements|sejours|chambres|pieces)|du\s+logement|individuelle|collective)|logements?\s+(?:sont\s+|seront\s+)?climatises|climatisation\s*:?\s*oui\b|climatisation\s+active)/.test(t);
 }
 
+// Accès de diagnostic (banc, scripts d analyse) : lignes du tableau des parois du RSET chapitre 4.
+const _chapter4Records=doc=>representativeEnvelopeRecords(doc);
+
 /* ---- tags.js ---- */
 const PROJECT_TAG_LIBRARY = [
   {label:'Traitement / réemploi des eaux grises',category:'Eau',patterns:[/eaux?\s+grises?/i,/reutilisation\s+des?\s+eaux?\s+usees?/i,/réutilisation\s+des?\s+eaux?\s+usées?/i,/recyclage\s+des?\s+eaux?/i]},
@@ -9139,7 +9159,7 @@ function catchUpDocument(d,buildingOverrides={}){
       const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
   // v2.38.0 — enveloppe : hiérarchie des lots et exclusions (envelope-rules.js) appliquées une fois aux lectures conservées.
   if((Number(d.envRead)||0)<ENV_READ&&Array.isArray(d.cachedOccurrences)){ d.envRead=ENV_READ;
-    const envOcc=o=>o&&!o.userValidated&&/^(?:envelope:|library:insulation|windows:)/.test(String(o.method||''));
+    const envOcc=o=>o&&!o.userValidated&&/^(?:envelope:|library:insulation|windows:|rset:chapter4)/.test(String(o.method||''));
     if(d.cachedOccurrences.some(envOcc)&&d.read?.pages){ const fresh=parseDocument(d).filter(envOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!envOcc(o)),...fresh]; d.needsCheckpoint=true; } }
   if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; }
 }
@@ -9228,6 +9248,17 @@ function applyComparisonBases(result){
     const ITE=['wall_ite_insulation','wall_ite_thickness','wall_ite_r'], ITI=['wall_iti_insulation','wall_iti_thickness','wall_iti_r'];
     for(const [f,own,other,lab] of [['wall_ite',ITE,ITI,'ITE'],['wall_iti',ITI,ITE,'ITI']]){ const a=own.find(k=>!empty(k)), o=other.find(k=>!empty(k));
       if(a) derive(f,'Oui',a,`Isolant ${lab} renseigné (${FIELD_MAP[a].label}).`); else if(o) derive(f,'Non',o,`Seule l’isolation ${lab==='ITE'?'ITI':'ITE'} est décrite pour les parois verticales.`); }
+    // v2.39.0 — complexe d'isolation (règle métier) : l'évaluateur retient l'ensemble des isolants. ITE 120 + ITI 10 = 130 mm. Épaisseurs et R additionnés quand les deux parts sont connues ; jamais à la
+    // place d'une valeur Salesforce, saisie ou validée.
+    for(const [tot,parts,lab] of [['wall',['wall_ite','wall_iti'],'ITE + ITI']]){
+      for(const kind of ['thickness','r']){
+        const ks=parts.map(p=>`${p}_${kind}`), vals=ks.map(k=>numOrNull(row[k]));
+        if(vals.some(v=>v===null||v<=0)) continue;
+        const tf=`${tot}_insulation_${kind}`, sum=Math.round(vals.reduce((x,y)=>x+y,0)*100)/100, src=fin(ks[0]), cur=fin(tf);
+        if(!src||numOrNull(row[tf])===sum||(cur&&(cur.userValidated||/^manual:/.test(String(cur.method||''))))) continue;
+        result.finals=result.finals.filter(o=>!(o.building===b&&o.field===tf));
+        result.finals.push({...src,field:tf,value:sum,unit:kind==='r'?'m².K/W':'mm',method:'derive:complexe-isolant',derivedFromDocument:true,provenanceNote:`Complexe d’isolation ${lab} : ${vals.map(v=>String(v).replace('.',',')).join(' + ')} = ${String(sum).replace('.',',')}.`});
+        row[tf]=sum; } }
     const fc=numOrNull(row.fan_count);
     // v2.23.3 — « 0 brasseur » lu pour le bâtiment (RSET) prime sur un type lu pour toute l'opération.
     if(fc===0) derive('fan_presence','Non','fan_count','Nombre de brasseurs d’air = 0.');
@@ -10815,6 +10846,10 @@ const SRCH_LOT_RULES=[
   [/clim|refroidi/i,['cvc','chauffage','ventilation','vmc','climatisation','plomberie']],
   [/mode constructif|structure|constructi/i,['gros oeuvre','gros-oeuvre','maconnerie','structure','ossature bois','beton']]
 ];
+// v2.39.0 — lots de CCTP toujours lus quand l'import massif filtre les lots : ils portent les isolants et les parois (colonnes
+// d'enveloppe), indépendamment des grilles de Recherches.
+const CCTP_ENVELOPE_LOTS=['isolation','isolation thermique','ite','facade','facades','ravalement','bardage','platrerie','doublage','doublages','cloison','faux plafond','plafond','charpente','couverture','etancheite','chape','chapes','gros oeuvre','gros-oeuvre','maconnerie','structure','ossature bois','menuiseries exterieures'];
+function withEnvelopeLots(lots){ return lots?.length?[...new Set([...lots,...CCTP_ENVELOPE_LOTS])]:[]; }
 function gridCctpLots(g){
   if(Array.isArray(g?.cctpLots)&&g.cctpLots.length) return g.cctpLots;
   const names=[...(g?.themes||[]).map(t=>t.name),...(g?.criteria||[]).map(c=>c.theme)].join(' | ');
@@ -15336,7 +15371,7 @@ function renderSearchEditor(g){
   const crits=g.criteria, themes=g.themes, opt=(v,cur)=>`<option value="${escapeHtml(v)}" ${v===cur?'selected':''}>`;
   return `<section class="eco-group srch-editor"><h4>Paramétrage de la grille</h4>
   <div class="srch-grid-meta"><label>Nom<input data-g="name" value="${escapeHtml(g.name)}"></label><label>Limiter aux documents dont le nom ou le type contient <small>(virgules ; vide = tous)</small><input data-g="docFilter" value="${escapeHtml(g.docFilter)}" placeholder="ex. CCTP, menuiserie"></label>
-  <label class="wide">Lots de CCTP à lire (import massif) <small>(virgules ; vide = déduits des thèmes : ${escapeHtml(gridCctpLots({...g,cctpLots:[]}).join(', ')||'aucun')})</small><input data-g="cctpLots" value="${escapeHtml((g.cctpLots||[]).join(', '))}" placeholder="ex. menuiserie, serrurerie, electricite"></label><label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
+  <label class="wide">Lots de CCTP à lire (import massif) <small>(virgules ; vide = déduits des thèmes : ${escapeHtml(gridCctpLots({...g,cctpLots:[]}).join(', ')||'aucun')} ; les lots d’enveloppe — isolation, façade, plâtrerie, charpente, couverture, gros œuvre, menuiseries extérieures — sont toujours lus)</small><input data-g="cctpLots" value="${escapeHtml((g.cctpLots||[]).join(', '))}" placeholder="ex. menuiserie, serrurerie, electricite"></label><label class="wide">Description<textarea data-g="description" rows="2">${escapeHtml(g.description)}</textarea></label></div>
   <h5>Thèmes</h5><div class="table-scroll"><table class="srch-table"><thead><tr><th>Thème</th><th>Critères à trouver (minimum)</th><th>Applicable seulement si</th></tr></thead><tbody>${themes.map((t,i)=>`<tr data-theme-row="${i}"><td><input data-t="name" value="${escapeHtml(t.name)}"></td><td><input data-t="min" type="number" min="0" value="${t.min}"></td><td><select data-t="applicableIf">${opt('',t.applicableIf)}toujours</option>${crits.map(c=>`${opt(c.id,t.applicableIf)}${escapeHtml(c.label.slice(0,70))}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
   <h5>Critères <small>mots-clés séparés par des virgules ; sans accents ni majuscules obligatoires ; « re: » = expression régulière</small></h5>
   <div class="srch-crits">${crits.map((c,i)=>`<div class="srch-crit" data-crit-row="${i}"><div class="srch-crit-head"><input data-c="theme" list="srchThemes" value="${escapeHtml(c.theme)}" placeholder="Thème"><input data-c="label" value="${escapeHtml(c.label)}" placeholder="Critère"><select data-c="kind">${Object.entries(SEARCH_KINDS).map(([k,l])=>`${opt(k,c.kind)}${l}</option>`).join('')}</select>
@@ -16488,7 +16523,7 @@ function ssRenderNew(body){
 }
 // v2.28.0 — file des analyses : statut de chaque demande, arrêter / annuler / supprimer, vider l'historique.
 // Lots de CCTP utiles : réunion des lots des grilles de Recherches (déduits des thèmes si la grille n'en précise pas).
-function ssCctpLots(){ try{ return [...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]; }catch{ return []; } }
+function ssCctpLots(){ try{ return withEnvelopeLots([...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]); }catch{ return []; } }
 async function ssRenderQueue(){
   const box=$('#sourcesDialog [data-ss-queue]'); if(!box||!ss.dir) return;
   let list=[]; try{ list=await ssListRequests(ss.dir); }catch{ box.innerHTML=''; return; }

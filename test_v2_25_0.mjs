@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import {APP_VERSION} from './js/config.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'2.38.0','version');
+eq(APP_VERSION,'2.39.0','version');
 const ex=await import('./tools/import/lib/extract.mjs');
 // Statut d'un document : incomplet ou sans donnée = information, pas « à vérifier ».
 const doc=(type,fields)=>({type,read:{pages:[]},cachedOccurrences:fields.map(f=>({field:f})),families:null});
@@ -23,7 +23,7 @@ eq((await ex.probeXml(w('rsee.xml','<projet><RSET/><RSEnv/></projet>'))).re2020,
 // Script : OCR, alertes par opération, statut recalculé pour les fichiers déjà connus.
 const cli=fs.readFileSync('tools/import/extracterre-import.mjs','utf8'), rt=fs.readFileSync('tools/import/lib/runtime.mjs','utf8');
 eq(/export function enableOcr/.test(rt)&&/@napi-rs\/canvas/.test(rt)&&/tesseract\.js/.test(rt),true,'OCR sous Node (même moteur que l’appli)');
-eq(/--sans-ocr/.test(cli)&&/ocrOn&&scanWas\(old\)/.test(cli),true,'scans déjà connus relus avec OCR');
+eq(/--sans-ocr/.test(cli)&&/ocrOp&&scanWas\(old\)/.test(cli),true,'scans déjà connus relus avec OCR');
 eq(/aucune donnée extraite de \$\{docs\.length\} document\(s\)/.test(cli)&&/counts:c,alerts,/.test(cli),true,'alerte par famille et par opération');
 eq(/const j=judge\(res\.doc,res\.meta,old\.sha256\)/.test(cli),true,'règles actuelles appliquées aux fichiers déjà extraits');
 // Appli : encart Projet actuel = numéro de contrat ; alertes dans Suivi des sources.

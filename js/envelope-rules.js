@@ -67,4 +67,4 @@ export function lotFamily(doc){
 export function lotAllows(family,key){ if(!family) return true; const ok=ENVELOPE_LOTS[key]; return !ok||ok.includes(family); }
 // Raison d'exclusion d'un extrait (texte), ou ''.
 export function envelopeExclusion(text){ const t=normLower(String(text||'')); for(const [re,why] of ENVELOPE_EXCLUSIONS) if(re.test(t)) return why; return ''; }
-export const ENV_READ=1; // version des règles d'enveloppe (rattrapage des lectures conservées, cf. engine)
+export const ENV_READ=2; // version des règles d'enveloppe (rattrapage des lectures conservées, cf. engine)
