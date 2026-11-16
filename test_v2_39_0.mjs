@@ -37,3 +37,9 @@ console.log('test_v2_39_0 OK');
   const read=n=>cctpLotDecision(n,lots).read;
   const ok=withEnvelopeLots([]).length===0&&read('CCTP LOT 05 - ISOLATION.pdf')&&read('Lot 08 Plâtrerie - Doublages.pdf')&&read('CCTP Lot 3 Façades ITE.pdf')&&read('LOT 04 CHARPENTE COUVERTURE.pdf')&&read('Lot 02 Etanchéité.pdf')&&read('Lot 10 Chapes.pdf')&&read('LOT 01 GROS OEUVRE.pdf')&&!read('LOT 12 PEINTURE.pdf')&&!read('Lot 15 Ascenseur.pdf');
   if(!ok){ console.error('ÉCHEC lots enveloppe'); process.exit(1); } console.log('v2.39.0 — lots CCTP enveloppe OK'); }
+
+// Garde-fou (panne du 16/11/2026) : tout module js/ doit être dans le bundle (build_bundle.py), sinon l'appli en ligne plante au démarrage.
+{ const fs2=await import('fs'); const order=fs2.readFileSync('build_bundle.py','utf8').match(/order=\[(.*?)\]/s)[1];
+  const SEPARATE=new Set(['security.js','app.bundle.js','cloud-config.js','journal-config.js']);
+  const miss=fs2.readdirSync('js').filter(f=>f.endsWith('.js')&&!SEPARATE.has(f)&&!order.includes(`'${f}'`));
+  if(miss.length){ console.error('ÉCHEC modules hors bundle :',miss.join(', ')); process.exit(1); } console.log('v2.39.0 — bundle complet OK'); }
