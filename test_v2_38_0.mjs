@@ -1,0 +1,22 @@
+// v2.38.0 — enveloppe (documents FICTIFS) : hiérarchie des lots CCTP, répertoire d'exclusions, « Autre … » écarté.
+import assert from 'node:assert/strict';
+import {APP_VERSION} from './js/config.js';
+import {lotFamily,lotAllows,envelopeExclusion} from './js/envelope-rules.js';
+import {sanitizeOccurrence} from './js/sanity.js';
+assert.equal(APP_VERSION,'2.38.0');
+const fam=n=>lotFamily({name:n});
+assert.equal(fam('CCTP LOT 02 GROS OEUVRE.pdf'),'gros_oeuvre');
+assert.equal(fam('CCTP LOT 15 ELECTRICITE.pdf'),'electricite');
+assert.equal(fam('10. CHAPES.pdf'),'sols');
+assert.equal(fam('2109L-CCTP Annexe 4 Synthèse étude thermique.pdf'),'commun');
+assert.equal(fam('CCTP.pdf'),'');
+assert.equal(lotFamily({name:'CCTP.pdf',read:{pages:[{text:'Projet X\nLOT N° 08 - MENUISERIES EXTERIEURES\nSommaire : lot 02 gros oeuvre, lot 15 electricite'}]}}),'menuiseries_ext','intitulé « LOT n » de la 1re page, pas le sommaire');
+assert.equal(lotAllows('electricite','wall_structure'),false); assert.equal(lotAllows('gros_oeuvre','wall_structure'),true);
+assert.equal(lotAllows('sols','floor_structure'),false,'chapes : pas la structure du plancher'); assert.equal(lotAllows('sols','floor'),true,'chapes : isolant sous chape');
+assert.equal(lotAllows('',' wall_structure'),true,'lot non reconnu : jamais bloqué');
+assert.ok(envelopeExclusion('Échafaudage de pied en structure métallique'));
+assert.ok(envelopeExclusion('Clôture : muret en blocs béton'));
+assert.equal(envelopeExclusion('Au regard de la réglementation, murs en béton armé de 18 cm'),'');
+assert.equal(sanitizeOccurrence({field:'roof_insulation',value:'Autre La toiture est-t-elle',method:'patch:x'}),null);
+assert.ok(sanitizeOccurrence({field:'roof_insulation',value:'Laine de verre',method:'patch:x'}));
+console.log('test_v2_38_0 OK');

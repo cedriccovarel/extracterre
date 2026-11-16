@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.37.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.38.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.37.1';
+const APP_VERSION='2.38.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -6131,6 +6131,9 @@ function sanitizeOccurrence(o){
   const m=String(o.method||'');
   if(o.userValidated||/^manual:/.test(m)) return o;
   if(badLabelStructure(o)) return null;
+  // v2.38.0 — « Autre … » n'est pas un matériau : option « Autre » d'une liste, suivie du libellé de la question suivante
+  // (« Autre Nature de l'espace sous… », « Autre La toiture est-elle… », « Autre Non »). Lu par un patch Pléiades RSET.
+  if(/^(?:wall|roof|floor)_insulation$|^(?:wall|roof|floor)_structure$|^structure$|^window_material$/.test(String(o.field||''))&&/^\s*autres?\b/i.test(String(o.value??''))) return null;
   // v2.20.2 — « Planchers hauts » : matériau du plancher haut, jamais le seul statut de la toiture (terrasse non accessible…).
   if(o.field==='roof_structure'){ const c=cleanRoofStructure(o.value); if(!c) return null; if(c!==o.value) o={...o,value:c}; }
   if(/^xml:/.test(m)||o.structuredXml) return o;
@@ -7425,6 +7428,9 @@ const cctpDemolitionLot=doc=>doc.type===DOC_TYPES.CCTP&&/demolition|curage|desam
 function parseEnvelope(doc){
   const out=[];
   if(cctpDemolitionLot(doc)) return out;
+  // v2.38.0 — CCTP / DPGF : seul un lot concerné renseigne l'enveloppe (envelope-rules.js) ; lot propre à la donnée = confiance +0,03.
+  const isLotDoc=doc.type===DOC_TYPES.CCTP||doc.type===DOC_TYPES.DPGF, fam=isLotDoc?lotFamily(doc):'';
+  const lotOk=key=>!isLotDoc||lotAllows(fam,key), lotBonus=key=>isLotDoc&&fam&&fam!=='commun'&&lotAllows(fam,key)?0.03:0;
   for(const page of doc.read.pages){
     if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && /(?:chapitre\s*3\s*:.*indicateurs|donn[eé]es\s+r[eé]capitulatives\s+sur\s+les\s+parois)/i.test(page.text||'')) continue;
     const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
@@ -7444,8 +7450,10 @@ function parseEnvelope(doc){
     // (« joints … en liaison avec le Gros-Œuvre et ossature bois » d'un lot menuiseries), fourreaux, incorporations, liaisons de
     // terre, escaliers, huisseries, protection des façades, sommaire, cas conditionnels.
     const structNoise=/composant\s+pce|contributors|sous-lot|donnee\s+environnementale|\binies\b|\bsemelles?\b|fondations?|terrassements?|surconsommation|stabilite\s+au\s+feu|coupe[- ]feu|en\s+liaison\s+avec|coordination\s+avec|incorporations?|fourreaux?|traversees?\s+de\s+parois|conducteurs?\s+de\s+protection|collecteur\s+de\s+terre|escaliers?|limons?|huisseries?|ebrasements?|protection\s+des\s+facades|\.{5,}|dans\s+le\s+cas\s+de/i;
-    if(struct && hasEnvelope && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; push(out,occ(doc,page,line,field,struct,'envelope:structure-context',target?0.91:0.87,'',{excerpt:ctx.slice(0,420)})); }
-    if(mat && target && hasEnvelope){
+    // v2.38.0 — répertoire d'exclusions (échafaudage, clôture, support d'équipement…) : ni structure ni isolation.
+    const excluded=envelopeExclusion(base); // la ligne elle-même, pas ses voisines
+    if(struct && hasEnvelope && !excluded && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; if(lotOk(field)) push(out,occ(doc,page,line,field,struct,'envelope:structure-context',(target?0.91:0.87)+lotBonus(field),'',{excerpt:ctx.slice(0,420)})); }
+    if(mat && target && hasEnvelope && !excluded && lotOk(target)){
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
       push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',productMatch?0.96:0.93,'',{excerpt:ctx.slice(0,420),...productExtra}));
       if(explicitTh!==null) push(out,occ(doc,page,line,`${target}_insulation_thickness`,explicitTh,'envelope:thickness-context',productMatch?0.96:0.94,'mm',{excerpt:ctx.slice(0,420),...productExtra}));
@@ -7458,7 +7466,7 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm&&lotOk('window')) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl&&lotOk('window')) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 
@@ -9129,9 +9137,14 @@ function catchUpDocument(d,buildingOverrides={}){
     const dhOcc=o=>o&&/^dh(?:_zt|_znt|_max)?$/.test(o.field)&&!o.userValidated;
     if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh|^rset:(?:dh-|fallback-label)/.test(String(o.method||'')))&&d.read?.pages){
       const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
+  // v2.38.0 — enveloppe : hiérarchie des lots et exclusions (envelope-rules.js) appliquées une fois aux lectures conservées.
+  if((Number(d.envRead)||0)<ENV_READ&&Array.isArray(d.cachedOccurrences)){ d.envRead=ENV_READ;
+    const envOcc=o=>o&&!o.userValidated&&/^(?:envelope:|library:insulation|windows:)/.test(String(o.method||''));
+    if(d.cachedOccurrences.some(envOcc)&&d.read?.pages){ const fresh=parseDocument(d).filter(envOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!envOcc(o)),...fresh]; d.needsCheckpoint=true; } }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
+  if(/^\s*autres?\b/i.test(String(o?.value??''))&&!sanitizeOccurrence(o)) return null; // v2.38.0 — « Autre … » (lectures conservées)
   if(o?.field==='cooling'&&o.value!=='Aucun'&&o.method==='systems:cooling-context'&&!o.userValidated&&!coolingContextKept(o.value,o.excerpt)) return null; // v2.36.6 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 // v2.35.0 — version d'étude de référence = la dernière transmise à l'évaluateur (règle métier) : date du fichier déposé
@@ -9153,7 +9166,7 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
@@ -9851,6 +9864,7 @@ Groupe Refroidissement Categorie Tic Tic Ref.
 
 
 
+
 function classifyForSelectedFamily(doc){
   const auto0=classifyDocument(doc.name,doc.read?.text||'',{kind:doc.read?.kind,re2020:doc.read?.re2020||null});
   const auto=doc.read?.plan?{...auto0,type:DOC_TYPES.PLAN,confidence:.95,planFormat:doc.read.plan.format}:auto0;
@@ -9872,7 +9886,7 @@ function prepareReadDocument(d){
   if(d.read?.ocr?.warnings?.length) d.ocrWarnings=d.read.ocr.warnings;
   try{
     d.cachedOccurrences=d.read?.plan?[]:parseDocument(d); d.analysisCachedAt=Date.now();
-    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
+    d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; // lu par les parseurs actuels (cf. engine.analyzeDocuments)
     d.read=compactReadForRetention(d.read);
   }catch(parseErr){ d.cachedOccurrences=null; d.parseError=parseErr?.message||String(parseErr); }
   return d;
@@ -11220,6 +11234,7 @@ function serializeDocMeta(doc={}){
     fanRead:Number(doc.fanRead)||0,
     bldRead:Number(doc.bldRead)||0,
     dhRead:Number(doc.dhRead)||0,
+    envRead:Number(doc.envRead)||0,
     lowText:typeof doc.lowText==='boolean'?doc.lowText:undefined,
     climaWinInput:typeof doc.climaWinInput==='boolean'?doc.climaWinInput:undefined,
     ocrWarnings:safeJsonClone(doc.ocrWarnings,[]),
@@ -16166,7 +16181,7 @@ async function rebuildInBackground(){
       if(!projectReadsLoaded(p)) await ensureProjectReads(p);
       // v2.19.3 — rattrapages faits document par document, en rendant la main entre deux (un document relu peut prendre
       // plusieurs secondes : la page ne se fige plus le temps de toute l'opération).
-      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3)||!(Number(d.dhRead)>=DH_READ))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
+      for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=3)||!(Number(d.dhRead)>=DH_READ)||!(Number(d.envRead)>=ENV_READ))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
         catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
       rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }

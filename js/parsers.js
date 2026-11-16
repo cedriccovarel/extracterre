@@ -10,6 +10,7 @@ import {isPleiadesThermalOutput,parsePleiadesThermalOutput} from './pleiades-sor
 import {isCarbonNoticeRe2020,parseCarbonNoticeRe2020} from './notice-carbone.js';
 import {sanitizeOccurrences} from './sanity.js';
 import {parseFrAddress} from './geocode.js';
+import {lotFamily,lotAllows,envelopeExclusion} from './envelope-rules.js';
 import {hasThermalSoftwareMarkers,parseThermalSoftwarePatterns,isU48WinThcexReport} from './logiciels-thermiques.js';
 import {isRtexStandardFiche,parseRtexStandardFiche} from './rset-rtex.js';
 import {isRecapCarboneRe2020,parseRecapCarboneRe2020} from './recap-carbone.js';
@@ -1259,6 +1260,9 @@ const cctpDemolitionLot=doc=>doc.type===DOC_TYPES.CCTP&&/demolition|curage|desam
 function parseEnvelope(doc){
   const out=[];
   if(cctpDemolitionLot(doc)) return out;
+  // v2.38.0 — CCTP / DPGF : seul un lot concerné renseigne l'enveloppe (envelope-rules.js) ; lot propre à la donnée = confiance +0,03.
+  const isLotDoc=doc.type===DOC_TYPES.CCTP||doc.type===DOC_TYPES.DPGF, fam=isLotDoc?lotFamily(doc):'';
+  const lotOk=key=>!isLotDoc||lotAllows(fam,key), lotBonus=key=>isLotDoc&&fam&&fam!=='commun'&&lotAllows(fam,key)?0.03:0;
   for(const page of doc.read.pages){
     if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && /(?:chapitre\s*3\s*:.*indicateurs|donn[eé]es\s+r[eé]capitulatives\s+sur\s+les\s+parois)/i.test(page.text||'')) continue;
     const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
@@ -1278,8 +1282,10 @@ function parseEnvelope(doc){
     // (« joints … en liaison avec le Gros-Œuvre et ossature bois » d'un lot menuiseries), fourreaux, incorporations, liaisons de
     // terre, escaliers, huisseries, protection des façades, sommaire, cas conditionnels.
     const structNoise=/composant\s+pce|contributors|sous-lot|donnee\s+environnementale|\binies\b|\bsemelles?\b|fondations?|terrassements?|surconsommation|stabilite\s+au\s+feu|coupe[- ]feu|en\s+liaison\s+avec|coordination\s+avec|incorporations?|fourreaux?|traversees?\s+de\s+parois|conducteurs?\s+de\s+protection|collecteur\s+de\s+terre|escaliers?|limons?|huisseries?|ebrasements?|protection\s+des\s+facades|\.{5,}|dans\s+le\s+cas\s+de/i;
-    if(struct && hasEnvelope && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; push(out,occ(doc,page,line,field,struct,'envelope:structure-context',target?0.91:0.87,'',{excerpt:ctx.slice(0,420)})); }
-    if(mat && target && hasEnvelope){
+    // v2.38.0 — répertoire d'exclusions (échafaudage, clôture, support d'équipement…) : ni structure ni isolation.
+    const excluded=envelopeExclusion(base); // la ligne elle-même, pas ses voisines
+    if(struct && hasEnvelope && !excluded && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; if(lotOk(field)) push(out,occ(doc,page,line,field,struct,'envelope:structure-context',(target?0.91:0.87)+lotBonus(field),'',{excerpt:ctx.slice(0,420)})); }
+    if(mat && target && hasEnvelope && !excluded && lotOk(target)){
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
       push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',productMatch?0.96:0.93,'',{excerpt:ctx.slice(0,420),...productExtra}));
       if(explicitTh!==null) push(out,occ(doc,page,line,`${target}_insulation_thickness`,explicitTh,'envelope:thickness-context',productMatch?0.96:0.94,'mm',{excerpt:ctx.slice(0,420),...productExtra}));
@@ -1292,7 +1298,7 @@ function parseEnvelope(doc){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
     }
-    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
+    if(ELEMENT_PATTERNS.window.test(ctx)){ const materialCtx=ctx.replace(/volets?\s+roulants?\s+(?:alu(?:minium)?|pvc|bois)/ig,' ').replace(/fermeture\s*:?\s*(?:alu(?:minium)?|pvc|bois)/ig,' '); const wm=findFirstMatch(materialCtx,WINDOW_MATERIALS); const glazingEvidence=/(?:simple|double|triple)\s+(?:vitrage|verre)|\bdouble\s*\+?\s*\d{1,2}(?:[,.]\d+)?\s*mm\b|\d{1,2}\s*(?:\/|-)\s*\d{1,2}(?:\s*(?:ar(?:gon)?|kr(?:ypton)?|air))?\s*(?:\/|-)\s*\d{1,2}|\d{1,2}\.\d{1,2}\.\d{1,2}/i.test(ctx); const gl=glazingEvidence?(normalizeGlazingType(ctx.replace(/\bversion\s*:?\s*\d+(?:\.\d+)+/gi,' '))||findFirstMatch(ctx,GLAZINGS)):null; let sh=findFirstMatch(base,SHADINGS); if(!sh && !/sans\s+protection|sans\s+occultation/i.test(ctx)) sh=findFirstMatch(ctx,SHADINGS); if(wm&&lotOk('window')) push(out,occ(doc,page,line,'window_material',wm,'windows:material-context',0.89,'',{excerpt:ctx.slice(0,420)})); if(gl&&lotOk('window')) push(out,occ(doc,page,line,'window_glazing',gl,'windows:glazing-context',0.90,'',{excerpt:ctx.slice(0,420)})); if(sh) push(out,occ(doc,page,line,'window_shading',sh,'windows:shading-context',0.90,'',{building:buildingForPosition(doc,page.page,line.index),excerpt:ctx.slice(0,420)})); }
   }} return out;
 }
 

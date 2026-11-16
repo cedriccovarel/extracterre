@@ -3,6 +3,7 @@ import {sourceTier,sourceRank} from './routing.js';
 import {formatValue,normLower,normalizeText,scoreTokens,unique,numbersIn,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
 import {BLD_READ,DH_READ,repairBuildingName,operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
 import {parseDocument,parseRsetOperationAddress,coolingContextKept} from './parsers.js';
+import {ENV_READ} from './envelope-rules.js';
 import {INSULATION_LIBRARY_VARIANT_COUNT,CORE_INSULATION_VARIANT_COUNT} from './insulation-library.js';
 import {buildProjectTags} from './tags.js';
 import {classifyDocument} from './classifier.js';
@@ -10,7 +11,7 @@ import {shouldOcrPdfPage} from './readers.js';
 import {applyLearningBoosts} from './learning-memory.js';
 import {applyCoherenceChecks} from './coherence.js';
 import {cleanRoofStructure} from './plancher-haut.js';
-import {badLabelStructure} from './sanity.js';
+import {badLabelStructure,sanitizeOccurrence} from './sanity.js';
 import {isClimaWinInputReport} from './climawin.js';
 import {autoFamiliesForType,resolveDocumentFamilies,DOCUMENT_FAMILIES} from './parsers.js';
 
@@ -387,9 +388,14 @@ export function catchUpDocument(d,buildingOverrides={}){
     const dhOcc=o=>o&&/^dh(?:_zt|_znt|_max)?$/.test(o.field)&&!o.userValidated;
     if(d.cachedOccurrences.some(o=>dhOcc(o)&&/^(?:cstb|pleiades-sortie):dh|^rset:(?:dh-|fallback-label)/.test(String(o.method||'')))&&d.read?.pages){
       const fresh=parseDocument(d).filter(dhOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!dhOcc(o)),...fresh]; d.needsCheckpoint=true; } }
-  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; }
+  // v2.38.0 — enveloppe : hiérarchie des lots et exclusions (envelope-rules.js) appliquées une fois aux lectures conservées.
+  if((Number(d.envRead)||0)<ENV_READ&&Array.isArray(d.cachedOccurrences)){ d.envRead=ENV_READ;
+    const envOcc=o=>o&&!o.userValidated&&/^(?:envelope:|library:insulation|windows:)/.test(String(o.method||''));
+    if(d.cachedOccurrences.some(envOcc)&&d.read?.pages){ const fresh=parseDocument(d).filter(envOcc); d.cachedOccurrences=[...d.cachedOccurrences.filter(o=>!envOcc(o)),...fresh]; d.needsCheckpoint=true; } }
+  if(!Array.isArray(d.cachedOccurrences)&&d.read&&d.status==='ready'&&d.needsCheckpoint){ d.cachedOccurrences=parseDocument(d); d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; }
 }
 const engRoofClean=o=>{ if(badLabelStructure(o)&&!o.userValidated) return null; // v2.33.1 — aussi sur les lectures conservées
+  if(/^\s*autres?\b/i.test(String(o?.value??''))&&!sanitizeOccurrence(o)) return null; // v2.38.0 — « Autre … » (lectures conservées)
   if(o?.field==='cooling'&&o.value!=='Aucun'&&o.method==='systems:cooling-context'&&!o.userValidated&&!coolingContextKept(o.value,o.excerpt)) return null; // v2.36.6 — aussi sur les lectures conservées
   if(o?.field!=='roof_structure'||o.userValidated||/^manual:/.test(String(o.method||''))) return o; const c=cleanRoofStructure(o.value); return !c?null:c===o.value?o:{...o,value:c}; };
 // v2.35.0 — version d'étude de référence = la dernière transmise à l'évaluateur (règle métier) : date du fichier déposé
@@ -411,7 +417,7 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
     if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

@@ -105,6 +105,7 @@ function serializeDocMeta(doc={}){
     fanRead:Number(doc.fanRead)||0,
     bldRead:Number(doc.bldRead)||0,
     dhRead:Number(doc.dhRead)||0,
+    envRead:Number(doc.envRead)||0,
     lowText:typeof doc.lowText==='boolean'?doc.lowText:undefined,
     climaWinInput:typeof doc.climaWinInput==='boolean'?doc.climaWinInput:undefined,
     ocrWarnings:safeJsonClone(doc.ocrWarnings,[]),

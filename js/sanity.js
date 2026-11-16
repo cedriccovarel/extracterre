@@ -79,6 +79,9 @@ export function sanitizeOccurrence(o){
   const m=String(o.method||'');
   if(o.userValidated||/^manual:/.test(m)) return o;
   if(badLabelStructure(o)) return null;
+  // v2.38.0 — « Autre … » n'est pas un matériau : option « Autre » d'une liste, suivie du libellé de la question suivante
+  // (« Autre Nature de l'espace sous… », « Autre La toiture est-elle… », « Autre Non »). Lu par un patch Pléiades RSET.
+  if(/^(?:wall|roof|floor)_insulation$|^(?:wall|roof|floor)_structure$|^structure$|^window_material$/.test(String(o.field||''))&&/^\s*autres?\b/i.test(String(o.value??''))) return null;
   // v2.20.2 — « Planchers hauts » : matériau du plancher haut, jamais le seul statut de la toiture (terrasse non accessible…).
   if(o.field==='roof_structure'){ const c=cleanRoofStructure(o.value); if(!c) return null; if(c!==o.value) o={...o,value:c}; }
   if(/^xml:/.test(m)||o.structuredXml) return o;
