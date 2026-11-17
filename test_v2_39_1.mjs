@@ -68,3 +68,11 @@ console.log('test_v2_39_1 excel OK');
   eq(JSON.parse(parts),JSON.parse(JSON.stringify(serializeProjectFull(p))),'même contenu');
   eq(parts.includes('\n'),false,'une seule ligne'); eq(seen,['bd1','ad1','bd2','ad2'],'texte chargé puis libéré document par document'); }
 console.log('test_v2_39_1 session par document OK');
+// 10. Très gros fichiers (tableur ACV de 70 Mo, XML de 11 Mo) : texte brut ni chargé ni exporté, valeurs et lectures gardées
+{ const {serializeProjectFullParts}=await import('./js/persistence.js');
+  const big={id:'b',name:'EXPORT VIZCAB.xlsx',size:70e6,type:'Étude carbone / ACV',status:'ready',read:{kind:'spreadsheet',pages:[{page:1,text:'x',lines:[{index:0,text:'x'}]}]},cachedOccurrences:[{field:'ic_construction',value:600,building:'Bâtiment A'}]};
+  const loaded=[]; let flagged=0;
+  const out=JSON.parse([...serializeProjectFullParts({id:'p',docs:[big]},{before:d=>{loaded.push(d.id);},skipRead:d=>d.size>2e6,tooBig:(d,w)=>{ if(w==='skipped') flagged++; }})].join(''));
+  eq(loaded,[],'texte jamais chargé'); eq(flagged,1); eq(out.docs[0].analysis.read,null); eq(out.docs[0].analysis.readOmitted,true);
+  eq(out.docs[0].analysis.cachedOccurrences?.[0]?.value,600,'lectures gardées'); }
+console.log('test_v2_39_1 gros fichiers OK');

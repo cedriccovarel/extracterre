@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.39.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.39.3 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.39.2';
+const APP_VERSION='2.39.3';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11548,10 +11548,13 @@ function serializeProjectFull(project={}){
 // à très gros documents n'est plus copiée en entier dans une seule chaîne (export de session : onglet planté à l'écriture).
 // Hooks (export) : before(d) charge le texte du document (promesse, attendue par l'appelant), after(d) le libère ; un document trop
 // gros pour une chaîne est écrit sans son texte brut (tooBig signalé, valeurs et occurrences gardées).
-function* serializeProjectFullParts(project={},{before=null,after=null,tooBig=null}={}){
+function* serializeProjectFullParts(project={},{before=null,after=null,tooBig=null,skipRead=null}={}){
   const MARK='\u0000docs\u0000', head=JSON.stringify({...serializeProject(project),docs:MARK}), at=head.indexOf(JSON.stringify(MARK)), rest=head.slice(at+JSON.stringify(MARK).length);
   yield head.slice(0,at)+'[';
   let i=0; for(const d of project.docs||[]){
+    // Texte brut d'un très gros fichier (tableur ACV de 70 Mo…) jamais chargé : document écrit sans lui (valeurs, occurrences gardées).
+    if(skipRead&&skipRead(d)){ const meta=serializeDocMeta(d), a=Array.isArray(d.cachedOccurrences)?{...serializeDocAnalysis(project.id,{...d,read:null},true,false),read:null,readOmitted:true}:null;
+      yield (i++?',':'')+JSON.stringify({...meta,analysis:a}); tooBig?.(d,'skipped'); continue; }
     if(before){ const w=before(d); if(w&&typeof w.then==='function') yield w.then(()=>''); }
     const one=()=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null});
     let s; try{ s=JSON.stringify(one()); }catch(err){ const o=one(); if(o.analysis) o.analysis={...o.analysis,read:null,readOmitted:true}; s=JSON.stringify(o); tooBig?.(d); }
@@ -15767,6 +15770,10 @@ let sessionExportRunning=false;
 // mémoire de ses opérations est libérée avant le paquet suivant. Fichiers « …_partie-1-sur-3.json » : chacun est une session
 // complète à lui seul (TotalRecoll et « Importer une session » acceptent plusieurs fichiers et les fusionnent).
 const SESSION_EXPORT_CHUNK=300;
+// v2.39.2 — texte brut des très gros fichiers non exporté (tableurs ACV Vizcab jusqu'à 70 Mo → 217 Mo de texte stocké, XML RSET
+// de 5 à 11 Mo) : il faisait planter l'onglet à l'écriture et ne sert ni à TotalRecoll ni aux valeurs (déjà extraites).
+function sessionSkipRead(d){ const ext=String(d?.name||'').toLowerCase().split('.').pop(), size=Number(d?.size)||0;
+  return (['xlsx','xlsm','xls','csv'].includes(ext)&&size>2e6)||(ext==='xml'&&size>4e6); }
 async function exportSessionJson(){
   if(sessionExportRunning){ toast('Export de la session déjà en cours.','warn'); return; }
   sessionExportRunning=true; const btn=$('#exportSessionBtn'); if(btn) btn.disabled=true;
@@ -15787,7 +15794,7 @@ async function exportSessionRun(ui,dir=null){
   const chunks=[]; for(let i=0;i<all.length;i+=SESSION_EXPORT_CHUNK) chunks.push(all.slice(i,i+SESSION_EXPORT_CHUNK));
   const K=chunks.length, N=all.length, date=new Date().toISOString().slice(0,10), grids=loadGrids();
   const fileName=k=>K===1?`ExtracTerre_session_${date}.json`:`ExtracTerre_session_${date}_partie-${k+1}-sur-${K}.json`;
-  const heavy=[]; let done=0, totalBytes=0;
+  const heavy=[]; let done=0, totalBytes=0, skipped=0;
   for(const [k,list] of chunks.entries()){
     const tag=K>1?` (fichier ${k+1}/${K})`:'';
     // 1. Recalcul des opérations du paquet seulement.
@@ -15814,7 +15821,8 @@ async function exportSessionRun(ui,dir=null){
         for(const part of serializeProjectFullParts(p,{
           before:async d=>{ if(!docReadLoaded(d)) await loadDocumentReads([d]); },
           after:d=>{ if(!keep) unloadDocumentRead(d); },
-          tooBig:()=>heavy.push(projectTitle(p)||'') })) await put(typeof part==='string'?part:await part);
+          skipRead:sessionSkipRead,
+          tooBig:(d,why)=>{ if(why==='skipped') skipped++; else heavy.push(projectTitle(p)||''); } })) await put(typeof part==='string'?part:await part);
         await put('\n'); releaseProjectReads(p); }
       await put(']}\n}\n');
       if(w) await w.close(); else downloadBlob(new Blob(parts,{type:'application/json'}),fileName(k));
@@ -15825,6 +15833,7 @@ async function exportSessionRun(ui,dir=null){
     await yieldToBrowser();
   }
   setLocalSaveUi('Session restaurée',lastLocalSaveAt);
+  if(skipped) toast(`${skipped} très gros fichier(s) (tableurs ACV de plus de 2 Mo, XML de plus de 4 Mo) exporté(s) sans leur texte brut : valeurs et lectures gardées.`,'info');
   if(heavy.length) toast(`${heavy.length} opération(s) trop volumineuse(s) exportée(s) sans le texte brut des documents : ${heavy.slice(0,5).join(', ')}${heavy.length>5?'…':''}`,'warn');
   ui.done('Session exportée',`${N} opération(s) · ${K} fichier(s) · ${formatBytes(totalBytes)}${dir?` · dossier « ${dir.name} »`:''}`);
   toast(`Session exportée : ${N} opération(s) en ${K} fichier(s)${K>1?' (à déposer ensemble dans TotalRecoll ou « Importer une session »)':''}.`,'success');

@@ -211,10 +211,13 @@ export function serializeProjectFull(project={}){
 // à très gros documents n'est plus copiée en entier dans une seule chaîne (export de session : onglet planté à l'écriture).
 // Hooks (export) : before(d) charge le texte du document (promesse, attendue par l'appelant), after(d) le libère ; un document trop
 // gros pour une chaîne est écrit sans son texte brut (tooBig signalé, valeurs et occurrences gardées).
-export function* serializeProjectFullParts(project={},{before=null,after=null,tooBig=null}={}){
+export function* serializeProjectFullParts(project={},{before=null,after=null,tooBig=null,skipRead=null}={}){
   const MARK='\u0000docs\u0000', head=JSON.stringify({...serializeProject(project),docs:MARK}), at=head.indexOf(JSON.stringify(MARK)), rest=head.slice(at+JSON.stringify(MARK).length);
   yield head.slice(0,at)+'[';
   let i=0; for(const d of project.docs||[]){
+    // Texte brut d'un très gros fichier (tableur ACV de 70 Mo…) jamais chargé : document écrit sans lui (valeurs, occurrences gardées).
+    if(skipRead&&skipRead(d)){ const meta=serializeDocMeta(d), a=Array.isArray(d.cachedOccurrences)?{...serializeDocAnalysis(project.id,{...d,read:null},true,false),read:null,readOmitted:true}:null;
+      yield (i++?',':'')+JSON.stringify({...meta,analysis:a}); tooBig?.(d,'skipped'); continue; }
     if(before){ const w=before(d); if(w&&typeof w.then==='function') yield w.then(()=>''); }
     const one=()=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null});
     let s; try{ s=JSON.stringify(one()); }catch(err){ const o=one(); if(o.analysis) o.analysis={...o.analysis,read:null,readOmitted:true}; s=JSON.stringify(o); tooBig?.(d); }
