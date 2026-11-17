@@ -5,7 +5,7 @@
 //   2. même identifiant (« Bât A Est », « Bâtiment A aile nord » → « Bât A ») ;
 //   3. chiffre ↔ lettre quand Salesforce n'utilise que l'un des deux (« Bât 1 » → « Bât A », « Bât B » → « Bât 2 ») ;
 //   4. « Bâtiment unique » → le bâtiment Salesforce s'il n'y en a qu'un.
-import {canonicalBuilding,buildingMergeKey,buildingCoreId} from './buildings.js';
+import {canonicalBuilding,buildingMergeKey,buildingCoreId,isGarbageBuildingName} from './buildings.js';
 
 const SFP_SINGLE=/^(?:[a-z]{1,3}\d{0,3}|\d{1,4})$/;
 // Clé de rapprochement : sans mention du nombre de logements/lots, ni parenthèses ; plages « 3 a 7 » = « 3-7 ».
@@ -62,4 +62,63 @@ export function sfPerimeterMap(sfNames,detected,manual={}){
   // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.
   if(S.length===1){ for(const raw of Object.keys(map)) if(map[raw]===null&&modes[raw]==='none'&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ const k=sfp_key(canonicalBuilding(raw)); if(/^(?:n ?)?(?:[a-z]|\d{1,2}|bat|batiment|ensemble|projet)$/.test(k)){ map[raw]=S[0]; modes[raw]='unique'; } } }
   return {sf:S,map,modes};
+}
+
+// v2.43.0 — Salesforce ne nomme pas les bâtiments mais en donne le nombre (« Total bâtiments » ; 0 ou vide = 1).
+// Les documents ne créent jamais de bâtiment : on garde au plus N noms lus dans les documents, les mieux renseignés
+// (nombre de résultats Bbio, Cep, DH, Tic, Ic…), un seul par identifiant (« Bât A » = « BATIMENT A » = « Bâtiment 1 »).
+// Titres de tableau, sous-ensembles (zone, étage, cage, groupe, lot…) et listes (« A et B ») ne sont jamais des bâtiments.
+// detected : [{name, results}]. Renvoie les noms retenus (ordre naturel). N = 1 : le nom lu s'il n'y en a qu'un, sinon « Bâtiment unique ».
+const SFC_NOT_BUILDING=/\b(?:zone|zones|etage|cage|niveau|r\s?\+\s?\d|t[1-6]|groupe|lot|lots|tranche|facade|synthese|generalites?|exigences?|bbio|cep|puissance|verification|essai|repartition|deperditions?|informations|total|consommations?|etude|notice|sommaire|resultats?|tableau|compteur|circuit|observations?|commentaires?|indicateurs?|page|reglementaire|gain|cctp|methode|chauffee|logements?\s+collectifs?|collectifs?|individuels?|neuf|existant)\b|\d+[.,]\d{2}|m2\b|m²|\.{4,}|\d{2}\/\d{2}\/\d{4}/;
+export function sfIsList(name){
+  const k=buildingMergeKey(canonicalBuilding(name)); const t=k.split(' ');
+  return /[,;&\/]/.test(String(name).replace(/^B[aâ]timents?\s*/i,''))||/\b(?:et|a|à)\b/.test(t.slice(1).join(' '))||t.slice(1).some(x=>SFP_SINGLE.test(x)&&x.length<=3&&!/^(?:est|nord|sud|rue|cour)$/.test(x));
+}
+// Noms lus classés : d'abord les noms nets (identifiant, nom de bâtiment), puis les noms douteux (titre, sous-ensemble, liste),
+// chacun du mieux renseigné au moins renseigné ; un seul par identifiant. Un groupe de maisons (« MAISONS 2/3 », « MI 1 A 3 »)
+// est un bâtiment (Salesforce compte un bâtiment par groupe de maisons accolées), pas une liste.
+const SFC_HOUSES=/\b(?:maisons?|mi|villas?|individuels?|pavillons?|logts?|logements?|ilot)\b|ilot_/;
+export function sfRankNames(detected,{strictOnly=false}={}){
+  const equiv=c=>/^[a-z]$/.test(c)?String(c.charCodeAt(0)-96):/^\d{1,2}$/.test(c)&&+c>=1&&+c<=26?String.fromCharCode(96+ +c):'';
+  const sure=[],doubt=[];
+  for(const {name,results} of [...(detected||[])].sort((a,b)=>(b.results||0)-(a.results||0))){
+    const d=canonicalBuilding(name); if(!d||d==='Bâtiment unique') continue;
+    const t=normLowerSfp(d.replace(/^B[aâ]timent\s+/i,'')), houses=SFC_HOUSES.test(t);
+    const key=buildingMergeKey(d), single=!key.includes(' '), core=single?buildingCoreId(d):'';
+    const all=[...sure,...doubt];
+    if(all.some(c=>c.key===key||(core&&c.core&&(c.core===core||(equiv(core)&&c.core===equiv(core)))))) continue;
+    const bad=isGarbageBuildingName(d)||(!houses&&sfIsList(d))||(SFC_NOT_BUILDING.test(t)&&!houses);
+    (bad?doubt:sure).push({name:d,key,core});
+  }
+  return (strictOnly?sure:[...sure,...doubt]).map(c=>c.name);
+}
+export function sfCountNames(total,detected){
+  const N=Math.max(1,Math.floor(Number(total))||1), ranked=sfRankNames(detected);
+  if(N===1){ const sure=sfRankNames(detected,{strictOnly:true}); return [sure.length===1?sure[0]:'Bâtiment unique']; }
+  return ranked.slice(0,N).sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
+}
+// Libellé groupé de la fiche Salesforce (« Bât 2 & 3 », « Bât A et B ») = plusieurs bâtiments qui partagent les valeurs.
+// « Bât AB » reste UN bâtiment : « Total bâtiments » le compte pour un (mesuré sur les 647 opérations).
+export function sfSplitGroup(name){
+  const body=String(name||'').replace(/^\s*B[aâ]t(?:iment)?s?\.?\s*/i,'').trim();
+  let parts=body.split(/\s*(?:,|;|&|\+|\/|\bet\b)\s*/i).filter(Boolean);
+  return parts.length>1&&parts.every(x=>/^[A-Za-z]{1,2}\d{0,3}$|^\d{1,3}$/.test(x))?parts.map(x=>'Bâtiment '+x):[name];
+}
+// Périmètre complet : noms Salesforce (fiche Évaluation) sinon nombre Salesforce. Avec un seul bâtiment, tout nom lu s'y rattache
+// (sauf correction manuelle « non retenu »).
+export function sfPerimeter({names,total,detected,manual={}}){
+  const byName=Array.isArray(names)&&names.length, hasTotal=total!==null&&total!==''&&total!==undefined&&Number.isFinite(Number(total));
+  if(!byName&&!hasTotal) return null;
+  const N=hasTotal?Math.max(1,Math.floor(Number(total))||1):null;
+  let S=byName?[...new Set(names.flatMap(sfSplitGroup).map(canonicalBuilding))]:sfCountNames(total,detected);
+  // v2.43.0 — jamais plus de bâtiments que le « Total bâtiments » Salesforce : noms de la fiche en surnombre → rattachés comme des
+  // noms de documents ; noms en nombre insuffisant → complétés par les noms des documents les mieux renseignés, jusqu'à N.
+  let sfExtra=[];
+  if(byName&&N!==null&&S.length>N){ sfExtra=S.slice(N); S=S.slice(0,N); }
+  if(byName&&N!==null&&S.length<N){ const tk=sfPerimeterMap(S,(detected||[]).map(x=>x.name),manual), taken=x=>tk.map[x]&&tk.modes[x]!=='unique';
+    S=[...S,...sfRankNames((detected||[]).filter(x=>!taken(x.name))).filter(x=>!S.includes(x)).slice(0,N-S.length)]; }
+  const m=sfPerimeterMap(S,[...(detected||[]).map(x=>x.name),...sfExtra],manual);
+  if(m.sf.length===1) for(const raw of Object.keys(m.map)) if(m.map[raw]===null&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ m.map[raw]=m.sf[0]; m.modes[raw]='unique'; }
+  m.source=byName?'noms':'nombre'; m.total=N??S.length; m.sfExtra=sfExtra;
+  return m;
 }

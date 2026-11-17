@@ -1,3 +1,21 @@
+# v2.43.0 — Bâtiments = Salesforce : « Total bâtiments », jamais plus de N, aucune valeur perdue
+
+Règles validées le 17/11/2026 :
+- **« Total bâtiments »** lu dans l'export « Suivi tous contrats » (import Salesforce) : nombre de bâtiments de référence
+  de l'opération (0 ou vide = 1). La colonne « Total bâtiments » ne reçoit que le nombre réellement écrit.
+- **1 bâtiment** : tous les bâtiments lus dans les documents sont fusionnés en un seul (nom lu s'il n'y en a qu'un,
+  sinon « Bâtiment unique »).
+- **N bâtiments sans noms Salesforce** : les N noms des documents les mieux renseignés (Bbio, Cep, DH, Tic, Ic…), un par
+  identifiant (« Bât A » = « BATIMENT A » = « Bâtiment 1 ») ; titres, sous-ensembles et listes seulement en dernier recours.
+  Un groupe de maisons accolées (« MAISONS 2/3 ») est un bâtiment. Les documents ne créent jamais de bâtiment.
+- **Jamais plus que le total Salesforce**, même quand la fiche nomme plus de bâtiments ; noms en nombre insuffisant →
+  complétés par les documents. « Bât 2 & 3 » de la fiche = deux bâtiments ; « Bât AB » = un (comme le compte Salesforce).
+- **Aucune valeur perdue** (change la v2.27) : valeur sans bâtiment ou d'une liste (« A et B ») → chacun de ces bâtiments,
+  sans remplacer une valeur propre ; bâtiment non rattaché → ses valeurs et corrections manuelles restent « non affectées »,
+  proposées à vérifier sur chaque bâtiment. Retour arrière : « Désactiver le périmètre Salesforce » (rien n'est réécrit).
+- Mesure sur 647 opérations : 2 103 → 1 506 bâtiments, 0 opération au-delà du total Salesforce ; 38 811 corrections
+  manuelles sur 40 319 rattachées, 1 508 gardées « non affectées » (28 opérations).
+
 # v2.42.0 — Choix de la valeur : version retenue par Salesforce, indice, sources sans résultat
 
 Règles validées le 17/11/2026, mesurées sur 647 opérations (21 317 documents lus) :

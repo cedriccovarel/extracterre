@@ -194,6 +194,8 @@ function serializeProject(project={}){
     // v2.27.0 — périmètre Salesforce : bâtiments de référence, corrections de la table, désactivation.
     sfBuildings:safeJsonClone(project.sfBuildings,[]),
     sfBuildingMap:safeJsonClone(project.sfBuildingMap,{}),
+    // v2.43.0 — « Total bâtiments » Salesforce (null = inconnu).
+    sfBuildingTotal:project.sfBuildingTotal??null,
     sfPerimeterOff:!!project.sfPerimeterOff,
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,

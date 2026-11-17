@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.42.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.43.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.42.0';
+const APP_VERSION='2.43.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -463,7 +463,7 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
-// v2.42.0 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// v2.43.0 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
 // de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
 // servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
 // RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
@@ -10600,7 +10600,7 @@ function sfxColumns(headers){
   // v2.30.0 — adresse de l'opération : « Rue », « Ville », « Code postal de l'opération (texte) ».
   const short=h;
   return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections,
-    street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
+    buildingTotal:short.findIndex(x=>/^total (?:des )?batiments$/.test(x)),street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
 }
 
 // v2.33.0 — un export .xlsx peut commencer par des lignes de titre : l'en-tête est la 1re ligne qui porte le contrat ou le code interne.
@@ -10619,7 +10619,11 @@ function sfxFiche(row,cols){
   const cell=i=>i>=0?String(row[i]||'').replace(/\s+/g,' ').trim():'';
   let postcode=cell(cols.postcode).replace(/\s/g,''); if(/^\d{4}$/.test(postcode)) postcode='0'+postcode; if(!/^\d{5}$/.test(postcode)) postcode='';
   const address=cell(cols.street), city=cell(cols.city);
-  return {address,postcode,city,text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
+  // v2.43.0 — « Total bâtiments » (export « Suivi tous contrats ») : nombre de bâtiments de référence ; 0 ou vide = 1 (périmètre),
+  // mais la colonne « Total bâtiments » ne reçoit que le nombre réellement écrit (rawBuildingTotal).
+  const bt=cols.buildingTotal>=0?Math.floor(Number(String(row[cols.buildingTotal]??'').replace(',','.').replace(/\s/g,''))):NaN;
+  const rawBuildingTotal=Number.isFinite(bt)&&bt>0?bt:null, buildingTotal=cols.buildingTotal>=0?(rawBuildingTotal||1):null;
+  return {buildingTotal,rawBuildingTotal,address,postcode,city,text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
 }
 
 /* ---- sf-perimeter.js ---- */
@@ -10686,6 +10690,65 @@ function sfPerimeterMap(sfNames,detected,manual={}){
   // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.
   if(S.length===1){ for(const raw of Object.keys(map)) if(map[raw]===null&&modes[raw]==='none'&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ const k=sfp_key(canonicalBuilding(raw)); if(/^(?:n ?)?(?:[a-z]|\d{1,2}|bat|batiment|ensemble|projet)$/.test(k)){ map[raw]=S[0]; modes[raw]='unique'; } } }
   return {sf:S,map,modes};
+}
+
+// v2.43.0 — Salesforce ne nomme pas les bâtiments mais en donne le nombre (« Total bâtiments » ; 0 ou vide = 1).
+// Les documents ne créent jamais de bâtiment : on garde au plus N noms lus dans les documents, les mieux renseignés
+// (nombre de résultats Bbio, Cep, DH, Tic, Ic…), un seul par identifiant (« Bât A » = « BATIMENT A » = « Bâtiment 1 »).
+// Titres de tableau, sous-ensembles (zone, étage, cage, groupe, lot…) et listes (« A et B ») ne sont jamais des bâtiments.
+// detected : [{name, results}]. Renvoie les noms retenus (ordre naturel). N = 1 : le nom lu s'il n'y en a qu'un, sinon « Bâtiment unique ».
+const SFC_NOT_BUILDING=/\b(?:zone|zones|etage|cage|niveau|r\s?\+\s?\d|t[1-6]|groupe|lot|lots|tranche|facade|synthese|generalites?|exigences?|bbio|cep|puissance|verification|essai|repartition|deperditions?|informations|total|consommations?|etude|notice|sommaire|resultats?|tableau|compteur|circuit|observations?|commentaires?|indicateurs?|page|reglementaire|gain|cctp|methode|chauffee|logements?\s+collectifs?|collectifs?|individuels?|neuf|existant)\b|\d+[.,]\d{2}|m2\b|m²|\.{4,}|\d{2}\/\d{2}\/\d{4}/;
+function sfIsList(name){
+  const k=buildingMergeKey(canonicalBuilding(name)); const t=k.split(' ');
+  return /[,;&\/]/.test(String(name).replace(/^B[aâ]timents?\s*/i,''))||/\b(?:et|a|à)\b/.test(t.slice(1).join(' '))||t.slice(1).some(x=>SFP_SINGLE.test(x)&&x.length<=3&&!/^(?:est|nord|sud|rue|cour)$/.test(x));
+}
+// Noms lus classés : d'abord les noms nets (identifiant, nom de bâtiment), puis les noms douteux (titre, sous-ensemble, liste),
+// chacun du mieux renseigné au moins renseigné ; un seul par identifiant. Un groupe de maisons (« MAISONS 2/3 », « MI 1 A 3 »)
+// est un bâtiment (Salesforce compte un bâtiment par groupe de maisons accolées), pas une liste.
+const SFC_HOUSES=/\b(?:maisons?|mi|villas?|individuels?|pavillons?|logts?|logements?|ilot)\b|ilot_/;
+function sfRankNames(detected,{strictOnly=false}={}){
+  const equiv=c=>/^[a-z]$/.test(c)?String(c.charCodeAt(0)-96):/^\d{1,2}$/.test(c)&&+c>=1&&+c<=26?String.fromCharCode(96+ +c):'';
+  const sure=[],doubt=[];
+  for(const {name,results} of [...(detected||[])].sort((a,b)=>(b.results||0)-(a.results||0))){
+    const d=canonicalBuilding(name); if(!d||d==='Bâtiment unique') continue;
+    const t=normLowerSfp(d.replace(/^B[aâ]timent\s+/i,'')), houses=SFC_HOUSES.test(t);
+    const key=buildingMergeKey(d), single=!key.includes(' '), core=single?buildingCoreId(d):'';
+    const all=[...sure,...doubt];
+    if(all.some(c=>c.key===key||(core&&c.core&&(c.core===core||(equiv(core)&&c.core===equiv(core)))))) continue;
+    const bad=isGarbageBuildingName(d)||(!houses&&sfIsList(d))||(SFC_NOT_BUILDING.test(t)&&!houses);
+    (bad?doubt:sure).push({name:d,key,core});
+  }
+  return (strictOnly?sure:[...sure,...doubt]).map(c=>c.name);
+}
+function sfCountNames(total,detected){
+  const N=Math.max(1,Math.floor(Number(total))||1), ranked=sfRankNames(detected);
+  if(N===1){ const sure=sfRankNames(detected,{strictOnly:true}); return [sure.length===1?sure[0]:'Bâtiment unique']; }
+  return ranked.slice(0,N).sort((a,b)=>a.localeCompare(b,'fr',{numeric:true}));
+}
+// Libellé groupé de la fiche Salesforce (« Bât 2 & 3 », « Bât A et B ») = plusieurs bâtiments qui partagent les valeurs.
+// « Bât AB » reste UN bâtiment : « Total bâtiments » le compte pour un (mesuré sur les 647 opérations).
+function sfSplitGroup(name){
+  const body=String(name||'').replace(/^\s*B[aâ]t(?:iment)?s?\.?\s*/i,'').trim();
+  let parts=body.split(/\s*(?:,|;|&|\+|\/|\bet\b)\s*/i).filter(Boolean);
+  return parts.length>1&&parts.every(x=>/^[A-Za-z]{1,2}\d{0,3}$|^\d{1,3}$/.test(x))?parts.map(x=>'Bâtiment '+x):[name];
+}
+// Périmètre complet : noms Salesforce (fiche Évaluation) sinon nombre Salesforce. Avec un seul bâtiment, tout nom lu s'y rattache
+// (sauf correction manuelle « non retenu »).
+function sfPerimeter({names,total,detected,manual={}}){
+  const byName=Array.isArray(names)&&names.length, hasTotal=total!==null&&total!==''&&total!==undefined&&Number.isFinite(Number(total));
+  if(!byName&&!hasTotal) return null;
+  const N=hasTotal?Math.max(1,Math.floor(Number(total))||1):null;
+  let S=byName?[...new Set(names.flatMap(sfSplitGroup).map(canonicalBuilding))]:sfCountNames(total,detected);
+  // v2.43.0 — jamais plus de bâtiments que le « Total bâtiments » Salesforce : noms de la fiche en surnombre → rattachés comme des
+  // noms de documents ; noms en nombre insuffisant → complétés par les noms des documents les mieux renseignés, jusqu'à N.
+  let sfExtra=[];
+  if(byName&&N!==null&&S.length>N){ sfExtra=S.slice(N); S=S.slice(0,N); }
+  if(byName&&N!==null&&S.length<N){ const tk=sfPerimeterMap(S,(detected||[]).map(x=>x.name),manual), taken=x=>tk.map[x]&&tk.modes[x]!=='unique';
+    S=[...S,...sfRankNames((detected||[]).filter(x=>!taken(x.name))).filter(x=>!S.includes(x)).slice(0,N-S.length)]; }
+  const m=sfPerimeterMap(S,[...(detected||[]).map(x=>x.name),...sfExtra],manual);
+  if(m.sf.length===1) for(const raw of Object.keys(m.map)) if(m.map[raw]===null&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ m.map[raw]=m.sf[0]; m.modes[raw]='unique'; }
+  m.source=byName?'noms':'nombre'; m.total=N??S.length; m.sfExtra=sfExtra;
+  return m;
 }
 
 /* ---- economics.js ---- */
@@ -11643,6 +11706,8 @@ function serializeProject(project={}){
     // v2.27.0 — périmètre Salesforce : bâtiments de référence, corrections de la table, désactivation.
     sfBuildings:safeJsonClone(project.sfBuildings,[]),
     sfBuildingMap:safeJsonClone(project.sfBuildingMap,{}),
+    // v2.43.0 — « Total bâtiments » Salesforce (null = inconnu).
+    sfBuildingTotal:project.sfBuildingTotal??null,
     sfPerimeterOff:!!project.sfPerimeterOff,
     importFolder:project.importFolder||'',
     importSyncedAt:project.importSyncedAt||null,
@@ -13340,29 +13405,56 @@ function sfDetectedNames(p){
   for(const r of p.retainedOccurrences||[]) if(r?.building) names.add(r.building);
   return [...names];
 }
-function sfPerimeterOn(p){ return !!(p&&!p.sfPerimeterOff&&Array.isArray(p.sfBuildings)&&p.sfBuildings.length); }
+// v2.43.0 — noms lus avec leur nombre de résultats (Bbio, Cep, DH, Tic, Ic…) : sert à choisir les N bâtiments quand Salesforce ne les nomme pas.
+const SF_RESULT_FIELDS=new Set(['bbio','cep','cepnr','cep_nr','dh','dh_zt','dh_znt','tic','ic_construction','ic_energy','ubat_after','shab','housing_count']);
+function sfDetected(p){
+  const res=new Map(); for(const n of sfDetectedNames(p)) res.set(n,new Set());
+  for(const d of p.docs||[]) for(const o of d.cachedOccurrences||[]) if(o?.building&&SF_RESULT_FIELDS.has(o.field)) (res.get(o.building)||res.set(o.building,new Set()).get(o.building)).add(o.field);
+  return [...res].map(([name,f])=>({name,results:f.size}));
+}
+// Total bâtiments Salesforce (export « Suivi tous contrats » ou fiche) ; null si inconnu.
+function sfTotal(p){ const v=p?.sfBuildingTotal; return v===undefined||v===null||v===''?null:Number(v); }
+function sfPerimeterOn(p){ return !!(p&&!p.sfPerimeterOff&&((Array.isArray(p.sfBuildings)&&p.sfBuildings.length)||sfTotal(p)!==null)); }
+function sfPerimeterOf(p){ if(!sfPerimeterOn(p)) return null; const m=sfPerimeter({names:p.sfBuildings,total:sfTotal(p),detected:sfDetected(p),manual:p.sfBuildingMap||{}}); p._sfMap=m; return m; }
 function effectiveBuildingOverrides(p=activeProject()){
   const base=p?.buildingOverrides||{}; if(!sfPerimeterOn(p)) return base;
-  const m=sfPerimeterMap(p.sfBuildings,sfDetectedNames(p),p.sfBuildingMap||{}); p._sfMap=m;
+  const m=sfPerimeterOf(p);
   // v2.39.1 — Salesforce fait foi : un bâtiment Salesforce (même nom exact) est aussi passé, tel quel, pour qu'aucune règle
   // automatique (regroupement par résultats, bâtiment sans résultat) ne l'absorbe ni ne l'écarte.
   const out={}; for(const [d,t] of Object.entries(m.map)) if(t&&d!=='Bâtiment unique') out[d]=t;
   return {...out,...base};
 }
 function applySfPerimeter(project){
-  const r=project?.result; if(!r||!sfPerimeterOn(project)) { if(r) r.sfExcluded=[]; return; }
-  const S=project.sfBuildings.map(canonicalBuilding), inS=b=>S.includes(b)||S.includes(canonicalBuilding(b||''));
+  const r=project?.result; if(!r||!sfPerimeterOn(project)) { if(r){ r.sfExcluded=[]; r.sfUnassigned=[]; } return; }
+  const m=sfPerimeterOf(project); const S=m.sf, inS=b=>S.includes(b)||S.includes(canonicalBuilding(b||''));
   // Un seul bâtiment Salesforce : les valeurs « Bâtiment unique » des documents le complètent.
   if(S.length===1&&Array.isArray(r.rows)){ const u=r.rows.find(x=>x.building==='Bâtiment unique'), t=r.rows.find(x=>x.building===S[0]);
-    if(u&&t){ for(const [k,v] of Object.entries(u)) if(k!=='building'&&(t[k]===undefined||t[k]===null||t[k]==='')) t[k]=v; for(const o of r.finals||[]) if(o.building==='Bâtiment unique'&&!(r.finals||[]).some(x=>x.building===S[0]&&x.field===o.field)) o.building=S[0]; }
+    if(u&&t&&u!==t){ for(const [k,v] of Object.entries(u)) if(k!=='building'&&(t[k]===undefined||t[k]===null||t[k]==='')) t[k]=v; for(const o of r.finals||[]) if(o.building==='Bâtiment unique'&&!(r.finals||[]).some(x=>x.building===S[0]&&x.field===o.field)) o.building=S[0]; }
     else if(u&&!t){ u.building=S[0]; for(const o of r.finals||[]) if(o.building==='Bâtiment unique') o.building=S[0]; } }
   const excluded=[...new Set((r.rows||[]).map(x=>x.building).filter(b=>!inS(b)))];
-  r.sfExcluded=excluded; if(!excluded.length) return;
+  r.sfExcluded=excluded; r.sfUnassigned=[]; if(!excluded.length) return;
+  // v2.43.0 — aucune valeur n'est perdue. Valeur sans bâtiment (« Bâtiment unique ») ou d'une liste de bâtiments Salesforce
+  // (« Bâtiment A et B ») : elle complète chacun de ces bâtiments (jamais à la place d'une valeur propre).
+  // Autre bâtiment non rattaché : ses valeurs sont « non affectées » et proposées à vérifier sur chaque bâtiment Salesforce.
+  const rowOf=b=>(r.rows||[]).find(x=>x.building===b), empty=v=>v===undefined||v===null||v==='';
+  const listTargets=b=>{ if(b==='Bâtiment unique') return S.length>1?S:[]; const parts=sfSplitGroup(b); if(parts.length<2) return [];
+    const mm=sfPerimeterMap(S,parts,{}).map, t=parts.map(x=>mm[x]);
+    return t.every(Boolean)?[...new Set(t)]:[]; };
+  const added=[], unassigned=[];
+  for(const b of excluded){ const src=rowOf(b), targets=listTargets(b), finals=(r.finals||[]).filter(o=>o.building===b);
+    if(targets.length){ for(const tg of targets){ const row=rowOf(tg); if(!row) continue;
+        for(const o of finals){ if(!empty(row[o.field])||(r.finals||[]).some(x=>x.building===tg&&x.field===o.field)) continue; row[o.field]=src?.[o.field]??o.value;
+          added.push({...o,building:tg,originalBuilding:o.originalBuilding||b,provenanceNote:`${o.provenanceNote?o.provenanceNote+' ':''}Valeur lue pour « ${b} » : appliquée à chacun de ces bâtiments.`}); } }
+      continue; }
+    for(const o of finals){ unassigned.push({...o,originalBuilding:o.originalBuilding||b});
+      for(const tg of S) added.push({...o,building:tg,originalBuilding:o.originalBuilding||b,sfUnassigned:true,sourceTier:'unrouted',status:'à vérifier',provenanceNote:`Valeur non affectée : lue pour « ${b} », bâtiment absent de Salesforce. À rattacher à la main si elle concerne ce bâtiment.`}); }
+  }
+  r.sfUnassigned=unassigned;
   const keep=o=>inS(o?.building);
   if(Array.isArray(r.rows)) r.rows=r.rows.filter(x=>inS(x?.building));
-  if(Array.isArray(r.finals)) r.finals=r.finals.filter(keep);
+  if(Array.isArray(r.finals)) r.finals=[...r.finals.filter(keep),...added.filter(o=>!o.sfUnassigned)];
   if(Array.isArray(r.detailed)) r.detailed=r.detailed.filter(keep);
-  if(Array.isArray(r.uncertain)) r.uncertain=r.uncertain.filter(keep);
+  if(Array.isArray(r.uncertain)) r.uncertain=[...r.uncertain.filter(keep),...added.filter(o=>o.sfUnassigned)];
   if(Array.isArray(r.buildings)) r.buildings=r.buildings.filter(b=>inS(typeof b==='string'?b:b?.name));
 }
 function applyDeletedBuildings(project=activeProject()){
@@ -15447,7 +15539,13 @@ function applyManualValuesToProject(project){
   const deleted=new Set(project.deletedBuildings||[]), alias=Object.fromEntries((result.buildingAliases||[]).map(a=>[a.source,a.target]));
   for(const [key,value] of Object.entries(project.manualValues||{})){
     const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1);
-    if(sfPerimeterOn(project)){ const S=project.sfBuildings.map(canonicalBuilding), t=alias[raw]||raw; if(!S.includes(canonicalBuilding(t))&&!(S.length===1&&t==='Bâtiment unique')) continue; }
+    if(sfPerimeterOn(project)){ const m=project._sfMap||sfPerimeterOf(project), S=m?.sf||[], t=alias[raw]||m?.map?.[raw]||raw;
+      if(!S.includes(canonicalBuilding(t))&&!(S.length===1&&t==='Bâtiment unique')){
+        // v2.43.0 — correction faite sur un bâtiment hors Salesforce : plus ignorée. Elle reste « non affectée », proposée à vérifier sur chaque bâtiment.
+        const meta=project.manualSources?.[key]||{}; result.uncertain=result.uncertain||[]; result.sfUnassigned=result.sfUnassigned||[];
+        result.sfUnassigned.push({field,value,building:raw,manual:true});
+        for(const tg of S) if(!result.uncertain.some(o=>o.sfUnassigned&&o.building===tg&&o.field===field&&String(o.value)===String(value))) result.uncertain.push({field,value,building:tg,originalBuilding:raw,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||`Correction saisie pour « ${raw} »`,confidence:1,method:'manual:unassigned',unit:meta.unit||'',sourceTier:'unrouted',status:'à vérifier',sfUnassigned:true,provenanceNote:`Correction manuelle non affectée : saisie pour « ${raw} », bâtiment absent de Salesforce. À rattacher si elle concerne ce bâtiment.`});
+        continue; } }
     const row=manualRow(result,raw,deleted,alias); if(!row) continue; const building=row.building;
     if(building!==raw&&Object.prototype.hasOwnProperty.call(project.manualValues,`${building}|${field}`)) continue;
     // v2.36.3 — valeur Salesforce différente de celle du document retenu (le plus récent) : gardée pour l'info-bulle.
@@ -17078,23 +17176,23 @@ async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContr
   const table0=await sfxReadFile(file); const hi=sfxHeaderRow(table0), table=table0.slice(hi); if(table.length<2) throw new Error('Fichier vide ou illisible.');
   const cols=sfxColumns(table[0]);
   if(cols.contract<0&&cols.code<0) throw new Error('Colonne « Numéro du contrat » ou « Code interne » introuvable dans l’export.');
-  if(!cols.sections.length) throw new Error('Aucune colonne technique reconnue (Performance thermique, Parois verticales, Chauffage…).');
+  if(!cols.sections.length&&cols.buildingTotal<0) throw new Error('Aucune colonne technique reconnue (Performance thermique, Parois verticales, Chauffage…).');
   const byContract=new Map(), byCode=new Map();
   for(const p of state.projects){ const id=projectIdentity(p); const c=contractKey(id.contract), k=String(id.code||'').toUpperCase(); if(c&&/^\d+$/.test(c)){ if(!byContract.has(c)) byContract.set(c,[]); byContract.get(c).push(p); } if(/^OPE-\d{6}$/.test(k)){ if(!byCode.has(k)) byCode.set(k,[]); byCode.get(k).push(p); } }
   const srcName=`Salesforce — export du ${SFX_DATE()} (${file.name})`;
   const res={rows:table.length-1,technical:0,updated:0,created:0,values:0,kept:0,noOperation:[],empty:0,duplicates:[]}; const touched=new Set();
   const data=table.slice(1);
   for(let i=0;i<data.length;i++){
-    const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; if(!f.address&&!f.postcode&&!f.city) continue; } else res.technical++;
+    const f=sfxFiche(data[i],cols); if(!f.hasTechnical){ res.empty++; if(!f.address&&!f.postcode&&!f.city&&f.buildingTotal===null) continue; } else res.technical++;
     const key=f.contract?contractKey(f.contract):''; if(onlyContracts&&!onlyContracts.has(key)) continue; let ps=(key&&byContract.get(key))||(f.code&&byCode.get(f.code.toUpperCase()))||[];
     if(ps.length>1){ res.duplicates.push(f.contract||f.code); }
     if(!ps.length){ if(!createMissing||!f.contract){ res.noOperation.push(f.contract||f.code); continue; }
       const p=createProject(state.projects.length+1); p.contractNumber=f.contract; if(IMPORT_SPACE) p.importContract=f.contract; p.customTitle=f.contract; p.expanded=false; state.projects.push(p); byContract.set(key,[p]); ps=[p]; res.created++; }
     const parsed=parseFreePaste(f.text); const vals=freePasteValues(parsed);
     const extra={...(f.contract?{contract_number:f.contract}:{}),...(f.evaluationStatus?{evaluation_status:f.evaluationStatus}:{}),...(f.code?{internal_code:f.code}:{}),
-      ...(f.address?{address:f.address}:{}),...(f.postcode?{postcode:f.postcode}:{}),...(f.city?{city:f.city}:{}),...(f.postcode&&!f.postcode.startsWith('20')?{department:f.postcode.startsWith('97')?f.postcode.slice(0,3):f.postcode.slice(0,2)}:{})};
+      ...(f.rawBuildingTotal?{building_total:f.rawBuildingTotal}:{}),...(f.address?{address:f.address}:{}),...(f.postcode?{postcode:f.postcode}:{}),...(f.city?{city:f.city}:{}),...(f.postcode&&!f.postcode.startsWith('20')?{department:f.postcode.startsWith('97')?f.postcode.slice(0,3):f.postcode.slice(0,2)}:{})};
     if(Object.keys(extra).length){ const c=vals.find(v=>!v.building); if(c) c.values={...extra,...c.values}; else vals.push({building:'',values:extra,sources:{}}); }
-    for(const p of ps.slice(0,1)){ touched.add(p.id); await ensureProjectReads(p); const r=sfxApplyToProject(p,vals.map(v=>({...v,values:{...v.values}})),srcName,{replaceManual}); res.values+=r.applied; res.kept+=r.kept; if(r.applied) res.updated++; releaseProjectReads(p); }
+    for(const p of ps.slice(0,1)){ touched.add(p.id); await ensureProjectReads(p); if(f.buildingTotal!==null&&p.sfBuildingTotal!==f.buildingTotal){ p.sfBuildingTotal=f.buildingTotal; res.totals=(res.totals||0)+1; computeProjectResult(p); } const r=sfxApplyToProject(p,vals.map(v=>({...v,values:{...v.values}})),srcName,{replaceManual}); res.values+=r.applied; res.kept+=r.kept; if(r.applied) res.updated++; releaseProjectReads(p); }
     if(i%10===0){ onProgress(i+1,data.length); await yieldToBrowser(); }
   }
   renderAll(); scheduleWorkspaceCheckpoint('import export Salesforce',80);
@@ -17105,7 +17203,7 @@ async function sfxImport(file,{replaceManual=false,createMissing=false,onlyContr
 function openSfxDialog(){
   let dlg=$('#sfxDialog');
   if(!dlg){ dlg=document.createElement('dialog'); dlg.id='sfxDialog'; dlg.className='search-integrate-dialog';
-    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Salesforce</span><h3>Importer un export d’évaluations</h3><p>Export Salesforce « Opérations (détails) » (.xls, .xlsx ou .csv) avec le numéro de contrat et les champs techniques de l’évaluation. Chaque ligne est lue comme une fiche ouverte avec le favori : mêmes valeurs, mêmes bâtiments, priorité Salesforce.</p></div><button class="icon-btn" type="button" data-sfx-close aria-label="Fermer">×</button></div>
+    dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Salesforce</span><h3>Importer un export d’évaluations</h3><p>Export Salesforce « Opérations (détails) » (.xls, .xlsx ou .csv) avec le numéro de contrat et les champs techniques de l’évaluation, ou « Suivi tous contrats » (colonne « Total bâtiments » : nombre de bâtiments de référence). Chaque ligne est lue comme une fiche ouverte avec le favori : mêmes valeurs, mêmes bâtiments, priorité Salesforce.</p></div><button class="icon-btn" type="button" data-sfx-close aria-label="Fermer">×</button></div>
       <div class="sfx-body"><input type="file" data-sfx-file accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv">
       <label class="chk"><input type="checkbox" data-sfx-replace> Remplacer aussi les valeurs saisies ou collées à la main (sinon elles sont conservées)</label>
       <label class="chk"><input type="checkbox" data-sfx-create> Créer les opérations absentes d’ExtracTerre (sinon elles sont seulement listées)</label>
@@ -17121,7 +17219,7 @@ function openSfxDialog(){
       try{
         const r=await sfxImport(file.files[0],{replaceManual:dlg.querySelector('[data-sfx-replace]').checked,createMissing:dlg.querySelector('[data-sfx-create]').checked,onProgress:(i,n)=>{ st.textContent=`Lignes traitées : ${i} / ${n}`; }});
         const list=(xs,label)=>xs.length?`<details><summary>${label} (${xs.length})</summary><p>${escapeHtml(xs.slice(0,400).join(', '))}${xs.length>400?'…':''}</p></details>`:'';
-        st.innerHTML=`<p><b>${r.updated}</b> opération(s) mise(s) à jour · <b>${r.values.toLocaleString('fr-FR')}</b> valeur(s) appliquée(s)${r.created?` · ${r.created} opération(s) créée(s)`:''}${r.kept?` · ${r.kept} valeur(s) saisie(s) à la main conservée(s)`:''}.</p><p class="muted">${r.rows} ligne(s) dans l’export, ${r.technical} avec des données techniques, ${r.empty} sans.</p>${list(r.noOperation,'Contrats sans opération dans ExtracTerre')}${list(r.duplicates,'Contrats présents sur plusieurs opérations (la première est mise à jour)')}`;
+        st.innerHTML=`<p><b>${r.updated}</b> opération(s) mise(s) à jour · <b>${r.values.toLocaleString('fr-FR')}</b> valeur(s) appliquée(s)${r.created?` · ${r.created} opération(s) créée(s)`:''}${r.kept?` · ${r.kept} valeur(s) saisie(s) à la main conservée(s)`:''}${r.totals?` · ${r.totals} « Total bâtiments » appliqué(s) (périmètre des bâtiments)`:''}.</p><p class="muted">${r.rows} ligne(s) dans l’export, ${r.technical} avec des données techniques, ${r.empty} sans.</p>${list(r.noOperation,'Contrats sans opération dans ExtracTerre')}${list(r.duplicates,'Contrats présents sur plusieurs opérations (la première est mise à jour)')}`;
         toast(`Export Salesforce : ${r.updated} opération(s) mise(s) à jour.`,'success');
       }catch(err){ st.innerHTML=`<p class="ss-bad">${escapeHtml(err?.message||String(err))}</p>`; }
       go.disabled=false;
@@ -17132,17 +17230,17 @@ function openSfxDialog(){
 
 // ---------- v2.27.0 — table de correspondance des bâtiments (périmètre Salesforce) ----------
 function sfPerimeterChip(p){
-  if(!Array.isArray(p?.sfBuildings)||!p.sfBuildings.length) return '';
-  const ex=p.result?.sfExcluded||[];
-  return `<button type="button" class="sfp-chip${p.sfPerimeterOff?' off':''}" data-sfp-open title="Bâtiments Salesforce : seule référence de l’opération">☁ ${p.sfPerimeterOff?'Périmètre Salesforce désactivé':`Périmètre Salesforce : ${p.sfBuildings.length} bâtiment(s)${ex.length?` · ${ex.length} non retenu(s)`:''}`} · correspondances</button>`;
+  if(!(Array.isArray(p?.sfBuildings)&&p.sfBuildings.length)&&sfTotal(p)===null) return '';
+  const ex=p.result?.sfExcluded||[], na=(p.result?.sfUnassigned||[]).length, nb=p._sfMap?.sf?.length??p.sfBuildings?.length??0;
+  return `<button type="button" class="sfp-chip${p.sfPerimeterOff?' off':''}" data-sfp-open title="Bâtiments Salesforce : seule référence de l’opération">☁ ${p.sfPerimeterOff?'Périmètre Salesforce désactivé':`Périmètre Salesforce : ${nb} bâtiment(s)${sfTotal(p)!==null?` (total Salesforce ${Math.max(1,Math.floor(sfTotal(p))||1)})`:''}${ex.length?` · ${ex.length} non rattaché(s)`:''}${na?` · ${na} valeur(s) non affectée(s)`:''}`} · correspondances</button>`;
 }
 function openSfPerimeterDialog(){
-  const p=activeProject(); if(!p?.sfBuildings?.length) return;
-  const m=sfPerimeterMap(p.sfBuildings,sfDetectedNames(p),p.sfBuildingMap||{});
+  const p=activeProject(); if(!(p?.sfBuildings?.length||sfTotal(p)!==null)) return;
+  const m=sfPerimeter({names:p.sfBuildings,total:sfTotal(p),detected:sfDetected(p),manual:p.sfBuildingMap||{}});
   const S=m.sf, rows=Object.keys(m.map).filter(d=>!(m.modes[d]==='sf')).sort((a,b)=>a.localeCompare(b,'fr'));
   let dlg=$('#sfpDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='sfpDialog'; dlg.className='search-integrate-dialog'; document.body.appendChild(dlg); }
   const opt=(d)=>{ const cur=m.map[d]||''; return `<select data-sfp-name="${escapeHtml(d)}"><option value=""${cur?'':' selected'}>— Non retenu —</option>${S.map(s=>`<option value="${escapeHtml(s)}"${s===cur?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select>`; };
-  dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Salesforce</span><h3>Correspondance des bâtiments</h3><p>Les bâtiments Salesforce sont la seule référence : <b>${S.map(escapeHtml).join(', ')}</b>. Chaque bâtiment lu dans les documents est rattaché à l’un d’eux, ou n’est pas retenu (ses valeurs ne remontent pas).</p></div><button class="icon-btn" type="button" data-sfp-close aria-label="Fermer">×</button></div>
+  dlg.innerHTML=`<div class="search-integrate-shell"><div class="search-integrate-head"><div><span class="ux-eyebrow">Salesforce</span><h3>Correspondance des bâtiments</h3><p>Les bâtiments Salesforce sont la seule référence : <b>${S.map(escapeHtml).join(', ')}</b>${m.source==='nombre'?` (Salesforce ne les nomme pas : ${m.total} bâtiment(s), noms pris dans les documents)`:''}. Chaque bâtiment lu dans les documents est rattaché à l’un d’eux, ou n’est pas rattaché : ses valeurs restent alors « non affectées » et sont proposées à vérifier, jamais perdues.</p></div><button class="icon-btn" type="button" data-sfp-close aria-label="Fermer">×</button></div>
     <div class="sfp-body">${rows.length?`<table class="sfp-table"><thead><tr><th>Dans les documents</th><th>Bâtiment Salesforce</th><th>Règle</th></tr></thead><tbody>${rows.map(d=>`<tr class="${m.map[d]?'':'off'}"><td>${escapeHtml(d)}</td><td>${opt(d)}</td><td><small>${escapeHtml(SFP_MODES[m.modes[d]]||'')}</small></td></tr>`).join('')}</tbody></table>`:'<p class="ss-empty">Les documents n’utilisent que les noms Salesforce : rien à rapprocher.</p>'}
     <label class="chk"><input type="checkbox" data-sfp-off${p.sfPerimeterOff?' checked':''}> Désactiver le périmètre Salesforce pour cette opération (tous les bâtiments des documents sont gardés)</label></div>
     <div class="search-integrate-foot"><button class="btn light" type="button" data-sfp-reset title="Revenir aux rapprochements automatiques">Rapprochements automatiques</button><button class="btn light" type="button" data-sfp-close>Annuler</button><button class="btn primary" type="button" data-sfp-save>Appliquer</button></div></div>`;

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {cs_dhRow} from './js/rset-cstb.js';
 import {APP_VERSION} from './js/config.js';
-assert.equal(APP_VERSION,'2.42.0');
+assert.equal(APP_VERSION,'2.43.0');
 assert.deepEqual(cs_dhRow('2 070 1 115,7 726 415 228'),[2070,1115.7,726,415,228]);
 assert.deepEqual(cs_dhRow('3 261 666,8 452 274 125'),[3261,666.8,452,274,125]);
 assert.deepEqual(cs_dhRow('1 421,3 630,4 229 183 140'),[1421.3,630.4,229,183,140]);

@@ -25,7 +25,7 @@ export function sfxColumns(headers){
   // v2.30.0 — adresse de l'opération : « Rue », « Ville », « Code postal de l'opération (texte) ».
   const short=h;
   return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections,
-    street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
+    buildingTotal:short.findIndex(x=>/^total (?:des )?batiments$/.test(x)),street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
 }
 
 // v2.33.0 — un export .xlsx peut commencer par des lignes de titre : l'en-tête est la 1re ligne qui porte le contrat ou le code interne.
@@ -44,5 +44,9 @@ export function sfxFiche(row,cols){
   const cell=i=>i>=0?String(row[i]||'').replace(/\s+/g,' ').trim():'';
   let postcode=cell(cols.postcode).replace(/\s/g,''); if(/^\d{4}$/.test(postcode)) postcode='0'+postcode; if(!/^\d{5}$/.test(postcode)) postcode='';
   const address=cell(cols.street), city=cell(cols.city);
-  return {address,postcode,city,text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
+  // v2.43.0 — « Total bâtiments » (export « Suivi tous contrats ») : nombre de bâtiments de référence ; 0 ou vide = 1 (périmètre),
+  // mais la colonne « Total bâtiments » ne reçoit que le nombre réellement écrit (rawBuildingTotal).
+  const bt=cols.buildingTotal>=0?Math.floor(Number(String(row[cols.buildingTotal]??'').replace(',','.').replace(/\s/g,''))):NaN;
+  const rawBuildingTotal=Number.isFinite(bt)&&bt>0?bt:null, buildingTotal=cols.buildingTotal>=0?(rawBuildingTotal||1):null;
+  return {buildingTotal,rawBuildingTotal,address,postcode,city,text:parts.join('\n'),code,contract,evaluationStatus:cols.evalStatus>=0?String(row[cols.evalStatus]||'').trim():'',hasTechnical:cols.sections.some(s=>String(row[s.index]||'').trim())};
 }
