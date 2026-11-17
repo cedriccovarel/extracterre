@@ -256,7 +256,8 @@
     "(^| )avis techniques?( |$)",
     "(^| )(devis|facture|factures)( |$)",
     "(^| )(photo|photos)( |$)",
-    "(^| )notices? descriptives?( |$)"
+    "(^| )notices? descriptives?( |$)",
+    "(^| )re2020[ -]impacts( |$)"
   ],
   "_aide_ocr": "OCR des PDF scannés (même moteur que l'appli, plus lent : quelques secondes par page). false pour le désactiver (option --sans-ocr).",
   "ocr": true,

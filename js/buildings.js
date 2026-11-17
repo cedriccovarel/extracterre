@@ -258,6 +258,8 @@ export function detectBuildings(doc){
   // 1) Registre maître : les identifiants explicites du Chapitre 2 sont prioritaires.
   for(const page of doc.read?.pages||[]){
     const lines=page.lines||[];
+    // v2.39.1 — test « sommaire » une fois par page (avant : à chaque ligne sur tout le texte → quadratique, XML de 86 Mo bloqué des heures, import 00003994).
+    const pageHasSommaire=/\bsommaire\b/i.test(page.text||'');
     for(let i=0;i<lines.length;i++){
       const text=normalizeText(lines[i].text);
       let raw=null, quality='heading';
@@ -266,7 +268,7 @@ export function detectBuildings(doc){
       // Les rapports logiciels utilisent souvent « 1.1. Bâtiment : BÂTIMENT A ».
       if(!raw){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s*:\s*(.+)$/i); if(m){raw=m[1];quality='building-heading';} }
       // Synthèses ACV (ClimaWin notamment) : « 1. Bâtiment A », « 2. Bâtiment B - 1 » sans deux-points.
-      if(!raw && !/\bsommaire\b/i.test(page.text||'')){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m&&!bldProse(m[1],text)){raw=m[1];quality='building-heading';} }
+      if(!raw && !pageHasSommaire){ m=text.match(/^(?:\d+(?:\.\d+)*\.?\s*)?(?:batiment|bâtiment)\s+([A-Z0-9][A-Z0-9 ._\/-]{0,80})$/i); if(m&&!bldProse(m[1],text)){raw=m[1];quality='building-heading';} }
       if(!raw) continue;
       raw=cleanCandidate(raw);
       // v2.33.2 — ligne de tableau ou en-tête (nombres, unités, adresse) : identifiant seul, ou rien.
