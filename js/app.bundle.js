@@ -7576,9 +7576,11 @@ function parseEnvelope(doc){
     if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && /(?:chapitre\s*3\s*:.*indicateurs|donn[eé]es\s+r[eé]capitulatives\s+sur\s+les\s+parois)/i.test(page.text||'')) continue;
     // v3.0.1 — titre de section (« Plancher bas », « II.7 DALLE BASSE RDC », « MURS DE FACADES ») : il désigne la paroi des lignes
     // matériau qui suivent (6 lignes au plus) quand elles ne la nomment pas (« Laine de verre : épaisseur 140 mm ; R = 4 »).
-    let sticky=null;
+    let sticky=null, rCol=null;
     const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
     const line=lines[i], base=normalizeText(line.text); let ctx=base, target=targetFromContext(base), fromHeading=false;
+    // v3.0.2 — en-tête de tableau « R isolant (m².K/W) » / « R (m².K/W) » : le dernier nombre des lignes suivantes est le R (10 lignes).
+    if(/\br\s*(?:isolant|\(\s*m|m2|m²|en\s*m)/i.test(base)&&!/\d{2,}\s*(?:mm|cm)/i.test(base)) rCol=i;
     { const head=base.replace(/^\s*(?:[ivx]+|\d+(?:[.]\d+)*)[.)]?\s+/i,'').trim(); if(target&&head.length<=45&&!/\d{2,}\s*(?:mm|cm)|\br\s*=/.test(head)&&!findFirstMatch(base,MATERIALS)) sticky={target,i}; }
     if(cctpNoiseAt(doc,lines,i)) continue;
     const baseMat=findFirstMatch(base,MATERIALS), baseStruct=findFirstMatch(base,STRUCTURES);
@@ -7586,7 +7588,9 @@ function parseEnvelope(doc){
     if(target) ctx=normalizeText(lineWindow(page,i,0,2));
     else if(baseMat||baseStruct||isDoublage){ ctx=normalizeText(lineWindow(page,i,1,isDoublage?1:0)); target=targetFromContext(ctx);
       if(!target&&isDoublage) target='wall';
-      if(!target&&baseMat&&sticky&&i-sticky.i<=6){ target=sticky.target; fromHeading=true; ctx=normalizeText(`${lines[sticky.i].text} ${lineWindow(page,i,1,0)}`); } }
+      if(!target&&baseMat&&sticky&&i-sticky.i<=6){ target=sticky.target; fromHeading=true; ctx=normalizeText(`${lines[sticky.i].text} ${lineWindow(page,i,1,0)}`); }
+      // v3.0.2 — libellé de paroi écrit juste après (« Isolant LDV soufflée R = 7,50 » ⏎ « Combles ») : ligne suivante courte, sans titre avant.
+      if(!target&&baseMat&&!(sticky&&i-sticky.i<=6)){ const nx=normalizeText(lines[i+1]?.text||''); const t2=nx.length<=25?targetFromContext(nx):null; if(t2&&!findFirstMatch(nx,MATERIALS)){ target=t2; fromHeading=true; ctx=normalizeText(`${line.text} ${lines[i+1].text}`); } } }
     else if(ELEMENT_PATTERNS.window.test(base)) ctx=normalizeText(lineWindow(page,i,0,2));
     else continue;
     const dTh=isDoublage||DOUBLAGE_RE.test(ctx)?doublageThickness(base)??doublageThickness(ctx):null;
@@ -7613,7 +7617,8 @@ function parseEnvelope(doc){
       else if(productMatch?.variant && productMatch.thicknessEvidence==='product-context'){
         push(out,occ(doc,page,line,`${target}_insulation_thickness`,productMatch.variant.thickness,'library:insulation-thickness',0.93,'mm',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'thickness'),...productExtra}));
       }
-      const r=explicitR(base)??explicitR(ctx);
+      let r=explicitR(base)??explicitR(ctx);
+      if(r===null&&rCol!==null&&i>rCol&&i-rCol<=10){ const nums=[...String(line.text).matchAll(/(?<![\d.,])(\d{1,2}[,.]\d{1,3})(?![\d]|\s*(?:mm|cm|m\b|%|€))/g)]; const v=nums.length?parseFrNumber(nums[nums.length-1][1]):null; if(v!==null&&v>=0.5&&v<=15) r=v; }
       if(r!==null) push(out,occ(doc,page,line,`${target}_insulation_r`,r,'envelope:r-context',0.98-(fromHeading?0.02:0),'m².K/W',{excerpt:ctx.slice(0,420),...productExtra}));
       else if(productMatch?.variant && productMatch.score>=0.96 && productMatch.thicknessEvidence){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
@@ -8922,6 +8927,32 @@ function applyCoherenceChecks(result){
   return {alerts,demoted,checks};
 }
 
+/* ---- classement-appris.js ---- */
+// ExtracTerre v3.0.2 — classement appris sur le banc Salesforce (validation croisée par contrat) : précision mesurée de chaque
+// lecture (donnée × méthode × type de document). Utilisé par engine.consolidate pour départager les candidats d'un bâtiment :
+// la lecture la plus précise remplace celle choisie par la hiérarchie seulement si l'écart de précision est net (GAP) et mesuré
+// sur assez de cas (MINN). Sources non autorisées : seulement les clés listées dans UNROUTED (précision mesurée suffisante).
+// Table générée par le script d'apprentissage ; vide = aucun effet.
+const LEARNED_RANKING={version:0,minN:20,gap:0.10,keys:{},unrouted:{},fill:{}};
+function learnedPrecision(field,o,T=LEARNED_RANKING){
+  const k=T.keys; if(!k) return null;
+  for(const key of [`${field}|${o.method||''}|${o.docType||''}`,`${field}|${o.method||''}|*`,`${field}|*|${o.docType||''}`]){ const v=k[key]; if(v&&v[1]>=T.minN) return v[0]; }
+  return null;
+}
+function learnedPick(field,chosen,cands,T=LEARNED_RANKING){
+  if(!T.keys||!Object.keys(T.keys).length||!chosen) return null;
+  const pc=learnedPrecision(field,chosen,T)??0; let best=null,pb=-1;
+  for(const o of cands){ if(o===chosen||String(o.value)===String(chosen.value)) continue; const p=learnedPrecision(field,o,T); if(p!==null&&p>pb){ pb=p; best=o; } }
+  return best&&pb-pc>=T.gap?best:null;
+}
+// v3.0.2 — levier 4 : donnée sans lecture retenue (confiance < 90 %) ; une lecture d'une source autorisée dont la précision
+// mesurée (donnée × méthode × type × niveau de source) atteint le seuil de la table est retenue. Jamais une source non autorisée.
+function learnedFill(field,cands,T=LEARNED_RANKING){
+  const F=T.fill||{}; let best=null,pb=-1;
+  for(const o of cands){ if(o.sourceTier!=='main'&&o.sourceTier!=='secondary') continue; const v=F[`${field}|${o.method||''}|${o.docType||''}|${o.sourceTier}`]; if(v&&v[0]>pb){ pb=v[0]; best=o; } }
+  return best;
+}
+
 /* ---- engine.js ---- */
 const BUILDING_SCOPED_FAMILIES=new Set(['confort d\'ete','performance energetique','carbone','dpe']);
 function isBuildingScopedField(field){
@@ -9130,6 +9161,8 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
       // v1.1.13 : une source non routée ne remplit plus automatiquement le tableau final.
       // Elle reste disponible dans la file « À vérifier » pour éviter les faux positifs.
       let pool=main.length?main:secondary;
+      // v3.0.2 — levier 4 : aucune lecture à 90 % ; lecture d'une source autorisée retenue si sa précision mesurée le permet.
+      if(!pool.length&&ENGINE_OPTIONS.classementAppris!==false){ const fill=learnedFill(f.key,candidates.filter(o=>!o.manualDefinitive)); if(fill) pool=[{...fill,learnedFill:true,provenanceNote:`${fill.provenanceNote?fill.provenanceNote+' ':''}Retenue malgré une confiance < 90 % : précision mesurée suffisante sur le banc Salesforce.`}]; }
       if(!pool.length) continue;
       // v2.7.6 — donnée saisie/collée manuellement : définitive, aucune source documentaire ni règle (DH, RSET direct) ne la remplace.
       { const definitive=pool.filter(o=>o.manualDefinitive); if(definitive.length) pool=definitive; }
@@ -9151,6 +9184,10 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
+      // v3.0.2 — classement appris (banc Salesforce) : départage net mesuré ; jamais sur une valeur saisie / Salesforce ni sur le DH.
+      if(ENGINE_OPTIONS.classementAppris!==false&&!chosen.manualDefinitive&&!/^dh/.test(f.key)){
+        const unr=candidates.filter(o=>o.sourceTier==='unrouted'&&o.confidence>=MIN_RETAINED_CONFIDENCE&&LEARNED_RANKING.unrouted?.[`${f.key}|${o.method||''}|${o.docType||''}`]);
+        const alt=learnedPick(f.key,chosen,[...pool,...unr]); if(alt) chosen={...alt,learnedRanking:true,provenanceNote:`${alt.provenanceNote?alt.provenanceNote+' ':''}Choisie par le classement appris sur le banc Salesforce (précision mesurée plus élevée).`}; }
       if(f.key==='dh'||f.key==='dh_zt'||f.key==='dh_znt') {
         { const A=anchors.get(building); if(A){ const inA=pool.filter(o=>A.has(o.docId)); if(inA.length) pool=inA; } } // règle A : DH lu dans la version retenue par Salesforce
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
@@ -10219,7 +10256,8 @@ function fp_envelope(bld,label,raw){
 const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
 const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
 const fp_NOT_BUILDING=/^(?:bat(?:iment)?\.?|dh\b.*|.*\b(?:conforme|conformite|rsee|rset|rsenv|note de calcul|etude thermique|methode de calcul)\b.*|.*\bdu \d{1,2}\/\d{1,2}\/\d{2,4}.*|iment)$/;
-function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
+// v3.0.2 — puce mal encodée devant le nom (« ? Bâtiment AB - 108 logements », « > BATIMENT A ») : retirée (banc : bâtiments non rapprochés).
+function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+/u,''); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
 // v2.8.0 — fiche Salesforce (libellé sur une ligne, valeur sur la suivante) → « libellé = valeur ».
 // Seuls les libellés reconnus exactement (ou par alias) ouvrent une paire : un rapprochement approximatif ne suffit pas.
 function fp_strictLabel(l){ const t=String(l||'').replace(/^\*\s*/,'').replace(/\s*:\s*$/,'').trim(); if(!t||t.length>80||/[=\t]/.test(t)) return null;
@@ -10700,6 +10738,14 @@ function sfPerimeterMap(sfNames,detected,manual={}){
     // « COLECTIF A » ↔ « COLLECTIF A », « ACCESSION » ↔ « C - BATIMENT ACCESSION » (code devant le nom).
     const lk=sfp_loose(d); const loose=lk.length>=4?S.filter(s=>{ const q=sfp_loose(s); return q===lk||(/^[a-z]{1,2}\d{0,2} /.test(q)&&q.slice(q.indexOf(' ')+1)===lk&&lk.length>=5); }):[];
     if(loose.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=loose[0]; modes[raw]='prefix'; continue; }
+    // v3.0.2 — identifiant en fin de nom, d'un seul côté : « MACROLOT G » ↔ « G », « COLLECTIF - E » ↔ « E », « BYSCO A » ↔ « A »,
+    // « C » ↔ « COLLECTIF C » (un seul bâtiment Salesforce porte cet identifiant, aucune liste).
+    { const lastId=x=>{ const w=sfp_key(x).split(' ').filter(t=>t&&!/^(?:batiment|bat)$/.test(t)); const l=w[w.length-1]||''; return SFP_SINGLE.test(l)&&l.length<=3&&!/^(?:est|nord|sud|rue|cour)$/.test(l)?buildingCoreId(l):''; };
+      const li=lastId(d); const hit=li&&!/\b(?:et|ou)\b|,|&|\+/.test(normLowerSfp(d))?S.filter(s2=>lastId(s2)===li||buildingCoreId(s2)===li):[];
+      if(hit.length===1&&(core===''||core===li||!cores.some(c=>c.core===core))){ map[raw]=hit[0]; modes[raw]='core'; continue; } }
+    // v3.0.2 — nom tronqué (« CHARQUEMON » ↔ « CHARQUEMONT ») : 8 caractères au moins, 2 lettres d'écart au plus, un seul candidat.
+    { const k0=sfp_key(d).replace(/^(?:batiment|bat) /,''); const tr=k0.length>=8?S.filter(s2=>{ const q=sfp_key(s2).replace(/^(?:batiment|bat) /,''); return q!==k0&&(q.startsWith(k0)||k0.startsWith(q))&&Math.abs(q.length-k0.length)<=2&&Math.min(q.length,k0.length)>=8; }):[];
+      if(tr.length===1){ map[raw]=tr[0]; modes[raw]='prefix'; continue; } }
     map[raw]=null; modes[raw]='none';
   }
   // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.

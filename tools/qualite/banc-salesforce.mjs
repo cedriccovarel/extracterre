@@ -12,6 +12,7 @@ import '../import/lib/extract.mjs'; // packs d'amélioration chargés comme dans
 import fs from 'node:fs'; import path from 'node:path'; import zlib from 'node:zlib'; import os from 'node:os';
 import {createRequire} from 'node:module';
 import {analyzeDocuments,ENGINE_OPTIONS} from '../../js/engine.js';
+import {LEARNED_RANKING} from '../../js/classement-appris.js';
 import {DEFAULT_SOURCE_RULES,FIELD_MAP} from '../../js/config.js';
 import {obsoleteFolderOf} from '../../js/import-rules.js';
 import {sfxParseHtmlTable,sfxColumns,sfxFiche,sfxHeaderRow} from '../../js/sf-export.js';
@@ -26,6 +27,8 @@ const args={}; for(let i=2;i<process.argv.length;i++){ const a=process.argv[i]; 
 const home=p=>String(p||'').replace(/^~(?=\/|$)/,os.homedir());
 if(!args.export){ console.log('Usage : node tools/qualite/banc-salesforce.mjs --export <export Salesforce .xlsx/.xls> [--dossier-travail <dossier>] [--contrats a,b] [--sans-version-fichier] [--avec-perimes]'); process.exit(1); }
 const W=home(args['dossier-travail']||'~/ExtracTerre-import');
+// v3.0.2 — --classement <table.json> : table de classement appris injectée (mesure en validation croisée : table apprise sur l'autre moitié).
+if(args.classement){ Object.assign(LEARNED_RANKING,JSON.parse(fs.readFileSync(home(args.classement),'utf8'))); console.log(`Classement appris : ${Object.keys(LEARNED_RANKING.keys||{}).length} clés, ${Object.keys(LEARNED_RANKING.fill||{}).length} remplissages`); }
 if(args['sans-version-fichier']) ENGINE_OPTIONS.versionByFileDate=false; // comparaison : sans la règle « fichier le plus récemment ajouté »
 
 // 1. Export Salesforce → fiches par contrat

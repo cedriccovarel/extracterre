@@ -1,6 +1,7 @@
 import {FIELD_DEFS,FIELD_MAP,FIELD_TAGS,REQUIRED_RSET_FIELDS,REQUIRED_RE2020_RSET_FIELDS,REQUIRED_RT2012_RSET_FIELDS,DOC_TYPES,MIN_RETAINED_CONFIDENCE,MIN_REVIEW_CONFIDENCE,DEFAULT_SOURCE_RULES,matchFieldByHeader} from './config.js';
 import {sourceTier,sourceRank} from './routing.js';
 import {formatValue,normLower,normalizeText,scoreTokens,unique,numbersIn,maskNonDataNumerics,normalizeGlazingType} from './utils.js';
+import {LEARNED_RANKING,learnedPick,learnedFill} from './classement-appris.js';
 import {BLD_READ,DH_READ,repairBuildingName,operationNameFromFiles,detectBuildings,isGarbageBuildingName,buildingMergeKey,buildingCoreId,buildingQualifiedCore,buildingSimilarity,canonicalBuilding,buildingForPosition} from './buildings.js';
 import {parseDocument,parseRsetOperationAddress,coolingContextKept} from './parsers.js';
 import {ENV_READ} from './envelope-rules.js';
@@ -222,6 +223,8 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       // v1.1.13 : une source non routée ne remplit plus automatiquement le tableau final.
       // Elle reste disponible dans la file « À vérifier » pour éviter les faux positifs.
       let pool=main.length?main:secondary;
+      // v3.0.2 — levier 4 : aucune lecture à 90 % ; lecture d'une source autorisée retenue si sa précision mesurée le permet.
+      if(!pool.length&&ENGINE_OPTIONS.classementAppris!==false){ const fill=learnedFill(f.key,candidates.filter(o=>!o.manualDefinitive)); if(fill) pool=[{...fill,learnedFill:true,provenanceNote:`${fill.provenanceNote?fill.provenanceNote+' ':''}Retenue malgré une confiance < 90 % : précision mesurée suffisante sur le banc Salesforce.`}]; }
       if(!pool.length) continue;
       // v2.7.6 — donnée saisie/collée manuellement : définitive, aucune source documentaire ni règle (DH, RSET direct) ne la remplace.
       { const definitive=pool.filter(o=>o.manualDefinitive); if(definitive.length) pool=definitive; }
@@ -243,6 +246,10 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
         return b.confidence-a.confidence;
       });
       let chosen=pool[0];
+      // v3.0.2 — classement appris (banc Salesforce) : départage net mesuré ; jamais sur une valeur saisie / Salesforce ni sur le DH.
+      if(ENGINE_OPTIONS.classementAppris!==false&&!chosen.manualDefinitive&&!/^dh/.test(f.key)){
+        const unr=candidates.filter(o=>o.sourceTier==='unrouted'&&o.confidence>=MIN_RETAINED_CONFIDENCE&&LEARNED_RANKING.unrouted?.[`${f.key}|${o.method||''}|${o.docType||''}`]);
+        const alt=learnedPick(f.key,chosen,[...pool,...unr]); if(alt) chosen={...alt,learnedRanking:true,provenanceNote:`${alt.provenanceNote?alt.provenanceNote+' ':''}Choisie par le classement appris sur le banc Salesforce (précision mesurée plus élevée).`}; }
       if(f.key==='dh'||f.key==='dh_zt'||f.key==='dh_znt') {
         { const A=anchors.get(building); if(A){ const inA=pool.filter(o=>A.has(o.docId)); if(inA.length) pool=inA; } } // règle A : DH lu dans la version retenue par Salesforce
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
