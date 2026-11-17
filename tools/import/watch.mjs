@@ -84,7 +84,8 @@ function run(req){
     const contracts=Array.isArray(r?.contrats)?r.contrats.map(String).filter(c=>/^\d{1,8}$/.test(c)):[];
     if(r?.format!=='extracterre-import-request'||!contracts.length){ writeJson(statut,{etat:'erreur',erreur:'Demande illisible ou sans numéro de contrat.'}); return resolve(); }
     const list=path.join(dir,`${req.id}.contrats.txt`); fs.writeFileSync(list,contracts.join('\n')+'\n');
-    const args=[path.join(HERE,'extracterre-import.mjs'),'--contrats',list,'--statut',statut,'--dossier-travail',workDir];
+    // v2.39.1 — mémoire portée à 8 Go (configurable : memoireMo) : des dossiers très lourds dépassaient la limite par défaut de 4 Go.
+    const args=[`--max-old-space-size=${Number(cfg.memoireMo||8192)}`,path.join(HERE,'extracterre-import.mjs'),'--contrats',list,'--statut',statut,'--dossier-travail',workDir];
     // Options supplémentaires (tests) : EXTRACTERRE_SERVICE_ARGS="--local --racine /chemin"
     if(process.env.EXTRACTERRE_SERVICE_ARGS) args.push(...process.env.EXTRACTERRE_SERVICE_ARGS.split(' ').filter(Boolean));
     if(r.mode==='check-only') args.push('--check-only');
