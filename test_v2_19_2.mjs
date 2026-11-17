@@ -11,7 +11,7 @@ eq(/function lazyRead\(doc,raw/.test(per)&&/storedRead\(doc\)/.test(per),true,'t
 eq(/tileCache:safeJsonClone\(project\.tileCache,null\)/.test(per)&&/function refreshTileCache\(p\)/.test(app),true,'résumé de tuile enregistré');
 eq(/async function rebuildInBackground\(\)/.test(app)&&/p\.pendingRebuild=true/.test(app)&&/if\(first\)\{ await ensureProjectReads\(first\); rebuildProjectFromCheckpoints\(first\)/.test(app),true,'projet ouvert d’abord, autres en arrière-plan');
 // v2.21.0 : exports asynchrones (texte rechargé opération par opération).
-eq(['async function sessionSnapshot({details=true,onRebuild=null,onStep=null}={}){\n  await ensureAllRebuilt(onRebuild);','const snap=await sessionSnapshot({onRebuild:','async function openExportDialog(){\n  await ensureAllRebuilt();'].every(s=>app.includes(s)),true,'exports complets');
+eq(['async function sessionSnapshot({details=true,onRebuild=null,onStep=null}={}){\n  await ensureAllRebuilt(onRebuild);','if(p.pendingRebuild||!p.result){ await rebuildProject(p); releaseProjectReads(p); }','async function openExportDialog(){\n  await ensureAllRebuilt();'].every(s=>app.includes(s)),true,'exports complets');
 eq(/if\(!p\.result\|\|p\.pendingRebuild\) rebuildProjectFromCheckpoints\(p\)/.test(app),true,'projet ouvert avant son recalcul : recalculé à l’ouverture');
 eq(/\.startup-progress\{/.test(css)&&/prefers-reduced-motion:reduce\)\{\.startup-progress/.test(css),true,'écran de progression');
 console.log(`test_v2_19_2 : ${n}/${n} OK`);

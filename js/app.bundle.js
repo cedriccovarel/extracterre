@@ -15743,55 +15743,67 @@ function exportProgress(title){
   return {set,done(msg,detail=''){ set(msg,1,detail); el.classList.add('ok'); setTimeout(()=>el.remove(),3500); },close(){ el.remove(); }};
 }
 let sessionExportRunning=false;
+// v2.39.1 — export de session PAR PAQUETS (300 opérations par fichier) : une session de 800+ opérations faisait planter
+// l'onglet pendant le recalcul (vers la 550e) puis à l'écriture. Chaque paquet est recalculé, écrit sur le disque, puis la
+// mémoire de ses opérations est libérée avant le paquet suivant. Fichiers « …_partie-1-sur-3.json » : chacun est une session
+// complète à lui seul (TotalRecoll et « Importer une session » acceptent plusieurs fichiers et les fusionnent).
+const SESSION_EXPORT_CHUNK=300;
 async function exportSessionJson(){
   if(sessionExportRunning){ toast('Export de la session déjà en cours.','warn'); return; }
   sessionExportRunning=true; const btn=$('#exportSessionBtn'); if(btn) btn.disabled=true;
-  // v2.39.1 — écriture directe sur le disque (fenêtre « Enregistrer sous » de Chrome), opération par opération : rien ne
-  // s'accumule plus dans l'onglet (une session de 800 opérations faisait planter la page vers 300). La fenêtre est ouverte
-  // AVANT tout calcul (Chrome l'exige juste après le clic). Sans cette fonction (autre navigateur) : ancien fichier en mémoire.
-  let writer=null;
-  if(typeof window.showSaveFilePicker==='function'){
-    try{ const h=await window.showSaveFilePicker({suggestedName:`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`,types:[{description:'Session ExtracTerre (JSON)',accept:{'application/json':['.json']}}]}); writer=await h.createWritable(); }
-    catch(err){ if(err?.name==='AbortError'){ sessionExportRunning=false; if(btn) btn.disabled=false; return; } console.warn('Écriture directe indisponible, export en mémoire',err); writer=null; }
+  // Dossier choisi dès le clic (Chrome l'exige juste après le clic) ; sinon téléchargements successifs.
+  let dir=null;
+  if(typeof window.showDirectoryPicker==='function'){
+    try{ dir=await window.showDirectoryPicker({id:'extracterre-session',mode:'readwrite'}); }
+    catch(err){ if(err?.name==='AbortError'){ sessionExportRunning=false; if(btn) btn.disabled=false; return; } console.warn('Choix du dossier impossible, téléchargements',err); dir=null; }
   }
   const ui=exportProgress('Export de la session');
-  try{ await exportSessionRun(ui,writer); }
-  catch(err){ try{ await writer?.abort?.(); }catch{} ui.close(); throw err; }
+  try{ await exportSessionRun(ui,dir); }
+  catch(err){ ui.close(); throw err; }
   finally{ sessionExportRunning=false; if(btn) btn.disabled=false; }
 }
-async function exportSessionRun(ui,writer=null){
+async function exportSessionRun(ui,dir=null){
   setLocalSaveUi('Export de la session…');
-  const list=state.projects.filter(p=>!projectIsEmpty(p)), N=list.length, R=state.projects.filter(p=>p.pendingRebuild).length, total=R+2*N+1;
-  const name=p=>projectTitle(p)||'';
-  const snap=await sessionSnapshot({onRebuild:(i,n,p)=>ui.set(`Recalcul des opérations ${i+1}/${n}`,i/total,name(p)),
-    onStep:(i,n,p)=>ui.set(`Préparation des recherches ${i+1}/${n}`,(R+i)/total,name(p))});
-  if(!snap.operations.length){ ui.close(); toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
-  // v2.12.1 — projets complets (documents lus, occurrences, saisies) pour « Importer une session ».
-  // v2.20.7 — écrits projet par projet dans le fichier (même contenu JSON) : le texte de toutes les opérations n'est plus
-  // en mémoire en même temps.
-  // v2.22.1 — une opération par ligne, sans mise en forme (« workspaceFormat »: "lines-v1") : fichier ~15 % plus léger, et
-  // relu ligne par ligne à l'import (une session peut dépasser la taille maximale d'une chaîne de Chrome, ~537 M caractères).
-  // Le fichier reste un JSON valide. Progression affichée, la page rend la main entre deux opérations.
-  const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n'];
-  const put=async x=>{ const b=x instanceof Blob?x:new Blob([x]); if(writer){ await writer.write(b); return b.size; } parts.push(b); return b.size; };
-  let n=0, bytes=0; if(writer){ bytes+=await put(parts[0]); parts.length=0; } else bytes=new Blob([parts[0]]).size;
-  const heavy=[];
-  for(const p of list){ setLocalSaveUi(`Export de la session… ${n+1}/${N}`);
-    ui.set(`Écriture des opérations ${n+1}/${N}`,(R+N+n)/total,`${name(p)} — ${formatBytes(bytes)} écrits`); await yieldToBrowser();
-    await ensureProjectReads(p);
-    // Opération trop grosse pour une seule chaîne (texte d'un XML de plusieurs dizaines de Mo…) : exportée sans le texte brut
-    // de ses documents (valeurs, occurrences, saisies gardées) au lieu de faire échouer tout l'export.
-    let line; try{ line=JSON.stringify(serializeProjectFull(p)); }
-    catch(err){ const ser=serializeProjectFull(p); for(const d of ser.docs||[]) if(d.analysis) d.analysis={...d.analysis,read:null,readOmitted:true}; line=JSON.stringify(ser); heavy.push(name(p)); }
-    bytes+=await put((n++?',':'')+line+'\n'); line=null; releaseProjectReads(p); }
-  bytes+=await put(']}\n}\n');
-  ui.set(writer?'Finalisation du fichier…':'Création du fichier…',(total-1)/total,formatBytes(bytes)); await yieldToBrowser();
-  if(writer) await writer.close();
-  else downloadBlob(new Blob(parts,{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
+  const all=state.projects.filter(p=>!projectIsEmpty(p)); if(!all.length){ ui.close(); toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
+  const chunks=[]; for(let i=0;i<all.length;i+=SESSION_EXPORT_CHUNK) chunks.push(all.slice(i,i+SESSION_EXPORT_CHUNK));
+  const K=chunks.length, N=all.length, date=new Date().toISOString().slice(0,10), grids=loadGrids();
+  const fileName=k=>K===1?`ExtracTerre_session_${date}.json`:`ExtracTerre_session_${date}_partie-${k+1}-sur-${K}.json`;
+  const heavy=[]; let done=0, totalBytes=0;
+  for(const [k,list] of chunks.entries()){
+    const tag=K>1?` (fichier ${k+1}/${K})`:'';
+    // 1. Recalcul des opérations du paquet seulement.
+    const freed=[];
+    for(const [i,p] of list.entries()){ ui.set(`Recalcul des opérations ${done+i+1}/${N}${tag}`,(done+i/3)/N,projectTitle(p)||''); await yieldToBrowser();
+      if(p.pendingRebuild||!p.result){ await rebuildProject(p); releaseProjectReads(p); } }
+    // 2. Tête du fichier (valeurs retenues, recherches) du paquet.
+    const operations=[];
+    for(const [i,p] of list.entries()){ ui.set(`Préparation des recherches ${done+i+1}/${N}${tag}`,(done+list.length/3+i/3)/N,projectTitle(p)||''); await yieldToBrowser();
+      await ensureProjectReads(p); operations.push(sessionOperation(p,grids,true)); releaseProjectReads(p); }
+    const snap={format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),...(K>1?{part:k+1,parts:K}:{}),grids,operations};
+    // 3. Écriture : sur le disque opération par opération (dossier choisi), sinon fichier en mémoire du seul paquet.
+    let w=null, parts=[], bytes=0;
+    if(dir){ const fh=await dir.getFileHandle(fileName(k),{create:true}); w=await fh.createWritable(); }
+    const put=async x=>{ const b=new Blob([x]); bytes+=b.size; if(w) await w.write(b); else parts.push(b); };
+    try{
+      const head=JSON.stringify(snap,null,1); operations.length=0;
+      await put(head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,'')+',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n');
+      for(const [i,p] of list.entries()){ ui.set(`Écriture des opérations ${done+i+1}/${N}${tag}`,(done+2*list.length/3+i/3)/N,`${projectTitle(p)||''} — ${formatBytes(totalBytes+bytes)} écrits`); await yieldToBrowser();
+        await ensureProjectReads(p);
+        let line; try{ line=JSON.stringify(serializeProjectFull(p)); }
+        catch(err){ const ser=serializeProjectFull(p); for(const d of ser.docs||[]) if(d.analysis) d.analysis={...d.analysis,read:null,readOmitted:true}; line=JSON.stringify(ser); heavy.push(projectTitle(p)||''); }
+        await put((i?',':'')+line+'\n'); line=null; releaseProjectReads(p); }
+      await put(']}\n}\n');
+      if(w) await w.close(); else downloadBlob(new Blob(parts,{type:'application/json'}),fileName(k));
+    }catch(err){ try{ await w?.abort?.(); }catch{} throw err; }
+    parts=null; totalBytes+=bytes; done+=list.length;
+    // 4. Mémoire du paquet libérée (sauf l'opération ouverte) : résultat recalculé à l'ouverture, tuiles gardées en cache.
+    if(K>1) for(const p of list){ if(p.id===state.activeProjectId||analysisControl.running||!p.result) continue; refreshTileCache(p); p.result=null; p.pendingRebuild=true; freed.push(p); }
+    await yieldToBrowser();
+  }
   setLocalSaveUi('Session restaurée',lastLocalSaveAt);
   if(heavy.length) toast(`${heavy.length} opération(s) trop volumineuse(s) exportée(s) sans le texte brut des documents : ${heavy.slice(0,5).join(', ')}${heavy.length>5?'…':''}`,'warn');
-  ui.done('Session exportée',`${snap.operations.length} opération(s) · ${formatBytes(bytes)}`);
-  toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
+  ui.done('Session exportée',`${N} opération(s) · ${K} fichier(s) · ${formatBytes(totalBytes)}${dir?` · dossier « ${dir.name} »`:''}`);
+  toast(`Session exportée : ${N} opération(s) en ${K} fichier(s)${K>1?' (à déposer ensemble dans TotalRecoll ou « Importer une session »)':''}.`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
@@ -16357,7 +16369,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',()=>exportSessionJson().catch(err=>{ console.error(err); toast(`Export de la session impossible : ${err?.message||err}`,'error'); setLocalSaveUi('Prêt',lastLocalSaveAt); })); $('#importSessionInput')?.addEventListener('change',e=>{ const f=e.target.files?.[0]; e.target.value=''; if(f) importSessionJson(f); }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory); $('#observatoryExportBtn')?.addEventListener('click',exportObservatoryJson);
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',()=>exportSessionJson().catch(err=>{ console.error(err); toast(`Export de la session impossible : ${err?.message||err}`,'error'); setLocalSaveUi('Prêt',lastLocalSaveAt); })); $('#importSessionInput')?.addEventListener('change',async e=>{ const fs=[...(e.target.files||[])].sort((a,b)=>a.name.localeCompare(b.name,'fr',{numeric:true})); e.target.value=''; for(const f of fs) await importSessionJson(f); /* v2.39.1 — plusieurs parties d'une session */ }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory); $('#observatoryExportBtn')?.addEventListener('click',exportObservatoryJson);
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};

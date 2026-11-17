@@ -48,3 +48,8 @@ const F=(b,field,value)=>({building:b,field,value,status:'retenu'});
   eq(dropResultlessBuildings(c),['Bâtiment ZZ']); eq(c.rows.map(r=>r.building),['Bâtiment A']); eq(c.finals.length,1); eq(c.detailed[0].status,'rejeté'); }
 { const c={rows:[{building:'Bâtiment A'},{building:'Bâtiment B'}],finals:[F('Bâtiment A','wall_insulation','PSE')]}; eq(dropResultlessBuildings(c),[]); }
 console.log('test_v2_39_1 OK');
+// 7. Export de session par paquets de 300 opérations (plantage vers la 550e) ; import de plusieurs fichiers
+{ const fs=await import('node:fs'); const app=fs.readFileSync('./js/app.js','utf8'), html=fs.readFileSync('./index.html','utf8');
+  eq(/const SESSION_EXPORT_CHUNK=300;/.test(app)&&/showDirectoryPicker/.test(app)&&/p\.result=null; p\.pendingRebuild=true;/.test(app),true,'paquets, dossier, mémoire libérée');
+  eq(/id="importSessionInput" type="file" accept="application\/json,\.json" multiple/.test(html),true,'import de plusieurs parties'); }
+console.log('test_v2_39_1 export OK');
