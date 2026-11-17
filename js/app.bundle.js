@@ -5998,11 +5998,22 @@ function readXmlText(text){
   const normalized=rows.join('\n'); return {kind:'xml',pages:[{page:1,text:normalized,lines:rows.map(text=>({index:idx++,text}))}],text:normalized,pageCount:1};
 }
 
+// v2.39.1 — classeurs dont la zone déclarée couvre toute la feuille (ex. A1:AAC1048576 pour 50 lignes réelles) :
+// sheet_to_json parcourait ~740 millions de cases vides → mémoire saturée (import massif, 00002300). Zone recalculée sur les cases présentes.
+function tightenSheetRef(ws){
+  const X=globalThis.XLSX; if(!ws||!ws['!ref']||!X) return ws;
+  let r0=Infinity,c0=Infinity,r1=-1,c1=-1;
+  for(const k in ws){ if(k[0]==='!') continue; const a=X.utils.decode_cell(k); if(a.r<r0) r0=a.r; if(a.c<c0) c0=a.c; if(a.r>r1) r1=a.r; if(a.c>c1) c1=a.c; }
+  for(const m of ws['!merges']||[]){ if(m.s.r<r0) r0=m.s.r; if(m.s.c<c0) c0=m.s.c; if(m.e.r>r1) r1=m.e.r; if(m.e.c>c1) c1=m.e.c; }
+  ws['!ref']=r1<0?'A1:A1':X.utils.encode_range({s:{r:r0,c:c0},e:{r:r1,c:c1}});
+  return ws;
+}
+
 async function readSpreadsheet(file){
   if(!globalThis.XLSX) throw new Error('SheetJS non chargé. Vérifiez la connexion au premier chargement.');
   const data=await file.arrayBuffer(); const wb=globalThis.XLSX.read(data,{type:'array',cellDates:false,raw:false});
   const pages=[]; let p=1;
-  for(const name of wb.SheetNames){ const ws=wb.Sheets[name]; const matrix=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  for(const name of wb.SheetNames){ const ws=tightenSheetRef(wb.Sheets[name]); const matrix=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
     const lines=matrix.map((row,index)=>({index,text:normalizeText(row.map(v=>String(v??'')).join(' | ')),cells:row})).filter(l=>l.text.replace(/\|/g,'').trim());
     pages.push({page:p++,sheet:name,text:lines.map(l=>l.text).join('\n'),lines});
   }
@@ -13592,7 +13603,7 @@ function renderSpreadsheetPreview(workbook,sheetName){
   const names=workbook.SheetNames||[]; const selected=names.includes(sheetName)?sheetName:names[0];
   const ws=workbook.Sheets?.[selected];
   if(!ws){ body.innerHTML='<div class="file-preview-empty">Aucune feuille lisible dans ce classeur.</div>'; return; }
-  const rows=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',blankrows:false,raw:false}).slice(0,100).map(r=>r.slice(0,40));
+  const rows=globalThis.XLSX.utils.sheet_to_json(tightenSheetRef(ws),{header:1,defval:'',blankrows:false,raw:false}).slice(0,100).map(r=>r.slice(0,40));
   const maxCols=Math.min(40,Math.max(0,...rows.map(r=>r.length)));
   const table=rows.length?`<div class="file-preview-sheet-scroll"><table class="file-preview-sheet"><tbody>${rows.map((row,ri)=>`<tr>${Array.from({length:maxCols},(_,ci)=>`<${ri===0?'th':'td'}>${escapeHtml(row[ci]??'')}</${ri===0?'th':'td'}>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="file-preview-empty">Cette feuille est vide.</div>';
   body.innerHTML=`${names.length>1?`<div class="file-preview-sheetbar"><label>Feuille <select id="filePreviewSheetSelect">${names.map(n=>`<option value="${escapeHtml(n)}" ${n===selected?'selected':''}>${escapeHtml(n)}</option>`).join('')}</select></label><small>Aperçu limité aux 100 premières lignes et 40 colonnes.</small></div>`:`<div class="file-preview-sheetbar"><strong>${escapeHtml(selected||'Feuille')}</strong><small>Aperçu limité aux 100 premières lignes et 40 colonnes.</small></div>`}${table}`;
@@ -16769,7 +16780,7 @@ async function sfxReadFile(file){
   if(/<table|<html|<head/i.test(head)){ const latin=/charset=(iso-8859-1|windows-1252|latin)/i.test(head); const text=new TextDecoder(latin?'windows-1252':'utf-8').decode(buf); return sfxParseHtmlTable(text); }
   if(!globalThis.XLSX) throw new Error('Lecteur Excel indisponible : rechargez la page.');
   const wb=XLSX.read(buf,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}).map(r=>r.map(v=>String(v??'')));
+  return XLSX.utils.sheet_to_json(tightenSheetRef(ws),{header:1,raw:false,defval:''}).map(r=>r.map(v=>String(v??'')));
 }
 // Applique les valeurs d'une fiche à l'opération p (même logique que le collage d'une fiche Salesforce, sans fenêtre de confirmation).
 // Une valeur saisie ou collée à la main (hors Salesforce) est conservée, sauf replaceManual.

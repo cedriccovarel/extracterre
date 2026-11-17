@@ -3,7 +3,7 @@ import {classifyDocument} from './classifier.js';
 import {classifyForSelectedFamily} from './doc-pipeline.js';
 import {IMPORT_SPACE,ssSupported,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState,ssListRequests,ssStopRequest,ssDeleteRequest,ssRequestDone,ssContractsToLoad,ssProgressModel,ssDuration,SS_STEPS,SS_TILE_LABEL} from './suivi-sources.js';
 import {BOX_KINDS,boxSupported,boxSavedRoot,boxPickRoot,boxEnsureAccess,boxFindOperation,boxListEvaluation,boxContractKey} from './box-folder.js';
-import {readFile,readSpreadsheet,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
+import {readFile,readSpreadsheet,tightenSheetRef,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings,DH_READ} from './buildings.js';
 import {ENV_READ} from './envelope-rules.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
@@ -626,7 +626,7 @@ function renderSpreadsheetPreview(workbook,sheetName){
   const names=workbook.SheetNames||[]; const selected=names.includes(sheetName)?sheetName:names[0];
   const ws=workbook.Sheets?.[selected];
   if(!ws){ body.innerHTML='<div class="file-preview-empty">Aucune feuille lisible dans ce classeur.</div>'; return; }
-  const rows=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',blankrows:false,raw:false}).slice(0,100).map(r=>r.slice(0,40));
+  const rows=globalThis.XLSX.utils.sheet_to_json(tightenSheetRef(ws),{header:1,defval:'',blankrows:false,raw:false}).slice(0,100).map(r=>r.slice(0,40));
   const maxCols=Math.min(40,Math.max(0,...rows.map(r=>r.length)));
   const table=rows.length?`<div class="file-preview-sheet-scroll"><table class="file-preview-sheet"><tbody>${rows.map((row,ri)=>`<tr>${Array.from({length:maxCols},(_,ci)=>`<${ri===0?'th':'td'}>${escapeHtml(row[ci]??'')}</${ri===0?'th':'td'}>`).join('')}</tr>`).join('')}</tbody></table></div>`:'<div class="file-preview-empty">Cette feuille est vide.</div>';
   body.innerHTML=`${names.length>1?`<div class="file-preview-sheetbar"><label>Feuille <select id="filePreviewSheetSelect">${names.map(n=>`<option value="${escapeHtml(n)}" ${n===selected?'selected':''}>${escapeHtml(n)}</option>`).join('')}</select></label><small>Aperçu limité aux 100 premières lignes et 40 colonnes.</small></div>`:`<div class="file-preview-sheetbar"><strong>${escapeHtml(selected||'Feuille')}</strong><small>Aperçu limité aux 100 premières lignes et 40 colonnes.</small></div>`}${table}`;
@@ -3803,7 +3803,7 @@ async function sfxReadFile(file){
   if(/<table|<html|<head/i.test(head)){ const latin=/charset=(iso-8859-1|windows-1252|latin)/i.test(head); const text=new TextDecoder(latin?'windows-1252':'utf-8').decode(buf); return sfxParseHtmlTable(text); }
   if(!globalThis.XLSX) throw new Error('Lecteur Excel indisponible : rechargez la page.');
   const wb=XLSX.read(buf,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}).map(r=>r.map(v=>String(v??'')));
+  return XLSX.utils.sheet_to_json(tightenSheetRef(ws),{header:1,raw:false,defval:''}).map(r=>r.map(v=>String(v??'')));
 }
 // Applique les valeurs d'une fiche à l'opération p (même logique que le collage d'une fiche Salesforce, sans fenêtre de confirmation).
 // Une valeur saisie ou collée à la main (hors Salesforce) est conservée, sauf replaceManual.

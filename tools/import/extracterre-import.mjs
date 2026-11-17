@@ -199,7 +199,7 @@ async function main(){
   for(const op of ops){
     if(stopping) break;
     const s=scans.get(op.folder); const contract=op.contract;
-    const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,cctpLots,s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
+    const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,cctpLots,...(cfg.ignoreNamePatterns?.length?[cfg.ignoreNamePatterns]:[]),s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
     // v2.39.1 — plantages répétés sur une opération : le service la relance sans OCR, puis la met de côté.
     if(excluded.has(contract)){ STATUS.parOp[contract]={r:'erreurs',exclu:true}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''}}); finalRows.push([contract,op.folder,'mis de côté (plantages répétés)',0,0,0,0,0,0,0]); prOps.tick(`${contract} mis de côté`); continue; }

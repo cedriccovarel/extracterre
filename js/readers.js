@@ -469,11 +469,22 @@ export function readXmlText(text){
   const normalized=rows.join('\n'); return {kind:'xml',pages:[{page:1,text:normalized,lines:rows.map(text=>({index:idx++,text}))}],text:normalized,pageCount:1};
 }
 
+// v2.39.1 — classeurs dont la zone déclarée couvre toute la feuille (ex. A1:AAC1048576 pour 50 lignes réelles) :
+// sheet_to_json parcourait ~740 millions de cases vides → mémoire saturée (import massif, 00002300). Zone recalculée sur les cases présentes.
+export function tightenSheetRef(ws){
+  const X=globalThis.XLSX; if(!ws||!ws['!ref']||!X) return ws;
+  let r0=Infinity,c0=Infinity,r1=-1,c1=-1;
+  for(const k in ws){ if(k[0]==='!') continue; const a=X.utils.decode_cell(k); if(a.r<r0) r0=a.r; if(a.c<c0) c0=a.c; if(a.r>r1) r1=a.r; if(a.c>c1) c1=a.c; }
+  for(const m of ws['!merges']||[]){ if(m.s.r<r0) r0=m.s.r; if(m.s.c<c0) c0=m.s.c; if(m.e.r>r1) r1=m.e.r; if(m.e.c>c1) c1=m.e.c; }
+  ws['!ref']=r1<0?'A1:A1':X.utils.encode_range({s:{r:r0,c:c0},e:{r:r1,c:c1}});
+  return ws;
+}
+
 export async function readSpreadsheet(file){
   if(!globalThis.XLSX) throw new Error('SheetJS non chargé. Vérifiez la connexion au premier chargement.');
   const data=await file.arrayBuffer(); const wb=globalThis.XLSX.read(data,{type:'array',cellDates:false,raw:false});
   const pages=[]; let p=1;
-  for(const name of wb.SheetNames){ const ws=wb.Sheets[name]; const matrix=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+  for(const name of wb.SheetNames){ const ws=tightenSheetRef(wb.Sheets[name]); const matrix=globalThis.XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
     const lines=matrix.map((row,index)=>({index,text:normalizeText(row.map(v=>String(v??'')).join(' | ')),cells:row})).filter(l=>l.text.replace(/\|/g,'').trim());
     pages.push({page:p++,sheet:name,text:lines.map(l=>l.text).join('\n'),lines});
   }
