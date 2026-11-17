@@ -1,3 +1,21 @@
+# v2.42.0 — Choix de la valeur : version retenue par Salesforce, indice, sources sans résultat
+
+Règles validées le 17/11/2026, mesurées sur 647 opérations (21 317 documents lus) :
+- **Document d'ancrage (A)** : quand Salesforce donne le Bbio et le Cep d'un bâtiment (fiche Évaluation collée), la version
+  d'étude dont les valeurs concordent devient la source prioritaire des autres données de ce bâtiment (DH, Tic, IC, Ubat…).
+  Mesure : Cep,nr juste 60 % → 82 %, DH 35 % → 60 % (20 cas). Sans valeur Salesforce, rien ne change.
+- **Indice (B)** : à type de document égal, l'indice le plus élevé du nom de fichier l'emporte (ind C > ind A, v1.8 > v1.6),
+  avant la date d'étude. La date du nom de fichier n'est pas un critère.
+- **Sources sans résultat (D)** : 56 sources principales où la donnée n'apparaît presque jamais passent en secondaire
+  (dernier recours), sur 37 champs. RT Existant et champs de rénovation non concernés (corpus surtout neuf).
+- Inclut la v2.41.1 (« Bâtiment IMENT »).
+
+# v2.41.1 — Fiche Évaluation Salesforce : plus de « Bâtiment IMENT »
+
+- « Batiment : » sans nom (fiche d'un bâtiment unique) était lu « Bât » + « iment » et créait un bâtiment fantôme
+  « Bâtiment IMENT » (55 opérations sur 647). Les valeurs vont désormais au bâtiment unique. Les en-têtes nommés
+  (« Bâtiment A : », « Bât A / … ») sont lus comme avant.
+
 # v2.41.0 — Grille « Sécurité des logements » : règles vérifiées sur 647 opérations
 
 - **Règles coupées réparées** : l'éditeur coupait les expressions contenant une virgule (`{0,40}`). « Serrure 3 points »,

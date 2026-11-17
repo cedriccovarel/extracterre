@@ -1,4 +1,4 @@
-export const APP_VERSION='2.41.0';
+export const APP_VERSION='2.42.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -458,6 +458,14 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
+// v2.42.0 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
+// servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
+// RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
+export const SOURCE_DEMOTIONS_V2={"department":["Contrat","Plan architectural"],"project":["RT2012","RSENV / RSNV"],"operation":["RT2012","RSENV / RSNV","Plan architectural"],"building":["Contrat","RT2012","RSENV / RSNV","Plan architectural"],"roof_structure":["RSENV / RSNV"],"wall_structure":["RSENV / RSNV"],"floor_insulation":["DPGF"],"floor_insulation_thickness":["DPGF"],"floor_insulation_r":["DPGF"],"window_material":["RSENV / RSNV"],"window_shading":["RSENV / RSNV"],"enr":["RSEE RE2020"],"enr_type":["RSEE RE2020"],"address":["Plan architectural","Permis / pièce administrative","Descriptif du projet"],"postcode":["Plan architectural","Permis / pièce administrative","Descriptif du projet"],"city":["Plan architectural","Permis / pièce administrative","Descriptif du projet"],"housing_typologies":["Contrat","Descriptif du projet"],"construction_year":["RSET RE2020","RT2012","RSEE RE2020","RSENV / RSNV","Plan architectural"],"cepnr":["RT2012"],"cepnr_max":["RT2012"],"cepnr_gain":["RT2012"],"cep_mobility":["RT2012"],"cep_electricity":["Étude thermique"],"cep_gas":["Étude thermique"],"cep_district":["Étude thermique"],"cep_biomass":["Étude thermique"],"ic_energy_heating":["RSENV / RSNV"],"ic_energy_cooling":["RSENV / RSNV"],"ic_energy_ecs":["RSENV / RSNV"],"ic_energy_aux_vent":["RSENV / RSNV"],"ic_energy_aux_dist":["RSENV / RSNV"],"ic_energy_mobility":["RSENV / RSNV","Étude carbone / ACV"],"eges_pce_max":["RSENV / RSNV"],"eges_energy":["RSENV / RSNV"],"eges_site":["RSENV / RSNV"],"eges_water":["RSENV / RSNV"],"eges_total_max":["RSENV / RSNV"]};
+for(const [key,types] of Object.entries(SOURCE_DEMOTIONS_V2)){ const r=DEFAULT_SOURCE_RULES[key]; if(!r) continue;
+  if(!LEGACY_SOURCE_RULES[key]) LEGACY_SOURCE_RULES[key]=structuredClone(r);
+  for(const t of types){ const i=r.main.indexOf(t); if(i<0) continue; r.main.splice(i,1); if(!r.secondary.includes(t)) r.secondary.push(t); } }
 export const REQUIRED_RE2020_RSET_FIELDS = ['housing_count','shab','bbio','bbio_max','cep','cep_max','cepnr','cepnr_max','dh'];
 export const REQUIRED_RT2012_RSET_FIELDS = ['housing_count','shab','bbio','bbio_max','cep','cep_max','tic','tic_ref'];
 export const REQUIRED_RSET_FIELDS = REQUIRED_RE2020_RSET_FIELDS;

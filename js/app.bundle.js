@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.41.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.42.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.41.0';
+const APP_VERSION='2.42.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -463,6 +463,14 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
+// v2.42.0 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
+// servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
+// RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
+const SOURCE_DEMOTIONS_V2={"department":["Contrat","Plan architectural"],"project":["RT2012","RSENV / RSNV"],"operation":["RT2012","RSENV / RSNV","Plan architectural"],"building":["Contrat","RT2012","RSENV / RSNV","Plan architectural"],"roof_structure":["RSENV / RSNV"],"wall_structure":["RSENV / RSNV"],"floor_insulation":["DPGF"],"floor_insulation_thickness":["DPGF"],"floor_insulation_r":["DPGF"],"window_material":["RSENV / RSNV"],"window_shading":["RSENV / RSNV"],"enr":["RSEE RE2020"],"enr_type":["RSEE RE2020"],"address":["Plan architectural","Permis / pièce administrative","Descriptif du projet"],"postcode":["Plan architectural","Permis / pièce administrative","Descriptif du projet"],"city":["Plan architectural","Permis / pièce administrative","Descriptif du projet"],"housing_typologies":["Contrat","Descriptif du projet"],"construction_year":["RSET RE2020","RT2012","RSEE RE2020","RSENV / RSNV","Plan architectural"],"cepnr":["RT2012"],"cepnr_max":["RT2012"],"cepnr_gain":["RT2012"],"cep_mobility":["RT2012"],"cep_electricity":["Étude thermique"],"cep_gas":["Étude thermique"],"cep_district":["Étude thermique"],"cep_biomass":["Étude thermique"],"ic_energy_heating":["RSENV / RSNV"],"ic_energy_cooling":["RSENV / RSNV"],"ic_energy_ecs":["RSENV / RSNV"],"ic_energy_aux_vent":["RSENV / RSNV"],"ic_energy_aux_dist":["RSENV / RSNV"],"ic_energy_mobility":["RSENV / RSNV","Étude carbone / ACV"],"eges_pce_max":["RSENV / RSNV"],"eges_energy":["RSENV / RSNV"],"eges_site":["RSENV / RSNV"],"eges_water":["RSENV / RSNV"],"eges_total_max":["RSENV / RSNV"]};
+for(const [key,types] of Object.entries(SOURCE_DEMOTIONS_V2)){ const r=DEFAULT_SOURCE_RULES[key]; if(!r) continue;
+  if(!LEGACY_SOURCE_RULES[key]) LEGACY_SOURCE_RULES[key]=structuredClone(r);
+  for(const t of types){ const i=r.main.indexOf(t); if(i<0) continue; r.main.splice(i,1); if(!r.secondary.includes(t)) r.secondary.push(t); } }
 const REQUIRED_RE2020_RSET_FIELDS = ['housing_count','shab','bbio','bbio_max','cep','cep_max','cepnr','cepnr_max','dh'];
 const REQUIRED_RT2012_RSET_FIELDS = ['housing_count','shab','bbio','bbio_max','cep','cep_max','tic','tic_ref'];
 const REQUIRED_RSET_FIELDS = REQUIRED_RE2020_RSET_FIELDS;
@@ -9033,6 +9041,31 @@ function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={}){
   return {aliasMap,aliases,authoritative,canonicalNames,suggestions,manualOverrides:{...manualOverrides}};
 }
 
+// v2.42.0 — règle B (validée 17/11/2026) : à type de document égal, l'indice le plus élevé du nom de fichier l'emporte
+// (« ind C » > « ind A », « v1.8 » > « v1.6 ») ; une date dans le nom de fichier n'est pas un critère (souvent la date d'envoi).
+function docIndice(name){
+  const n=String(name||'').toUpperCase().replace(/\.[A-Z0-9]{2,4}$/,'');
+  let m=n.match(/(?:^|[^A-Z0-9])IND(?:ICE)?[\s._-]*([A-Z])(?![A-Z0-9])/); if(m) return m[1].charCodeAt(0)-64;
+  m=n.match(/(?:^|[^A-Z0-9])IND(?:ICE)?[\s._-]*(\d{1,2})(?![0-9])/); if(m) return Number(m[1]);
+  m=n.match(/(?:^|[^A-Z0-9])V(\d{1,2})(?:[._](\d{1,2}))?(?![0-9])/); if(m) return Number(m[1])+(m[2]?Number(m[2])/100:0);
+  m=n.match(/(?:^|[^A-Z0-9])(\d{1,2})[._](\d{1,2})(?=$|[^0-9A-Z])/); if(m&&/NOTICE|ETUDE|RSET|RSEE|NOTE/.test(n)) return Number(m[1])+Number(m[2])/100;
+  return null;
+}
+// v2.42.0 — règle A (validée 17/11/2026) : document d'ancrage. Pour un bâtiment dont Salesforce (valeurs collées, définitives)
+// donne le Bbio ET le Cep, le document dont les valeurs concordent (1 %) est la version retenue par Salesforce : il devient
+// la source prioritaire des autres données de ce bâtiment (DH, Tic, IC, Ubât…), parmi les sources principales du champ.
+const ANCHOR_FIELDS=['bbio','cep'];
+function anchorDocs(occurrences){
+  const close=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=0.011*Math.max(1,Math.abs(b));
+  const ref=new Map(), byDoc=new Map();
+  for(const o of occurrences){ if(!ANCHOR_FIELDS.includes(o.field)) continue; const b=o.building||'Bâtiment unique', v=Number(o.value);
+    if(o.manualDefinitive){ if(!ref.has(b)) ref.set(b,{}); ref.get(b)[o.field]??=v; continue; }
+    if(!o.docId) continue; const k=`${b}|${o.docId}`; if(!byDoc.has(k)) byDoc.set(k,{b,docId:o.docId,vals:{}}); (byDoc.get(k).vals[o.field]??=[]).push(v); }
+  const out=new Map();
+  for(const {b,docId,vals} of byDoc.values()){ const r=ref.get(b)||(ref.size===1&&b==='Bâtiment unique'?[...ref.values()][0]:null); if(!r||!ANCHOR_FIELDS.every(f=>Number.isFinite(r[f]))) continue;
+    if(ANCHOR_FIELDS.every(f=>(vals[f]||[]).some(v=>close(v,r[f])))){ if(!out.has(b)) out.set(b,new Set()); out.get(b).add(docId); } }
+  return out;
+}
 function mappedBuilding(name,grouping){
   if(name==='Bâtiment unique') return name;
   return grouping?.aliasMap?.[name]||name;
@@ -9060,6 +9093,8 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
   // Pour les autres champs (enveloppe, systèmes, administratif), elle reste utilisable mais une valeur
   // attribuée au bâtiment l'emporte toujours, quel que soit le rang de la source.
   const multiBuilding=buildings.length>1;
+  const anchors=anchorDocs(occurrences); // règle A
+  const indiceOf=new Map(docs.map(d=>[d.id,docIndice(d.name)]));
   const candidatesFor=(field,building)=>{
     const exact=byFieldBuilding.get(`${field}|${building}`)||[];
     if(building==='Bâtiment unique') return exact;
@@ -9089,10 +9124,12 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
       else { const directPool=pool.filter(o=>!o.libraryDerived); if(directPool.length) pool=directPool; }
       pool=[...pool].sort((a,b)=>{
         const ag=a._globalCandidate?1:0, bg=b._globalCandidate?1:0; if(ag!==bg) return ag-bg;
+        { const A=anchors.get(building); if(A&&!ANCHOR_FIELDS.includes(f.key)){ const aa=A.has(a.docId)?0:1, ba=A.has(b.docId)?0:1; if(aa!==ba) return aa-ba; } }
         const ar=Number.isFinite(a.sourceRank)?a.sourceRank:sourceRank(f.key,a.docType,rules), br=Number.isFinite(b.sourceRank)?b.sourceRank:sourceRank(f.key,b.docType,rules);
         if(ar!==br) return ar-br;
         const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
         if(ah!==bh) return ah-bh;
+        if(a.docType&&a.docType===b.docType&&a.docId!==b.docId){ const ai=indiceOf.get(a.docId), bi=indiceOf.get(b.docId); if(ai!=null&&bi!=null&&ai!==bi) return bi-ai; } // règle B
         // v2.3.3 — plusieurs versions d'une même étude : la date d'étude la plus récente l'emporte (à rang égal).
         const ad=Date.parse(a.studyDate||''), bd=Date.parse(b.studyDate||''); if(Number.isFinite(ad)&&Number.isFinite(bd)&&Math.abs(ad-bd)>36e5) return bd-ad;
         if(f.key==='shab'){ const ap=Number(a.surfacePriority)||0, bp=Number(b.surfacePriority)||0; if(ap!==bp) return bp-ap; }
@@ -9100,6 +9137,7 @@ function consolidate(docs,occurrences,rules,operationName='',grouping=null){
       });
       let chosen=pool[0];
       if(f.key==='dh'||f.key==='dh_zt'||f.key==='dh_znt') {
+        { const A=anchors.get(building); if(A){ const inA=pool.filter(o=>A.has(o.docId)); if(inA.length) pool=inA; } } // règle A : DH lu dans la version retenue par Salesforce
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
@@ -10108,7 +10146,8 @@ function prepareReadDocument(d){
 
 
 
-const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
+// v2.41.1 — « Batiment : » sans nom (fiche Salesforce d'un bâtiment unique) donnait « Bâtiment IMENT » : le nom ne commence pas au milieu du mot.
+const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?(?![a-zà-ÿ])\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
 // Libellé sans unité finale : « DH des zones traversantes (en °C.h) » → « DH des zones traversantes ».
 const fp_clean=l=>String(l||'').replace(/\((?:en|unit[eé])\s[^)]*\)\s*$/i,'').replace(/\s*\[[^\]]*\]\s*$/,'').trim();
@@ -10400,7 +10439,7 @@ function salesforceEvaluationToPaste(text){
     // En-tête de bâtiment : « ILOT_1 : », « Maison 1 = », « ILOT_4 : (ilot 5 sur ACV) », « * BEG-1/2 : x2 lgts indiv : ».
     const t=L[i].replace(/^[*•]\s*/,'');
     // « Bât A / 21 logts - SHAB = 1283,6 » : nom, logements et surface sur la ligne d'en-tête.
-    const bh=t.match(/^((?:b[âa]t(?:iment)?\.?|immeuble|plot|cage|ilot|lot)\s*[\w-]+)\s*(?:[\/,–-]\s*(\d+)\s*(?:logts?|lgts?|logements?|MI)\b)?(.*)$/i);
+    const bh=t.match(/^((?:b[âa]t(?:iment)?(?![a-zà-ÿ])\.?|immeuble|plot|cage|ilot|lot)\s*[\w-]+)\s*(?:[\/,–-]\s*(\d+)\s*(?:logts?|lgts?|logements?|MI)\b)?(.*)$/i);
     // « BAT AB / Nbre logts = 14 / Q4 = 0,72 » : paires « libellé = valeur » séparées par « / » sur l'en-tête.
     const hp=bh?bh[3].split('/').map(x=>x.match(/^\s*([^=]{1,40}?)\s*=\s*(.+?)\s*$/)).filter(x=>x&&(sf_ALIASES[sf_key(x[1])]||fp_strictLabel(x[1]))):[];
     if(bh&&(bh[2]||/\b(?:shab|sref|srt|su)\s*[=:]/i.test(bh[3])||hp.length)){ cur=openBlock(bh[1].trim());

@@ -9,7 +9,8 @@ import {EXTRACTION_RANGES} from './sanity.js';
 import {applyPasteRewrites} from './patches.js';
 import {detectVector} from './vecteurs.js';
 
-const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
+// v2.41.1 — « Batiment : » sans nom (fiche Salesforce d'un bâtiment unique) donnait « Bâtiment IMENT » : le nom ne commence pas au milieu du mot.
+const fp_BUILDING=/^\s*((?:b[âa]t(?:iment)?(?![a-zà-ÿ])\.?|immeuble|cage|plot|lot)\s*[\w-]{1,20}(?:\s+[\w-]{1,20})?)\s*:?\s*$/i;
 const fp_PAIR=/^\s*(.{2,120}?)\s*(?:=|:|\t)\s*(.+?)\s*$/;
 // Libellé sans unité finale : « DH des zones traversantes (en °C.h) » → « DH des zones traversantes ».
 const fp_clean=l=>String(l||'').replace(/\((?:en|unit[eé])\s[^)]*\)\s*$/i,'').replace(/\s*\[[^\]]*\]\s*$/,'').trim();
@@ -301,7 +302,7 @@ export function salesforceEvaluationToPaste(text){
     // En-tête de bâtiment : « ILOT_1 : », « Maison 1 = », « ILOT_4 : (ilot 5 sur ACV) », « * BEG-1/2 : x2 lgts indiv : ».
     const t=L[i].replace(/^[*•]\s*/,'');
     // « Bât A / 21 logts - SHAB = 1283,6 » : nom, logements et surface sur la ligne d'en-tête.
-    const bh=t.match(/^((?:b[âa]t(?:iment)?\.?|immeuble|plot|cage|ilot|lot)\s*[\w-]+)\s*(?:[\/,–-]\s*(\d+)\s*(?:logts?|lgts?|logements?|MI)\b)?(.*)$/i);
+    const bh=t.match(/^((?:b[âa]t(?:iment)?(?![a-zà-ÿ])\.?|immeuble|plot|cage|ilot|lot)\s*[\w-]+)\s*(?:[\/,–-]\s*(\d+)\s*(?:logts?|lgts?|logements?|MI)\b)?(.*)$/i);
     // « BAT AB / Nbre logts = 14 / Q4 = 0,72 » : paires « libellé = valeur » séparées par « / » sur l'en-tête.
     const hp=bh?bh[3].split('/').map(x=>x.match(/^\s*([^=]{1,40}?)\s*=\s*(.+?)\s*$/)).filter(x=>x&&(sf_ALIASES[sf_key(x[1])]||fp_strictLabel(x[1]))):[];
     if(bh&&(bh[2]||/\b(?:shab|sref|srt|su)\s*[=:]/i.test(bh[3])||hp.length)){ cur=openBlock(bh[1].trim());

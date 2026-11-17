@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {reliabilityTable,contestedAccuracy} from './js/qualite.js';
-assert.equal(APP_VERSION,'2.41.0');
+assert.equal(APP_VERSION,'2.42.0');
 const calib={methods:{'m':{juste:99,faux:1}},pairs:{},contested:{'*':{juste:92,faux:8},cep:{juste:93,faux:7},dh:{juste:47,faux:11},ic_construction_max:{juste:7,faux:3},tic_ref:{juste:11,faux:0}}};
 assert.equal(contestedAccuracy(calib,'cep').rate,0.93);
 assert.equal(contestedAccuracy(calib,'dh').rate<0.85,true);

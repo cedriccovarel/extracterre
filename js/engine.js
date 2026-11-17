@@ -148,6 +148,31 @@ export function buildBuildingGrouping(docs,rawOccurrences=[],manualOverrides={})
   return {aliasMap,aliases,authoritative,canonicalNames,suggestions,manualOverrides:{...manualOverrides}};
 }
 
+// v2.42.0 — règle B (validée 17/11/2026) : à type de document égal, l'indice le plus élevé du nom de fichier l'emporte
+// (« ind C » > « ind A », « v1.8 » > « v1.6 ») ; une date dans le nom de fichier n'est pas un critère (souvent la date d'envoi).
+export function docIndice(name){
+  const n=String(name||'').toUpperCase().replace(/\.[A-Z0-9]{2,4}$/,'');
+  let m=n.match(/(?:^|[^A-Z0-9])IND(?:ICE)?[\s._-]*([A-Z])(?![A-Z0-9])/); if(m) return m[1].charCodeAt(0)-64;
+  m=n.match(/(?:^|[^A-Z0-9])IND(?:ICE)?[\s._-]*(\d{1,2})(?![0-9])/); if(m) return Number(m[1]);
+  m=n.match(/(?:^|[^A-Z0-9])V(\d{1,2})(?:[._](\d{1,2}))?(?![0-9])/); if(m) return Number(m[1])+(m[2]?Number(m[2])/100:0);
+  m=n.match(/(?:^|[^A-Z0-9])(\d{1,2})[._](\d{1,2})(?=$|[^0-9A-Z])/); if(m&&/NOTICE|ETUDE|RSET|RSEE|NOTE/.test(n)) return Number(m[1])+Number(m[2])/100;
+  return null;
+}
+// v2.42.0 — règle A (validée 17/11/2026) : document d'ancrage. Pour un bâtiment dont Salesforce (valeurs collées, définitives)
+// donne le Bbio ET le Cep, le document dont les valeurs concordent (1 %) est la version retenue par Salesforce : il devient
+// la source prioritaire des autres données de ce bâtiment (DH, Tic, IC, Ubât…), parmi les sources principales du champ.
+const ANCHOR_FIELDS=['bbio','cep'];
+function anchorDocs(occurrences){
+  const close=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=0.011*Math.max(1,Math.abs(b));
+  const ref=new Map(), byDoc=new Map();
+  for(const o of occurrences){ if(!ANCHOR_FIELDS.includes(o.field)) continue; const b=o.building||'Bâtiment unique', v=Number(o.value);
+    if(o.manualDefinitive){ if(!ref.has(b)) ref.set(b,{}); ref.get(b)[o.field]??=v; continue; }
+    if(!o.docId) continue; const k=`${b}|${o.docId}`; if(!byDoc.has(k)) byDoc.set(k,{b,docId:o.docId,vals:{}}); (byDoc.get(k).vals[o.field]??=[]).push(v); }
+  const out=new Map();
+  for(const {b,docId,vals} of byDoc.values()){ const r=ref.get(b)||(ref.size===1&&b==='Bâtiment unique'?[...ref.values()][0]:null); if(!r||!ANCHOR_FIELDS.every(f=>Number.isFinite(r[f]))) continue;
+    if(ANCHOR_FIELDS.every(f=>(vals[f]||[]).some(v=>close(v,r[f])))){ if(!out.has(b)) out.set(b,new Set()); out.get(b).add(docId); } }
+  return out;
+}
 function mappedBuilding(name,grouping){
   if(name==='Bâtiment unique') return name;
   return grouping?.aliasMap?.[name]||name;
@@ -175,6 +200,8 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
   // Pour les autres champs (enveloppe, systèmes, administratif), elle reste utilisable mais une valeur
   // attribuée au bâtiment l'emporte toujours, quel que soit le rang de la source.
   const multiBuilding=buildings.length>1;
+  const anchors=anchorDocs(occurrences); // règle A
+  const indiceOf=new Map(docs.map(d=>[d.id,docIndice(d.name)]));
   const candidatesFor=(field,building)=>{
     const exact=byFieldBuilding.get(`${field}|${building}`)||[];
     if(building==='Bâtiment unique') return exact;
@@ -204,10 +231,12 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       else { const directPool=pool.filter(o=>!o.libraryDerived); if(directPool.length) pool=directPool; }
       pool=[...pool].sort((a,b)=>{
         const ag=a._globalCandidate?1:0, bg=b._globalCandidate?1:0; if(ag!==bg) return ag-bg;
+        { const A=anchors.get(building); if(A&&!ANCHOR_FIELDS.includes(f.key)){ const aa=A.has(a.docId)?0:1, ba=A.has(b.docId)?0:1; if(aa!==ba) return aa-ba; } }
         const ar=Number.isFinite(a.sourceRank)?a.sourceRank:sourceRank(f.key,a.docType,rules), br=Number.isFinite(b.sourceRank)?b.sourceRank:sourceRank(f.key,b.docType,rules);
         if(ar!==br) return ar-br;
         const ah=Number.isFinite(a.hierarchyRank)?a.hierarchyRank:50, bh=Number.isFinite(b.hierarchyRank)?b.hierarchyRank:50;
         if(ah!==bh) return ah-bh;
+        if(a.docType&&a.docType===b.docType&&a.docId!==b.docId){ const ai=indiceOf.get(a.docId), bi=indiceOf.get(b.docId); if(ai!=null&&bi!=null&&ai!==bi) return bi-ai; } // règle B
         // v2.3.3 — plusieurs versions d'une même étude : la date d'étude la plus récente l'emporte (à rang égal).
         const ad=Date.parse(a.studyDate||''), bd=Date.parse(b.studyDate||''); if(Number.isFinite(ad)&&Number.isFinite(bd)&&Math.abs(ad-bd)>36e5) return bd-ad;
         if(f.key==='shab'){ const ap=Number(a.surfacePriority)||0, bp=Number(b.surfacePriority)||0; if(ap!==bp) return bp-ap; }
@@ -215,6 +244,7 @@ export function consolidate(docs,occurrences,rules,operationName='',grouping=nul
       });
       let chosen=pool[0];
       if(f.key==='dh'||f.key==='dh_zt'||f.key==='dh_znt') {
+        { const A=anchors.get(building); if(A){ const inA=pool.filter(o=>A.has(o.docId)); if(inA.length) pool=inA; } } // règle A : DH lu dans la version retenue par Salesforce
         // v2.3.3 — le DH le plus défavorable se cherche parmi les groupes d'UNE version d'étude : on écarte d'abord les versions plus anciennes.
         const dated=pool.map(o=>Date.parse(o.studyDate||'')).filter(Number.isFinite); const newest=dated.length?Math.max(...dated):null;
         if(newest!==null){ const recent=pool.filter(o=>{ const d=Date.parse(o.studyDate||''); return !Number.isFinite(d)||newest-d<=36e5; }); if(recent.length) pool=recent; }
