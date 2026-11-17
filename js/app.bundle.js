@@ -13650,6 +13650,12 @@ async function refreshLocalStorageInfo(){
 // v2.19.2 — résumé de tuile (identité, complétude, compteurs) enregistré avec le projet : affiché dès le démarrage, avant
 // que le projet soit recalculé en arrière-plan. Un projet pas encore recalculé garde son résumé précédent.
 function refreshTileCache(p){ if(p.pendingRebuild) return; p.tileCache={identity:projectIdentity(p),completion:projectCompletion(p),stats:projectResultStats(p)}; }
+// v2.39.1 — mémoire : ~5 Mo par opération recalculée, toutes gardées → l'onglet (limite ~4,4 Go) plantait vers la 550e opération
+// (recalcul au démarrage, exports). Au-delà de 120 opérations, le résultat d'une opération fermée est libéré une fois ses tuiles
+// mises en cache ; il est recalculé à l'ouverture de l'opération ou à l'export (rebuildProject).
+const FREE_RESULTS_ABOVE=120;
+function freeProjectResult(p){ if(!p?.result||p.pendingRebuild||p.id===state.activeProjectId||analysisControl.running||state.projects.length<=FREE_RESULTS_ABOVE) return false;
+  refreshTileCache(p); p.result=null; p.pendingRebuild=true; return true; }
 function workspacePayload(){ for(const p of state.projects) refreshTileCache(p); return {projects:state.projects,activeProjectId:state.activeProjectId,activeTab:state.activeTab,resultWorkspaceMode:state.resultWorkspaceMode}; }
 function checkpointWorkspace(reason='mise à jour',silent=true){
   if(!persistenceReady||restoringWorkspace) return Promise.resolve(null);
@@ -15796,7 +15802,7 @@ async function exportSessionRun(ui,dir=null){
     }catch(err){ try{ await w?.abort?.(); }catch{} throw err; }
     parts=null; totalBytes+=bytes; done+=list.length;
     // 4. Mémoire du paquet libérée (sauf l'opération ouverte) : résultat recalculé à l'ouverture, tuiles gardées en cache.
-    if(K>1) for(const p of list){ if(p.id===state.activeProjectId||analysisControl.running||!p.result) continue; refreshTileCache(p); p.result=null; p.pendingRebuild=true; freed.push(p); }
+    for(const p of list) if(freeProjectResult(p)) freed.push(p);
     await yieldToBrowser();
   }
   setLocalSaveUi('Session restaurée',lastLocalSaveAt);
@@ -15900,6 +15906,7 @@ async function exportObservatoryJson(){
       const r=feedSearches(p,grids); releaseProjectReads(p);
       const id=projectIdentity(p);
       operations.push({id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,status:d.status})),searches:r});
+      freeProjectResult(p);
       if(k%3===2||k===list.length-1){ setLocalSaveUi(`Export observatoire… ${k+1} / ${list.length}`); await new Promise(res=>setTimeout(res,0)); } }
     const snap={format:'extracterre-session',kind:'observatoire',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
     downloadBlob(new Blob([JSON.stringify(snap)],{type:'application/json'}),`ExtracTerre_observatoire_${new Date().toISOString().slice(0,10)}.json`);
@@ -16001,7 +16008,7 @@ async function exportExcelStreamed(list){
       await ensureProjectReads(p);
       if(col.add(p)) added++;
       releaseProjectReads(p);
-      if(many&&wasPending&&p.result&&p.id!==state.activeProjectId&&!analysisControl.running){ refreshTileCache(p); p.result=null; p.pendingRebuild=true; } }
+      freeProjectResult(p); }
     if(!added){ ui.close(); toast('Aucune opération analysée à exporter.','warn'); return; }
     scheduleWorkspaceCheckpoint('géolocalisation',80);
     ui.set('Création du fichier Excel…',N/(N+1),`${added} opération(s)`); await yieldToBrowser();
@@ -16438,7 +16445,7 @@ function startupProgress(){
 }
 // Projets restants recalculés par lots de ~40 ms, l'interface reste utilisable ; progression dans l'indicateur de sauvegarde.
 async function rebuildInBackground(){
-  const todo=()=>state.projects.filter(p=>p.pendingRebuild), total=todo().length; if(!total){ restoredToast(); return; }
+  const seen=new Set(), todo=()=>state.projects.filter(p=>p.pendingRebuild&&!seen.has(p.id)), total=todo().length; if(!total){ restoredToast(); return; }
   let last=performance.now();
   while(todo().length){ const t0=performance.now();
     for(const p of todo()){
@@ -16449,7 +16456,7 @@ async function rebuildInBackground(){
       for(const d of p.docs||[]) if(d.status==='ready'&&Array.isArray(d.cachedOccurrences)&&(!d.rsetAddressRead||!d.dhZonesRead||!(Number(d.fanRead)>=2)||!(Number(d.bldRead)>=BLD_READ)||!(Number(d.dhRead)>=DH_READ)||!(Number(d.envRead)>=ENV_READ))){ // v2.33.2 — règles de noms de bâtiment (BLD_READ)
         catchUpDocument(d,p.buildingOverrides||{}); await new Promise(r=>setTimeout(r,0)); }
       if(!p.pendingRebuild) continue;
-      rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(performance.now()-t0>40) break; }
+      rebuildProjectFromCheckpoints(p); releaseProjectReads(p); if(!p.pendingRebuild){ seen.add(p.id); freeProjectResult(p); } if(performance.now()-t0>40) break; }
     const left=todo().length; setLocalSaveUi(left?`Recalcul des projets… ${total-left} / ${total}`:'Session restaurée',left?null:lastLocalSaveAt);
     if(performance.now()-last>1500||!left){ last=performance.now(); if(state.homeView||state.resultWorkspaceMode==='overview') renderHome(); }
     await new Promise(r=>setTimeout(r,0)); }
