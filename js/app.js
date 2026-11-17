@@ -2842,23 +2842,30 @@ let observatoryExporting=false;
 async function exportObservatoryJson(){
   if(observatoryExporting){ toast('Export de l’observatoire déjà en cours…','warn'); return; }
   observatoryExporting=true; const btn=$('#observatoryExportBtn'); if(btn) btn.disabled=true;
+  const ui=exportProgress('Export de l’observatoire des recherches'), t0=Date.now();
   try{
-    const grids=loadGrids(), list=state.projects.filter(p=>!projectIsEmpty(p)), operations=[];
-    for(let k=0;k<list.length;k++){ const p=list[k];
+    const grids=loadGrids(), list=state.projects.filter(p=>!projectIsEmpty(p)), operations=[], N=list.length;
+    for(let k=0;k<N;k++){ const p=list[k];
+      // v2.39.4 — barre de progression (opération en cours, %, temps restant estimé)
+      const left=k>=3?Math.round((Date.now()-t0)/k*(N-k)/1000):null;
+      ui.set(`Opérations ${k+1} / ${N}`,k/(N+1),`${projectTitle(p)||''}${left===null?'':` · reste ≈ ${left>=90?`${Math.round(left/60)} min`:`${left} s`}`}`);
+      if(k%3===0) await yieldToBrowser();
       if(p.pendingRebuild||grids.some(g=>p.searchCache?.[g.id]?.sig!==searchSignature(p,g))) await rebuildProject(p);
       const r=feedSearches(p,grids); releaseProjectReads(p);
       const id=projectIdentity(p);
       operations.push({id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,status:d.status})),searches:r});
       freeProjectResult(p);
-      if(k%3===2||k===list.length-1){ setLocalSaveUi(`Export observatoire… ${k+1} / ${list.length}`); await new Promise(res=>setTimeout(res,0)); } }
+    }
+    ui.set('Création du fichier…',N/(N+1),`${N} opération(s)`); await yieldToBrowser();
     const snap={format:'extracterre-session',kind:'observatoire',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
     downloadBlob(new Blob([JSON.stringify(snap)],{type:'application/json'}),`ExtracTerre_observatoire_${new Date().toISOString().slice(0,10)}.json`);
     const withS=operations.filter(o=>Object.keys(o.searches).length).length;
     const noText=operations.filter(o=>!Object.keys(o.searches).length&&o.documents.some(d=>d.status==='ready')).length, noDoc=operations.filter(o=>!o.documents.length).length;
     const why=[noText?`${noText} sans texte de document en mémoire (à réanalyser)`:'',noDoc?`${noDoc} sans document`:''].filter(Boolean).join(' · ');
+    ui.done('Export de l’observatoire terminé',`${withS} opération(s) avec recherches sur ${operations.length}`);
     toast(`Observatoire exporté : ${withS} opération(s) avec recherches sur ${operations.length}${why?` — sans recherche : ${why}`:''}. Chargez le fichier dans « Observatoire des recherches ».`,why?'warn':'success');
     setLocalSaveUi('Session restaurée',lastLocalSaveAt); scheduleWorkspaceCheckpoint('résultats de recherche',2000);
-  }catch(err){ console.warn(err); toast(`Export de l’observatoire impossible : ${err?.message||err}`,'error'); }
+  }catch(err){ ui.close(); console.warn(err); toast(`Export de l’observatoire impossible : ${err?.message||err}`,'error'); }
   finally{ observatoryExporting=false; if(btn) btn.disabled=false; }
 }
 
