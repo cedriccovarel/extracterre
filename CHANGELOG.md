@@ -1,3 +1,19 @@
+# v2.41.0 — Grille « Sécurité des logements » : règles vérifiées sur 647 opérations
+
+- **Règles coupées réparées** : l'éditeur coupait les expressions contenant une virgule (`{0,40}`). « Serrure 3 points »,
+  « Portail automatique du parking », « Accès parking depuis le hall à badge » ne trouvaient plus rien (faux négatifs).
+  Les grilles déjà enregistrées sont recollées automatiquement.
+- **Règles v2** (appliquées une fois à la grille enregistrée ; les termes ajoutés par l'utilisateur sont gardés) : terme et
+  contexte sur la même ligne ou à une ligne près, exclusions ciblées. Faux positifs supprimés : « locaux aveugles »
+  (électricité), « groupe non traversant » (RE2020), IK08 des luminaires, « 150 lux » des escaliers, « pas de sous-sol »,
+  « alimentation ascenseur », « Tli_sp = 0.442 », citations de normes, « A2P sans BP1 »…
+- **Éléments de chantier exclus** de tous les critères (ascenseur / monte-charge de chantier, Heras, base vie, provisoire).
+- **Éclairement** : hall 150 lux minimum, parking 50 lux minimum ; la valeur lue est celle liée au hall / au parking.
+- **Serrure 3 points** : lue aussi dans les CCTP de menuiseries (nom du document), hors portes-fenêtres, trappes, portes de service.
+- **Vitrage 44.2** : RDC ou effraction, ou CCTP de menuiseries extérieures (choix du 17/11/2026).
+- Bloc-porte « anti-effraction » ou « blindé », « anti-effraction niveau 1 », CR2/CR3 : équivalents du BP1 (avec A2P).
+- Moteur : le nom du document peut servir de contexte (`docContext`) ; une expression avec groupe donne la valeur lue.
+
 # v2.40.0 — L'observatoire des recherches passe dans TotalRecoll
 
 - Les boutons « Exporter l'observatoire des recherches » et « Observatoire des recherches » sont retirés de la barre de gauche.

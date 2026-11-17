@@ -9,7 +9,7 @@ import {SECURITY_GRID,runSearchGrid,searchCellValue,ASHTON_CHECKS,hasAshtonCheck
 import {CHECKS,evaluateCheck} from './ashton/measure.js';
 import {textDoc} from './test_fixtures_v2_3.mjs';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.40.0','version');
+eq(APP_VERSION,'2.41.0','version');
 
 // 1. Famille « Plan »
 eq(normalizeFamilyKey('plan'),'plan','famille plan reconnue');
@@ -61,8 +61,9 @@ r=runSearchGrid(SECURITY_GRID,[doc],{},{},chk('hall_vitrage','Oui'));
 eq(r.criteria.hall_vitrage.found,true,'hall vitré : Ashton conforme + 44.2 trouvé');
 r=runSearchGrid(SECURITY_GRID,[{...textDoc('d2','CCTP.pdf','CCTP','Hall : ensemble vitré'),status:'ready'}],{},{},chk('hall_vitrage','Oui'));
 eq([r.criteria.hall_vitrage.found,/44.2 non trouvé/.test(r.criteria.hall_vitrage.detail)],[false,true],'hall vitré sans 44.2 : à vérifier');
+// v2.41.0 — « Hall : ensemble vitré 44.2 » ne vaut plus pour les fenêtres du RDC : on vérifie seulement que le verdict Ashton est ignoré.
 r=runSearchGrid(SECURITY_GRID,[doc],{},{},{fen_442:{verdict:'Non'}});
-eq(r.criteria.fen_442.found,true,'réponse Ashton ignorée hors des 7 critères');
+eq(r.criteria.fen_442.found,runSearchGrid(SECURITY_GRID,[doc]).criteria.fen_442.found,'réponse Ashton ignorée hors des 7 critères');
 // 5. Sécurité du message : seul le critère ouvert depuis la ligne est accepté, réponse sauvegardée avec le projet
 eq(app.includes("m.type==='ashton:check'&&p&&mt.check&&m.criterion===mt.check.id"),true,'réponse acceptée seulement pour le critère ouvert');
 eq(fs.readFileSync('js/persistence.js','utf8').includes('planChecks:safeJsonClone(project.planChecks,{})'),true,'réponses Ashton sauvegardées');

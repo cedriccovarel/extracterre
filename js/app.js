@@ -2597,7 +2597,7 @@ function openAshtonCheck(id,g){ const p=activeProject(), c=g.criteria.find(x=>x.
   dlg.innerHTML=`<form method="dialog"><h3>${escapeHtml(c.label)}</h3><p class="srch-desc">Sur quel plan vérifier ce point ?</p>${plans.map(d=>`<button class="btn ${d.id===prev?'primary':'light'}" value="${d.id}">${escapeHtml(d.name)}</button>`).join('')}<button class="btn light" value="">Annuler</button></form>`;
   dlg.addEventListener('close',()=>{ const v=dlg.returnValue; dlg.remove(); if(v) openAshton(v,check); }); document.body.append(dlg); dlg.showModal(); }
 // v2.19.1 — critères qui acceptent le statut « Partiel ».
-const SRCH_PARTIAL_IDS=new Set(['hall_sas']);
+const SRCH_PARTIAL_IDS=new Set(['hall_sas','porte_a2p']); // v2.41.0 — bloc-porte : A2P + équivalent du BP1 = Partiel
 function renderSearches(wrap=$('#summaryView')){
   if(!wrap) return; const p=activeProject(); const gs=loadGrids(); const g=activeGrid(gs);
   const ov=(p.searchOverrides||{})[g.id]||{}; const r=runSearchGrid(g,p.docs||[],ov,p.planTables,p.planChecks,p.result);

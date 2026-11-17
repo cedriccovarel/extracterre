@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {SECURITY_GRID,runSearchGrid,searchCellValue,normalizeGrid} from './js/recherches.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.40.0','version');
+eq(APP_VERSION,'2.41.0','version');
 const doc=text=>({id:'d1',name:'CCTP fictif.pdf',status:'ready',read:{pages:[{page:3,text}]}});
 const run=(text,ov={})=>runSearchGrid(SECURITY_GRID,[doc(text)],ov);
 const crit=SECURITY_GRID.criteria.find(c=>c.id==='hall_sas');
@@ -20,7 +20,7 @@ const SAS='Hall d\'entrée\nSas d\'entrée équipé d\'un lecteur Vigik\net d\'u
 eq(run(SAS).themes['Halls d’entrée'].found<run(SAS+'\nPlatine anti-vandale IK08').themes['Halls d’entrée'].found,true,'thème');
 // Grille enregistrée avant v2.19.0 : la règle est rappelée.
 eq(/Partiel/.test(normalizeGrid({...SECURITY_GRID,criteria:SECURITY_GRID.criteria.map(c=>c.id==='hall_sas'?{...c,description:''}:c)}).criteria.find(c=>c.id==='hall_sas').description),true,'migration');
-const app=readFileSync('js/app.js','utf8'); eq(/SRCH_PARTIAL_IDS=new Set\(\['hall_sas'\]\)/.test(app)&&/partial:'◐'/.test(app),true,'interface');
+const app=readFileSync('js/app.js','utf8'); eq(/SRCH_PARTIAL_IDS=new Set\(\['hall_sas','porte_a2p'\]\)/.test(app)&&/partial:'◐'/.test(app),true,'interface');
 // Observatoire des recherches : flux sans citations, dernier résultat gardé par projet, bilan à l'ouverture.
 eq(/function feedSearch\(r\)/.test(app)&&!/function feedSearch\(r\)[^\n]*evidence/.test(app),true,'flux sans citations');
 eq(/searchCache/.test(app)&&/searchCache:safeJsonClone\(project\.searchCache/.test(readFileSync('js/persistence.js','utf8')),true,'résultats gardés et sauvegardés');

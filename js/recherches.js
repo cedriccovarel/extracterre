@@ -22,7 +22,19 @@ function srch_cellNumbers(line,unit){
   return out;
 }
 const srch_uidS=()=>`c${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`;
-const srch_list=v=>(Array.isArray(v)?v:String(v??'').split(/[,;\n]/)).map(s=>String(s??'').trim()).filter(Boolean).slice(0,60);
+// v2.40.1 — l'éditeur affiche les termes séparés par « , » : une virgule à l'intérieur d'une expression (« re:serrure[^\n]{0,40}3 points »)
+// coupait la règle en deux morceaux qui ne trouvaient plus rien (faux négatifs : portes 3 points, portail de parking…).
+// Découpe hors accolades / crochets / parenthèses, et recollage des règles déjà coupées dans les grilles enregistrées.
+const srch_open=t=>{ let d=0; for(const ch of t){ if('{[('.includes(ch)) d++; else if('}])'.includes(ch)) d--; } return d; };
+function srch_splitTerms(str){ const out=[]; let cur='', d=0;
+  for(const ch of String(str??'')){ if('{[('.includes(ch)) d++; else if('}])'.includes(ch)) d=Math.max(0,d-1);
+    if(d===0&&/[,;\n]/.test(ch)){ out.push(cur); cur=''; } else cur+=ch; }
+  out.push(cur); return out; }
+function srch_rejoin(items){ const out=[]; let cur=null;
+  for(const raw of items){ const t=String(raw??'').trim(); if(cur!==null){ cur+=','+t; if(srch_open(cur)<=0){ out.push(cur); cur=null; } continue; }
+    if(/^re:/i.test(t)&&srch_open(t)>0) cur=t; else out.push(t); }
+  if(cur!==null) out.push(cur); return out; }
+const srch_list=v=>[...new Set(srch_rejoin(Array.isArray(v)?v:srch_splitTerms(v)).map(s=>String(s??'').trim()).filter(Boolean))].slice(0,60);
 const srch_normS=s=>normLower(s).replace(/[’'`]/g,' ');
 const srch_numOrNull=v=>{ const n=typeof v==='number'?v:parseFrNumber(String(v??'')); return Number.isFinite(n)?n:null; };
 
@@ -48,16 +60,58 @@ export function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,docContext:c?.docContext===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
-  if(g.id==='securite-logements') srch_migrateSecurity(criteria);
-  return {id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
+  let rulesVersion=Math.max(0,Math.round(srch_numOrNull(g.rulesVersion)??0));
+  if(g.id==='securite-logements'){ srch_migrateSecurity(criteria); if(rulesVersion<2){ srch_securityV2(criteria); rulesVersion=2; } }
+  return {rulesVersion,id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
     docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria,cctpLots:srch_list(g.cctpLots)};
 }
 
 // v2.14.0 — grille Sécurité déjà enregistrée : « A2P » ou « BP1 » seuls passent en indices insuffisants, les clôtures et
 // barrières de chantier sont écartées ; les autres termes saisis par l'utilisateur sont gardés.
 const SRCH_WEAK_DOOR=['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'], SRCH_SITE_FENCE=['chantier','barriere','barrieres','heras','palissade'], SRCH_HALL_THROUGH=['hall traversant','halls traversants'];
+// v2.41.0 — grille Sécurité, règles v2 (vérifiées sur 647 opérations réelles) : le terme et son contexte sur la même ligne (ou à
+// une ligne près) au lieu de 4 à 8 lignes autour, et exclusions ciblées. Faux positifs relevés avec les règles v1 : « locaux
+// aveugles » (interrupteurs lumineux), « groupe non traversant » (RE2020), IK08 des luminaires, « 150 lux » des escaliers,
+// « portail provisoire » de chantier, « Tli_sp = 0.442 », « pas de sous-sol », « alimentation ascenseur »…
+// Appliquées une fois aux grilles enregistrées (rulesVersion < 2) ; une règle modifiée ensuite par l'utilisateur est gardée.
+const SEC_44='re:(?<![\\d.,/])44[./]2(?![\\d])', SEC_RDC=['rez de chaussee','re:\\brdch?\\b','re:\\bR\\s?\\+\\s?0\\b','effraction','accessibles? depuis l exterieur'];
+const SEC_ACCESS='(?:vigik|badges?|intratone|digicode|clavier|code d acces|controle d acces|telecommandes?|bips?|emetteurs?|platine|interphon\\w*|visiophon\\w*|videophon\\w*|ventouse|gache electrique|lecteur)';
+// Bloc-porte BP1 « ou équivalent » : BP1/2/3, bloc-porte anti-effraction ou blindé, anti-effraction niveau 1, classe CR2/CR3 (EN 1627).
+const SEC_BP_EQ='re:\\bbp\\s?[123]\\b|blocs?[- ]?portes?[^\\n]{0,60}(?:anti[- ]?effraction|blinde)|anti[- ]?effraction (?:de )?(?:niveau|classe) [123]|\\bcr\\s?[23]\\b';
+export const SECURITY_RULES_V2={
+  porte_a2p:{keywords:['re:\\ba2p\\s*(?:bp\\s?[123]|\\*|[123]\\s*etoile)','re:\\bbp\\s?[123]\\b.{0,40}\\ba2p\\b','re:blocs?[- ]?portes?[^\\n]{0,60}(?:anti[- ]?effraction|blinde)'],allOf:['re:\\ba2p\\b','re:\\bbp\\s?[123]\\b'],context:['porte','portes','bloc porte','blocs portes','serrure','serrures'],exclude:['re:sans\\s+bp','classement croissant','afin d obtenir','re:\\bnf\\s?p\\s?\\d','norme','normes'],window:8},
+  fen_volets:{keywords:['anti soulevement','anti relevage','anti remontee','frein anti retour','re:verrou\\w* retardateur','re:volets?[^\\n]{0,60}retardateur d effraction','re:systeme (?:automatique )?de blocage[^\\n]{0,40}volets?','re:volets?[^\\n]{0,40}systeme (?:automatique )?de blocage','re:verrou\\w*\\s+(?:automatique|anti)','re:verrouillage automatique (?:du tablier|de la lame)','blocage du tablier'],context:['volet','tablier','re:lames? finales?','re:\\bvr\\b','rez de chaussee','re:\\brdch?\\b'],exclude:['baignoire','baignoires','receveur','douche','porte de garage','portail','gache','gaches'],window:3},
+  // Choix utilisateur (17/11/2026, option b) : un 44.2 dans un CCTP de menuiseries extérieures compte, même sans « RDC ».
+  fen_442:{docContext:true,keywords:[SEC_44,'re:\\bsp\\s?10\\b','retardateur d effraction','re:\\bp[45]a\\b'],context:[...SEC_RDC,'re:menuiseries? exterieures?','re:\\bm(?:enuiseries?)?\\.?\\s?ext\\b','re:\\bmext\\b'],exclude:['garde corps','garde-corps','re:w/m','re:tli','re:\\buw\\b','hall','halls','re:\\bsas\\b'],window:3},
+  fen_barreaux:{keywords:['grille de defense','grilles de defense','grille anti effraction','barreaudage de defense','barreaux de defense','re:barreau\\w*[^\\n]{0,40}(?:fenetres?|baies?|chassis)\\b','re:(?:fenetres?|baies?|chassis)\\b[^\\n]{0,40}barreau','re:barreau\\w*[^\\n]{0,60}(?:pose )?en tableau'],context:[],exclude:['garde corps','garde-corps','remplissage','vides entre','cantonnement','base vie','convecteur','deperdition','cloture','portail','portillon','lisse','main courante','tablier'],window:2},
+  porte_3pts:{keywords:['re:serrures?\\b[^\\n]{0,60}\\b(?:3|trois) points','re:\\b(?:3|trois) points\\b[^\\n]{0,30}(?:a |à )?p[eê]nes?','re:serrures?\\b[^\\n]{0,20}multi[- ]?points?','re:cr[eé]mone[^\\n]{0,15}3\\s*points[^\\n]{0,40}a2p'],
+    context:['porte palier','porte paliere','portes palieres','bloc porte palier','blocs portes paliers','porte d entree','portes d entree','porte de logement','portes de logement','porte palière','menuiserie','menuiseries','bloc porte','blocs portes'],
+    exclude:['compression','fenetre','fenetres','porte fenetre','porte-fenetre','portes fenetres','chassis','trappe','trappes','antipanique','anti panique','portillon','portail','placard','placards','gaine','gaines','coffret','boite aux lettres','re:points? de fixation','local technique','locaux techniques','porte de service','portes de service','urgence','re:\\bp\\s?26\\b','re:\\bnf\\s?p\\b','norme','normes','dtu'],
+    excludeNear:['trappe','trappes','trappe de visite','gaine','gaines','coffret','placard','placards'],window:8,docContext:true},
+  abords_portails:{keywords:[`re:(?:portail|portillon)s?\\b[^\\n]{0,80}${SEC_ACCESS}`,`re:${SEC_ACCESS}[^\\n]{0,80}(?:portail|portillon)`,'re:(?:portail|portillon)s?\\b[^\\n]{0,40}(?:motoris|automati(?:s|que))','re:(?:moniteur|poste interieur)[^\\n]{0,60}(?:portail|portillon)'],context:[],exclude:['provisoire','chantier','non prevu','sans objet','re:\\bpas de\\b','re:\\bnf\\s?p\\s?\\d','norme','normes'],window:0},
+  abords_cloture:{exclude:['chantier','barriere','barrieres','heras','palissade','provisoire','provisoires','fdes','donnee environnementale'],excludeNear:['chantier','barriere','barrieres','heras','palissade','provisoire']},
+  abords_acces_unique:{keywords:['re:(?:acces|entree) (?:unique|commun)e?[^\\n]{0,60}(?:vehicules?|pietons?|residence|site|parcelle|operation|ilot)','re:(?:un |le )?seul (?:point d )?acces[^\\n]{0,60}(?:vehicules?|pietons?|residence|site|parcelle|ilot)'],context:[],exclude:['provisoire','chantier','vmc','balcon','piece de vie','sejour','allumage','trappe','face d acces','handicap'],window:0},
+  abords_observables:{keywords:['surveillance naturelle','vue depuis les logements','visibles depuis les logements','re:observables? depuis (?:les |un )?logements?'],context:[],exclude:[],window:0},
+  abords_ombre:{keywords:['zone d ombre','zones d ombre'],context:['exterieur','exterieurs','exterieure','exterieures','abords','espaces verts','parvis','voirie','jardin','candelabre','candelabres','borne','bornes','eclairage public'],exclude:['escalier','escaliers','marche','marches','parking','sous sol','circulation interieure','circulations interieures','palier','paliers','plafond'],window:2},
+  abords_cheminement:{keywords:['re:cheminements?\\b[^\\n]{0,80}\\b(?:largeur|large)\\b','re:\\b(?:largeur|large)\\b[^\\n]{0,40}cheminement','re:allees? pietonnes?[^\\n]{0,60}\\b(?:largeur|large)\\b'],context:[],exclude:['toiture','balise','balises','eclairage','technique'],window:0},
+  abords_aveugles:{keywords:[],context:[],exclude:[],window:0}, // « locaux aveugles » des CCTP = pièces sans fenêtre (électricité) : jamais une preuve ; outil Ashton seul
+  hall_traversant:{keywords:['re:\\bhalls?\\b[^\\n]{0,60}non traversants?','re:non traversants?[^\\n]{0,30}\\bhalls?\\b'],weak:['re:\\bhalls?\\b[^\\n]{0,40}(?<!non )\\btraversants?\\b'],context:[],exclude:['groupe','zone d usage','logement','logements'],window:0},
+  hall_vitrage:{keywords:[SEC_44,'stadip','retardateur d effraction'],context:['re:\\bhalls?\\b','ensemble de hall','ensembles de hall','porte d entree d immeuble','entree principale','sas d entree'],exclude:['re:w/m','refend','garde corps','garde-corps','debit'],window:2,docContext:true},
+  hall_sas:{keywords:['re:\\bsas (?:d entree|d acces au hall|du hall|de hall|hall)\\b','re:\\bsas\\b[^\\n]{0,40}\\bhalls?\\b','re:\\bhalls?\\b[^\\n]{0,40}\\bsas\\b'],context:['vigik','badge','badges','visiophone','videophone','interphone','platine','controle d acces','ventouse','gache electrique','lecteur'],exclude:['parking','parkings','sous sol','sous-sol','cave','caves','desenfumage','depression','surpression','re:\\bpas de\\b','non prevu','velo','velos','ordures','cabinet','capital','siret','sarl','societe'],window:3,docContext:true},
+  hall_ik08:{keywords:['re:\\bik\\s?(?:0?8|09|10)\\b'],context:['platine','plaque de rue','plaque d appel','visiophone','videophone','interphone','portier','poste exterieur','poste de rue'],exclude:['eclairage','luminaire','luminaires','hublot','hublots','re:\\bled\\b','re:\\d\\s?lm\\b','bouton poussoir','detecteur','applique','appliques','prise','prises','projecteur','borne','bornes'],window:1},
+  hall_eclairage:{keywords:['re:\\b(?:halls?|sas d entree)\\b[^\\n\\d]{0,45}(\\d+(?:[.,]\\d+)?)(?:\\s*(?:a|et|-)\\s*\\d+)?\\s*lux','re:(\\d+(?:[.,]\\d+)?)(?:\\s*(?:a|et|-)\\s*\\d+)?\\s*lux[^\\n\\d]{0,40}\\b(?:halls?|sas d entree)\\b'],context:[],exclude:['crepusculaire','seuil','reglable','luminosite','au droit','portillon','re:acces (?:aux|au|des) halls?','exterieur','exterieure','exterieurs','abords','parvis'],window:0},
+  parking_present:{keywords:['parking en sous sol','parkings en sous sol','parc de stationnement souterrain','re:parkings?\\b[^\\n]{0,30}(?:en |au |du )?(?:sous[- ]sols?|souterrains?|enterres?)','re:sous[- ]sols?\\b[^\\n]{0,40}\\b(?:parkings?|stationnement|places de stationnement|boxes?)\\b','re:\\b(?:parkings?|stationnement)\\b[^\\n]{0,40}\\bsous[- ]sols?\\b','re:parkings? (?:au |en )?(?:niveau )?(?:r|n)\\s?-\\s?[12]\\b'],context:[],exclude:['re:pas de (?:niveau de )?sous','ne prevoit pas','sans sous','aucun sous','voisin','voisines','voisins','existants'],window:0},
+  parking_portail:{keywords:['re:porte (?:collective )?(?:basculante|sectionnelle|de garage)[^\\n]{0,30}(?:motoris|automat|electri)','re:portail[^\\n]{0,40}(?:parking|sous[- ]sol|garage)','re:(?:parking|sous[- ]sol|garage)s?\\b[^\\n]{0,40}(?:portail|porte (?:basculante|sectionnelle))'],
+    context:['telecommande','telecommandes','emetteur','emetteurs','badge','badges','vigik','intratone','controle d acces','cle','automatique','motorise','motorisee','videophone','visiophone','digicode','clavier','bip','bips'],exclude:['non prevu','sans objet','hors lot','re:\\bpas de\\b','re::\\s*so\\b','re:\\bnf\\s?p\\s?\\d','norme','normes'],window:4},
+  parking_pieton:{keywords:['re:(?:porte pietonne|portillon|porte pieton)[^\\n]{0,80}(?:parking|sous[- ]sol|garage|stationnement)','re:(?:parking|sous[- ]sol|garage|stationnement)[^\\n]{0,80}(?:porte pietonne|portillon|porte pieton)'],context:['vigik','badge','badges','controle d acces','ventouse','gache','lecteur','telecommande','cle','digicode'],exclude:['jardin','cloture','clotures','velo','velos'],window:2},
+  parking_hall_badge:{context:['vigik','badge','badges','controle d acces','gache','ventouse','lecteur'],exclude:['alimentation','motoris','vehicule','vehicules','velo','velos','local','locaux','cave','caves','basculante','sectionnelle','portail','garage'],window:1},
+  parking_ascenseur:{keywords:['re:ascenseurs?\\b[^\\n]{0,80}(?:sous[- ]sols?|parkings?|niveau -|\\br\\s?-\\s?[12]\\b)','re:(?:sous[- ]sols?|parkings?)[^\\n]{0,80}ascenseurs?'],context:['vigik','badge','badges','cle','controle d acces','lecteur','rfid'],exclude:['alimentation','comptage','telephon','vmc','protection depart','coffret','pompier','pompiers'],window:1},
+  parking_eclairage:{keywords:['re:\\b(?:parkings?|parcs? de stationnement|stationnement|sous[- ]sols?)\\b[^\\n\\d]{0,45}(\\d+(?:[.,]\\d+)?)(?:\\s*(?:a|et|-)\\s*\\d+)?\\s*lux','re:(\\d+(?:[.,]\\d+)?)(?:\\s*(?:a|et|-)\\s*\\d+)?\\s*lux[^\\n\\d]{0,40}\\b(?:parkings?|parcs? de stationnement|stationnement|sous[- ]sols?)\\b'],context:[],exclude:['crepusculaire','seuil','reglable','luminosite','exterieur','exterieurs','voirie','espaces verts'],window:0},
+  etage_escaliers:{keywords:[`re:escaliers?\\b[^\\n]{0,80}${SEC_ACCESS}`,`re:${SEC_ACCESS}[^\\n]{0,80}escaliers?\\b`],context:[],exclude:['re:\\bdad\\b','tarif','declencheur','interrupteur','eclairage','alimentation','sas d entree','sous sol','sous-sol','parking','desenfumage'],window:0},
+  etage_ascenseur:{keywords:['re:ascenseurs?\\b[^\\n]{0,80}(?:badges?|vigik|controle d acces|lecteur|rfid)','re:(?:badges?|vigik|controle d acces|lecteur|rfid)[^\\n]{0,80}(?:ascenseurs?|cabines?)\\b'],context:[],exclude:['alimentation','comptage','telephon','vmc','protection depart','coffret','pompier','pompiers','lift','location','sous sol','sous-sol','parking'],window:0}
+};
 function srch_migrateSecurity(criteria){
   const door=criteria.find(c=>c.id==='porte_a2p'); if(door){ door.keywords=door.keywords.filter(k=>!SRCH_WEAK_DOOR.includes(k)); for(const w of SRCH_WEAK_DOOR) if(!door.weak.includes(w)) door.weak.push(w);
     const both='re:\\bbp\\s?[123]\\b.{0,40}\\ba2p\\b'; if(!door.keywords.includes(both)) door.keywords.push(both);
@@ -68,6 +122,12 @@ function srch_migrateSecurity(criteria){
   const sas=criteria.find(c=>c.id==='hall_sas'); if(sas&&!sas.description) sas.description='Partiel : Vigik (ou badge) + visiophone, mais sans platine IK08.';
   const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
 }
+// Éléments de chantier (ascenseur ou monte-charge de chantier, barrières Heras, base vie, clôtures provisoires) : jamais une preuve.
+export const SEC_SITE_EXCLUDE=['chantier','chantiers','base vie','cantonnement','cantonnements','heras','provisoire','provisoires','re:monte[- ]charges?'];
+// Termes ajoutés par l'utilisateur (absents de la grille d'origine) : gardés en plus des règles v2.
+function srch_securityV2(criteria){ for(const c of criteria){ const r=SECURITY_RULES_V2[c.id], v1=SECURITY_GRID_V1.criteria.find(x=>x.id===c.id)||{};
+    if(r) for(const [k,v] of Object.entries(r)){ if(!Array.isArray(v)){ c[k]=v; continue; } const orig=new Set(srch_list(v1[k]||[])), mine=(c[k]||[]).filter(t=>!orig.has(t)&&!v.includes(t)); c[k]=[...v,...mine]; }
+  for(const w of SEC_SITE_EXCLUDE) if(!c.exclude.includes(w)) c.exclude.push(w); } }
 // Terme → expression : « re:… » = expression régulière ; sinon texte comparé sans accents ni casse, espaces et tirets souples.
 const srch_termCache=new Map();
 export function termRegex(term){
@@ -80,6 +140,7 @@ export function termRegex(term){
   srch_termCache.set(term,re); return re;
 }
 const srch_anyTerm=(terms,text)=>terms.some(t=>termRegex(t)?.test(text));
+function srch_captured(terms,text){ for(const t of terms){ if(!/^re:/i.test(t)) continue; const m=termRegex(t)?.exec(text); if(m&&m[1]!=null){ const n=parseFrNumber(m[1]); if(n!==null) return [n]; } } return []; }
 const srch_NUM_RE=/(?:^|[^\d,.])(\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*([a-z²³%€]{0,4}\d?)/gi;
 function srch_numbersInLine(line,unit){
   const out=[]; const u=normLower(unit).replace(/\s+/g,''); const units=u==='m2'||u==='m²'?['m2','m²','m']:u?[u]:null;
@@ -133,18 +194,21 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
       const ok=!bounded||(Number.isFinite(n)&&(c.min===null||n>=c.min)&&(c.max===null||n<=c.max));
       ev.push({doc:o?.fileName||'Valeur retenue (sans document)',docId:o?.docId||'',page:o?.page??'',line:`${row.building} : ${srch_fmt(v)}${c.unit?` ${c.unit}`:''}`,context:String(o?.excerpt||o?.provenanceNote||'').trim().slice(0,600),values:[v],ok,building:row.building,fromField:true}); values.push(v); }
     else if(c.keywords.length||c.weak.length) for(const {d,lines} of corpus){ let perDoc=0;
+      // v2.41.0 — « docContext » : le nom du document vaut contexte (« CCTP ENSEMBLES DE HALLS.pdf »).
+      const docHit=c.docContext&&c.context.length&&srch_anyTerm(c.context,srch_normS(d.name));
       for(let k=0;k<lines.length&&perDoc<cap;k++){ const L=lines[k];
         // « weak » : terme insuffisant à lui seul (« A2P » sans BP ni étoile) — trouvé, il compte comme indice contraire.
         const strong=srch_anyTerm(c.keywords,L.t), weak=!strong&&srch_anyTerm(c.weak,L.t); if((!strong&&!weak)||srch_anyTerm(c.exclude,L.t)) continue;
         const near=lines.slice(Math.max(0,k-c.window),k+c.window+1).filter(x=>x.page===L.page);
         // « excludeNear » : la ligne précédente ou suivante (« Barrière Heras » au-dessus d'une hauteur) écarte la ligne.
         if(c.excludeNear.length&&[lines[k-1],lines[k+1]].some(x=>x&&x.page===L.page&&srch_anyTerm(c.excludeNear,x.t))) continue;
-        if(c.context.length&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
+        if(c.context.length&&!docHit&&!near.some(x=>srch_anyTerm(c.context,x.t))) continue;
         let nums=[],ok=!weak;
         // v2.16.4 — « allOf » : tous ces termes dans le même bloc (A2P et BP1) ; l'un sans l'autre = indice contraire.
         if(c.allOf.length) ok=c.allOf.every(t=>near.some(x=>srch_anyTerm([t],x.t)));
         if(c.kind==='stats'){ const n=srch_cellNumbers(L.t,c.unit).find(x=>(c.min===null||x>=c.min)&&(c.max===null||x<=c.max)); if(n===undefined) continue; nums=[n]; values.push(n); }
-        if(c.kind==='number'){ nums=srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
+        // v2.41.0 — expression avec groupe (« hall … (\d+) lux ») : seule la valeur capturée compte, pas celle des escaliers sur la même ligne.
+        if(c.kind==='number'){ const capN=srch_captured(c.keywords,L.t); nums=capN.length?capN:srch_numbersInLine(L.t,c.unit); if(!nums.length&&!/\d/.test(L.t)&&lines[k+1]?.page===L.page) nums=srch_numbersInLine(lines[k+1].t,c.unit); /* valeur sur la ligne suivante seulement si le libellé n'a aucun nombre */
           if(!nums.length) continue; values.push(...nums); ok=!weak&&nums.some(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)); }
         ev.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:near.map(x=>x.raw.trim()).join(' / ').slice(0,600),values:nums,ok}); perDoc++; } }
     const manual=overrides?.[c.id];
@@ -168,6 +232,14 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
     else if(!sas.manual&&sas.found){
       const t=normLower(sas.evidence.filter(e=>e.ok).map(e=>`${e.line} ${e.context}`).join(' '));
       if(/\bvigik|\bbadges?\b/.test(t)&&/\bvisiophon|\bvideophon/.test(t)&&!criteria.hall_ik08?.found){ sas.found=false; sas.partial=true; sas.detail='Vigik + visiophone, platine IK08 non trouvée'; } } }
+  // v2.41.0 — bloc-porte : « Oui » seulement pour A2P + BP1 (ou BP2 / BP3, classes supérieures). A2P + équivalent (bloc-porte
+  // anti-effraction ou blindé, anti-effraction niveau 1, CR2 / CR3) = « Partiel » ; A2P seul, BP1 seul, « sans BP1 » ou rien = faux.
+  const door=criteria.porte_a2p;
+  if(door){
+    if(door.manual==='Partiel'){ door.partial=true; door.found=false; door.contrary=false; }
+    else if(!door.manual&&!door.found){ const eqRe=termRegex(SEC_BP_EQ), a2p=/\ba2p\b/;
+      const eq=door.evidence.find(e=>{ const t=srch_normS(`${e.line} ${e.context}`); return a2p.test(t)&&eqRe.test(t)&&!/sans\s+bp/.test(t); });
+      if(eq){ door.partial=true; door.contrary=false; door.detail='A2P + équivalent du BP1, BP1 non mentionné'; } } }
   const themes={};
   for(const t of g.themes){
     const own=g.criteria.filter(c=>c.theme===t.name&&c.id!==t.applicableIf);
@@ -208,7 +280,7 @@ export function gridPrompt(description){
 export function parseLlmObject(text){ const s=String(text||'').replace(/```json|```/g,''); const a=s.indexOf('{'), b=s.lastIndexOf('}'); if(a<0||b<=a) throw new Error('Réponse IA non JSON.'); return JSON.parse(s.slice(a,b+1)); }
 
 // —— Grille fournie : sécurisation des logements (étude de l'existant du marché). Termes « re: » pour les écritures variables.
-export const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurité des logements',docFilter:'',
+const SECURITY_GRID_V1={id:'securite-logements',name:'Sécurité des logements',docFilter:'',
   description:'Sécurisation des logements contre les intrusions, des abords, des halls, des parkings en sous-sol et des accès aux étages : indices relevés dans les CCTP (étude de l’existant).',
   themes:[{name:'Fenêtres en rez-de-chaussée',min:1},{name:'Portes d’entrée des logements',min:1},{name:'Abords extérieurs',min:5,required:['abords_portails']},
     {name:'Halls d’entrée',min:2},{name:'Parkings en sous-sol',min:3,required:['parking_portail'],applicableIf:'parking_present'},{name:'Accès aux étages',min:2}],
@@ -242,4 +314,5 @@ export const SECURITY_GRID=normalizeGrid({id:'securite-logements',name:'Sécurit
     {id:'parking_eclairage',theme:'Parkings en sous-sol',label:'Éclairage du parking d’au moins 50 lux',kind:'number',unit:'lux',min:50,keywords:['lux'],context:['parking','sous sol','stationnement'],exclude:['cheminement','voirie','exterieur','espaces verts'],window:3},
     {id:'etage_escaliers',theme:'Accès aux étages',label:'Portes d’escaliers sécurisées (badge ou autre)',keywords:['escalier'],context:['badge','vigik','controle d acces','gache electrique','ventouse'],window:3},
     {id:'etage_ascenseur',theme:'Accès aux étages',label:'Accès aux ascenseurs sécurisé',keywords:['ascenseur'],context:['badge','vigik','controle d acces','lecteur'],window:3}
-  ]});
+  ]};
+export const SECURITY_GRID=normalizeGrid(SECURITY_GRID_V1);
