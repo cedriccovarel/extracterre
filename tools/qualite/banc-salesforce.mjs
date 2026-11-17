@@ -55,7 +55,17 @@ const relCat={}, relByField={}, calMethods={};
 for(const c of contracts){
   // --relecture-legere : les lecteurs actuels sont relancés sur le texte conservé (sans relire le PDF ni refaire l'OCR).
   const docs=byC[c].map(f=>{ const d={...JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(W,f.resultFile))).toString('utf8')).doc,status:'ready',file:null}; if(args['relecture-legere']&&d.read&&(!args['relecture-types']||String(args['relecture-types']).split(',').includes(d.type))) d.cachedOccurrences=null; return d; });
-  let res; try{ res=analyzeDocuments(docs,DEFAULT_SOURCE_RULES,''); }catch(e){ console.warn(`  ⚠ ${c} : ${e.message}`); continue; }
+  // v2.44.3 — les documents relus depuis l'import n'ont pas d'identifiant : on reprend celui de leurs lectures (règle B « indice »).
+  for(const d of docs) if(!d.id) d.id=(d.cachedOccurrences||[]).find(o=>o.docId)?.docId||d.name;
+  // v2.44.3 — --ancrage : comme dans l'appli, le Bbio et le Cep Salesforce de chaque bâtiment sont fournis (valeurs définitives,
+  // bâtiments des documents rapprochés des bâtiments Salesforce) ; Bbio et Cep sont alors exclus du score (justes par construction).
+  let overrides={}, extra=[];
+  if(args.ancrage){ const v0=sf.get(c).vals, com=v0.find(v=>!v.building)?.values||{}, nm=v0.filter(v=>v.building);
+    const sfN=nm.map(v=>canonicalBuilding(v.building)), detected=[...new Set(docs.flatMap(d=>[...(d.buildings?.names||[]),...(d.cachedOccurrences||[]).map(o=>o.building).filter(Boolean)]))];
+    if(sfN.length){ const mp=sfPerimeterMap(sfN,detected).map; for(const [k,t] of Object.entries(mp)) if(t&&k!=='Bâtiment unique') overrides[k]=t; }
+    for(const b of (nm.length?nm:[{building:'',values:com}])) for(const f of ['bbio','cep']){ const v={...com,...b.values}[f]; if(v===undefined||v==='') continue;
+      extra.push({field:f,value:v,building:b.building?canonicalBuilding(b.building):'Bâtiment unique',docId:'sf-ancrage',fileName:'Salesforce',docType:'Entrée manuelle',userValidated:true,manualDefinitive:true,page:'',confidence:.995,method:'manual:free-paste',unit:''}); } }
+  let res; try{ res=analyzeDocuments(docs,DEFAULT_SOURCE_RULES,'',overrides,extra); }catch(e){ console.warn(`  ⚠ ${c} : ${e.message}`); continue; }
   ops++; const comps=[];
   const {vals,status}=sf.get(c);
   const common=vals.find(v=>!v.building)?.values||{}; const named=vals.filter(v=>v.building);
@@ -66,6 +76,7 @@ for(const c of contracts){
     const mine=named.length?rows.filter(r=>map[r.building]===b.name):rows;
     for(const [field,sv] of Object.entries(b.values)){
       if(!FIELD_MAP[field]||['building','contract_number','internal_code','evaluation_status','address','postcode','city','department'].includes(field)) continue;
+      if(args.ancrage&&['bbio','cep'].includes(field)) continue;
       const cands=mine.filter(r=>r[field]!==undefined&&r[field]!==null&&r[field]!=='');
       let result='manquant', hit=null;
       if(cands.length){ const res2=cands.map(r=>[r,compareToReference(field,r[field],sv)]); const best=res2.find(x=>x[1]==='juste')||res2.find(x=>x[1]==='faux')||res2[0]; hit=best[0]; result=best[1]; }
