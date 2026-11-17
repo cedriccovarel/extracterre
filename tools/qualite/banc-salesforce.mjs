@@ -55,7 +55,7 @@ const only=args.contrats?new Set(String(args.contrats).split(',').map(s=>s.trim(
 const contracts=Object.keys(byC).filter(c=>sf.has(c)&&(!only||only.has(c))).sort();
 console.log(`Export Salesforce : ${sf.size} fiche(s) avec données techniques · import massif : ${Object.keys(byC).length} opération(s) · communes : ${contracts.length}`);
 
-const PM={}; const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
+const DUMP=args['dump-candidats']?home(args['dump-candidats']):null; const PM={}; const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
 const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[]; const candObs=[]; const oracle={}, oracleTot={};
 const bump=(o,k,r)=>{ (o[k]=o[k]||T())[r]++; };
 // v2.36.9 — fiabilité Prestaterre (fiable / non fiable, par catégorie), voir sfReliability dans js/qualite.js.
@@ -100,6 +100,12 @@ for(const c of contracts){
           const key=`${d.method}|${d.fileName}|${String(d.value)}`; if(seenF.has(key)) continue; seenF.add(key);
           const rr=compareToReference(field,d.value,sv); if(rr==='incomparable') continue; candObs.push({c,key:`${d.method}|${field}`,result:rr}); } }
       // Potentiel : la bonne valeur est-elle parmi TOUTES les lectures des documents (retenues ou non) pour ce bâtiment ?
+      // v3.0.2 — --dump-candidats <fichier.jsonl> : toutes les lectures du bâtiment pour la donnée (apprentissage du classement / des sources).
+      if(DUMP){ const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']); const seenD=new Set(), cl=[];
+        for(const d of (res.detailed||[])){ if(d.field!==field||!(names.has(d.building)||names.has(d.originalBuilding))||/^(?:manual:|geocode:|derive:|coherence:)/.test(String(d.method||''))) continue;
+          const k=`${d.method}|${d.docId}|${String(d.value)}|${d.building}`; if(seenD.has(k)) continue; seenD.add(k);
+          cl.push({v:d.value,m:d.method||'',t:d.docType||'',st:d.status||'',tier:d.sourceTier||'',conf:d.confidence??null,doc:d.docId||'',b:d.building,g:d._globalCandidate?1:0,r:compareToReference(field,d.value,sv)}); }
+        fs.appendFileSync(DUMP,JSON.stringify({c,b:b.name,f:field,sv,res:result,hv:hit?hit[field]:null,hm:o?.method||'',ht:o?.docType||'',cands:cl})+'\n'); }
       let present=false, goodDiag='';
       if(result!=='juste'&&result!=='incomparable'){ const names=new Set([...mine.map(r=>r.building),'Bâtiment unique']);
         const pool=(res.detailed||[]).filter(d=>d.field===field&&(names.has(d.building)||names.has(d.originalBuilding)));
