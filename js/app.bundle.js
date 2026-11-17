@@ -11261,78 +11261,77 @@ function autoWidth(ws,max=42){ const range=XLSX.utils.decode_range(ws['!ref']||'
 function projectTagsText(p){ return (p?.projectTags||[]).map(t=>t?.label).filter(Boolean).join(' ; '); }
 function projectName(p,index){ return (p?.customTitle||p?.operationName||p?.result?.operation||p?.label||`Projet ${index+1}`).trim(); }
 
-function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
+// v2.39.1 — export par COLLECTEUR : chaque opération est ajoutée à son tour (add), ses lignes copiées dans les feuilles, puis
+// l'appli peut libérer son résultat avant la suivante. 647 opérations faisaient planter la page (tous les résultats en mémoire
+// + feuille « Occurrences » de plusieurs millions de lignes, au-delà de la limite Excel d'environ 1 million).
+const EXCEL_OCCURRENCES_MAX_PROJECTS=100;
+const cut=(v,n=300)=>{ const s=v==null?'':String(v); return s.length>n?s.slice(0,n)+'…':s; };
+function createExcelCollector(rules,{grids=[],identity=null,withOccurrences=true}={}){
   if(!globalThis.XLSX) throw new Error('SheetJS non chargé.');
+  const fields=FIELD_DEFS.filter(f=>!f.hidden); // DH (interne) remplacé par DH ZT / DH ZNT
+  const blank=v=>v===undefined||v===null||v===''||v==='non précisé';
+  const S={
+    data:[[...fields.map(f=>f.label),'Tags']], relData:[[...fields.map(f=>f.label)]],
+    tr:[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Fiabilité','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']],
+    oc:[['Projet','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Routage','Statut','Motif rejet','Méthode','Origine','Commentaire','Extrait']],
+    bg:[['Projet','Nom détecté','Bâtiment consolidé','Mode de regroupement']],
+    eco:[], det:[['Code interne','Nom opération','Type','Source','Lot / poste / aide','Catégorie','Porteur','Calcul','Montant (€)','Statut','Commentaire','Document','Page']], ecoAny:false,
+    conf:null, grids:(grids||[]).map(g=>({g:null,src:g,rows:[]})), cites:[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']],
+    n:0, firstName:'', docs:0, buildings:0, finals:0, alerts:0, ocRows:0 };
+  const cf=CONFORT_KEYS.filter(k=>FIELD_MAP[k]), ck=CONSTRUCTIVE_KEYS.filter(k=>FIELD_MAP[k]);
+  S.conf=[['Code interne','Nom opération','Contrat','Bâtiment','Système constructif','Système constructif — précision',...ck.map(k=>FIELD_MAP[k].label),...cf.map(k=>FIELD_MAP[k].label)]];
+  const OC_MAX=1000000;
+  return {
+    add(p){ if(!p?.result) return false; const idx=S.n++, r=p.result, pname=projectName(p,idx); if(!idx) S.firstName=pname;
+      S.docs+=r.documentsCount||0; S.buildings+=r.buildings?.length||0; S.finals+=r.finals?.length||0; S.alerts+=r.alerts?.length||0;
+      // Feuille principale : schéma métier strict (colonnes dans l'ordre de référence), puis « Tags ».
+      for(const row of r.rows){ S.data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); }
+      // Données économiques (v2.5.0).
+      const off=new Set(p.economicExcluded||[]); const e=analyzeEconomicData((p.docs||[]).filter(d=>!off.has(d.id)),r.operation||'',p.manualEconomics||{}); const rows=r.rows||[]; const first=k=>rows.map(x=>x[k]).find(x=>!blank(x));
+      const code=first('internal_code')??e.values.fin_operation_code??'', name=first('operation_name')??(p.operationName||r.operation||e.values.fin_operation_label||pname), contract=(identity?identity(p).contract:'')||'';
+      if(e.source||Object.keys(e.values).length) S.ecoAny=true;
+      S.eco.push([code,name,...ECONOMIC_FIELDS.map(f=>e.values[f.key]??'')]);
+      for(const l of e.costs) S.det.push([code,name,'Coût',l.source,l.label,COST_CATEGORIES.find(c=>c.id===l.category)?.label||l.category,'','',l.amount,'',l.comment||'',l.document||'',l.page??'']);
+      for(const a of e.aids) S.det.push([code,name,'Aide','',a.label,a.category,a.level,a.calc,a.amount,a.status,a.comment||'',a.document||'',a.page??'']);
+      // Fiabilité (v2.34.0) et traçabilité des valeurs retenues.
+      const rt=reliabilityTable(r);
+      for(const row of r.rows){ const m=rt[row.building]||{}; S.relData.push(fields.map(f=>f.key==='building'?(row.building??''):f.key==='contract_number'?(row.contract_number??''):f.key==='internal_code'?(row.internal_code??''):(m[f.key]?RELIABILITY[m[f.key]].short:''))); }
+      for(const o of r.finals) S.tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,RELIABILITY[rt[o.building]?.[o.field]]?.short||'',o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',cut(o.excerpt)]);
+      if(withOccurrences) for(const o of r.detailed||[]){ if(S.ocRows>=OC_MAX) break; S.ocRows++; S.oc.push([pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,o.fileName,o.docType,o.page,o.confidence,o.sourceTier,o.status,o.rejectionReason||'',o.method,o.origin||'Document',o.provenanceNote||'',cut(o.excerpt)]); }
+      for(const a of r.buildingAliases||[]) S.bg.push([pname,a.source,a.target,a.mode]);
+      // Confort d'été (v2.36.7) et grilles de recherche.
+      for(const row of r.rows){ const s=constructiveSystem(row); S.conf.push([code,name,contract,row.building??'',s.system,s.note,...ck.map(k=>row[k]??''),...cf.map(k=>row[k]??'')]); }
+      for(const G of S.grids){ const res=runSearchGrid(G.src,p.docs||[],p.searchOverrides?.[G.src.id]||{},p.planTables,p.planChecks,r); if(!G.g) G.g=res.grid; const g=G.g;
+        G.rows.push([code,name,contract,...g.themes.flatMap(t=>{ const s=res.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([k])=>res.criteria[c.id].stats?.[k]??''):[searchCellValue(c,res.criteria[c.id])])]);
+        for(const c of g.criteria) for(const ev of res.criteria[c.id].evidence) S.cites.push([code,name,contract,g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]); }
+      return true; },
+    write(){
+      if(!S.n) throw new Error('Aucun projet analysé à exporter.');
+      const wb=XLSX.utils.book_new(), used=new Set();
+      const put=(rows,name)=>{ const ws=aoaSheet(rows); autoWidth(ws); const b=String(name).replace(/[\\/?*[\]:]/g,' ').slice(0,31); let s=b,i=2; while(used.has(s)) s=`${b.slice(0,28)} ${i++}`; used.add(s); XLSX.utils.book_append_sheet(wb,ws,s); };
+      put(S.data,'Données par bâtiment'); S.data=null;
+      if(S.ecoAny){ put([['Code interne','Nom opération',...ECONOMIC_FIELDS.map(f=>f.label)],...S.eco],'Données économiques'); if(S.det.length>1) put(S.det,'Lignes financières'); }
+      put(S.relData,'Fiabilité par bâtiment'); put(S.tr,'Traçabilité');
+      if(withOccurrences) put(S.oc,'Occurrences');
+      put(S.bg,'Regroupement bâtiments'); put(S.conf,'Confort d’été');
+      for(const G of S.grids){ if(!G.g) continue; const g=G.g;
+        const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
+        put([head,...G.rows],g.name); }
+      if(S.cites.length>1) put(S.cites,'Recherches — citations');
+      const rr=[['Donnée','Sources principales','Sources secondaires','Sources interdites']];
+      for(const f of FIELD_DEFS){ const r=rules[f.key]; rr.push([f.label,(r?.main||[]).join(' ; '),(r?.secondary||[]).join(' ; '),(r?.forbidden||[]).join(' ; ')]); }
+      put(rr,'Règles sources');
+    const info=[['Clé','Valeur'],['Application','ExtracTerre'],['Version',APP_VERSION],['Date export',new Date().toLocaleString('fr-FR')],['Projets',S.n],['Documents',S.docs],['Bâtiments consolidés',S.buildings],['Valeurs finales',S.finals],['Seuil de confiance',`${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`],['Bibliothèque isolants',`${INSULATION_LIBRARY_VARIANT_COUNT} variantes produit/épaisseur/R, dont ${CORE_INSULATION_VARIANT_COUNT} dans les familles cœur demandées`],['Version bibliothèque isolants',INSULATION_LIBRARY_VERSION],['Règle bibliothèque','Valeurs documentaires directes prioritaires ; bibliothèque uniquement en secours avec provenance explicite'],['Alertes',S.alerts],['Regroupement bâtiments','Variantes évidentes fusionnées automatiquement ; rapprochements ambigus uniquement après validation manuelle'],['Principe','Extraction déterministe locale sans IA'],
+        ['Feuille Occurrences',withOccurrences?(S.ocRows>=OC_MAX?`Tronquée à ${OC_MAX} lignes (limite Excel)`:'Complète'):`Non incluse au-delà de ${EXCEL_OCCURRENCES_MAX_PROJECTS} opérations (valeurs retenues dans « Traçabilité »)`]];
+      put(info,'Informations');
+      const safe=(S.n===1?S.firstName:'Multi_projets').replace(/[\\/:*?"<>|]+/g,'_').slice(0,80); XLSX.writeFile(wb,`ExtracTerre_${safe}.xlsx`);
+    } };
+}
+function exportProjectsExcel(projects,rules,{grids=[],identity=null}={}){
   const usable=(projects||[]).filter(p=>p?.result);
   if(!usable.length) throw new Error('Aucun projet analysé à exporter.');
-  const wb=XLSX.utils.book_new();
-  const fields=FIELD_DEFS.filter(f=>!f.hidden); // DH (interne) remplacé par DH ZT / DH ZNT
-
-  // La feuille principale respecte strictement le schéma métier : 192 colonnes dans l'ordre de référence
-  // (les nouvelles colonnes sont toujours ajoutées à la fin), puis la colonne « Tags » du projet.
-  const data=[[...fields.map(f=>f.label),'Tags']];
-  usable.forEach((p,idx)=>{ const r=p.result, pname=projectName(p,idx); for(const row of r.rows){ data.push(fields.map(f=>{ if(f.key==='building') return row.building??''; if(f.key==='project') return row.project??pname; if(f.key==='operation') return row.operation??r.operation??pname; if(f.key==='operation_name') return row.operation_name??p.operationName??r.operation??''; return row[f.key]??''; }).concat([projectTagsText(p)])); } });
-  const ws1=aoaSheet(data); autoWidth(ws1); XLSX.utils.book_append_sheet(wb,ws1,'Données par bâtiment');
-
-
-  // v2.5.0 — 2e feuille : nomenclature économique (une ligne par opération), identifiant du projet en tête.
-  const blank=v=>v===undefined||v===null||v===''||v==='non précisé';
-  const eco=usable.map((p,idx)=>{ const off=new Set(p.economicExcluded||[]); const e=analyzeEconomicData((p.docs||[]).filter(d=>!off.has(d.id)),p.result?.operation||'',p.manualEconomics||{}); const rows=p.result?.rows||[]; const first=k=>rows.map(r=>r[k]).find(x=>!blank(x));
-    return {p,e,code:first('internal_code')??e.values.fin_operation_code??'',name:first('operation_name')??(p.operationName||p.result?.operation||e.values.fin_operation_label||projectName(p,idx))}; });
-  if(eco.some(x=>x.e.source||Object.keys(x.e.values).length)){
-    const sheet=[['Code interne','Nom opération',...ECONOMIC_FIELDS.map(f=>f.label)],...eco.map(x=>[x.code,x.name,...ECONOMIC_FIELDS.map(f=>x.e.values[f.key]??'')])];
-    const wsE=aoaSheet(sheet); autoWidth(wsE); XLSX.utils.book_append_sheet(wb,wsE,'Données économiques');
-    const det=[['Code interne','Nom opération','Type','Source','Lot / poste / aide','Catégorie','Porteur','Calcul','Montant (€)','Statut','Commentaire','Document','Page']];
-    for(const x of eco){ for(const l of x.e.costs) det.push([x.code,x.name,'Coût',l.source,l.label,COST_CATEGORIES.find(c=>c.id===l.category)?.label||l.category,'','',l.amount,'',l.comment||'',l.document||'',l.page??'']);
-      for(const a of x.e.aids) det.push([x.code,x.name,'Aide','',a.label,a.category,a.level,a.calc,a.amount,a.status,a.comment||'',a.document||'',a.page??'']); }
-    if(det.length>1){ const wsD=aoaSheet(det); autoWidth(wsD); XLSX.utils.book_append_sheet(wb,wsD,'Lignes financières'); }
-  }
-
-  // v2.34.0 — même grille, niveau de fiabilité de chaque valeur (Certifiée / Sûre / Probable / À vérifier) ; lue par TotalRecoll.
-  const relData=[[...fields.map(f=>f.label)]];
-  usable.forEach(p=>{ const t=reliabilityTable(p.result); for(const row of p.result.rows){ const m=t[row.building]||{}; relData.push(fields.map(f=>f.key==='building'?(row.building??''):f.key==='contract_number'?(row.contract_number??''):f.key==='internal_code'?(row.internal_code??''):(m[f.key]?RELIABILITY[m[f.key]].short:''))); } });
-  const wsR=aoaSheet(relData); autoWidth(wsR); XLSX.utils.book_append_sheet(wb,wsR,'Fiabilité par bâtiment');
-  const tr=[['Projet','Opération','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Fiabilité','Source','Type document','Page','Confiance','Méthode','Origine','Commentaire','Extrait']];
-  usable.forEach((p,idx)=>{ const r=p.result,pname=projectName(p,idx),rt=reliabilityTable(r); for(const o of r.finals) tr.push([pname,r.operation||pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,RELIABILITY[rt[o.building]?.[o.field]]?.short||'',o.fileName,o.docType,o.page,o.confidence,o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
-  const ws2=aoaSheet(tr); autoWidth(ws2); XLSX.utils.book_append_sheet(wb,ws2,'Traçabilité');
-
-  const oc=[['Projet','Bâtiment consolidé','Nom bâtiment source','Donnée','Valeur','Source','Type document','Page','Confiance','Routage','Statut','Motif rejet','Méthode','Origine','Commentaire','Extrait']];
-  usable.forEach((p,idx)=>{ const pname=projectName(p,idx); for(const o of p.result.detailed) oc.push([pname,o.building,o.originalBuilding||o.building,FIELD_MAP[o.field]?.label||o.field,o.value,o.fileName,o.docType,o.page,o.confidence,o.sourceTier,o.status,o.rejectionReason||'',o.method,o.origin||'Document',o.provenanceNote||'',o.excerpt]); });
-  const ws3=aoaSheet(oc); autoWidth(ws3); XLSX.utils.book_append_sheet(wb,ws3,'Occurrences');
-
-  const bg=[['Projet','Nom détecté','Bâtiment consolidé','Mode de regroupement']];
-  usable.forEach((p,idx)=>{ const pname=projectName(p,idx); for(const a of p.result.buildingAliases||[]) bg.push([pname,a.source,a.target,a.mode]); });
-  const wsBg=aoaSheet(bg); autoWidth(wsBg); XLSX.utils.book_append_sheet(wb,wsBg,'Regroupement bâtiments');
-
-  // v2.36.7 — une feuille par recherche, toujours présente : « Confort d'été » (une ligne par bâtiment, une colonne par résultat),
-  // puis chaque grille de recherche (« Sécurité des logements »…), même sans résultat trouvé.
-  const contract=x=>(identity?identity(x.p).contract:'')||'', used=new Set(wb.SheetNames);
-  const sheetName=n=>{ const b=String(n).replace(/[\\/?*[\]:]/g,' ').slice(0,31); let s=b,i=2; while(used.has(s)) s=`${b.slice(0,28)} ${i++}`; used.add(s); return s; };
-  const cf=CONFORT_KEYS.filter(k=>FIELD_MAP[k]);
-  const ck=CONSTRUCTIVE_KEYS.filter(k=>FIELD_MAP[k]);
-  const conf=[['Code interne','Nom opération','Contrat','Bâtiment','Système constructif','Système constructif — précision',...ck.map(k=>FIELD_MAP[k].label),...cf.map(k=>FIELD_MAP[k].label)]];
-  for(const x of eco) for(const row of x.p.result.rows){ const s=constructiveSystem(row);
-    conf.push([x.code,x.name,contract(x),row.building??'',s.system,s.note,...ck.map(k=>row[k]??''),...cf.map(k=>row[k]??'')]); }
-  { const ws=aoaSheet(conf); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,sheetName('Confort d’été')); }
-  const cites=[['Code interne','Nom opération','Contrat','Grille','Thème','Critère','Document','Page','Ligne','Valeurs']];
-  for(const grid of grids||[]){
-    const res=eco.map(x=>({x,r:runSearchGrid(grid,x.p.docs||[],x.p.searchOverrides?.[grid.id]||{},x.p.planTables,x.p.planChecks,x.p.result)}));
-    const g=res[0].r.grid;
-    const head=['Code interne','Nom opération','Contrat',...g.themes.flatMap(t=>[`${t.name} — critères trouvés`,`${t.name} — indices suffisants`]),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([,l])=>`${c.theme} — ${c.label} — ${l}`):[`${c.theme} — ${c.label}`])];
-    const sheet=[head,...res.map(({x,r})=>[x.code,x.name,contract(x),...g.themes.flatMap(t=>{ const s=r.themes[t.name]; return [s.applicable===false?'':`${s.found} / ${t.min}`,s.applicable===false?'Non applicable':s.ok?'Oui':'Non']; }),...g.criteria.flatMap(c=>c.kind==='stats'?STAT_KEYS.map(([k])=>r.criteria[c.id].stats?.[k]??''):[searchCellValue(c,r.criteria[c.id])])])];
-    const ws=aoaSheet(sheet); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,sheetName(g.name));
-    for(const {x,r} of res) for(const c of g.criteria) for(const ev of r.criteria[c.id].evidence) cites.push([x.code,x.name,contract(x),g.name,c.theme,c.label,ev.doc,ev.page,ev.line,(ev.values||[]).join(' ; ')]);
-  }
-  if(cites.length>1){ const ws=aoaSheet(cites); autoWidth(ws); XLSX.utils.book_append_sheet(wb,ws,'Recherches — citations'); }
-
-  const rr=[['Donnée','Sources principales','Sources secondaires','Sources interdites']];
-  for(const f of FIELD_DEFS){ const r=rules[f.key]; rr.push([f.label,(r?.main||[]).join(' ; '),(r?.secondary||[]).join(' ; '),(r?.forbidden||[]).join(' ; ')]); }
-  const ws4=aoaSheet(rr); autoWidth(ws4); XLSX.utils.book_append_sheet(wb,ws4,'Règles sources');
-
-  const totalDocs=usable.reduce((n,p)=>n+(p.result?.documentsCount||0),0), totalBuildings=usable.reduce((n,p)=>n+(p.result?.buildings?.length||0),0), totalFinals=usable.reduce((n,p)=>n+(p.result?.finals?.length||0),0), totalAlerts=usable.reduce((n,p)=>n+(p.result?.alerts?.length||0),0);
-  const info=[['Clé','Valeur'],['Application','ExtracTerre'],['Version',APP_VERSION],['Date export',new Date().toLocaleString('fr-FR')],['Projets',usable.length],['Documents',totalDocs],['Bâtiments consolidés',totalBuildings],['Valeurs finales',totalFinals],['Seuil de confiance',`${Math.round(MIN_RETAINED_CONFIDENCE*100)} %`],['Bibliothèque isolants',`${INSULATION_LIBRARY_VARIANT_COUNT} variantes produit/épaisseur/R, dont ${CORE_INSULATION_VARIANT_COUNT} dans les familles cœur demandées`],['Version bibliothèque isolants',INSULATION_LIBRARY_VERSION],['Règle bibliothèque','Valeurs documentaires directes prioritaires ; bibliothèque uniquement en secours avec provenance explicite'],['Alertes',totalAlerts],['Regroupement bâtiments','Variantes évidentes fusionnées automatiquement ; rapprochements ambigus uniquement après validation manuelle'],['Principe','Extraction déterministe locale sans IA']];
-  const ws5=aoaSheet(info); autoWidth(ws5); XLSX.utils.book_append_sheet(wb,ws5,'Informations');
-  const safe=(usable.length===1?projectName(usable[0],0):'Multi_projets').replace(/[\\/:*?"<>|]+/g,'_').slice(0,80); XLSX.writeFile(wb,`ExtracTerre_${safe}.xlsx`);
+  const c=createExcelCollector(rules,{grids,identity,withOccurrences:usable.length<=EXCEL_OCCURRENCES_MAX_PROJECTS});
+  for(const p of usable) c.add(p); c.write();
 }
 
 function exportExcel(result,rules,economic=null){ return exportProjectsExcel([{result,economic,operationName:result?.operation||''}],rules); }
@@ -15987,14 +15986,38 @@ function synthCsv(lines){
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
+// v2.39.1 — export Excel opération par opération : recalcul si besoin, texte chargé (recherches, économie), lignes copiées dans
+// le classeur, puis texte et résultat libérés (sauf l'opération ouverte). Au-delà de 100 opérations, pas de feuille
+// « Occurrences » (plusieurs millions de lignes) : les valeurs retenues restent dans « Traçabilité ».
+async function exportExcelStreamed(list){
+  const ui=exportProgress('Export Excel'), N=list.length, many=N>EXCEL_OCCURRENCES_MAX_PROJECTS;
+  try{
+    const col=createExcelCollector(state.rules,{grids:loadGrids(),identity:projectIdentity,withOccurrences:!many});
+    let added=0;
+    for(const [i,p] of list.entries()){ ui.set(`Opérations ${i+1}/${N}`,i/(N+1),projectTitle(p)||''); await yieldToBrowser();
+      const wasPending=p.pendingRebuild||!p.result;
+      if(wasPending) await rebuildProject(p);
+      try{ await geocodeProjectNow(p); }catch(e){ console.warn('Géolocalisation',e); }
+      await ensureProjectReads(p);
+      if(col.add(p)) added++;
+      releaseProjectReads(p);
+      if(many&&wasPending&&p.result&&p.id!==state.activeProjectId&&!analysisControl.running){ refreshTileCache(p); p.result=null; p.pendingRebuild=true; } }
+    if(!added){ ui.close(); toast('Aucune opération analysée à exporter.','warn'); return; }
+    scheduleWorkspaceCheckpoint('géolocalisation',80);
+    ui.set('Création du fichier Excel…',N/(N+1),`${added} opération(s)`); await yieldToBrowser();
+    col.write();
+    ui.done('Export Excel terminé',`${added} opération(s)${many?' · sans la feuille « Occurrences » (plus de 100 opérations)':''}`);
+  }catch(err){ ui.close(); throw err; }
+}
 async function openExportDialog(){
-  await ensureAllRebuilt();
+  // v2.39.1 — plus de recalcul de toutes les opérations avant la fenêtre (647 opérations : page plantée) ; chaque opération
+  // choisie est recalculée à son tour au moment de l'export, ajoutée au classeur, puis libérée.
   let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
   const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
   const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
   dlg.innerHTML=`<form method="dialog" class="llm-form"><header class="llm-head"><h2>⇩ Exporter vers Excel</h2><button value="cancel" class="icon-btn" type="submit" aria-label="Fermer">×</button></header>
   <div class="llm-body"><label class="exp-all"><input type="checkbox" id="expAll"> <strong>Tout ExtracTerre</strong> <small>${items.length} opération(s)</small></label>
-  ${owners.map((o,gi)=>`<fieldset class="exp-group"><legend><label><input type="checkbox" data-exp-owner="${gi}"> ${escapeHtml(o)}</label></legend>${items.filter(x=>ownerOf(x)===o).map(x=>`<label class="exp-op ${x.p.result?'':'off'}"><input type="checkbox" data-exp-p="${x.p.id}" data-exp-g="${gi}" ${x.p.result?'':'disabled'} ${x.p.id===state.activeProjectId&&x.p.result?'checked':''}> <span><b>${escapeHtml(x.id.contract||'Contrat non renseigné')}</b> · ${escapeHtml(x.id.name||projectTitle(x.p))}</span><small>${x.p.result?`${x.pct} %`:'non analysée'}</small></label>`).join('')}</fieldset>`).join('')}</div>
+  ${owners.map((o,gi)=>`<fieldset class="exp-group"><legend><label><input type="checkbox" data-exp-owner="${gi}"> ${escapeHtml(o)}</label></legend>${items.filter(x=>ownerOf(x)===o).map(x=>`<label class="exp-op ${x.p.result||x.p.pendingRebuild?'':'off'}"><input type="checkbox" data-exp-p="${x.p.id}" data-exp-g="${gi}" ${x.p.result||x.p.pendingRebuild?'':'disabled'} ${x.p.id===state.activeProjectId&&x.p.result?'checked':''}> <span><b>${escapeHtml(x.id.contract||'Contrat non renseigné')}</b> · ${escapeHtml(x.id.name||projectTitle(x.p))}</span><small>${x.p.result?`${x.pct} %`:'non analysée'}</small></label>`).join('')}</fieldset>`).join('')}</div>
   <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="expGo" class="btn primary" type="button">Exporter</button></footer></form>`;
   const boxes=()=>[...dlg.querySelectorAll('[data-exp-p]:not(:disabled)')];
   const sync=()=>{ const sel=boxes().filter(b=>b.checked); dlg.querySelectorAll('[data-exp-owner]').forEach(g=>{ const bs=boxes().filter(b=>b.dataset.expG===g.dataset.expOwner); g.checked=bs.length>0&&bs.every(b=>b.checked); g.indeterminate=!g.checked&&bs.some(b=>b.checked); });
@@ -16004,8 +16027,9 @@ async function openExportDialog(){
   boxes().forEach(b=>b.onchange=sync);
   $('#expGo').onclick=async()=>{ const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.expP)); const go=$('#expGo'); go.disabled=true;
     // v2.33.0 — coordonnées complètes dans le fichier (TotalRecoll) : la géolocalisation en attente est terminée d'abord.
-    await geocodeProjects(state.projects.filter(p=>ids.has(p.id)),{quiet:true,onStep:(i,n)=>{ go.textContent=`Géolocalisation ${i+1} / ${n}…`; }}); go.disabled=false;
-    try{ exportProjectsExcel(state.projects.filter(p=>ids.has(p.id)),state.rules,{grids:loadGrids(),identity:projectIdentity}); dlg.close(); }catch(e){ toast(e.message,'error'); } };
+    // v2.33.0 — coordonnées complètes (TotalRecoll) : géolocalisation faite opération par opération dans exportExcelStreamed.
+    dlg.close();
+    try{ await exportExcelStreamed(state.projects.filter(p=>ids.has(p.id))); }catch(e){ console.error(e); toast(e.message,'error'); } };
   sync(); dlg.showModal();
 }
 

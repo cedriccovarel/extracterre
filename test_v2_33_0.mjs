@@ -37,7 +37,7 @@ const app=fs.readFileSync('js/app.js','utf8'), css=fs.readFileSync('styles.css',
 assert.match(app,/return k==='sf'\?'v-sf':odd\?'odd':k==='doc'\?'v-doc':''/);
 assert.match(css,/\.summary-value\.v-sf/); assert.match(css,/\.summary-value\.v-doc/);
 assert.match(app,/data-synth-open/); assert.match(app,/function synthLine\(p\)/);
-assert.match(app,/await geocodeProjects\(state\.projects\.filter\(p=>ids\.has\(p\.id\)\)/);
+assert.match(app,/if\(wasPending\) await rebuildProject\(p\);\n      try\{ await geocodeProjectNow\(p\); \}/); // v2.39.1 — géolocalisation opération par opération dans l'export Excel
 assert.match(app,/if\(touched\.size\) geocodeProjects/);
 assert.match(app,/ssEnsureTiles\(r\.contracts,r\.owners\)/);
 assert.match(app,/data-ss-act="ignore"[^>]*>\$\{dec\.ignore\?'Retiré':'Retirer'\}/);

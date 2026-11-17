@@ -8,7 +8,7 @@ import {detectBuildings,DH_READ,BLD_READ} from './buildings.js';
 import {ENV_READ} from './envelope-rules.js';
 import {loadSourceRules,saveSourceRules,resetSourceRules} from './routing.js';
 import {analyzeDocuments,catchUpDocument,freeSearch,runSelfTests,buildBuildingGrouping,applyComparisonBases} from './engine.js';
-import {exportExcel,exportProjectsExcel} from './exporter.js';
+import {exportExcel,exportProjectsExcel,createExcelCollector,EXCEL_OCCURRENCES_MAX_PROJECTS} from './exporter.js';
 import {reliabilityTable,reliabilityCounts,setCalibration,RELIABILITY,sameValue} from './qualite.js';
 import {escapeHtml,formatValue,parseFrNumber,normLower,normalizeGlazingType,downloadBlob} from './utils.js';
 import {geocodeQuery,geocodeAddress,mapLink,GEOCODE_FIELDS,folderCommune,geocodeCommune,throttledFetch,geoDepOf} from './geocode.js';
@@ -2918,14 +2918,38 @@ function synthCsv(lines){
 }
 
 // v2.6.0 — export Excel : opérations choisies une à une, par maître d'ouvrage, ou l'ensemble d'ExtracTerre.
+// v2.39.1 — export Excel opération par opération : recalcul si besoin, texte chargé (recherches, économie), lignes copiées dans
+// le classeur, puis texte et résultat libérés (sauf l'opération ouverte). Au-delà de 100 opérations, pas de feuille
+// « Occurrences » (plusieurs millions de lignes) : les valeurs retenues restent dans « Traçabilité ».
+async function exportExcelStreamed(list){
+  const ui=exportProgress('Export Excel'), N=list.length, many=N>EXCEL_OCCURRENCES_MAX_PROJECTS;
+  try{
+    const col=createExcelCollector(state.rules,{grids:loadGrids(),identity:projectIdentity,withOccurrences:!many});
+    let added=0;
+    for(const [i,p] of list.entries()){ ui.set(`Opérations ${i+1}/${N}`,i/(N+1),projectTitle(p)||''); await yieldToBrowser();
+      const wasPending=p.pendingRebuild||!p.result;
+      if(wasPending) await rebuildProject(p);
+      try{ await geocodeProjectNow(p); }catch(e){ console.warn('Géolocalisation',e); }
+      await ensureProjectReads(p);
+      if(col.add(p)) added++;
+      releaseProjectReads(p);
+      if(many&&wasPending&&p.result&&p.id!==state.activeProjectId&&!analysisControl.running){ refreshTileCache(p); p.result=null; p.pendingRebuild=true; } }
+    if(!added){ ui.close(); toast('Aucune opération analysée à exporter.','warn'); return; }
+    scheduleWorkspaceCheckpoint('géolocalisation',80);
+    ui.set('Création du fichier Excel…',N/(N+1),`${added} opération(s)`); await yieldToBrowser();
+    col.write();
+    ui.done('Export Excel terminé',`${added} opération(s)${many?' · sans la feuille « Occurrences » (plus de 100 opérations)':''}`);
+  }catch(err){ ui.close(); throw err; }
+}
 async function openExportDialog(){
-  await ensureAllRebuilt();
+  // v2.39.1 — plus de recalcul de toutes les opérations avant la fenêtre (647 opérations : page plantée) ; chaque opération
+  // choisie est recalculée à son tour au moment de l'export, ajoutée au classeur, puis libérée.
   let dlg=$('#exportDialog'); if(!dlg){ dlg=document.createElement('dialog'); dlg.id='exportDialog'; dlg.className='llm-dialog export-dialog'; document.body.appendChild(dlg); }
   const items=state.projects.map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p)})); const ownerOf=x=>x.id.owner||NO_OWNER;
   const owners=[...new Set(items.map(ownerOf))].sort((a,b)=>a===NO_OWNER?1:b===NO_OWNER?-1:a.localeCompare(b,'fr'));
   dlg.innerHTML=`<form method="dialog" class="llm-form"><header class="llm-head"><h2>⇩ Exporter vers Excel</h2><button value="cancel" class="icon-btn" type="submit" aria-label="Fermer">×</button></header>
   <div class="llm-body"><label class="exp-all"><input type="checkbox" id="expAll"> <strong>Tout ExtracTerre</strong> <small>${items.length} opération(s)</small></label>
-  ${owners.map((o,gi)=>`<fieldset class="exp-group"><legend><label><input type="checkbox" data-exp-owner="${gi}"> ${escapeHtml(o)}</label></legend>${items.filter(x=>ownerOf(x)===o).map(x=>`<label class="exp-op ${x.p.result?'':'off'}"><input type="checkbox" data-exp-p="${x.p.id}" data-exp-g="${gi}" ${x.p.result?'':'disabled'} ${x.p.id===state.activeProjectId&&x.p.result?'checked':''}> <span><b>${escapeHtml(x.id.contract||'Contrat non renseigné')}</b> · ${escapeHtml(x.id.name||projectTitle(x.p))}</span><small>${x.p.result?`${x.pct} %`:'non analysée'}</small></label>`).join('')}</fieldset>`).join('')}</div>
+  ${owners.map((o,gi)=>`<fieldset class="exp-group"><legend><label><input type="checkbox" data-exp-owner="${gi}"> ${escapeHtml(o)}</label></legend>${items.filter(x=>ownerOf(x)===o).map(x=>`<label class="exp-op ${x.p.result||x.p.pendingRebuild?'':'off'}"><input type="checkbox" data-exp-p="${x.p.id}" data-exp-g="${gi}" ${x.p.result||x.p.pendingRebuild?'':'disabled'} ${x.p.id===state.activeProjectId&&x.p.result?'checked':''}> <span><b>${escapeHtml(x.id.contract||'Contrat non renseigné')}</b> · ${escapeHtml(x.id.name||projectTitle(x.p))}</span><small>${x.p.result?`${x.pct} %`:'non analysée'}</small></label>`).join('')}</fieldset>`).join('')}</div>
   <footer class="llm-foot"><button value="cancel" class="btn light" type="submit">Annuler</button><button id="expGo" class="btn primary" type="button">Exporter</button></footer></form>`;
   const boxes=()=>[...dlg.querySelectorAll('[data-exp-p]:not(:disabled)')];
   const sync=()=>{ const sel=boxes().filter(b=>b.checked); dlg.querySelectorAll('[data-exp-owner]').forEach(g=>{ const bs=boxes().filter(b=>b.dataset.expG===g.dataset.expOwner); g.checked=bs.length>0&&bs.every(b=>b.checked); g.indeterminate=!g.checked&&bs.some(b=>b.checked); });
@@ -2935,8 +2959,9 @@ async function openExportDialog(){
   boxes().forEach(b=>b.onchange=sync);
   $('#expGo').onclick=async()=>{ const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.expP)); const go=$('#expGo'); go.disabled=true;
     // v2.33.0 — coordonnées complètes dans le fichier (TotalRecoll) : la géolocalisation en attente est terminée d'abord.
-    await geocodeProjects(state.projects.filter(p=>ids.has(p.id)),{quiet:true,onStep:(i,n)=>{ go.textContent=`Géolocalisation ${i+1} / ${n}…`; }}); go.disabled=false;
-    try{ exportProjectsExcel(state.projects.filter(p=>ids.has(p.id)),state.rules,{grids:loadGrids(),identity:projectIdentity}); dlg.close(); }catch(e){ toast(e.message,'error'); } };
+    // v2.33.0 — coordonnées complètes (TotalRecoll) : géolocalisation faite opération par opération dans exportExcelStreamed.
+    dlg.close();
+    try{ await exportExcelStreamed(state.projects.filter(p=>ids.has(p.id))); }catch(e){ console.error(e); toast(e.message,'error'); } };
   sync(); dlg.showModal();
 }
 

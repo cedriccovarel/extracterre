@@ -53,3 +53,9 @@ console.log('test_v2_39_1 OK');
   eq(/const SESSION_EXPORT_CHUNK=300;/.test(app)&&/showDirectoryPicker/.test(app)&&/p\.result=null; p\.pendingRebuild=true;/.test(app),true,'paquets, dossier, mémoire libérée');
   eq(/id="importSessionInput" type="file" accept="application\/json,\.json" multiple/.test(html),true,'import de plusieurs parties'); }
 console.log('test_v2_39_1 export OK');
+// 8. Export Excel par opération (647 opérations : plantage) — collecteur, sans « Occurrences » au-delà de 100 opérations
+{ const fs=await import('node:fs'); const app=fs.readFileSync('./js/app.js','utf8');
+  const {createExcelCollector,EXCEL_OCCURRENCES_MAX_PROJECTS}=await import('./js/exporter.js');
+  eq(EXCEL_OCCURRENCES_MAX_PROJECTS,100); eq(typeof createExcelCollector,'function');
+  eq(/async function exportExcelStreamed\(list\)/.test(app)&&!/async function openExportDialog\(\)\{\n  await ensureAllRebuilt\(\);/.test(app),true,'pas de recalcul global avant la fenêtre'); }
+console.log('test_v2_39_1 excel OK');
