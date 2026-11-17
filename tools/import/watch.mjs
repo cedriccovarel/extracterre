@@ -64,6 +64,10 @@ function notify(id,st){
     p.on('exit',c=>console.log(`${id} : rapport iMessage ${c===0?'envoyé':`non envoyé (code ${c})`}.`)); }catch(err){ console.log(`${id} : rapport iMessage non envoyé (${err?.message||err}).`); }
 }
 
+function memoryMb(now=new Date()){
+  const h=Number(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Paris',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).find(p=>p.type==='hour')?.value);
+  return (h>=22||h<6)?Number(cfg.memoireNuitMo||10240):Number(cfg.memoireMo||8192);
+}
 const stopFile=id=>path.join(dir,`${id}.stop`);
 function pending(){
   let names=[]; try{ names=fs.readdirSync(dir); }catch{ return []; }
@@ -84,8 +88,9 @@ function run(req){
     const contracts=Array.isArray(r?.contrats)?r.contrats.map(String).filter(c=>/^\d{1,8}$/.test(c)):[];
     if(r?.format!=='extracterre-import-request'||!contracts.length){ writeJson(statut,{etat:'erreur',erreur:'Demande illisible ou sans numéro de contrat.'}); return resolve(); }
     const list=path.join(dir,`${req.id}.contrats.txt`); fs.writeFileSync(list,contracts.join('\n')+'\n');
-    // v2.39.1 — mémoire portée à 8 Go (configurable : memoireMo) : des dossiers très lourds dépassaient la limite par défaut de 4 Go.
-    const args=[`--max-old-space-size=${Number(cfg.memoireMo||8192)}`,path.join(HERE,'extracterre-import.mjs'),'--contrats',list,'--statut',statut,'--dossier-travail',workDir];
+    // v2.39.1 — mémoire portée à 8 Go le jour, 10 Go la nuit (22 h → 6 h, heure de Paris) : des dossiers très lourds dépassaient
+    // la limite par défaut de 4 Go. Choisie au lancement et à chaque relance ; configurable (memoireMo, memoireNuitMo).
+    const args=[`--max-old-space-size=${memoryMb()}`,path.join(HERE,'extracterre-import.mjs'),'--contrats',list,'--statut',statut,'--dossier-travail',workDir];
     // Options supplémentaires (tests) : EXTRACTERRE_SERVICE_ARGS="--local --racine /chemin"
     if(process.env.EXTRACTERRE_SERVICE_ARGS) args.push(...process.env.EXTRACTERRE_SERVICE_ARGS.split(' ').filter(Boolean));
     if(r.mode==='check-only') args.push('--check-only');
