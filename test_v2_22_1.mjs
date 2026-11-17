@@ -22,5 +22,5 @@ eq((await readSessionFile(new Blob([old]))).workspace.projects,projects,'ancien 
 // Export plus ancien, sans « workspace ».
 eq((await readSessionFile(new Blob([JSON.stringify(snap,null,1)]))).operations.length,3,'session sans workspace');
 eq((await readSessionFile(new Blob([JSON.stringify({...snap,workspace:{projects:[]}},null,1)]))).workspace.projects,[],'workspace vide');
-assert.ok(/JSON\.stringify\(serializeProjectFull\(p\)\)\+'\\n'/.test(app),'export compact, une ligne par opération'); n++;
+assert.ok(/line=JSON\.stringify\(serializeProjectFull\(p\)\)/.test(app)&&/put\(\(n\+\+\?',':''\)\+line\+'\\n'\)/.test(app),'export compact, une ligne par opération'); n++;
 console.log(`v2.31.0 — ${n} vérifications OK`);

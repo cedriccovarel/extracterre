@@ -2677,12 +2677,20 @@ let sessionExportRunning=false;
 async function exportSessionJson(){
   if(sessionExportRunning){ toast('Export de la session déjà en cours.','warn'); return; }
   sessionExportRunning=true; const btn=$('#exportSessionBtn'); if(btn) btn.disabled=true;
+  // v2.39.1 — écriture directe sur le disque (fenêtre « Enregistrer sous » de Chrome), opération par opération : rien ne
+  // s'accumule plus dans l'onglet (une session de 800 opérations faisait planter la page vers 300). La fenêtre est ouverte
+  // AVANT tout calcul (Chrome l'exige juste après le clic). Sans cette fonction (autre navigateur) : ancien fichier en mémoire.
+  let writer=null;
+  if(typeof window.showSaveFilePicker==='function'){
+    try{ const h=await window.showSaveFilePicker({suggestedName:`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`,types:[{description:'Session ExtracTerre (JSON)',accept:{'application/json':['.json']}}]}); writer=await h.createWritable(); }
+    catch(err){ if(err?.name==='AbortError'){ sessionExportRunning=false; if(btn) btn.disabled=false; return; } console.warn('Écriture directe indisponible, export en mémoire',err); writer=null; }
+  }
   const ui=exportProgress('Export de la session');
-  try{ await exportSessionRun(ui); }
-  catch(err){ ui.close(); throw err; }
+  try{ await exportSessionRun(ui,writer); }
+  catch(err){ try{ await writer?.abort?.(); }catch{} ui.close(); throw err; }
   finally{ sessionExportRunning=false; if(btn) btn.disabled=false; }
 }
-async function exportSessionRun(ui){
+async function exportSessionRun(ui,writer=null){
   setLocalSaveUi('Export de la session…');
   const list=state.projects.filter(p=>!projectIsEmpty(p)), N=list.length, R=state.projects.filter(p=>p.pendingRebuild).length, total=R+2*N+1;
   const name=p=>projectTitle(p)||'';
@@ -2696,14 +2704,24 @@ async function exportSessionRun(ui){
   // relu ligne par ligne à l'import (une session peut dépasser la taille maximale d'une chaîne de Chrome, ~537 M caractères).
   // Le fichier reste un JSON valide. Progression affichée, la page rend la main entre deux opérations.
   const head=JSON.stringify(snap,null,1), parts=[head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,''),',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n'];
-  let n=0, bytes=new Blob([parts[0]]).size; for(const p of list){ setLocalSaveUi(`Export de la session… ${n+1}/${N}`);
+  const put=async x=>{ const b=x instanceof Blob?x:new Blob([x]); if(writer){ await writer.write(b); return b.size; } parts.push(b); return b.size; };
+  let n=0, bytes=0; if(writer){ bytes+=await put(parts[0]); parts.length=0; } else bytes=new Blob([parts[0]]).size;
+  const heavy=[];
+  for(const p of list){ setLocalSaveUi(`Export de la session… ${n+1}/${N}`);
     ui.set(`Écriture des opérations ${n+1}/${N}`,(R+N+n)/total,`${name(p)} — ${formatBytes(bytes)} écrits`); await yieldToBrowser();
-    await ensureProjectReads(p); const b=new Blob([(n++?',':'')+JSON.stringify(serializeProjectFull(p))+'\n']); bytes+=b.size; parts.push(b); releaseProjectReads(p); }
-  parts.push(']}\n}\n');
-  ui.set('Création du fichier…',(total-1)/total,formatBytes(bytes)); await yieldToBrowser();
-  const file=new Blob(parts,{type:'application/json'});
-  downloadBlob(file,`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`); setLocalSaveUi('Session restaurée',lastLocalSaveAt);
-  ui.done('Session exportée',`${snap.operations.length} opération(s) · ${formatBytes(file.size)}`);
+    await ensureProjectReads(p);
+    // Opération trop grosse pour une seule chaîne (texte d'un XML de plusieurs dizaines de Mo…) : exportée sans le texte brut
+    // de ses documents (valeurs, occurrences, saisies gardées) au lieu de faire échouer tout l'export.
+    let line; try{ line=JSON.stringify(serializeProjectFull(p)); }
+    catch(err){ const ser=serializeProjectFull(p); for(const d of ser.docs||[]) if(d.analysis) d.analysis={...d.analysis,read:null,readOmitted:true}; line=JSON.stringify(ser); heavy.push(name(p)); }
+    bytes+=await put((n++?',':'')+line+'\n'); line=null; releaseProjectReads(p); }
+  bytes+=await put(']}\n}\n');
+  ui.set(writer?'Finalisation du fichier…':'Création du fichier…',(total-1)/total,formatBytes(bytes)); await yieldToBrowser();
+  if(writer) await writer.close();
+  else downloadBlob(new Blob(parts,{type:'application/json'}),`ExtracTerre_session_${new Date().toISOString().slice(0,10)}.json`);
+  setLocalSaveUi('Session restaurée',lastLocalSaveAt);
+  if(heavy.length) toast(`${heavy.length} opération(s) trop volumineuse(s) exportée(s) sans le texte brut des documents : ${heavy.slice(0,5).join(', ')}${heavy.length>5?'…':''}`,'warn');
+  ui.done('Session exportée',`${snap.operations.length} opération(s) · ${formatBytes(bytes)}`);
   toast(`Session exportée : ${snap.operations.length} opération(s).`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
