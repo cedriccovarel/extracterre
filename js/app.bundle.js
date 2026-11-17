@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.39.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.39.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.39.1';
+const APP_VERSION='2.39.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11544,6 +11544,20 @@ function serializeProjectFull(project={}){
   const docs=project.docs||[];
   return {...serializeProject(project),docs:docs.map(d=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null}))};
 }
+// v2.39.1 — même JSON que serializeProjectFull, produit en morceaux (tête du projet, puis un document à la fois) : une opération
+// à très gros documents n'est plus copiée en entier dans une seule chaîne (export de session : onglet planté à l'écriture).
+// Hooks (export) : before(d) charge le texte du document (promesse, attendue par l'appelant), after(d) le libère ; un document trop
+// gros pour une chaîne est écrit sans son texte brut (tooBig signalé, valeurs et occurrences gardées).
+function* serializeProjectFullParts(project={},{before=null,after=null,tooBig=null}={}){
+  const MARK='\u0000docs\u0000', head=JSON.stringify({...serializeProject(project),docs:MARK}), at=head.indexOf(JSON.stringify(MARK)), rest=head.slice(at+JSON.stringify(MARK).length);
+  yield head.slice(0,at)+'[';
+  let i=0; for(const d of project.docs||[]){
+    if(before){ const w=before(d); if(w&&typeof w.then==='function') yield w.then(()=>''); }
+    const one=()=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null});
+    let s; try{ s=JSON.stringify(one()); }catch(err){ const o=one(); if(o.analysis) o.analysis={...o.analysis,read:null,readOmitted:true}; s=JSON.stringify(o); tooBig?.(d); }
+    yield (i++?',':'')+s; s=null; after?.(d); }
+  yield ']'+rest;
+}
 function hydrateProjectFull(raw={}){
   return {...raw,docs:(raw.docs||[]).map(({analysis,...meta})=>{ const doc=hydrateDocMeta(meta);
     if(analysis){ doc.read=hydrateRead(analysis.read); doc.cachedOccurrences=Array.isArray(analysis.cachedOccurrences)?analysis.cachedOccurrences:[];
@@ -15793,10 +15807,15 @@ async function exportSessionRun(ui,dir=null){
       const head=JSON.stringify(snap,null,1); operations.length=0;
       await put(head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,'')+',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n');
       for(const [i,p] of list.entries()){ ui.set(`Écriture des opérations ${done+i+1}/${N}${tag}`,(done+2*list.length/3+i/3)/N,`${projectTitle(p)||''} — ${formatBytes(totalBytes+bytes)} écrits`); await yieldToBrowser();
-        await ensureProjectReads(p);
-        let line; try{ line=JSON.stringify(serializeProjectFull(p)); }
-        catch(err){ const ser=serializeProjectFull(p); for(const d of ser.docs||[]) if(d.analysis) d.analysis={...d.analysis,read:null,readOmitted:true}; line=JSON.stringify(ser); heavy.push(projectTitle(p)||''); }
-        await put((i?',':'')+line+'\n'); line=null; releaseProjectReads(p); }
+        // v2.39.1 — une opération écrite document par document (texte chargé, écrit puis libéré un document à la fois) :
+        // une opération à très gros documents faisait planter l'onglet (texte + copie + chaîne entière en mémoire).
+        const keep=p.id===state.activeProjectId||analysisControl.running;
+        await put(i?',':'');
+        for(const part of serializeProjectFullParts(p,{
+          before:async d=>{ if(!docReadLoaded(d)) await loadDocumentReads([d]); },
+          after:d=>{ if(!keep) unloadDocumentRead(d); },
+          tooBig:()=>heavy.push(projectTitle(p)||'') })) await put(typeof part==='string'?part:await part);
+        await put('\n'); releaseProjectReads(p); }
       await put(']}\n}\n');
       if(w) await w.close(); else downloadBlob(new Blob(parts,{type:'application/json'}),fileName(k));
     }catch(err){ try{ await w?.abort?.(); }catch{} throw err; }

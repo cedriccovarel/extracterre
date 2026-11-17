@@ -25,7 +25,7 @@ import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForT
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
 import {gridCctpLots,withEnvelopeLots,normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
-import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,loadDocumentReads,unloadDocumentRead,docReadLoaded,serializeProjectFull,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
+import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,loadDocumentReads,unloadDocumentRead,docReadLoaded,serializeProjectFull,serializeProjectFullParts,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
 import {initializeLearningMemory,reinforceLearningLocation,penalizeLearningLocation,importRemoteLearningEvents,listLearningProfiles,getLearningMemoryStats,setLearningProfileEnabled,clearLearningMemory} from './learning-memory.js';
 import {CLOUD_MODES,getCloudConfig,saveCloudConfig,resetCloudConfig,cloudConfigured,getCloudSession,cloudSignIn,cloudSignOut,getExecutionMode,setExecutionMode,shouldUseCloudForFile,cloudReasonForFile,analyzePdfInCloud,invokeLlmCloudFunction} from './cloud.js';
@@ -2725,10 +2725,15 @@ async function exportSessionRun(ui,dir=null){
       const head=JSON.stringify(snap,null,1); operations.length=0;
       await put(head.slice(0,head.lastIndexOf('}')).replace(/\s+$/,'')+',\n "workspaceFormat": "lines-v1",\n "workspace": {"projects": [\n');
       for(const [i,p] of list.entries()){ ui.set(`Écriture des opérations ${done+i+1}/${N}${tag}`,(done+2*list.length/3+i/3)/N,`${projectTitle(p)||''} — ${formatBytes(totalBytes+bytes)} écrits`); await yieldToBrowser();
-        await ensureProjectReads(p);
-        let line; try{ line=JSON.stringify(serializeProjectFull(p)); }
-        catch(err){ const ser=serializeProjectFull(p); for(const d of ser.docs||[]) if(d.analysis) d.analysis={...d.analysis,read:null,readOmitted:true}; line=JSON.stringify(ser); heavy.push(projectTitle(p)||''); }
-        await put((i?',':'')+line+'\n'); line=null; releaseProjectReads(p); }
+        // v2.39.1 — une opération écrite document par document (texte chargé, écrit puis libéré un document à la fois) :
+        // une opération à très gros documents faisait planter l'onglet (texte + copie + chaîne entière en mémoire).
+        const keep=p.id===state.activeProjectId||analysisControl.running;
+        await put(i?',':'');
+        for(const part of serializeProjectFullParts(p,{
+          before:async d=>{ if(!docReadLoaded(d)) await loadDocumentReads([d]); },
+          after:d=>{ if(!keep) unloadDocumentRead(d); },
+          tooBig:()=>heavy.push(projectTitle(p)||'') })) await put(typeof part==='string'?part:await part);
+        await put('\n'); releaseProjectReads(p); }
       await put(']}\n}\n');
       if(w) await w.close(); else downloadBlob(new Blob(parts,{type:'application/json'}),fileName(k));
     }catch(err){ try{ await w?.abort?.(); }catch{} throw err; }

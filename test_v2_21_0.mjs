@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull,docReadLoaded,unloadDocumentRead} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'2.39.1','version');
+eq(APP_VERSION,'2.39.2','version');
 const app=readFileSync('js/app.js','utf8'), per=readFileSync('js/persistence.js','utf8'), eng=readFileSync('js/engine.js','utf8');
 
 // Compteur : une analyse horodatée aujourd'hui compte comme un import Salesforce du jour ; hier ne compte pas.
@@ -37,6 +37,6 @@ eq(/tx\.objectStore\(READ_STORE\)\.delete\(docId\)/.test(per)&&/tx\.objectStore\
 // Application : aucun calcul sur un texte non chargé.
 eq(/function rebuildProjectFromCheckpoints\(project\)\{\n  if\(!projectReadsLoaded\(project\)&&!project\.readsLoadFailed\)/.test(app),true,'recalcul : texte rechargé d’abord');
 eq(/if\(!p\|\|p\.id===state\.activeProjectId\|\|analysisControl\.running\) return 0/.test(app),true,'opération ouverte et analyse en cours : jamais libérées');
-eq(/await ensureProjectReads\(p\);[\s\S]{0,500}JSON\.stringify\(serializeProjectFull\(p\)\)[\s\S]{0,400}await put\([\s\S]{0,60}releaseProjectReads\(p\)/.test(app),true,'export de session : une opération à la fois (écrite sur le disque dès qu’elle est prête, v2.39.1)');
+eq(/for\(const part of serializeProjectFullParts\(p,\{[\s\S]{0,400}await put\('\\n'\); releaseProjectReads\(p\)/.test(app),true,'export de session : une opération à la fois (écrite sur le disque dès qu’elle est prête, v2.39.1)');
 eq(/return \{\.\.\.consolidated,alerts,/.test(eng)&&/\(r\.detailed\|\|\[\]\)\.filter\(o=>o\?\.docId/.test(app),true,'résultat sans copie « occurrences »');
 console.log(`test_v2_21_0 : ${n}/${n} OK`);

@@ -59,3 +59,12 @@ console.log('test_v2_39_1 export OK');
   eq(EXCEL_OCCURRENCES_MAX_PROJECTS,100); eq(typeof createExcelCollector,'function');
   eq(/async function exportExcelStreamed\(list\)/.test(app)&&!/async function openExportDialog\(\)\{\n  await ensureAllRebuilt\(\);/.test(app),true,'pas de recalcul global avant la fenêtre'); }
 console.log('test_v2_39_1 excel OK');
+// 9. Export de session document par document : même JSON qu'avant (relu par « Importer une session » et TotalRecoll)
+{ const {serializeProjectFull,serializeProjectFullParts}=await import('./js/persistence.js');
+  const p={id:'p1',label:'Projet',customTitle:'Résidence',operationName:'Op',manualValues:{'Bâtiment A|cep':60},docs:[
+    {id:'d1',name:'rset.pdf',type:'RSET RE2020',status:'ready',size:10,read:{kind:'pdf',pageCount:1,pages:[{page:1,text:'Cep 60',lines:[{index:0,text:'Cep 60'}]}],text:'Cep 60'},cachedOccurrences:[{field:'cep',value:60,building:'Bâtiment A'}]},
+    {id:'d2',name:'cctp.pdf',type:'CCTP',status:'missing',size:5,read:null,cachedOccurrences:null}]};
+  const seen=[]; const parts=[...serializeProjectFullParts(p,{before:d=>{seen.push('b'+d.id);},after:d=>seen.push('a'+d.id)})].join('');
+  eq(JSON.parse(parts),JSON.parse(JSON.stringify(serializeProjectFull(p))),'même contenu');
+  eq(parts.includes('\n'),false,'une seule ligne'); eq(seen,['bd1','ad1','bd2','ad2'],'texte chargé puis libéré document par document'); }
+console.log('test_v2_39_1 session par document OK');

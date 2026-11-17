@@ -207,6 +207,20 @@ export function serializeProjectFull(project={}){
   const docs=project.docs||[];
   return {...serializeProject(project),docs:docs.map(d=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null}))};
 }
+// v2.39.1 — même JSON que serializeProjectFull, produit en morceaux (tête du projet, puis un document à la fois) : une opération
+// à très gros documents n'est plus copiée en entier dans une seule chaîne (export de session : onglet planté à l'écriture).
+// Hooks (export) : before(d) charge le texte du document (promesse, attendue par l'appelant), after(d) le libère ; un document trop
+// gros pour une chaîne est écrit sans son texte brut (tooBig signalé, valeurs et occurrences gardées).
+export function* serializeProjectFullParts(project={},{before=null,after=null,tooBig=null}={}){
+  const MARK='\u0000docs\u0000', head=JSON.stringify({...serializeProject(project),docs:MARK}), at=head.indexOf(JSON.stringify(MARK)), rest=head.slice(at+JSON.stringify(MARK).length);
+  yield head.slice(0,at)+'[';
+  let i=0; for(const d of project.docs||[]){
+    if(before){ const w=before(d); if(w&&typeof w.then==='function') yield w.then(()=>''); }
+    const one=()=>({...serializeDocMeta(d),analysis:Array.isArray(d.cachedOccurrences)||d.read?serializeDocAnalysis(project.id,d,true,false):null});
+    let s; try{ s=JSON.stringify(one()); }catch(err){ const o=one(); if(o.analysis) o.analysis={...o.analysis,read:null,readOmitted:true}; s=JSON.stringify(o); tooBig?.(d); }
+    yield (i++?',':'')+s; s=null; after?.(d); }
+  yield ']'+rest;
+}
 export function hydrateProjectFull(raw={}){
   return {...raw,docs:(raw.docs||[]).map(({analysis,...meta})=>{ const doc=hydrateDocMeta(meta);
     if(analysis){ doc.read=hydrateRead(analysis.read); doc.cachedOccurrences=Array.isArray(analysis.cachedOccurrences)?analysis.cachedOccurrences:[];
