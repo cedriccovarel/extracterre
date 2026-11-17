@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {exportProjectsExcel} from './js/exporter.js';
 import {SECURITY_GRID} from './js/recherches.js';
-assert.equal(APP_VERSION,'2.39.0');
+assert.equal(APP_VERSION,'2.39.1');
 const sheets=[]; globalThis.XLSX={utils:{book_new:()=>({SheetNames:[]}),aoa_to_sheet:rows=>({rows,'!ref':'A1:A1'}),decode_range:()=>({s:{c:0,r:0},e:{c:0,r:0}}),encode_cell:()=>'A1',
   book_append_sheet:(wb,ws,name)=>{ wb.SheetNames.push(name); sheets.push([name,ws.rows]); }},writeFile:()=>{}};
 const row={building:'Bâtiment A',internal_code:'OPE-000001',operation_name:'Résidence Fictive',dh_zt:412.5,dh_znt:820,cross_ventilated:'Oui',fan_presence:'Oui',fan_count:12,cooling:'Aucun',cooling_active:'Non'};

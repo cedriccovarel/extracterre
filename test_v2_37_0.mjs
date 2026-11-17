@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {reliabilityOf,reliabilityTable} from './js/qualite.js';
-assert.equal(APP_VERSION,'2.39.0');
+assert.equal(APP_VERSION,'2.39.1');
 const calib={methods:{'mesuree-basse':{juste:68,faux:32},'mesuree-haute':{juste:99,faux:1}},pairs:{}};
 assert.equal(reliabilityOf({method:'inconnue',confidence:0.99},{calib}),'probable');
 assert.equal(reliabilityOf({method:'inconnue',confidence:0.86},{calib}),'probable');

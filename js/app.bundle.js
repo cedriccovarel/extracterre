@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.39.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.39.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.39.0';
+const APP_VERSION='2.39.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
