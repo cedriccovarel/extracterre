@@ -1283,11 +1283,9 @@ function parseEnvelope(doc){
     if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && /(?:chapitre\s*3\s*:.*indicateurs|donn[eé]es\s+r[eé]capitulatives\s+sur\s+les\s+parois)/i.test(page.text||'')) continue;
     // v3.0.1 — titre de section (« Plancher bas », « II.7 DALLE BASSE RDC », « MURS DE FACADES ») : il désigne la paroi des lignes
     // matériau qui suivent (6 lignes au plus) quand elles ne la nomment pas (« Laine de verre : épaisseur 140 mm ; R = 4 »).
-    let sticky=null, rCol=null;
+    let sticky=null;
     const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
     const line=lines[i], base=normalizeText(line.text); let ctx=base, target=targetFromContext(base), fromHeading=false;
-    // v3.0.2 — en-tête de tableau « R isolant (m².K/W) » / « R (m².K/W) » : le dernier nombre des lignes suivantes est le R (10 lignes).
-    if(/\br\s*(?:isolant|\(\s*m|m2|m²|en\s*m)/i.test(base)&&!/\d{2,}\s*(?:mm|cm)/i.test(base)) rCol=i;
     { const head=base.replace(/^\s*(?:[ivx]+|\d+(?:[.]\d+)*)[.)]?\s+/i,'').trim(); if(target&&head.length<=45&&!/\d{2,}\s*(?:mm|cm)|\br\s*=/.test(head)&&!findFirstMatch(base,MATERIALS)) sticky={target,i}; }
     if(cctpNoiseAt(doc,lines,i)) continue;
     const baseMat=findFirstMatch(base,MATERIALS), baseStruct=findFirstMatch(base,STRUCTURES);
@@ -1295,9 +1293,7 @@ function parseEnvelope(doc){
     if(target) ctx=normalizeText(lineWindow(page,i,0,2));
     else if(baseMat||baseStruct||isDoublage){ ctx=normalizeText(lineWindow(page,i,1,isDoublage?1:0)); target=targetFromContext(ctx);
       if(!target&&isDoublage) target='wall';
-      if(!target&&baseMat&&sticky&&i-sticky.i<=6){ target=sticky.target; fromHeading=true; ctx=normalizeText(`${lines[sticky.i].text} ${lineWindow(page,i,1,0)}`); }
-      // v3.0.2 — libellé de paroi écrit juste après (« Isolant LDV soufflée R = 7,50 » ⏎ « Combles ») : ligne suivante courte, sans titre avant.
-      if(!target&&baseMat&&!(sticky&&i-sticky.i<=6)){ const nx=normalizeText(lines[i+1]?.text||''); const t2=nx.length<=25?targetFromContext(nx):null; if(t2&&!findFirstMatch(nx,MATERIALS)){ target=t2; fromHeading=true; ctx=normalizeText(`${line.text} ${lines[i+1].text}`); } } }
+      if(!target&&baseMat&&sticky&&i-sticky.i<=6){ target=sticky.target; fromHeading=true; ctx=normalizeText(`${lines[sticky.i].text} ${lineWindow(page,i,1,0)}`); } }
     else if(ELEMENT_PATTERNS.window.test(base)) ctx=normalizeText(lineWindow(page,i,0,2));
     else continue;
     const dTh=isDoublage||DOUBLAGE_RE.test(ctx)?doublageThickness(base)??doublageThickness(ctx):null;
@@ -1324,8 +1320,7 @@ function parseEnvelope(doc){
       else if(productMatch?.variant && productMatch.thicknessEvidence==='product-context'){
         push(out,occ(doc,page,line,`${target}_insulation_thickness`,productMatch.variant.thickness,'library:insulation-thickness',0.93,'mm',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'thickness'),...productExtra}));
       }
-      let r=explicitR(base)??explicitR(ctx);
-      if(r===null&&rCol!==null&&i>rCol&&i-rCol<=10){ const nums=[...String(line.text).matchAll(/(?<![\d.,])(\d{1,2}[,.]\d{1,3})(?![\d]|\s*(?:mm|cm|m\b|%|€))/g)]; const v=nums.length?parseFrNumber(nums[nums.length-1][1]):null; if(v!==null&&v>=0.5&&v<=15) r=v; }
+      const r=explicitR(base)??explicitR(ctx);
       if(r!==null) push(out,occ(doc,page,line,`${target}_insulation_r`,r,'envelope:r-context',0.98-(fromHeading?0.02:0),'m².K/W',{excerpt:ctx.slice(0,420),...productExtra}));
       else if(productMatch?.variant && productMatch.score>=0.96 && productMatch.thicknessEvidence){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
