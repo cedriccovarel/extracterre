@@ -1,3 +1,15 @@
+# v2.44.0 — Confrontation Salesforce : statut de chaque valeur Salesforce
+
+- Chaque valeur Salesforce d'un bâtiment est comparée aux valeurs lues dans les documents, **sans jamais être modifiée**
+  (prompt maître §2). Statuts : Confirmée, Divergence documentaire, Non comparable (texte ↔ nombre), Non retrouvée
+  (documents pertinents lus, valeur absente), Vérification impossible (aucun document pertinent), Non vérifiée
+  (documents pertinents pas encore lus). « Pertinent » = source principale ou secondaire de la donnée.
+- Une valeur de document arrondie à la précision de Salesforce suffit à confirmer (Cep 52 ↔ 52,3).
+- Info-bulle de chaque cellule Salesforce (statut, valeur et fichier du document en cas d'écart) et résumé
+  « ☁ Confrontation » en tête d'opération.
+- Mesure (647 opérations, 33 584 valeurs Salesforce) : 15 342 confirmées, 6 156 divergences, 7 034 non retrouvées,
+  3 295 sans document pertinent, 1 770 non vérifiées, 7 non comparables.
+
 # v2.43.0 — Bâtiments = Salesforce : « Total bâtiments », jamais plus de N, aucune valeur perdue
 
 Règles validées le 17/11/2026 :
