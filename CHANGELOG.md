@@ -1,3 +1,12 @@
+# v2.44.1 — Recherches : politique d'absence par critère
+
+- Onglet Recherches seulement (décision du 17/11) : chaque critère dit ce que vaut « rien trouvé » —
+  Indéterminé (défaut, comportement d'avant), Absent par inférence (si les documents nécessaires, désignés par des mots
+  du nom ou du type, ont été lus), ou Absence seulement si elle est écrite (« sans climatisation »).
+- Statut de chaque critère (Présent, Absent explicite, Absent par inférence, Indéterminé, Non applicable, Non renseigné)
+  en info-bulle et dans l'export de l'observatoire. Une donnée chiffrée absente reste « Non renseigné », jamais 0.
+- Les grilles existantes ne changent pas : la politique est « Indéterminé » tant qu'on ne la règle pas.
+
 # v2.44.0 — Confrontation Salesforce : statut de chaque valeur Salesforce
 
 - Chaque valeur Salesforce d'un bâtiment est comparée aux valeurs lues dans les documents, **sans jamais être modifiée**

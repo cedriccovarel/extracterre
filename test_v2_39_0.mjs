@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION,FIELD_MAP} from './js/config.js';
 import {insulationPosition} from './js/parsers.js';
 import {envelopeLabelLayers} from './js/utils.js';
-assert.equal(APP_VERSION,'2.44.0');
+assert.equal(APP_VERSION,'2.44.1');
 assert.equal(FIELD_MAP.roof_top_thickness,undefined,'v2.39.1 : cases plancher haut retirées (sans apport au banc)');
 assert.equal(insulationPosition('wall','Isolation thermique par l’extérieur : laine de roche 120 mm sous bardage'),'wall_ite');
 assert.equal(insulationPosition('wall','Doublage collé 10+80 PSE'),null,'ITI non repérée (doublages)');

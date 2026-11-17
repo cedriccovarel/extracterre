@@ -4,6 +4,12 @@
 // (Ollama en local), seule la description du critère lui est envoyée.
 import {normLower,parseFrNumber,stripUnitExponents} from './utils.js';
 
+// v2.44.1 — politique d'absence par critère (prompt maître §7, onglet Recherches seulement) : ce que vaut « rien trouvé ».
+//   indetermine : rien n'est conclu (comportement d'avant, défaut) ;
+//   inference   : « Absent (par inférence) » si les documents nécessaires (absenceDocs : mots du nom ou du type) ont été lus ;
+//   explicite   : seule une mention d'absence (negative : « sans brasseur », « pas de climatisation ») conclut à l'absence.
+export const SEARCH_ABSENCE={indetermine:'Indéterminé (rien n’est conclu)',inference:'Absent par inférence si les documents nécessaires sont lus',explicite:'Absence seulement si elle est écrite'};
+export const SEARCH_STATUS={PRESENT_EXPLICITE:'Présent (mention)',ABSENT_EXPLICITE:'Absent (mention explicite)',ABSENT_PAR_INFERENCE:'Absent (par inférence)',INDETERMINE:'Indéterminé',NON_APPLICABLE:'Non applicable',NON_RENSEIGNE:'Non renseigné'};
 export const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques',field:'Rappel de colonne'};
 // v2.23.0 — « Rappel de colonne » : reprend la valeur retenue d'une colonne (onglet Thermique, Enveloppe…) pour chaque bâtiment,
 // avec sa source (document, page, extrait) ; aucun mot-clé, aucune valeur nouvelle.
@@ -60,7 +66,7 @@ export function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,docContext:c?.docContext===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,docContext:c?.docContext===true,absence:SEARCH_ABSENCE[c?.absence]?c.absence:'indetermine',absenceDocs:srch_list(c?.absenceDocs),negative:srch_list(c?.negative),window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   let rulesVersion=Math.max(0,Math.round(srch_numOrNull(g.rulesVersion)??0));
   if(g.id==='securite-logements'){ srch_migrateSecurity(criteria); if(rulesVersion<2){ srch_securityV2(criteria); rulesVersion=2; } }
@@ -222,7 +228,12 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
     if(pf){ const textOk=ev.some(e=>e.ok); ev.unshift(...pf.ev); detail=pf.detail;
       const ok=c.id==='hall_vitrage'?pf.ok&&textOk:pf.ok; if(c.id==='hall_vitrage'&&pf.ok&&!textOk) detail=`À vérifier : ${pf.detail}, 44.2 non trouvé dans les documents`;
       if(!manual){ found=ok; contrary=!pf.ok; } }
-    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):c.kind==='field'?srch_fieldText(ev):''};
+    // v2.44.1 — mentions d'absence explicite (mêmes exclusions que le critère).
+    const neg=[]; if(c.negative.length&&c.kind!=='field') for(const {d,lines} of corpus){ for(const L of lines){ if(neg.length>=5) break; if(!srch_anyTerm(c.negative,L.t)||srch_anyTerm(c.exclude,L.t)) continue; neg.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:'',values:[],ok:false,negative:true}); } }
+    const needDocs=c.absenceDocs.length?pool.filter(d=>c.absenceDocs.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))):pool;
+    const absence=manual==='Sans objet'?'NON_APPLICABLE':found?'PRESENT_EXPLICITE':neg.length&&!c.inverse?'ABSENT_EXPLICITE':c.kind!=='presence'?'NON_RENSEIGNE':!c.inverse&&c.absence==='inference'&&!contrary&&needDocs.length?'ABSENT_PAR_INFERENCE':'INDETERMINE';
+    if(neg.length) ev.push(...neg);
+    criteria[c.id]={absence,absenceDocsRead:needDocs.map(d=>d.name).slice(0,20),found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):c.kind==='field'?srch_fieldText(ev):''};
   }
   // v2.19.1 — statut « Partiel » du sas sécurisé : Vigik (ou badge) + visiophone trouvés, mais pas de platine IK08.
   // Partiel ne compte pas comme trouvé pour le thème ; la décision manuelle « Partiel » donne le même statut.
@@ -246,6 +257,7 @@ export function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={}
     const applicable=!t.applicableIf||!!criteria[t.applicableIf]?.found;
     const req=own.filter(c=>t.required.includes(c.id)), opt=own.filter(c=>!t.required.includes(c.id));
     const found=opt.filter(c=>criteria[c.id]?.found).length, reqOk=req.every(c=>criteria[c.id]?.found);
+    if(!applicable) for(const c of own) if(criteria[c.id]&&!criteria[c.id].manual) criteria[c.id].absence='NON_APPLICABLE';
     themes[t.name]={applicable,found,min:t.min,required:req.length,requiredOk:reqOk,ok:applicable?(reqOk&&found>=t.min):null};
   }
   const fieldHits=g.criteria.filter(c=>c.kind==='field').reduce((n,c)=>n+criteria[c.id].evidence.length,0);
@@ -262,6 +274,9 @@ export function searchCellValue(c,x){
   if(x.partial) return `Partiel (${x.detail})`;
   if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  // v2.44.1 — absence conclue seulement si la politique du critère le permet (inférence) ou si elle est écrite.
+  if(x.absence==='ABSENT_EXPLICITE') return SEARCH_STATUS.ABSENT_EXPLICITE;
+  if(x.absence==='ABSENT_PAR_INFERENCE') return SEARCH_STATUS.ABSENT_PAR_INFERENCE;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
   if(c.kind==='text') return x.text;

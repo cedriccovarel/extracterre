@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.44.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.44.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.44.0';
+const APP_VERSION='2.44.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -463,7 +463,7 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
-// v2.44.0 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// v2.44.1 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
 // de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
 // servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
 // RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
@@ -11128,6 +11128,12 @@ function analyzeEconomicData(docs,operation='',manual={}){
 // la ligne : une recherche ne produit jamais de valeur absente des documents. Les mots-clés peuvent être proposés par l'IA
 // (Ollama en local), seule la description du critère lui est envoyée.
 
+// v2.44.1 — politique d'absence par critère (prompt maître §7, onglet Recherches seulement) : ce que vaut « rien trouvé ».
+//   indetermine : rien n'est conclu (comportement d'avant, défaut) ;
+//   inference   : « Absent (par inférence) » si les documents nécessaires (absenceDocs : mots du nom ou du type) ont été lus ;
+//   explicite   : seule une mention d'absence (negative : « sans brasseur », « pas de climatisation ») conclut à l'absence.
+const SEARCH_ABSENCE={indetermine:'Indéterminé (rien n’est conclu)',inference:'Absent par inférence si les documents nécessaires sont lus',explicite:'Absence seulement si elle est écrite'};
+const SEARCH_STATUS={PRESENT_EXPLICITE:'Présent (mention)',ABSENT_EXPLICITE:'Absent (mention explicite)',ABSENT_PAR_INFERENCE:'Absent (par inférence)',INDETERMINE:'Indéterminé',NON_APPLICABLE:'Non applicable',NON_RENSEIGNE:'Non renseigné'};
 const SEARCH_KINDS={presence:'Présence',number:'Nombre',text:'Texte',stats:'Statistiques',field:'Rappel de colonne'};
 // v2.23.0 — « Rappel de colonne » : reprend la valeur retenue d'une colonne (onglet Thermique, Enveloppe…) pour chaque bâtiment,
 // avec sa source (document, page, extrait) ; aucun mot-clé, aucune valeur nouvelle.
@@ -11184,7 +11190,7 @@ function normalizeGrid(g={}){
   const themes=(Array.isArray(g.themes)?g.themes:[]).map(t=>({name:String(t?.name??'').trim().slice(0,120),min:Math.max(0,Math.round(srch_numOrNull(t?.min)??0)),required:srch_list(t?.required),applicableIf:String(t?.applicableIf??'').trim()})).filter(t=>t.name);
   const criteria=(Array.isArray(g.criteria)?g.criteria:[]).map(c=>({id:String(c?.id||srch_uidS()).replace(/[^\w-]/g,'').slice(0,40)||srch_uidS(),theme:String(c?.theme??'').trim().slice(0,120),label:String(c?.label??'').trim().slice(0,200),
     description:String(c?.description??'').trim().slice(0,600),kind:SEARCH_KINDS[c?.kind]?c.kind:'presence',unit:String(c?.unit??'').trim().slice(0,20),min:srch_numOrNull(c?.min),max:srch_numOrNull(c?.max),
-    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,docContext:c?.docContext===true,window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
+    field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,docContext:c?.docContext===true,absence:SEARCH_ABSENCE[c?.absence]?c.absence:'indetermine',absenceDocs:srch_list(c?.absenceDocs),negative:srch_list(c?.negative),window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   let rulesVersion=Math.max(0,Math.round(srch_numOrNull(g.rulesVersion)??0));
   if(g.id==='securite-logements'){ srch_migrateSecurity(criteria); if(rulesVersion<2){ srch_securityV2(criteria); rulesVersion=2; } }
@@ -11346,7 +11352,12 @@ function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={},result
     if(pf){ const textOk=ev.some(e=>e.ok); ev.unshift(...pf.ev); detail=pf.detail;
       const ok=c.id==='hall_vitrage'?pf.ok&&textOk:pf.ok; if(c.id==='hall_vitrage'&&pf.ok&&!textOk) detail=`À vérifier : ${pf.detail}, 44.2 non trouvé dans les documents`;
       if(!manual){ found=ok; contrary=!pf.ok; } }
-    criteria[c.id]={found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):c.kind==='field'?srch_fieldText(ev):''};
+    // v2.44.1 — mentions d'absence explicite (mêmes exclusions que le critère).
+    const neg=[]; if(c.negative.length&&c.kind!=='field') for(const {d,lines} of corpus){ for(const L of lines){ if(neg.length>=5) break; if(!srch_anyTerm(c.negative,L.t)||srch_anyTerm(c.exclude,L.t)) continue; neg.push({doc:d.name,docId:d.id,page:L.page,line:L.raw.trim().slice(0,300),context:'',values:[],ok:false,negative:true}); } }
+    const needDocs=c.absenceDocs.length?pool.filter(d=>c.absenceDocs.some(f=>normLower(`${d.name} ${d.type||''}`).includes(normLower(f)))):pool;
+    const absence=manual==='Sans objet'?'NON_APPLICABLE':found?'PRESENT_EXPLICITE':neg.length&&!c.inverse?'ABSENT_EXPLICITE':c.kind!=='presence'?'NON_RENSEIGNE':!c.inverse&&c.absence==='inference'&&!contrary&&needDocs.length?'ABSENT_PAR_INFERENCE':'INDETERMINE';
+    if(neg.length) ev.push(...neg);
+    criteria[c.id]={absence,absenceDocsRead:needDocs.map(d=>d.name).slice(0,20),found,contrary,detail,manual:manual||'',values:c.kind==='stats'?values:[...new Set(values)],stats:c.kind==='stats'?srchStats(values):null,evidence:ev,text:c.kind==='text'?[...new Set(ev.map(e=>e.line))].slice(0,5).join(' ; '):c.kind==='field'?srch_fieldText(ev):''};
   }
   // v2.19.1 — statut « Partiel » du sas sécurisé : Vigik (ou badge) + visiophone trouvés, mais pas de platine IK08.
   // Partiel ne compte pas comme trouvé pour le thème ; la décision manuelle « Partiel » donne le même statut.
@@ -11370,6 +11381,7 @@ function runSearchGrid(grid,docs,overrides={},planTables={},planChecks={},result
     const applicable=!t.applicableIf||!!criteria[t.applicableIf]?.found;
     const req=own.filter(c=>t.required.includes(c.id)), opt=own.filter(c=>!t.required.includes(c.id));
     const found=opt.filter(c=>criteria[c.id]?.found).length, reqOk=req.every(c=>criteria[c.id]?.found);
+    if(!applicable) for(const c of own) if(criteria[c.id]&&!criteria[c.id].manual) criteria[c.id].absence='NON_APPLICABLE';
     themes[t.name]={applicable,found,min:t.min,required:req.length,requiredOk:reqOk,ok:applicable?(reqOk&&found>=t.min):null};
   }
   const fieldHits=g.criteria.filter(c=>c.kind==='field').reduce((n,c)=>n+criteria[c.id].evidence.length,0);
@@ -11386,6 +11398,9 @@ function searchCellValue(c,x){
   if(x.partial) return `Partiel (${x.detail})`;
   if(x.detail) return x.found?`Oui (${x.detail})`:x.contrary?`Non conforme (${x.detail})`:x.detail;
   if(x.contrary) return c.inverse?'Indice contraire':c.kind==='presence'?'Non conforme':`Hors seuil (${x.values.join(' ; ')}${c.unit?` ${c.unit}`:''})`;
+  // v2.44.1 — absence conclue seulement si la politique du critère le permet (inférence) ou si elle est écrite.
+  if(x.absence==='ABSENT_EXPLICITE') return SEARCH_STATUS.ABSENT_EXPLICITE;
+  if(x.absence==='ABSENT_PAR_INFERENCE') return SEARCH_STATUS.ABSENT_PAR_INFERENCE;
   if(c.kind==='stats') return x.stats?STAT_KEYS.map(([k,l])=>`${l} ${String(x.stats[k]).replace('.',',')}`).join(' · '):'';
   if(c.kind==='number') return x.found?x.values.filter(n=>(c.min===null||n>=c.min)&&(c.max===null||n<=c.max)).join(' ; '):'';
   if(c.kind==='text') return x.text;
@@ -15853,6 +15868,7 @@ function renderSearchEditor(g){
     <button type="button" class="btn light" data-srch-ai="${i}" title="Proposer des mots-clés, du contexte et des exclusions avec l’IA">${searchUi.busy===`c${i}`?'…':'✨ Mots-clés IA'}</button><button type="button" class="icon-btn" data-srch-del="${i}" title="Supprimer le critère" aria-label="Supprimer le critère">×</button></div>
     <div class="srch-crit-body">${c.kind==='field'?`<label class="wide">Colonne rappelée <small>(valeur retenue de chaque bâtiment, avec sa source)</small><select data-c="field">${opt('',c.field)}— choisir —</option>${FIELD_DEFS.map(f=>`${opt(f.key,c.field)}${escapeHtml(`${f.family} — ${f.label}`)}</option>`).join('')}</select></label>`:''}<label${c.kind==='field'?' hidden':''}>Mots-clés / synonymes<textarea data-c="keywords" rows="2">${escapeHtml(c.keywords.join(', '))}</textarea></label><label${c.kind==='field'?' hidden':''}>Contexte à proximité <small>(au moins un)</small><textarea data-c="context" rows="2">${escapeHtml(c.context.join(', '))}</textarea></label><label${c.kind==='field'?' hidden':''}>Exclure si la ligne contient<textarea data-c="exclude" rows="2">${escapeHtml(c.exclude.join(', '))}</textarea></label>
     <div class="srch-crit-opts"><label>Fenêtre (lignes)<input data-c="window" type="number" min="0" max="15" value="${c.window}"></label>${c.kind==='number'||c.kind==='stats'||c.kind==='field'?`<label>Unité<input data-c="unit" value="${escapeHtml(c.unit)}" placeholder="m, m2, lux"></label><label>Min<input data-c="min" value="${c.min??''}"></label><label>Max<input data-c="max" value="${c.max??''}"></label>`:''}<label class="chk"><input type="checkbox" data-c="required" ${themes.find(t=>t.name===c.theme)?.required.includes(c.id)?'checked':''}> Obligatoire dans le thème</label><label class="chk"><input type="checkbox" data-c="inverse" ${c.inverse?'checked':''}> Trouvé = indice contraire</label></div>
+    ${c.kind==='field'?'':`<div class="srch-crit-opts"><label>Si rien n’est trouvé<select data-c="absence">${Object.entries(SEARCH_ABSENCE).map(([k,l])=>`${opt(k,c.absence)}${escapeHtml(l)}</option>`).join('')}</select></label></div><label>Documents nécessaires pour conclure à l’absence <small>(mots du nom ou du type ; vide = tous les documents lus)</small><input data-c="absenceDocs" value="${escapeHtml(c.absenceDocs.join(', '))}" placeholder="CCTP, notice"></label><label>Mentions d’absence explicite<textarea data-c="negative" rows="1" placeholder="sans brasseur d’air, pas de climatisation">${escapeHtml(c.negative.join(', '))}</textarea></label>`}
     <label>Précisions pour l’IA<input data-c="description" value="${escapeHtml(c.description)}" placeholder="ce que le critère doit couvrir, ce qu’il ne doit pas confondre"></label></div></div>`).join('')}</div>
   <datalist id="srchThemes">${themes.map(t=>`<option value="${escapeHtml(t.name)}">`).join('')}</datalist>
   <div class="srch-actions"><button type="button" class="btn secondary" data-srch="add-crit">+ Critère</button></div>
@@ -15866,7 +15882,7 @@ function collectGridFromEditor(root,g){
   // Renommage d'un thème : les critères suivent.
   g.themes.forEach((t,i)=>{ if(themes[i]&&themes[i].name&&themes[i].name!==t.name) for(const c of g.criteria) if(c.theme===t.name) c.theme=themes[i].name; });
   const crits=[...root.querySelectorAll('[data-crit-row]')].map(r=>{ const i=Number(r.dataset.critRow), c=g.criteria[i], f=k=>r.querySelector(`[data-c="${k}"]`);
-    return {...c,theme:f('theme').value.trim()||c.theme,label:f('label').value,kind:f('kind').value,field:f('field')?.value??c.field,keywords:f('keywords').value,context:f('context').value,exclude:f('exclude').value,window:f('window').value,unit:f('unit')?.value??c.unit,min:f('min')?f('min').value:c.min,max:f('max')?f('max').value:c.max,inverse:f('inverse').checked,description:f('description').value,_req:f('required').checked}; });
+    return {...c,theme:f('theme').value.trim()||c.theme,label:f('label').value,kind:f('kind').value,field:f('field')?.value??c.field,keywords:f('keywords').value,context:f('context').value,exclude:f('exclude').value,window:f('window').value,unit:f('unit')?.value??c.unit,min:f('min')?f('min').value:c.min,max:f('max')?f('max').value:c.max,inverse:f('inverse').checked,absence:f('absence')?.value??c.absence,absenceDocs:f('absenceDocs')?.value??c.absenceDocs,negative:f('negative')?.value??c.negative,description:f('description').value,_req:f('required').checked}; });
   for(const t of themes) t.required=crits.filter(c=>c._req&&c.theme===t.name).map(c=>c.id);
   return normalizeGrid({...next,themes,criteria:crits});
 }
@@ -15967,7 +15983,7 @@ function renderSearches(wrap=$('#summaryView')){
     const verdict=s.applicable===false?'<span class="badge muted">Non applicable</span>':s.ok?'<span class="badge ok">Indices suffisants</span>':'<span class="badge warn">Indices insuffisants</span>';
     return `<section class="eco-group srch-theme"><h4>${escapeHtml(t.name)} <small>${s.found??0} / ${t.min} minimum${s.required?` · obligatoire${s.required>1?'s':''} : ${s.requiredOk?'trouvé':'non trouvé'}`:''}</small> ${verdict}</h4>
     ${crits.map(c=>{ const x=r.criteria[c.id]; const cls=x.manual&&!x.partial?'manual':x.partial?'partial':x.found?'ok':x.contrary?'contrary':'none'; const ic={ok:'✓',contrary:'✗',none:'·',manual:'✎',partial:'◐'}[cls];
-      return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
+      return `<div class="srch-row ${cls}"><span class="srch-ic" aria-hidden="true" title="${escapeHtml(`Statut : ${SEARCH_STATUS[x.absence]||'—'}${x.absence==='ABSENT_PAR_INFERENCE'?` (documents lus : ${x.absenceDocsRead.join(', ')})`:''}`)}">${ic}</span><div class="srch-main"><strong>${escapeHtml(c.label)}${t.required.includes(c.id)?' <em>(obligatoire)</em>':''}</strong>${searchCell(c,x)&&searchCell(c,x)!=='Oui'?`<span class="srch-val">${escapeHtml(searchCell(c,x))}</span>`:''}${c.description?`<small>${escapeHtml(c.description)}</small>`:''}
       ${x.evidence.length?`<details><summary>${x.evidence.length} ${c.kind==='field'?`bâtiment${x.evidence.length>1?'s':''} · source${x.evidence.length>1?'s':''}`:'citation(s)'}</summary><ul>${x.evidence.slice(0,80).map(e=>`<li>${e.fromField?`<b>${escapeHtml(e.building)}</b> · ${escapeHtml(e.doc)}${e.page!==''&&e.page!==undefined?` · p. ${escapeHtml(String(e.page))}`:''}${e.ok?'':' (hors seuil)'}<br>${escapeHtml(e.line)}${e.context?`<small>${escapeHtml(e.context)}</small>`:''}</li>`:`<b>${escapeHtml(e.doc)}</b> · p. ${e.page}${c.kind==='number'||c.kind==='stats'?` · ${escapeHtml(e.values.join(' ; '))}${e.ok?'':' (hors seuil)'}`:''}<br>${escapeHtml(e.line)}<small>${escapeHtml(e.context)}</small></li>`}`).join('')}</ul></details>`:c.kind==='field'?`<small class="srch-field-note">${FIELD_MAP[c.field]?`Colonne « ${escapeHtml(FIELD_MAP[c.field].label)} » vide pour ce projet.`:`Colonne inconnue : « ${escapeHtml(c.field||'?')} ».`}</small>`:''}</div>
       <span class="srch-side">${hasAshtonCheck(c.id)?ashtonCheckButtons(p,c):''}<select data-srch-ov="${c.id}" aria-label="Décision pour ${escapeHtml(c.label)}"><option value="">Auto</option>${(SRCH_PARTIAL_IDS.has(c.id)?['Oui','Partiel','Non','Sans objet']:['Oui','Non','Sans objet']).map(o=>`<option ${x.manual===o?'selected':''}>${o}</option>`).join('')}</select></span></div>`; }).join('')}</section>`; };
   wrap.innerHTML=`<div class="project-detail-banner"><div><h3>${escapeHtml(projectTitle(p))}</h3><small>Recherches personnalisées · ${r.documents.length} document(s) lu(s)${g.docFilter?` (filtre : ${escapeHtml(g.docFilter)})`:''}</small></div><button id="detailBackOverview" type="button">← Synthèse projets</button></div>
@@ -16000,12 +16016,12 @@ function renderSearches(wrap=$('#summaryView')){
 
 // v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
 // le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
-function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',absence:x.absence||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
 // v2.19.1 — flux de l'observatoire des recherches : sans citations ni noms de documents (l'observatoire ne les lit pas ;
 // avec une centaine d'opérations, le flux dépassait le stockage local et l'observatoire restait sur l'envoi précédent).
 // Le dernier résultat de chaque grille est gardé dans le projet (searchCache) : une opération dont le texte des documents
 // n'est plus en mémoire (sauvegarde « résultats seuls », session importée sans documents) reste comptée.
-function feedSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',value:searchCellValue(c,x),values:(x.values||[]).slice(0,c.kind==='stats'?400:20)}]; })),themes:r.themes,docCount:r.documents.length}; }
+function feedSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',absence:x.absence||'',value:searchCellValue(c,x),values:(x.values||[]).slice(0,c.kind==='stats'?400:20)}]; })),themes:r.themes,docCount:r.documents.length}; }
 // Empreinte de ce dont dépend une recherche : grille, documents lus (et leur date d'analyse), décisions, plans Ashton.
 const srchHash=s=>{ let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36); };
 function searchSignature(p,g){ const fields=g.criteria.filter(c=>c.kind==='field').map(c=>c.field); return srchHash(JSON.stringify([fields.length?(p.result?.rows||[]).map(r=>[r.building,...fields.map(f=>r[f]??null)]):0,g,(p.docs||[]).filter(d=>d.status==='ready').map(d=>[d.id,d.analysisCachedAt||0,d.persistenceMode||'']),p.searchOverrides?.[g.id]||{},p.planTables||{},p.planChecks||{}])); }
