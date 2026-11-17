@@ -7604,17 +7604,23 @@ function parseEnvelope(doc){
     if(struct && hasEnvelope && !excluded && !/provisoire|tunnel\s+de\s+protection|echafaudage|pendant\s+les\s+travaux/i.test(normLower(ctx)) && !structNoise.test(normLower(ctx))){ const field=target?`${target}_structure`:'structure'; if(lotOk(field)) push(out,occ(doc,page,line,field,struct,'envelope:structure-context',(target?0.91:0.87)+lotBonus(field),'',{excerpt:ctx.slice(0,420)})); }
     const before=out.length;
     if(mat && target && hasEnvelope && !excluded && lotOk(target)){
+      // v3.0.2 — côté de l'isolation des murs : ITE (« ITE », « isolation par l'extérieur », « ETICS », « sous enduit ») sinon ITI
+      // (doublage, contre-cloison, « ITI », « isolation par l'intérieur ») ; les valeurs vont aussi dans les colonnes ITE / ITI.
+      const sideN=normLower(ctx), wallSide=target!=='wall'?null:/\bite\b|isolation\s+(?:thermique\s+)?(?:par\s+l.?\s*)?exterieur|\betics\b|sous\s+enduit|isolation\s+exterieure/.test(sideN)?'ite':(isDoublage||DOUBLAGE_RE.test(sideN)||/\biti\b|isolation\s+(?:thermique\s+)?(?:par\s+l.?\s*)?interieur|isolation\s+interieure/.test(sideN))?'iti':null;
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
       push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',(productMatch?0.96:0.93)-(fromHeading?0.02:0),'',{excerpt:ctx.slice(0,420),...productExtra}));
+      if(wallSide) push(out,occ(doc,page,line,`wall_${wallSide}_insulation`,mat,'envelope:side-insulation',(productMatch?0.95:0.92)-(fromHeading?0.02:0),'',{excerpt:ctx.slice(0,420),...productExtra}));
       // v3.0.1 — épaisseur d'isolant invraisemblable (mur hors 40–400 mm, plancher bas sous 40 mm : plaque, enduit, cloison, hauteur) :
       // proposée à vérifier, jamais retenue d'office (banc Salesforce : 42 fausses pour 4 justes).
       const thOdd=explicitTh!==null&&((target==='wall'&&(explicitTh<40||explicitTh>400))||(target==='floor'&&explicitTh<40));
       if(explicitTh!==null) push(out,occ(doc,page,line,`${target}_insulation_thickness`,explicitTh,'envelope:thickness-context',thOdd?0.8:(productMatch?0.96:0.94)-(fromHeading?0.02:0),'mm',{excerpt:ctx.slice(0,420),...productExtra}));
+      if(explicitTh!==null&&wallSide) push(out,occ(doc,page,line,`wall_${wallSide}_thickness`,explicitTh,'envelope:side-thickness',thOdd?0.8:(productMatch?0.95:0.93)-(fromHeading?0.02:0),'mm',{excerpt:ctx.slice(0,420),...productExtra}));
       else if(productMatch?.variant && productMatch.thicknessEvidence==='product-context'){
         push(out,occ(doc,page,line,`${target}_insulation_thickness`,productMatch.variant.thickness,'library:insulation-thickness',0.93,'mm',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'thickness'),...productExtra}));
       }
       const r=explicitR(base)??explicitR(ctx);
       if(r!==null) push(out,occ(doc,page,line,`${target}_insulation_r`,r,'envelope:r-context',0.98-(fromHeading?0.02:0),'m².K/W',{excerpt:ctx.slice(0,420),...productExtra}));
+      if(r!==null&&wallSide) push(out,occ(doc,page,line,`wall_${wallSide}_r`,r,'envelope:side-r',0.97-(fromHeading?0.02:0),'m².K/W',{excerpt:ctx.slice(0,420),...productExtra}));
       else if(productMatch?.variant && productMatch.score>=0.96 && productMatch.thicknessEvidence){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }
