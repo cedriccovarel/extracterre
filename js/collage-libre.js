@@ -67,7 +67,8 @@ function fp_envelope(bld,label,raw){
 const fp_HEADER=/^\s*([^=:]{2,80}?)\s*:\s*$/;
 const fp_BUILDING_WORD=/\b(?:b[âa]t(?:iment)?s?|maisons?|immeubles?|cages?|plots?|lots?|villas?|pavillons?|r[ée]sidences?|blocs?|tranches?|logements?|ilots?|îlots?)\b/i;
 const fp_NOT_BUILDING=/^(?:bat(?:iment)?\.?|dh\b.*|.*\b(?:conforme|conformite|rsee|rset|rsenv|note de calcul|etude thermique|methode de calcul)\b.*|.*\bdu \d{1,2}\/\d{1,2}\/\d{2,4}.*|iment)$/;
-function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim(); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
+// v3.0.2 — puce mal encodée devant le nom (« ? Bâtiment AB - 108 logements », « > BATIMENT A ») : retirée (banc : bâtiments non rapprochés).
+function fp_buildingName(n){ const t=n.replace(/\s+/g,' ').trim().replace(/^[^\p{L}\p{N}]+/u,''); const k=t.match(/^b[âa]t(?:iment)?\.?\s*(.+)$/i); return k?`Bâtiment ${k[1]}`:t; }
 // v2.8.0 — fiche Salesforce (libellé sur une ligne, valeur sur la suivante) → « libellé = valeur ».
 // Seuls les libellés reconnus exactement (ou par alias) ouvrent une paire : un rapprochement approximatif ne suffit pas.
 function fp_strictLabel(l){ const t=String(l||'').replace(/^\*\s*/,'').replace(/\s*:\s*$/,'').trim(); if(!t||t.length>80||/[=\t]/.test(t)) return null;

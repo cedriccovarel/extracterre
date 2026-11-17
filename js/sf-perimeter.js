@@ -57,6 +57,14 @@ export function sfPerimeterMap(sfNames,detected,manual={}){
     // « COLECTIF A » ↔ « COLLECTIF A », « ACCESSION » ↔ « C - BATIMENT ACCESSION » (code devant le nom).
     const lk=sfp_loose(d); const loose=lk.length>=4?S.filter(s=>{ const q=sfp_loose(s); return q===lk||(/^[a-z]{1,2}\d{0,2} /.test(q)&&q.slice(q.indexOf(' ')+1)===lk&&lk.length>=5); }):[];
     if(loose.length===1&&!/\b(?:et|ou)\b|,/.test(normLowerSfp(d))){ map[raw]=loose[0]; modes[raw]='prefix'; continue; }
+    // v3.0.2 — identifiant en fin de nom, d'un seul côté : « MACROLOT G » ↔ « G », « COLLECTIF - E » ↔ « E », « BYSCO A » ↔ « A »,
+    // « C » ↔ « COLLECTIF C » (un seul bâtiment Salesforce porte cet identifiant, aucune liste).
+    { const lastId=x=>{ const w=sfp_key(x).split(' ').filter(t=>t&&!/^(?:batiment|bat)$/.test(t)); const l=w[w.length-1]||''; return SFP_SINGLE.test(l)&&l.length<=3&&!/^(?:est|nord|sud|rue|cour)$/.test(l)?buildingCoreId(l):''; };
+      const li=lastId(d); const hit=li&&!/\b(?:et|ou)\b|,|&|\+/.test(normLowerSfp(d))?S.filter(s2=>lastId(s2)===li||buildingCoreId(s2)===li):[];
+      if(hit.length===1&&(core===''||core===li||!cores.some(c=>c.core===core))){ map[raw]=hit[0]; modes[raw]='core'; continue; } }
+    // v3.0.2 — nom tronqué (« CHARQUEMON » ↔ « CHARQUEMONT ») : 8 caractères au moins, 2 lettres d'écart au plus, un seul candidat.
+    { const k0=sfp_key(d).replace(/^(?:batiment|bat) /,''); const tr=k0.length>=8?S.filter(s2=>{ const q=sfp_key(s2).replace(/^(?:batiment|bat) /,''); return q!==k0&&(q.startsWith(k0)||k0.startsWith(q))&&Math.abs(q.length-k0.length)<=2&&Math.min(q.length,k0.length)>=8; }):[];
+      if(tr.length===1){ map[raw]=tr[0]; modes[raw]='prefix'; continue; } }
     map[raw]=null; modes[raw]='none';
   }
   // Un seul bâtiment Salesforce : les noms courts restés seuls (« 1 », « N°1 », « BATIMENT ») le désignent.

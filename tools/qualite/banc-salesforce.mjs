@@ -16,7 +16,7 @@ import {DEFAULT_SOURCE_RULES,FIELD_MAP} from '../../js/config.js';
 import {obsoleteFolderOf} from '../../js/import-rules.js';
 import {sfxParseHtmlTable,sfxColumns,sfxFiche,sfxHeaderRow} from '../../js/sf-export.js';
 import {parseFreePaste,freePasteValues} from '../../js/collage-libre.js';
-import {sfPerimeterMap} from '../../js/sf-perimeter.js';
+import {sfPerimeterMap,sfPerimeter,sfSplitGroup} from '../../js/sf-perimeter.js';
 import {canonicalBuilding} from '../../js/buildings.js';
 import {compareToReference,reliabilityTable,RELIABILITY,recoupement,sfReliability,SF_RELIABILITY} from '../../js/qualite.js';
 import {oddValue} from '../../js/sanity.js';
@@ -43,11 +43,19 @@ for(const row of table0.slice(hi+1)){ const f=sfxFiche(row,cols); if(!f.contract
 // 2. Import massif → consolidation des documents seuls (sans Salesforce ni saisie)
 const reg=JSON.parse(fs.readFileSync(path.join(W,'registre.json'),'utf8'));
 const byC={}; for(const f of Object.values(reg.files)) if(f.isCurrent&&!f.missing&&f.resultFile&&f.status!=='ignoré'&&(args['avec-perimes']||!obsoleteFolderOf(f.relDir))&&fs.existsSync(path.join(W,f.resultFile))) (byC[f.contract]=byC[f.contract]||[]).push(f);
+// v3.0.2 — --perimetre-v3 [--suivi <export Suivi tous contrats>] : bâtiments comme dans l'appli v3 (noms Salesforce, sinon « Total
+// bâtiments », 1 bâtiment = tout fusionné) ; une valeur sans bâtiment ou d'une liste « A et B » compte pour chacun de ces bâtiments.
+const TOTALS={};
+if(args.suivi){ const XLSX=require('xlsx'); const wb=XLSX.read(fs.readFileSync(home(args.suivi)),{type:'buffer'}); const tb=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
+  const hi=tb.findIndex(r=>r.some(x=>/num[ée]ro du contrat/i.test(String(x)))&&r.some(x=>/^(?:total|nombre de) b[âa]timents$/i.test(String(x).trim()))); if(hi>=0){ const h=tb[hi]; const ci=h.findIndex(x=>/num[ée]ro du contrat/i.test(String(x))), ti=h.findIndex(x=>/^(?:total|nombre de) b[âa]timents$/i.test(String(x).trim()));
+    for(const r of tb.slice(hi+1)){ const c=String(r[ci]||'').replace(/\s/g,''); if(/^\d{1,8}$/.test(c)){ const n=Math.floor(Number(String(r[ti]).replace(',','.'))); TOTALS[c.padStart(8,'0')]=n>0?n:1; } } }
+  console.log(`Suivi : ${Object.keys(TOTALS).length} total(aux) de bâtiments`); }
+const RESF=new Set(['bbio','cep','cepnr','dh','dh_zt','dh_znt','tic','ic_construction','ic_energy','ubat_after','shab','housing_count']);
 const only=args.contrats?new Set(String(args.contrats).split(',').map(s=>s.trim().replace(/^0+/,'').padStart(8,'0'))):null;
 const contracts=Object.keys(byC).filter(c=>sf.has(c)&&(!only||only.has(c))).sort();
 console.log(`Export Salesforce : ${sf.size} fiche(s) avec données techniques · import massif : ${Object.keys(byC).length} opération(s) · communes : ${contracts.length}`);
 
-const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
+const PM={}; const detail=[]; const T=()=>({juste:0,faux:0,manquant:0,incomparable:0});
 const byField={}, byMethod={}, byType={}; let ops=0; const perOp=[]; const candObs=[]; const oracle={}, oracleTot={};
 const bump=(o,k,r)=>{ (o[k]=o[k]||T())[r]++; };
 // v2.36.9 — fiabilité Prestaterre (fiable / non fiable, par catégorie), voir sfReliability dans js/qualite.js.
@@ -62,7 +70,10 @@ for(const c of contracts){
   let overrides={}, extra=[];
   if(args.ancrage){ const v0=sf.get(c).vals, com=v0.find(v=>!v.building)?.values||{}, nm=v0.filter(v=>v.building);
     const sfN=nm.map(v=>canonicalBuilding(v.building)), detected=[...new Set(docs.flatMap(d=>[...(d.buildings?.names||[]),...(d.cachedOccurrences||[]).map(o=>o.building).filter(Boolean)]))];
-    if(sfN.length){ const mp=sfPerimeterMap(sfN,detected).map; for(const [k,t] of Object.entries(mp)) if(t&&k!=='Bâtiment unique') overrides[k]=t; }
+    if(args['perimetre-v3']){ const res0=new Map(); for(const d of docs) for(const o of d.cachedOccurrences||[]) if(o?.building&&RESF.has(o.field)) (res0.get(o.building)||res0.set(o.building,new Set()).get(o.building)).add(o.field);
+      const pm=sfPerimeter({names:sfN,total:TOTALS[c]??null,detected:detected.map(n=>({name:n,results:res0.get(n)?.size||0}))});
+      if(pm){ PM[c]=pm; for(const [k,t] of Object.entries(pm.map)) if(t&&k!=='Bâtiment unique') overrides[k]=t; } }
+    else if(sfN.length){ const mp=sfPerimeterMap(sfN,detected).map; for(const [k,t] of Object.entries(mp)) if(t&&k!=='Bâtiment unique') overrides[k]=t; }
     for(const b of (nm.length?nm:[{building:'',values:com}])) for(const f of ['bbio','cep']){ const v={...com,...b.values}[f]; if(v===undefined||v==='') continue;
       extra.push({field:f,value:v,building:b.building?canonicalBuilding(b.building):'Bâtiment unique',docId:'sf-ancrage',fileName:'Salesforce',docType:'Entrée manuelle',userValidated:true,manualDefinitive:true,page:'',confidence:.995,method:'manual:free-paste',unit:''}); } }
   let res; try{ res=analyzeDocuments(docs,DEFAULT_SOURCE_RULES,'',overrides,extra); }catch(e){ console.warn(`  ⚠ ${c} : ${e.message}`); continue; }
@@ -73,7 +84,9 @@ for(const c of contracts){
   perOp.push({c,res,comps,sfB,named:named.length>0,docs});
   const rows=res.rows||[]; const map=named.length?sfPerimeterMap(sfB.map(b=>b.name),rows.map(r=>r.building)).map:{};
   for(const b of sfB){
-    const mine=named.length?rows.filter(r=>map[r.building]===b.name):rows;
+    let mine=named.length?rows.filter(r=>map[r.building]===b.name):rows;
+    if(args['perimetre-v3']&&named.length){ const share=rows.filter(r=>!mine.includes(r)&&(r.building==='Bâtiment unique'||(sfSplitGroup(r.building).length>1&&sfSplitGroup(r.building).some(x=>map[x]===b.name||canonicalBuilding(x)===b.name))));
+      mine=[...mine,...share.map(r=>({...Object.fromEntries(Object.entries(r).filter(([k])=>!mine.some(m=>m[k]!==undefined&&m[k]!==null&&m[k]!==''))),building:r.building}))]; }
     for(const [field,sv] of Object.entries(b.values)){
       if(!FIELD_MAP[field]||['building','contract_number','internal_code','evaluation_status','address','postcode','city','department'].includes(field)) continue;
       if(args.ancrage&&['bbio','cep'].includes(field)) continue;
