@@ -1,10 +1,10 @@
-// ExtracTerre v3.0.0 — bâtiments = Salesforce : « Total bâtiments », jamais plus de N, valeurs non rattachées gardées. Noms fictifs.
+// ExtracTerre v3.0.1 — bâtiments = Salesforce : « Total bâtiments », jamais plus de N, valeurs non rattachées gardées. Noms fictifs.
 import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {sfPerimeter,sfCountNames,sfRankNames,sfIsList,sfSplitGroup} from './js/sf-perimeter.js';
 import {sfxColumns,sfxFiche} from './js/sf-export.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.0.0','version');
+eq(APP_VERSION,'3.0.1','version');
 const D=[{name:'Bâtiment A',results:8},{name:'BATIMENT A',results:2},{name:'Bâtiment 1',results:3},{name:'Bâtiment B',results:6},{name:'Bâtiment A et B',results:5},
   {name:'Bâtiment Zone 1',results:4},{name:'Bâtiment C',results:1},{name:'Bâtiment unique',results:9},{name:'Bâtiment Synthèse des résultats',results:7}];
 eq(sfCountNames(2,D),['Bâtiment A','Bâtiment B'],'N=2 sans noms : les 2 noms les mieux renseignés, un par identifiant (A = BATIMENT A = 1)');
@@ -30,7 +30,7 @@ eq(/sfUnassigned:true/.test(app)&&/r\.uncertain=\[\.\.\.r\.uncertain\.filter\(ke
 eq(/if\(b==='Bâtiment unique'\) return S\.length>1\?S:\[\]; const parts=sfSplitGroup\(b\)/.test(app),true,'valeur sans bâtiment ou d’un groupe → chaque bâtiment (si vide)');
 eq([sfSplitGroup('Bât 2 & 3'),sfSplitGroup('Bâtiment AB'),sfSplitGroup('Bâtiment MOULIN')],[['Bâtiment 2','Bâtiment 3'],['Bâtiment AB'],['Bâtiment MOULIN']],'listes de la fiche Salesforce découpées ; « AB » = un bâtiment');
 eq(sfPerimeter({names:['Bâtiment 2','Bâtiment 2 & 3','Bâtiment 3'],total:3,detected:[{name:'Bâtiment 4',results:3}]}).sf,['Bâtiment 2','Bâtiment 3','Bâtiment 4'],'groupe SF = ses bâtiments, complétés jusqu’à N');
-console.log(`v3.0.0 — ${n} vérifications OK (données fictives)`);
+console.log(`v3.0.1 — ${n} vérifications OK (données fictives)`);
 // Exécution réelle des fonctions de l'application sur une opération fictive (extraites de js/app.js).
 {
   const {canonicalBuilding}=await import('./js/buildings.js'); const SP=await import('./js/sf-perimeter.js');
@@ -71,6 +71,6 @@ console.log(`v3.0.0 — ${n} vérifications OK (données fictives)`);
   eq(/if\(win\?\.others\?\.length\) manual\.otherManual=win\.others;/.test(app)&&/autre\(s\) valeur\(s\)/.test(app),true,'C : info-bulle branchée');
   console.log('  règle C OK');
 }
-{ const A=(await import('./js/sf-export.js')).sfxColumns(['Numéro du contrat','Nombre de bâtiments']); eq(A.buildingTotal,1,'v3.0.0 : future colonne « Nombre de bâtiments » reconnue');
-  eq(/Incohérence interne Salesforce/.test(app)&&/bâtiment\(s\) sans identité/.test(app),true,'v3.0.0 : incohérence Salesforce et identités manquantes signalées');
-  const m=sfPerimeter({names:['BAT A','BAT B','BAT C'],total:2,detected:[]}); eq([m.named.length,m.total],[3,2],'v3.0.0 : noms SF comptés pour l’alerte'); }
+{ const A=(await import('./js/sf-export.js')).sfxColumns(['Numéro du contrat','Nombre de bâtiments']); eq(A.buildingTotal,1,'v3.0.1 : future colonne « Nombre de bâtiments » reconnue');
+  eq(/Incohérence interne Salesforce/.test(app)&&/bâtiment\(s\) sans identité/.test(app),true,'v3.0.1 : incohérence Salesforce et identités manquantes signalées');
+  const m=sfPerimeter({names:['BAT A','BAT B','BAT C'],total:2,detected:[]}); eq([m.named.length,m.total],[3,2],'v3.0.1 : noms SF comptés pour l’alerte'); }

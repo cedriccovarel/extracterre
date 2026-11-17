@@ -1,4 +1,4 @@
-export const APP_VERSION='3.0.0';
+export const APP_VERSION='3.0.1';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -458,7 +458,7 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
-// v3.0.0 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// v3.0.1 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
 // de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
 // servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
 // RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
@@ -476,11 +476,11 @@ function aliasRegex(aliases){ return new RegExp(`\\b(?:${aliases.map(a=>rxEscape
 const pair=(canon,aliases)=>[canon,aliasRegex(aliases)];
 
 export const MATERIALS = [
-  pair('PSE graphité',['pse graphité','pse graphite','pregymax','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
+  pair('PSE graphité',['pse graphité','pse graphite','pregymax','doublissimo 32','placomur 32','polystyrène expansé graphité','polystyrene expanse graphite','neopor','gris graphite']),
   pair('Laine de roche',['laine de roche','ldr','rockwool','rockfacade','rockmur','rockplus','rocksol','rockfeu','alpharock','mb rock','redair','jetrock','rockair','ecorock']),
   pair('Laine de verre',['laine de verre','ldv','lv','l.v.','glass wool','gr 32','gr32','isoconfort','isomob','ibr','ursa glasswool','ki fit','ki-fit','comblissimo']),
   pair('Laine minérale',['laine minérale','laine minerale','lm projetée','lm projetee','lm soufflée','lm soufflee','mineral wool','laine minerale semi rigide','fibrexpan']),
-  pair('PSE',['pse','polystyrène expansé','polystyrene expanse','eps','knauf therm','therm th','therm itex','webertherm pse','unicell','cellomur']),
+  pair('PSE',['pse','polystyrène expansé','polystyrene expanse','eps','doublissimo','placomur','pregytherm','prégytherm','polyplac','knauf therm','therm th','therm itex','webertherm pse','unicell','cellomur']),
   pair('XPS',['xps','polystyrène extrudé','polystyrene extrude','styrodur','jackodur','ursa xps','soprema xps']),
   pair('PIR',['pir','polyisocyanurate','eurothane','powerwall','powerdeck','eurosol','fitforall','efisol','kingspan kooltherm']),
   pair('PUR',['pur','polyuréthane','polyurethane','mousse polyurethane','mousse pu','projection polyurethane','tms','tms mf si','tms gf si','unilin utherm','utherm','efigreen','efigreen duo','efigreen duo +']),

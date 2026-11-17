@@ -51,6 +51,10 @@ function explicitThickness(s){
   const m=s.match(/(?:ep(?:aisseur)?\.?|e)\s*(?:isolant(?:e)?\s*)?(?:=|:)?\s*(\d{1,4}(?:[,.]\d+)?)\s*(mm|cm|m)\b/i)||s.match(/\b(\d{2,4}(?:[,.]\d+)?)\s*(mm|cm)\b/i);
   if(!m) return null; let v=parseFrNumber(m[1]); const u=m[2].toLowerCase(); if(u==='cm') v*=10; if(u==='m') v*=1000; return v;
 }
+// v3.0.1 — doublage complexe (isolant + plaque de plâtre) : « Doublissimo 100+13 », « Pregymax 32 80+13 », « 13+101 R=3,35 ».
+// L'épaisseur de l'isolant est la partie qui n'est pas la plaque (9,5 / 10 / 12,5 / 13 / 15 mm). Un doublage est un mur.
+const DOUBLAGE_RE=/\b(?:doublages?|contre[- ]cloisons?|complexes?\s+(?:de\s+)?doublage|doublissimo|placomur|pregymax|pr[eé]gytherm|polyplac)\b/i;
+function doublageThickness(s){ const m=String(s).match(/(?<![\d,.])(?:(\d{2,3})\s*\+\s*(?:9[,.]5|10|12[,.]5|13|15)|(?:9[,.]5|10|12[,.]5|13|15)\s*\+\s*(\d{2,3}))(?![\d,.]*\s*(?:cm|m)\b)(?![\d])/); if(!m) return null; const v=Number(m[1]||m[2]); return v>=20&&v<=300?v:null; }
 function explicitR(s){ const m=s.match(/(?:\bresistance\s+thermique\b|\bR\b)\s*(?:thermique\s*)?(?:=|:|de)?\s*(\d+(?:[,.]\d+)?)/i); return m?parseFrNumber(m[1]):null; }
 
 function rowNumericValues(line){
@@ -1277,15 +1281,23 @@ function parseEnvelope(doc){
   const lotOk=key=>!isLotDoc||lotAllows(fam,key), lotBonus=key=>isLotDoc&&fam&&fam!=='commun'&&lotAllows(fam,key)?0.03:0;
   for(const page of doc.read.pages){
     if([DOC_TYPES.RSET_RE2020,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012].includes(doc.type) && /(?:chapitre\s*3\s*:.*indicateurs|donn[eé]es\s+r[eé]capitulatives\s+sur\s+les\s+parois)/i.test(page.text||'')) continue;
+    // v3.0.1 — titre de section (« Plancher bas », « II.7 DALLE BASSE RDC », « MURS DE FACADES ») : il désigne la paroi des lignes
+    // matériau qui suivent (6 lignes au plus) quand elles ne la nomment pas (« Laine de verre : épaisseur 140 mm ; R = 4 »).
+    let sticky=null;
     const lines=page.lines||[]; for(let i=0;i<lines.length;i++){
-    const line=lines[i], base=normalizeText(line.text); let ctx=base, target=targetFromContext(base);
+    const line=lines[i], base=normalizeText(line.text); let ctx=base, target=targetFromContext(base), fromHeading=false;
+    { const head=base.replace(/^\s*(?:[ivx]+|\d+(?:[.]\d+)*)[.)]?\s+/i,'').trim(); if(target&&head.length<=45&&!/\d{2,}\s*(?:mm|cm)|\br\s*=/.test(head)&&!findFirstMatch(base,MATERIALS)) sticky={target,i}; }
     if(cctpNoiseAt(doc,lines,i)) continue;
     const baseMat=findFirstMatch(base,MATERIALS), baseStruct=findFirstMatch(base,STRUCTURES);
+    const isDoublage=DOUBLAGE_RE.test(base);
     if(target) ctx=normalizeText(lineWindow(page,i,0,2));
-    else if(baseMat||baseStruct){ ctx=normalizeText(lineWindow(page,i,1,0)); target=targetFromContext(ctx); }
+    else if(baseMat||baseStruct||isDoublage){ ctx=normalizeText(lineWindow(page,i,1,isDoublage?1:0)); target=targetFromContext(ctx);
+      if(!target&&isDoublage) target='wall';
+      if(!target&&baseMat&&sticky&&i-sticky.i<=6){ target=sticky.target; fromHeading=true; ctx=normalizeText(`${lines[sticky.i].text} ${lineWindow(page,i,1,0)}`); } }
     else if(ELEMENT_PATTERNS.window.test(base)) ctx=normalizeText(lineWindow(page,i,0,2));
     else continue;
-    const explicitTh=explicitThickness(base)??explicitThickness(ctx);
+    const dTh=isDoublage||DOUBLAGE_RE.test(ctx)?doublageThickness(base)??doublageThickness(ctx):null;
+    const explicitTh=dTh??explicitThickness(base)??explicitThickness(ctx);
     const productMatch=(target&&matchInsulationProduct(base,target,explicitTh))||(target&&matchInsulationProduct(ctx,target,explicitTh));
     const mat=productMatch?.material||baseMat||findFirstMatch(ctx,MATERIALS), struct=baseStruct||findFirstMatch(ctx,STRUCTURES);
     const hasEnvelope=/isol|thermi|paroi|mur|facade|toiture|plancher|dalle|combles|rampant|ite|iti|sarking|bardage|doublage|contre[- ]cloison|solive/i.test(ctx);
@@ -1300,13 +1312,16 @@ function parseEnvelope(doc){
     const before=out.length;
     if(mat && target && hasEnvelope && !excluded && lotOk(target)){
       const productExtra=productMatch?{libraryProductMatch:true,libraryBrand:productMatch.brand,libraryProduct:productMatch.product,librarySource:productMatch.source}:{};
-      push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',productMatch?0.96:0.93,'',{excerpt:ctx.slice(0,420),...productExtra}));
-      if(explicitTh!==null) push(out,occ(doc,page,line,`${target}_insulation_thickness`,explicitTh,'envelope:thickness-context',productMatch?0.96:0.94,'mm',{excerpt:ctx.slice(0,420),...productExtra}));
+      push(out,occ(doc,page,line,`${target}_insulation`,mat,productMatch?'envelope:insulation-product':'envelope:insulation-context',(productMatch?0.96:0.93)-(fromHeading?0.02:0),'',{excerpt:ctx.slice(0,420),...productExtra}));
+      // v3.0.1 — épaisseur d'isolant invraisemblable (mur hors 40–400 mm, plancher bas sous 40 mm : plaque, enduit, cloison, hauteur) :
+      // proposée à vérifier, jamais retenue d'office (banc Salesforce : 42 fausses pour 4 justes).
+      const thOdd=explicitTh!==null&&((target==='wall'&&(explicitTh<40||explicitTh>400))||(target==='floor'&&explicitTh<40));
+      if(explicitTh!==null) push(out,occ(doc,page,line,`${target}_insulation_thickness`,explicitTh,'envelope:thickness-context',thOdd?0.8:(productMatch?0.96:0.94)-(fromHeading?0.02:0),'mm',{excerpt:ctx.slice(0,420),...productExtra}));
       else if(productMatch?.variant && productMatch.thicknessEvidence==='product-context'){
         push(out,occ(doc,page,line,`${target}_insulation_thickness`,productMatch.variant.thickness,'library:insulation-thickness',0.93,'mm',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'thickness'),...productExtra}));
       }
       const r=explicitR(base)??explicitR(ctx);
-      if(r!==null) push(out,occ(doc,page,line,`${target}_insulation_r`,r,'envelope:r-context',0.98,'m².K/W',{excerpt:ctx.slice(0,420),...productExtra}));
+      if(r!==null) push(out,occ(doc,page,line,`${target}_insulation_r`,r,'envelope:r-context',0.98-(fromHeading?0.02:0),'m².K/W',{excerpt:ctx.slice(0,420),...productExtra}));
       else if(productMatch?.variant && productMatch.score>=0.96 && productMatch.thicknessEvidence){
         push(out,occ(doc,page,line,`${target}_insulation_r`,productMatch.variant.r,'library:insulation-r',0.94,'m².K/W',{excerpt:ctx.slice(0,420),libraryDerived:true,origin:'Bibliothèque isolants',provenanceNote:libraryNote(productMatch,'r'),...productExtra}));
       }

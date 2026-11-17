@@ -1,3 +1,13 @@
+# v3.0.1 — Lecteurs enveloppe : doublages complexes, titre de section, épaisseurs invraisemblables
+
+- **Doublages complexes** (« Doublissimo 100+13 », « Pregymax 32 80+13 (R=2,55) », « 13+101 R=3,35 ») : isolant, épaisseur
+  (partie qui n'est pas la plaque de plâtre) et R du mur. Marques ajoutées : Doublissimo, Placomur, Prégytherm, Polyplac.
+- **Titre de section** (« Plancher bas », « Toiture terrasse », « Murs de façades ») : il désigne la paroi des lignes matériau
+  qui suivent (6 lignes au plus) quand elles ne la nomment pas (confiance un peu plus basse qu'une ligne qui la nomme).
+- **Épaisseur invraisemblable** (mur hors 40–400 mm, plancher bas sous 40 mm) : proposée à vérifier, pas retenue d'office.
+- Banc Salesforce (616 opérations, textes relus, avant les épaisseurs invraisemblables) : +347 valeurs justes nettes
+  (433 gagnées, 86 perdues) ; murs type d'isolant 55,5 → 67,0 %, épaisseur 28,0 → 34,7 %, R 38,1 → 42,0 % ; fiabilité 63,6 → 66,4 %.
+
 # v3.0.0 — Refonte : Salesforce fait foi, bâtiments de référence, choix de la valeur, confrontation
 
 Regroupe les versions 2.41.1 à 2.44.2 (chantier du 17/11/2026, détail ci-dessous et dans docs/refonte-2026-11/).
