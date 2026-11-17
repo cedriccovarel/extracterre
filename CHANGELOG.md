@@ -1,3 +1,12 @@
+# v2.40.0 — L'observatoire des recherches passe dans TotalRecoll
+
+- Les boutons « Exporter l'observatoire des recherches » et « Observatoire des recherches » sont retirés de la barre de gauche.
+- Les résultats de l'onglet Recherches sont déjà dans l'export de session : TotalRecoll les lit dans les fichiers de session
+  (onglet **Recherches**), les rattache à Tous contrats et permet de **filtrer par référentiel**, maître d'ouvrage et grille.
+- L'ancienne page `observatoire.html` renvoie vers TotalRecoll.
+
+# v2.39.4 — Barre de progression de l'export de l'observatoire des recherches
+
 # v2.32.1 — Nouvelle liste : garder les tuiles existantes ; relire tous les documents
 
 - Au lancement d'une nouvelle liste, si d'autres tuiles sont déjà affichées, 3 choix clairs remplacent la fenêtre « OK / Annuler » :

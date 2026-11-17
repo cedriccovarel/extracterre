@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.39.4 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.40.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.39.4';
+const APP_VERSION='2.40.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -15917,42 +15917,8 @@ function openDuplicatesDialog(groups){
     renderAll(); toast(`${drop.length} opération(s) en double retirée(s).`,'success'); scheduleWorkspaceCheckpoint('doublons retirés',80); };
   document.body.append(dlg); dlg.showModal();
 }
-// Observatoire des recherches (page à part, même origine) : on lui transmet la version allégée par le stockage local.
-// v2.19.4 — l'observatoire des recherches ne reçoit plus rien d'ExtracTerre à l'ouverture (le calcul de toutes les recherches
-// figeait la page) : le bouton ouvre la page, qui charge le fichier produit par « Exporter l'observatoire des recherches ».
-function openSearchObservatory(){ window.open('observatoire.html','extracterre-observatoire'); }
-// Export pour l'observatoire : une opération à la fois en rendant la main (progression dans l'indicateur de sauvegarde) ;
-// une opération dont rien n'a changé (documents, grille, décisions) reprend son dernier résultat sans relire ses documents.
-let observatoryExporting=false;
-async function exportObservatoryJson(){
-  if(observatoryExporting){ toast('Export de l’observatoire déjà en cours…','warn'); return; }
-  observatoryExporting=true; const btn=$('#observatoryExportBtn'); if(btn) btn.disabled=true;
-  const ui=exportProgress('Export de l’observatoire des recherches'), t0=Date.now();
-  try{
-    const grids=loadGrids(), list=state.projects.filter(p=>!projectIsEmpty(p)), operations=[], N=list.length;
-    for(let k=0;k<N;k++){ const p=list[k];
-      // v2.39.4 — barre de progression (opération en cours, %, temps restant estimé)
-      const left=k>=3?Math.round((Date.now()-t0)/k*(N-k)/1000):null;
-      ui.set(`Opérations ${k+1} / ${N}`,k/(N+1),`${projectTitle(p)||''}${left===null?'':` · reste ≈ ${left>=90?`${Math.round(left/60)} min`:`${left} s`}`}`);
-      if(k%3===0) await yieldToBrowser();
-      if(p.pendingRebuild||grids.some(g=>p.searchCache?.[g.id]?.sig!==searchSignature(p,g))) await rebuildProject(p);
-      const r=feedSearches(p,grids); releaseProjectReads(p);
-      const id=projectIdentity(p);
-      operations.push({id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,status:d.status})),searches:r});
-      freeProjectResult(p);
-    }
-    ui.set('Création du fichier…',N/(N+1),`${N} opération(s)`); await yieldToBrowser();
-    const snap={format:'extracterre-session',kind:'observatoire',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),grids,operations};
-    downloadBlob(new Blob([JSON.stringify(snap)],{type:'application/json'}),`ExtracTerre_observatoire_${new Date().toISOString().slice(0,10)}.json`);
-    const withS=operations.filter(o=>Object.keys(o.searches).length).length;
-    const noText=operations.filter(o=>!Object.keys(o.searches).length&&o.documents.some(d=>d.status==='ready')).length, noDoc=operations.filter(o=>!o.documents.length).length;
-    const why=[noText?`${noText} sans texte de document en mémoire (à réanalyser)`:'',noDoc?`${noDoc} sans document`:''].filter(Boolean).join(' · ');
-    ui.done('Export de l’observatoire terminé',`${withS} opération(s) avec recherches sur ${operations.length}`);
-    toast(`Observatoire exporté : ${withS} opération(s) avec recherches sur ${operations.length}${why?` — sans recherche : ${why}`:''}. Chargez le fichier dans « Observatoire des recherches ».`,why?'warn':'success');
-    setLocalSaveUi('Session restaurée',lastLocalSaveAt); scheduleWorkspaceCheckpoint('résultats de recherche',2000);
-  }catch(err){ ui.close(); console.warn(err); toast(`Export de l’observatoire impossible : ${err?.message||err}`,'error'); }
-  finally{ observatoryExporting=false; if(btn) btn.disabled=false; }
-}
+// v2.40.0 — l'observatoire des recherches est passé dans TotalRecoll (onglet Recherches, lu dans les fichiers de session,
+// filtrable par référentiel Tous contrats) : boutons, export dédié et page observatoire.html retirés d'ExtracTerre.
 
 // ---------- v2.33.0 — tableau de synthèse des analyses : une ligne par opération, données cruciales et valeurs inhabituelles ----------
 // [clé, titre, champs (l'un suffit), profil où la donnée est attendue]
@@ -16435,7 +16401,7 @@ function wire(){
   const betaClose=$('#betaErrorClose'); if(betaClose) betaClose.onclick=closeBetaErrorDialog; const betaCancel=$('#betaErrorCancel'); if(betaCancel) betaCancel.onclick=closeBetaErrorDialog; const betaSubmit=$('#betaErrorSubmit'); if(betaSubmit) betaSubmit.onclick=submitBetaError; const betaDoc=$('#betaLearningDocument'); if(betaDoc) betaDoc.onchange=renderBetaLearningPage; const betaPage=$('#betaLearningPage'); if(betaPage) betaPage.onchange=renderBetaLearningPage; const betaPrev=$('#betaPrevPage'); if(betaPrev) betaPrev.onclick=()=>changeBetaLearningPage(-1); const betaNext=$('#betaNextPage'); if(betaNext) betaNext.onclick=()=>changeBetaLearningPage(1); const betaHighlight=$('#betaUseHighlight'); if(betaHighlight) betaHighlight.onclick=captureBetaLearningSelection; const betaOcr=$('#betaRunPageOcr'); if(betaOcr) betaOcr.onclick=runBetaPageOcr; const betaNative=$('#betaUseNativeText'); if(betaNative) betaNative.onclick=restoreBetaNativeText; const betaLayer=$('#betaPdfTextLayer'); if(betaLayer) betaLayer.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaLayer.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaFallback=$('#betaLearningText'); if(betaFallback) betaFallback.addEventListener('mouseup',()=>{const sel=globalThis.getSelection?.(); if(sel&&!sel.isCollapsed&&betaFallback.contains(sel.anchorNode)) captureBetaLearningSelection();}); const betaExact=$('#betaErrorCorrectValue'); if(betaExact) betaExact.addEventListener('input',()=>{betaExact.classList.remove('beta-value-from-highlight');betaExact.dataset.fromHighlight='0';const hint=$('#betaExactValueHint');if(hint){hint.textContent='Valeur modifiée manuellement.';hint.classList.remove('ok');}}); const betaDlg=$('#betaErrorDialog'); if(betaDlg) betaDlg.addEventListener('click',e=>{if(e.target===betaDlg) closeBetaErrorDialog();});
   const packInput=$('#journalPackPassword'); if(packInput) packInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitJournalPackPassword();}});
   window.addEventListener('extracterre-journal-sync',e=>{ lastJournalSyncAt=Date.now(); refreshJournalUi(); });
-  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',()=>exportSessionJson().catch(err=>{ console.error(err); toast(`Export de la session impossible : ${err?.message||err}`,'error'); setLocalSaveUi('Prêt',lastLocalSaveAt); })); $('#importSessionInput')?.addEventListener('change',async e=>{ const fs=[...(e.target.files||[])].sort((a,b)=>a.name.localeCompare(b.name,'fr',{numeric:true})); e.target.value=''; for(const f of fs) await importSessionJson(f); /* v2.39.1 — plusieurs parties d'une session */ }); $('#observatoryBtn')?.addEventListener('click',openSearchObservatory); $('#observatoryExportBtn')?.addEventListener('click',exportObservatoryJson);
+  $('#exportBtn').onclick=openExportDialog; $('#exportSessionBtn')?.addEventListener('click',()=>exportSessionJson().catch(err=>{ console.error(err); toast(`Export de la session impossible : ${err?.message||err}`,'error'); setLocalSaveUi('Prêt',lastLocalSaveAt); })); $('#importSessionInput')?.addEventListener('change',async e=>{ const fs=[...(e.target.files||[])].sort((a,b)=>a.name.localeCompare(b.name,'fr',{numeric:true})); e.target.value=''; for(const f of fs) await importSessionJson(f); /* v2.39.1 — plusieurs parties d'une session */ });
   $$('.tab').forEach(b=>b.onclick=()=>{ switchTab(b.dataset.tab); if(b.dataset.tab==='summary'){ state.overviewOwner=''; setHomeMode(true); } });
   const homeImport=$('#homeImport'); if(homeImport) homeImport.onchange=()=>{ addFiles([...homeImport.files]); homeImport.value=''; }; $$('.result-tab').forEach(b=>b.onclick=()=>{ state.resultWorkspaceMode='detail'; activeProject().resultView=b.dataset.resultView||'generic'; syncResultTabs(); renderSummary(); scheduleWorkspaceCheckpoint('onglet résultat'); }); $$('.sticky-result-tab').forEach(b=>b.onclick=()=>{state.resultWorkspaceMode='detail';activeProject().resultView=b.dataset.stickyResultView||'generic';switchTab('summary');renderSummary();scheduleWorkspaceCheckpoint('onglet résultat sticky');}); const stickyOverview=$('#stickyOverviewBtn'); if(stickyOverview) stickyOverview.onclick=showProjectsOverview; const stickySelect=$('#stickyProjectSelect'); if(stickySelect) stickySelect.onchange=()=>activateProject(stickySelect.value); const stickyPrev=$('#stickyPrevProject'); if(stickyPrev) stickyPrev.onclick=()=>moveProject(-1); const stickyNext=$('#stickyNextProject'); if(stickyNext) stickyNext.onclick=()=>moveProject(1); const stickyAnalyze=$('#stickyAnalyzeBtn'); if(stickyAnalyze) stickyAnalyze.onclick=()=>$('#analyzeBtn')?.click();
   $('#operationName').oninput=e=>{activeProject().operationName=e.target.value; scheduleWorkspaceCheckpoint('nom opération');};
