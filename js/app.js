@@ -147,7 +147,9 @@ function sfPerimeterOn(p){ return !!(p&&!p.sfPerimeterOff&&Array.isArray(p.sfBui
 function effectiveBuildingOverrides(p=activeProject()){
   const base=p?.buildingOverrides||{}; if(!sfPerimeterOn(p)) return base;
   const m=sfPerimeterMap(p.sfBuildings,sfDetectedNames(p),p.sfBuildingMap||{}); p._sfMap=m;
-  const out={}; for(const [d,t] of Object.entries(m.map)) if(t&&t!==d&&d!=='Bâtiment unique') out[d]=t;
+  // v2.39.1 — Salesforce fait foi : un bâtiment Salesforce (même nom exact) est aussi passé, tel quel, pour qu'aucune règle
+  // automatique (regroupement par résultats, bâtiment sans résultat) ne l'absorbe ni ne l'écarte.
+  const out={}; for(const [d,t] of Object.entries(m.map)) if(t&&d!=='Bâtiment unique') out[d]=t;
   return {...out,...base};
 }
 function applySfPerimeter(project){

@@ -34,6 +34,15 @@ const F=(b,field,value)=>({building:b,field,value,status:'retenu'});
 { const c={finals:[F('Bâtiment A','tic',27.4),F('Bâtiment A','ic_energy',150),F('Bâtiment B','tic',27.4),F('Bâtiment B','ic_energy',150)]};
   eq(buildingResultMerges(c,{},{'Bâtiment B':'Bâtiment B'}),null,'regroupement manuel : jamais touché'); }
 
+// 5b. Doublon numéroté (RSEE) : tous ses résultats dans un seul autre bâtiment, à l'arrondi près → regroupé ; ambigu → distinct
+{ const c={finals:[F('Bâtiment C-D - HIBISCUS','ic_energy',66.096),F('Bâtiment C-D - HIBISCUS','ic_construction',554.02),F('Bâtiment C-D - HIBISCUS','dh',1014.5),
+    F('Bâtiment A - HIBISCUS','ic_energy',67.18),F('Bâtiment A - HIBISCUS','ic_construction',549.828),F('Bâtiment B - HIBISCUS','ic_energy',67.18),F('Bâtiment B - HIBISCUS','ic_construction',551.315),
+    F('Bâtiment 2','ic_energy',66.1),F('Bâtiment 1','ic_energy',67.18)]};
+  eq(buildingResultMerges(c,{}),{'Bâtiment 2':'Bâtiment C-D - HIBISCUS'},'« Bâtiment 1 » (67,18) a deux candidats : non regroupé'); }
+// 5c. Salesforce fait foi : un bâtiment Salesforce (passé tel quel dans les correspondances) n'est jamais absorbé ni écarté
+{ const c={finals:[F('Bâtiment A','tic',27.4),F('Bâtiment A','ic_energy',150),F('Bâtiment B','tic',27.4),F('Bâtiment B','ic_energy',150)]};
+  eq(buildingResultMerges(c,{},{'Bâtiment A':'Bâtiment A','Bâtiment B':'Bâtiment B'}),null); }
+{ const c={rows:[{building:'Bâtiment A'},{building:'Bâtiment B'}],finals:[F('Bâtiment A','cep',60)]}; eq(dropResultlessBuildings(c,{'Bâtiment B':'Bâtiment B'}),[]); }
 // 6. Bâtiment sans aucun résultat écarté ; si aucun bâtiment n'a de résultat, rien n'est écarté
 { const c={rows:[{building:'Bâtiment A'},{building:'Bâtiment ZZ'}],buildings:['Bâtiment A','Bâtiment ZZ'],finals:[F('Bâtiment A','cep',60),F('Bâtiment ZZ','wall_insulation','Laine de verre')],detailed:[F('Bâtiment ZZ','wall_insulation','Laine de verre')]};
   eq(dropResultlessBuildings(c),['Bâtiment ZZ']); eq(c.rows.map(r=>r.building),['Bâtiment A']); eq(c.finals.length,1); eq(c.detailed[0].status,'rejeté'); }

@@ -422,6 +422,13 @@ export function buildingResultMerges(consolidated,grouping,manual={}){
   const same=(a,b)=>{ let shared=0; for(const k of RES_KEYS){ const x=by.get(a)[k], y=by.get(b)[k]; if(x==null||y==null) continue; if(Math.abs(x-y)>1e-6*Math.max(1,Math.abs(x))) return false; shared++; } return shared>=(ENGINE_OPTIONS.recoupementMin||2); };
   const parent=new Map(names.map(n=>[n,n])); const find=n=>parent.get(n)===n?n:find(parent.get(n));
   for(let i=0;i<names.length;i++) for(let j=i+1;j<names.length;j++) if(same(names[i],names[j])) parent.set(find(names[j]),find(names[i]));
+  // Doublon numéroté d'un bâtiment nommé (RSEE : « Bâtiment 2 » Ic énergie 66,1 = « C-D - HIBISCUS » 66,096) : tous ses résultats
+  // se retrouvent, à l'arrondi près, dans un seul autre bâtiment plus complet → même bâtiment (banc : 43 confirmés SF, 0 erreur).
+  { const dec=x=>{ const s=String(x); return s.includes('.')?s.split('.')[1].replace(/0+$/,'').length:0; };
+    const eqr=(x,y)=>{ const m=Math.min(dec(x),dec(y)); return m===0?x===y:Math.abs(Math.round(x*10**m)-Math.round(y*10**m))===0; };
+    for(const a of names){ const A=by.get(a), ka=Object.keys(A);
+      const cands=names.filter(b=>{ if(b===a) return false; const B=by.get(b); return Object.keys(B).length>ka.length&&ka.every(k=>B[k]!=null&&eqr(A[k],B[k])); });
+      if(cands.length===1&&find(a)!==find(cands[0])) parent.set(find(a),find(cands[0])); } }
   const groups=new Map(); for(const n of names){ const r=find(n); (groups.get(r)||groups.set(r,[]).get(r)).push(n); }
   const count=new Map(); for(const f of consolidated.finals||[]) count.set(f.building,(count.get(f.building)||0)+1);
   const auth=new Set(grouping?.authoritative||[]);
