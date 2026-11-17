@@ -1,3 +1,9 @@
+# v3.0.0 — Refonte : Salesforce fait foi, bâtiments de référence, choix de la valeur, confrontation
+
+Regroupe les versions 2.41.1 à 2.44.2 (chantier du 17/11/2026, détail ci-dessous et dans docs/refonte-2026-11/).
+Banc de vérité Salesforce (616 opérations, 28 062 valeurs, même banc avant / après) : valeurs justes 13 175 → 13 752,
+fausses 6 543 → 6 056, exactitude 66,8 % → 69,4 % ; Cepnr 68 → 82 %, DH 61 → 74 %, gains Cep / Cepnr / Bbio +11 à +14 pts.
+
 # v2.44.2 — Imports Salesforce : « Nombre de bâtiments », incohérences signalées
 
 - Future colonne « Nombre de bâtiments » des exports Salesforce reconnue (comme « Total bâtiments »).

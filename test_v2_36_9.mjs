@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {sfReliability} from './js/qualite.js';
 import {oddValue} from './js/sanity.js';
-assert.equal(APP_VERSION,'2.44.2');
+assert.equal(APP_VERSION,'3.0.0');
 const R=(f,sv,ev,res,present=false)=>sfReliability(f,sv,ev,res,{goodValuePresent:present,oddValue});
 assert.deepEqual(R('bbio',30,30,'juste'),{fiable:true,cat:'juste'});
 assert.deepEqual(R('bbio',30,'',"manquant"),{fiable:false,cat:'manquant'});
