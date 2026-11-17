@@ -170,6 +170,11 @@ function applySfPerimeter(project){
   if(S.length===1&&Array.isArray(r.rows)){ const u=r.rows.find(x=>x.building==='Bâtiment unique'), t=r.rows.find(x=>x.building===S[0]);
     if(u&&t&&u!==t){ for(const [k,v] of Object.entries(u)) if(k!=='building'&&(t[k]===undefined||t[k]===null||t[k]==='')) t[k]=v; for(const o of r.finals||[]) if(o.building==='Bâtiment unique'&&!(r.finals||[]).some(x=>x.building===S[0]&&x.field===o.field)) o.building=S[0]; }
     else if(u&&!t){ u.building=S[0]; for(const o of r.finals||[]) if(o.building==='Bâtiment unique') o.building=S[0]; } }
+  // v2.44.2 — prompt maître §8.3 : incohérence interne Salesforce (noms ≠ total) signalée, jamais arbitrée par les documents ;
+  // identités manquantes signalées (total sans noms, ou moins de bâtiments identifiés que le total).
+  r.alerts=(r.alerts||[]).filter(a=>!a.sfPerimeter);
+  if(m.source==='noms'&&sfTotal(project)!==null&&m.named.length!==m.total) r.alerts.push({level:'warning',sfPerimeter:true,message:`Incohérence interne Salesforce : la fiche nomme ${m.named.length} bâtiment(s) (${m.named.join(', ')}) pour un « Total bâtiments » de ${m.total}. ${m.named.length>m.total?`Seuls ${m.total} sont gardés ; ${m.sfExtra.join(', ')} sont rattachés comme des noms de documents.`:`Complété par les documents : ${S.filter(x=>!m.named.includes(x)).join(', ')||'aucun nom disponible'}.`} À corriger dans Salesforce.`});
+  if(m.source==='nombre'&&m.total>1) r.alerts.push({level:'warning',sfPerimeter:true,message:`Salesforce donne ${m.total} bâtiments sans les nommer : noms pris dans les documents (${S.join(', ')||'aucun'}).${S.length<m.total?` Seulement ${S.length} identifié(s) sur ${m.total} : ${m.total-S.length} bâtiment(s) sans identité.`:''}`});
   const excluded=[...new Set((r.rows||[]).map(x=>x.building).filter(b=>!inS(b)))];
   r.sfExcluded=excluded; r.sfUnassigned=[]; if(!excluded.length) return;
   // v2.43.0 — aucune valeur n'est perdue. Valeur sans bâtiment (« Bâtiment unique ») ou d'une liste de bâtiments Salesforce

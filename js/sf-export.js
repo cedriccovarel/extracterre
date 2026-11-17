@@ -25,7 +25,7 @@ export function sfxColumns(headers){
   // v2.30.0 — adresse de l'opération : « Rue », « Ville », « Code postal de l'opération (texte) ».
   const short=h;
   return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections,
-    buildingTotal:short.findIndex(x=>/^total (?:des )?batiments$/.test(x)),street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
+    buildingTotal:short.findIndex(x=>/^(?:total (?:des )?batiments|nombre (?:de |des )?batiments|nb (?:de )?batiments)$/.test(x)),street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
 }
 
 // v2.33.0 — un export .xlsx peut commencer par des lignes de titre : l'en-tête est la 1re ligne qui porte le contrat ou le code interne.

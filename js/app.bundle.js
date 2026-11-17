@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v2.44.1 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v2.44.2 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='2.44.1';
+const APP_VERSION='2.44.2';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -463,7 +463,7 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
-// v2.44.1 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// v2.44.2 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
 // de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
 // servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
 // RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
@@ -10600,7 +10600,7 @@ function sfxColumns(headers){
   // v2.30.0 — adresse de l'opération : « Rue », « Ville », « Code postal de l'opération (texte) ».
   const short=h;
   return {contract:find(/num[ée]?e?ro du contrat|^contrat$/),code:find(/(^|: )code interne$/),evalStatus:find(/evaluation: statut$/),sections,
-    buildingTotal:short.findIndex(x=>/^total (?:des )?batiments$/.test(x)),street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
+    buildingTotal:short.findIndex(x=>/^(?:total (?:des )?batiments|nombre (?:de |des )?batiments|nb (?:de )?batiments)$/.test(x)),street:short.findIndex(x=>/^(rue|adresse|voie|(adresse|rue) de l'? ?operation)$/.test(x)),city:short.findIndex(x=>/^(ville|commune|ville de l'? ?operation)$/.test(x)),postcode:short.findIndex(x=>/^code postal/.test(x))};
 }
 
 // v2.33.0 — un export .xlsx peut commencer par des lignes de titre : l'en-tête est la 1re ligne qui porte le contrat ou le code interne.
@@ -10747,7 +10747,8 @@ function sfPerimeter({names,total,detected,manual={}}){
     S=[...S,...sfRankNames((detected||[]).filter(x=>!taken(x.name))).filter(x=>!S.includes(x)).slice(0,N-S.length)]; }
   const m=sfPerimeterMap(S,[...(detected||[]).map(x=>x.name),...sfExtra],manual);
   if(m.sf.length===1) for(const raw of Object.keys(m.map)) if(m.map[raw]===null&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ m.map[raw]=m.sf[0]; m.modes[raw]='unique'; }
-  m.source=byName?'noms':'nombre'; m.total=N??S.length; m.sfExtra=sfExtra;
+  m.source=byName?'noms':'nombre'; m.total=N??S.length; m.sfExtra=sfExtra; m.named=byName?[...new Set(names.flatMap(sfSplitGroup).map(canonicalBuilding))]:[];
+  m.mapped=new Set(Object.values(m.map).filter(Boolean));
   return m;
 }
 
@@ -13483,6 +13484,11 @@ function applySfPerimeter(project){
   if(S.length===1&&Array.isArray(r.rows)){ const u=r.rows.find(x=>x.building==='Bâtiment unique'), t=r.rows.find(x=>x.building===S[0]);
     if(u&&t&&u!==t){ for(const [k,v] of Object.entries(u)) if(k!=='building'&&(t[k]===undefined||t[k]===null||t[k]==='')) t[k]=v; for(const o of r.finals||[]) if(o.building==='Bâtiment unique'&&!(r.finals||[]).some(x=>x.building===S[0]&&x.field===o.field)) o.building=S[0]; }
     else if(u&&!t){ u.building=S[0]; for(const o of r.finals||[]) if(o.building==='Bâtiment unique') o.building=S[0]; } }
+  // v2.44.2 — prompt maître §8.3 : incohérence interne Salesforce (noms ≠ total) signalée, jamais arbitrée par les documents ;
+  // identités manquantes signalées (total sans noms, ou moins de bâtiments identifiés que le total).
+  r.alerts=(r.alerts||[]).filter(a=>!a.sfPerimeter);
+  if(m.source==='noms'&&sfTotal(project)!==null&&m.named.length!==m.total) r.alerts.push({level:'warning',sfPerimeter:true,message:`Incohérence interne Salesforce : la fiche nomme ${m.named.length} bâtiment(s) (${m.named.join(', ')}) pour un « Total bâtiments » de ${m.total}. ${m.named.length>m.total?`Seuls ${m.total} sont gardés ; ${m.sfExtra.join(', ')} sont rattachés comme des noms de documents.`:`Complété par les documents : ${S.filter(x=>!m.named.includes(x)).join(', ')||'aucun nom disponible'}.`} À corriger dans Salesforce.`});
+  if(m.source==='nombre'&&m.total>1) r.alerts.push({level:'warning',sfPerimeter:true,message:`Salesforce donne ${m.total} bâtiments sans les nommer : noms pris dans les documents (${S.join(', ')||'aucun'}).${S.length<m.total?` Seulement ${S.length} identifié(s) sur ${m.total} : ${m.total-S.length} bâtiment(s) sans identité.`:''}`});
   const excluded=[...new Set((r.rows||[]).map(x=>x.building).filter(b=>!inS(b)))];
   r.sfExcluded=excluded; r.sfUnassigned=[]; if(!excluded.length) return;
   // v2.43.0 — aucune valeur n'est perdue. Valeur sans bâtiment (« Bâtiment unique ») ou d'une liste de bâtiments Salesforce

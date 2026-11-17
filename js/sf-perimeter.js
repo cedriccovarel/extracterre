@@ -119,6 +119,7 @@ export function sfPerimeter({names,total,detected,manual={}}){
     S=[...S,...sfRankNames((detected||[]).filter(x=>!taken(x.name))).filter(x=>!S.includes(x)).slice(0,N-S.length)]; }
   const m=sfPerimeterMap(S,[...(detected||[]).map(x=>x.name),...sfExtra],manual);
   if(m.sf.length===1) for(const raw of Object.keys(m.map)) if(m.map[raw]===null&&!Object.prototype.hasOwnProperty.call(manual||{},raw)){ m.map[raw]=m.sf[0]; m.modes[raw]='unique'; }
-  m.source=byName?'noms':'nombre'; m.total=N??S.length; m.sfExtra=sfExtra;
+  m.source=byName?'noms':'nombre'; m.total=N??S.length; m.sfExtra=sfExtra; m.named=byName?[...new Set(names.flatMap(sfSplitGroup).map(canonicalBuilding))]:[];
+  m.mapped=new Set(Object.values(m.map).filter(Boolean));
   return m;
 }

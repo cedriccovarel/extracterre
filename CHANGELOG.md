@@ -1,3 +1,14 @@
+# v2.44.2 — Imports Salesforce : « Nombre de bâtiments », incohérences signalées
+
+- Future colonne « Nombre de bâtiments » des exports Salesforce reconnue (comme « Total bâtiments »).
+- Prompt maître §8.3 : quand la fiche nomme un autre nombre de bâtiments que le total, une **incohérence interne
+  Salesforce** est signalée (25 opérations sur 647), jamais arbitrée par les documents. Quand Salesforce donne un nombre
+  sans noms, les noms pris dans les documents et les **identités manquantes** sont signalés (206 opérations, dont 44 avec
+  moins de bâtiments identifiés que le total).
+- Ordre des traitements (§11) : le référentiel des bâtiments Salesforce est appliqué avant l'affectation des valeurs à chaque
+  analyse, quel que soit l'ordre d'arrivée (Salesforce puis documents, ou l'inverse) ; un nouvel import ne crée ni bâtiment
+  ni doublon (valeurs indexées par bâtiment et par donnée).
+
 # v2.44.1 — Recherches : politique d'absence par critère
 
 - Onglet Recherches seulement (décision du 17/11) : chaque critère dit ce que vaut « rien trouvé » —
