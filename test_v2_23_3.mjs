@@ -45,7 +45,7 @@ eq(names('pour le\nbatiment A\npuis le\nbatiment B'),['Bâtiment A','Bâtiment B
   const mine={field:'shab',value:999,method:'targeted-ocr:max:user-validated:x',userValidated:true,building:'Bâtiment REALISES SUR CHANTIERS.',page:1,confidence:1};
   d.cachedOccurrences=[{field:'fan_type',value:'Brasseur d’air plafonnier',method:'comfort:fan-type',building:'Bâtiment REALISES SUR CHANTIERS.',confidence:0.94,page:1},mine];
   catchUpDocument(d);
-  eq([d.bldRead,d.buildings.names,d.cachedOccurrences[0].building,d.cachedOccurrences[1].building],[3,['Bâtiment A','Bâtiment MAISONS G01 - G04','Bâtiment A - LA JOUGARELLE'],'Bâtiment unique','Bâtiment REALISES SUR CHANTIERS.'],'rattrapage bâtiments sans relecture'); }
+  eq([d.bldRead,d.buildings.names,d.cachedOccurrences[0].building,d.cachedOccurrences[1].building],[4,['Bâtiment A','Bâtiment MAISONS G01 - G04','Bâtiment A - LA JOUGARELLE'],'Bâtiment unique','Bâtiment REALISES SUR CHANTIERS.'],'rattrapage bâtiments sans relecture'); }
 { const d={id:'s',name:'RSET FICTIF.pdf',type:DOC_TYPES.RSET_RE2020,status:'ready',fanRead:2,buildings:{names:['Bâtiment DE LOGEMENTS COLLECTIFS EN BANDE.'],hits:[]},cachedOccurrences:[{field:'cep',value:50,method:'x',building:'Bâtiment DE LOGEMENTS COLLECTIFS EN BANDE.',confidence:0.95,page:1}]};
   catchUpDocument(d); eq([d.buildings.names.length,d.cachedOccurrences[0].building],[1,'Bâtiment DE LOGEMENTS COLLECTIFS EN BANDE.'],'seul bâtiment du document : gardé'); }
 { const d={id:'m',name:'CCTP FICTIF.pdf',type:DOC_TYPES.CCTP,status:'ready',fanRead:2,buildings:{names:['Bâtiment A','Bâtiment COMPTE DE LA PERMEABILITE'],hits:[]},cachedOccurrences:[]};

@@ -6,7 +6,7 @@ import {APP_VERSION,DEFAULT_SOURCE_RULES} from './js/config.js';
 import {classifyDocument} from './js/classifier.js';
 import {detectBuildings} from './js/buildings.js';
 import {parseDocument} from './js/parsers.js';
-import {analyzeDocuments} from './js/engine.js';
+import {analyzeDocuments,ENGINE_OPTIONS} from './js/engine.js';
 import {isBbcaCalculette,bbcaBuildingName} from './js/calculette-bbca.js';
 import {normalizeText} from './js/utils.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
@@ -50,7 +50,9 @@ eq(val(xo,'ic_lot_2',B),32.5); eq(val(xo,'ic_components',B),416.5); eq(val(xo,'i
 // --- 3. Nom de bâtiment depuis le fichier, consolidation ----------------------------------------------------------------------
 eq(bbcaBuildingName({name:'Calculette_BBCA_Bat_C.xlsx',read:{pages:[]}}),'Batiment C');
 ok(DEFAULT_SOURCE_RULES.mention_bbca.secondary.includes('Étude carbone / ACV'),'calculette BBCA : source secondaire de la mention BBCA');
+ENGINE_OPTIONS.recoupementBatiments=false; // A et B fictifs ont les mêmes Ic : ils seraient regroupés (v2.39.1)
 const r=analyzeDocuments([pdf,xl],DEFAULT_SOURCE_RULES,'Test');
+ENGINE_OPTIONS.recoupementBatiments=true;
 const kept=(f,b)=>(r.detailed||[]).find(o=>o.field===f&&o.building===b&&o.status==='retenu')?.value;
 eq(kept('ic_lot_3',A),120); eq(kept('ic_lot_3',B),120); eq(kept('ic_construction',B),427); eq(kept('shab',A),2500); eq(kept('mention_bbca',A),'Oui');
 ok(fs.readFileSync('./build_bundle.py','utf8').includes("'calculette-bbca.js'"),'module inclus dans le bundle');

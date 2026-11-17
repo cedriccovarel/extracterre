@@ -128,7 +128,8 @@ const bldProse=(raw,line='')=>{ const t=normLower(raw).replace(/[.,;:!?]+\s*$/,'
 // « Bâtiment 0.66 0.80 », « Bâtiment I4 ≤ 0,60 m3/h.m² », « BATIMENT B BP 30055 67061 STRASBOURG », « Bâtiment A 14 rue … ».
 // Ce ne sont jamais des noms, même seuls dans un document (leurs valeurs passent en « Bâtiment unique »).
 export const DH_READ=2; // v2.36.4 — version des règles de lecture DH (rattrapage, cf. engine.catchUpDocument)
-export const BLD_READ=3; // version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
+export const BLD_READ=4; // v2.39.1 : 4 = nettoyage des intitulés et suffixes (cleanBuildingLabel)
+// version des règles de noms de bâtiment (rattrapage des lectures conservées, cf. engine.catchUpDocument)
 const BLD_DEC=/^-?\d+[.,]\d+$/, BLD_NUM=/^-?\d+(?:[.,]\d+)?$/, BLD_HASDEC=/\d[.,]\d/;
 export function isNumericGhostBuilding(name){
   if(!name||name==='Bâtiment unique') return false;
@@ -154,9 +155,29 @@ export function tableRowBuildingId(raw,{rowInts=false}={}){
   return s;
 }
 // Nom consolidé → nom réparé : '' (fantôme), identifiant seul (ligne de tableau) ou inchangé.
+// v2.39.1 — nettoyage des noms (banc 656 opérations, 69 % des noms détectés hors périmètre Salesforce) :
+// 1) intitulés de RSET / RT 2012 / études lus comme des noms (« Bâtiment à usage », « Bâtiment réglementaire »,
+//    « Bâtiment entièrement chauffée extérieure », « SRTZ Consommations et productions… », « livré sans système de chauffage »…) ;
+// 2) suffixes qui éclatent un même bâtiment (« Q CALICOTS - 08-02-2020 », « - RAPPORT PROMOTELEC », « - UBAT - … - PAGE 116 / 135 - »,
+//    « COLLECTIF - BATIMENT NEUF CONSOMMATIONS », « B - RT2012 », « (RE2020) ») ; « (BATIMENT AB » → « AB ».
+// « COLLECTIF », « SOCIAL », « MAISONS … » seuls restent : ce sont de vrais noms dans Salesforce.
+const BLD_LABEL=/^(?:a\s+usage\b.*|usage|reglementaires?|entierement\b.*|chauff(?:e|ee|es|ees)\b.*|s\s*rt\s*z?\b.*|s\s+z\b.*|.*\bconsommations\s+et\s+productions\b.*|livres?\s+sans\s+systeme\b.*|zones?\s+groupes?|en\s+cas\s+de\s+mesure\b.*|b[aâ]t(?:iment)?s?|lot|existant\s+conserve|\(\s*maisons?|\(\s*batiment\s*-.*|neuf\s+consommations\b.*|-+|unique\b.*|\(\s*(?!b[aâ]timent\b)[a-z][^)]*|.*(?:\d\s*|\/)m2\b.*|.*\b(?:kwh?|kw|sref|shab|sbaies|w-th-c|puissance|alimentation|epaisseur|isolation|acoustiques?|conditions\s+de\s+base|synthese\s+des\s+resultats|resultats|total|apres\s+travaux|avant\s+travaux|reference\s+etat|genie\s+civil|emetteur|designation|localisee?|precedemment|precedement|refroidi)\b.*)$/;
+const BLD_TAIL=/(?:\s+-\s*\d{1,2}[-\/.]\d{1,2}[-\/.](?:\d{4}|\d{2}(?!\d|\s*\/))(?:\s.*)?|\s*(?:-\s*(?:b[aâ]timent\s+neuf\s+consommations\b.*|rapport\s+promotelec\b.*|ubat\b.*|page\s+\d+\s*\/\s*\d+.*|rt\s*20\d\d|re\s*20\d\d|reglementaire\b.*|informations\s+thermiques\b.*)|\(\s*r[te]\s*20\d\d\s*\)|\(\d\)))\s*-?\s*$/i;
+export function cleanBuildingLabel(name){
+  if(!name||name==='Bâtiment unique') return name;
+  let id=String(name).replace(/^B[aâ]timent\s+/i,'').trim(); const id0=id;
+  const inner=id.match(/^\(\s*b[aâ]timent\s+([A-Z0-9][A-Z0-9 ._\/-]{0,20})\s*\)?$/i); if(inner&&!/^-/.test(inner[1])) id=inner[1].trim();
+  id=id.replace(/(?<=^[A-Z0-9]{1,4})\.$/i,'').trim(); // « B. » → « B »
+  id=id.replace(/\s*\.{4,}\s*\d*\s*$/,'').replace(/\s+r[ée]glementaire$/i,'').trim(); // ligne de sommaire « B……73 », « SUD REGLEMENTAIRE »
+  id=id.replace(/^\.+\s*/,'').replace(/^([A-Z0-9]{1,3})\s*B[AÂ]TIMENT\s+\1$/i,'$1').trim(); // « .BATIMENT … », « CBATIMENT C » → « C »
+  for(let k=0;k<3;k++){ const t=id.replace(BLD_TAIL,'').trim(); if(t===id||!t) break; id=t; }
+  if(BLD_LABEL.test(normLower(id).replace(/[.,;:]+$/,'').trim())) return '';
+  return id===id0?name:canonicalBuilding(id);
+}
 export function repairBuildingName(name){
   if(!name||name==='Bâtiment unique') return name;
   if(isNumericGhostBuilding(name)) return '';
+  { const c=cleanBuildingLabel(name); if(c!==name) return c&&!isNumericGhostBuilding(c)?repairBuildingName(c)||'':''; }
   const id=String(name).replace(/^B[aâ]timent\s+/i,'').trim(), fixed=tableRowBuildingId(id);
   return !fixed?'':fixed===id?name:canonicalBuilding(fixed);
 }
@@ -167,7 +188,18 @@ export function isGarbageBuildingName(name){
   if(/^(?:et|de|du|des|d|pour|par|avec|dans|sur|ou|en|ainsi|sera|seront|sont|ne|non|qui|dont|que|vers|depuis|via|a\s+(?:charge|demolir|habitation|plusieurs))\b/.test(t)&&words>=2) return true;
   return BLD_TABLE.test(t)||BLD_VERB.test(t);
 }
-export function detectBuildings(doc){
+export function detectBuildings(doc){ return bldCleanResult(detectBuildingsRaw(doc)); }
+function bldCleanResult(r){
+  if(!r||!Array.isArray(r.names)) return r;
+  const fix=new Map(r.names.map(n=>[n,repairBuildingName(n)]));
+  if([...fix].every(([a,b])=>a===b)) return r;
+  const names=[...new Set(r.names.map(n=>fix.get(n)).filter(Boolean))].filter(n=>n!=='Bâtiment unique');
+  if(!names.length) return {...r,names:['Bâtiment unique'],hits:[],aliases:{},complete:!r.expectedCount||r.expectedCount===1};
+  const hits=(r.hits||[]).map(h=>{ const b=fix.has(h.building)?fix.get(h.building):repairBuildingName(h.building); return b&&b!=='Bâtiment unique'?{...h,building:b}:null; }).filter(Boolean);
+  const aliases={}; for(const [k,v] of Object.entries(r.aliases||{})){ const b=fix.get(k)??k; if(b&&names.includes(b)) aliases[b]=[...new Set([...(aliases[b]||[]),...v])]; }
+  return {...r,names,hits,aliases,complete:!r.expectedCount||names.length===r.expectedCount};
+}
+function detectBuildingsRaw(doc){
   // v2.3.3 — synthèse ClimaWin : les bâtiments sont les titres de section « N. Bâtiment X » (jamais les lignes de tableau).
   if(isClimaWinSynthesis(doc)){
     const secs=climaWinBuildingSections(doc);

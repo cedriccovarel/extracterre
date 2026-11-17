@@ -409,6 +409,48 @@ function fileVersionDate(d){
   const cut=Number(ENGINE_OPTIONS.versionCutoff); if(cut>0&&t>cut+864e5) return null;
   return new Date(t).toISOString();
 }
+
+// v2.39.1 — recoupement des bâtiments par leurs résultats.
+const RES_KEYS=['tic','dh','dh_zt','ic_construction','ic_energy'];
+const RESULT_FIELD=/^(?:bbio|cep|cepnr|tic|dh|ic_|eges|ges|dpe_|ubat)/;
+const resNum=v=>{ const n=typeof v==='number'?v:Number(String(v??'').replace(',','.')); return Number.isFinite(n)?n:null; };
+export function buildingResultMerges(consolidated,grouping,manual={}){
+  const manualNames=new Set(Object.entries(manual||{}).flat().map(String));
+  const by=new Map();
+  for(const f of consolidated.finals||[]){ if(!RES_KEYS.includes(f.field)||!f.building||f.building==='Bâtiment unique') continue; const n=resNum(f.value); if(n===null||n===0) continue; (by.get(f.building)||by.set(f.building,{}).get(f.building))[f.field]=n; }
+  const names=[...by.keys()].filter(n=>!manualNames.has(n)); if(names.length<2) return null;
+  const same=(a,b)=>{ let shared=0; for(const k of RES_KEYS){ const x=by.get(a)[k], y=by.get(b)[k]; if(x==null||y==null) continue; if(Math.abs(x-y)>1e-6*Math.max(1,Math.abs(x))) return false; shared++; } return shared>=(ENGINE_OPTIONS.recoupementMin||2); };
+  const parent=new Map(names.map(n=>[n,n])); const find=n=>parent.get(n)===n?n:find(parent.get(n));
+  for(let i=0;i<names.length;i++) for(let j=i+1;j<names.length;j++) if(same(names[i],names[j])) parent.set(find(names[j]),find(names[i]));
+  const groups=new Map(); for(const n of names){ const r=find(n); (groups.get(r)||groups.set(r,[]).get(r)).push(n); }
+  const count=new Map(); for(const f of consolidated.finals||[]) count.set(f.building,(count.get(f.building)||0)+1);
+  const auth=new Set(grouping?.authoritative||[]);
+  const merge={};
+  for(const g of groups.values()){ if(g.length<2) continue;
+    const master=g.slice().sort((a,b)=>(auth.has(b)-auth.has(a))||((count.get(b)||0)-(count.get(a)||0))||(a.length-b.length))[0];
+    for(const n of g) if(n!==master) merge[n]=master; }
+  return merge;
+}
+function applyResultMerges(grouping,merge){
+  for(const [src,t] of Object.entries(grouping.aliasMap||{})) if(merge[t]) grouping.aliasMap[src]=merge[t];
+  for(const [n,t] of Object.entries(merge)) if(!grouping.aliasMap[n]) grouping.aliasMap[n]=t;
+  for(const a of grouping.aliases||[]) if(merge[a.target]){ a.target=merge[a.target]; a.mode='auto-resultats'; }
+  grouping.canonicalNames=unique((grouping.canonicalNames||[]).map(n=>merge[n]||n));
+}
+export function dropResultlessBuildings(consolidated,manual={}){
+  const rows=consolidated.rows||[]; if(rows.length<2) return [];
+  const manualNames=new Set(Object.entries(manual||{}).flat().map(String));
+  const withRes=new Set((consolidated.finals||[]).filter(f=>RESULT_FIELD.test(f.field)).map(f=>f.building));
+  if(!rows.some(r=>withRes.has(r.building))) return []; // aucun bâtiment n'a de résultat (CCTP seuls…) : on ne peut pas trancher
+  const drop=rows.filter(r=>r.building&&r.building!=='Bâtiment unique'&&!withRes.has(r.building)&&!manualNames.has(r.building)).map(r=>r.building);
+  if(!drop.length) return [];
+  const d=new Set(drop);
+  consolidated.rows=rows.filter(r=>!d.has(r.building));
+  consolidated.buildings=(consolidated.buildings||[]).filter(b=>!d.has(b));
+  consolidated.finals=(consolidated.finals||[]).filter(f=>!d.has(f.building));
+  consolidated.detailed=(consolidated.detailed||[]).map(o=>d.has(o.building)&&o.status==='retenu'?{...o,status:'rejeté',rejectionReason:'Bâtiment sans aucun résultat (Tic, DH, Bbio, Cep, Ic…) : très probablement un faux bâtiment'}:o);
+  return drop;
+}
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
@@ -420,8 +462,17 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
-  const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
-  const occurrences=routeAndDeduplicate(remappedRaw,rules); const consolidated=consolidate(docs,occurrences,rules,operationName,grouping); const alerts=diagnostics(docs,consolidated.finals,grouping);
+  const pass=()=>{ const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });
+    const occ=routeAndDeduplicate(remappedRaw,rules); return {occurrences:occ,consolidated:consolidate(docs,occ,rules,operationName,grouping)}; };
+  let {occurrences,consolidated}=pass();
+  // v2.39.1 — recoupement des bâtiments par leurs résultats (règle Prestaterre) : des bâtiments qui ont les mêmes Tic / DH / Ic
+  // sont un seul bâtiment (noms différents d'un même bâtiment selon les documents) ; un bâtiment sans aucun résultat est un faux.
+  const resMerge=ENGINE_OPTIONS.recoupementBatiments!==false?buildingResultMerges(consolidated,grouping,buildingOverrides):null;
+  if(resMerge&&Object.keys(resMerge).length){ applyResultMerges(grouping,resMerge); ({occurrences,consolidated}=pass()); }
+  const dropped=ENGINE_OPTIONS.recoupementBatiments!==false?dropResultlessBuildings(consolidated,buildingOverrides):[];
+  const alerts=diagnostics(docs,consolidated.finals,grouping);
+  if(resMerge&&Object.keys(resMerge).length) alerts.push({level:'info',message:`Bâtiments regroupés (mêmes résultats Tic / DH / Ic) : ${Object.entries(resMerge).map(([a,b])=>`${a} → ${b}`).join(' ; ')}.`});
+  if(dropped.length) alerts.push({level:'info',message:`Bâtiment(s) sans aucun résultat écarté(s) : ${dropped.join(', ')}.`});
   if(grouping.suggestions?.length) alerts.push({level:'warning',message:`${grouping.suggestions.length} rapprochement(s) de bâtiments ambigu(s) sont proposés à la vérification manuelle.`});
   alerts.push(...familyMismatchAlerts(docs));
   // Versions multiples d'une même étude pour un bâtiment : on indique laquelle est retenue.
