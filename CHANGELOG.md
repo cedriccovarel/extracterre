@@ -13,6 +13,9 @@ Règles validées le 17/11/2026 :
 - **Aucune valeur perdue** (change la v2.27) : valeur sans bâtiment ou d'une liste (« A et B ») → chacun de ces bâtiments,
   sans remplacer une valeur propre ; bâtiment non rattaché → ses valeurs et corrections manuelles restent « non affectées »,
   proposées à vérifier sur chaque bâtiment. Retour arrière : « Désactiver le périmètre Salesforce » (rien n'est réécrit).
+- **Règle C** : quand des bâtiments fusionnés portent des valeurs saisies / Salesforce différentes pour une même donnée, la valeur
+  Salesforce est gardée (celle du bâtiment lui-même d'abord) ; sans Salesforce, rien ne change (valeur du bâtiment, sinon la
+  dernière). Les autres valeurs sont montrées dans l'info-bulle (coin orange). 37 cas dans 8 opérations.
 - Mesure sur 647 opérations : 2 103 → 1 506 bâtiments, 0 opération au-delà du total Salesforce ; 38 811 corrections
   manuelles sur 40 319 rattachées, 1 508 gardées « non affectées » (28 opérations).
 

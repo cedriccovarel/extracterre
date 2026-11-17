@@ -53,3 +53,21 @@ console.log(`v2.43.0 — ${n} vérifications OK (données fictives)`);
   const z=mk(); z.sfPerimeterOff=true; A.applySfPerimeter(z); eq(z.result.rows.length,5,'appli : périmètre désactivé → tout est gardé (retour arrière)');
   console.log('  (fonctions de l’application exécutées)');
 }
+// Règle C : valeurs manuelles / Salesforce différentes sur un même bâtiment (fusion).
+{
+  const grab=name=>{ const i=app.indexOf(name); let d=0,j=app.indexOf('{',i); for(;j<app.length;j++){ if(app[j]==='{')d++; else if(app[j]==='}'&&--d===0) break; } return app.slice(i,j+1); };
+  const f=new Function('SF_SRC','sfDocDiffers',grab('function manualWinners(')+'\nreturn manualWinners;');
+  const diff=(k,a,b)=>String(a)!==String(b), W=f(/salesforce/i,diff);
+  const result={rows:[{building:'Bâtiment A'}]}, alias={'Bâtiment 1':'Bâtiment A','BAT A':'Bâtiment A'};
+  const P=(mv,ms)=>({manualValues:mv,manualSources:ms});
+  let w=W(P({'Bâtiment A|bbio':50,'Bâtiment 1|bbio':52},{'Bâtiment 1|bbio':{fileName:'Salesforce — export'}}),result,alias).get('Bâtiment A|bbio');
+  eq([w.key,w.others],['Bâtiment 1|bbio',[{value:50,from:'Bâtiment A',sf:false}]],'C : la valeur Salesforce l’emporte, l’autre en info-bulle');
+  w=W(P({'Bâtiment 1|bbio':52,'Bâtiment A|bbio':50},{}),result,alias).get('Bâtiment A|bbio');
+  eq(w.key,'Bâtiment A|bbio','C : sans Salesforce, la valeur saisie sur le bâtiment lui-même (comme avant)');
+  w=W(P({'Bâtiment 1|bbio':52,'BAT A|bbio':53},{}),result,alias).get('Bâtiment A|bbio');
+  eq(w.key,'BAT A|bbio','C : sinon la dernière (comme avant)');
+  w=W(P({'Bâtiment A|bbio':50,'Bâtiment 1|bbio':50},{'Bâtiment 1|bbio':{fileName:'Salesforce'}}),result,alias).get('Bâtiment A|bbio');
+  eq(w.others,[],'C : mêmes valeurs → pas d’info-bulle');
+  eq(/if\(win\?\.others\?\.length\) manual\.otherManual=win\.others;/.test(app)&&/autre\(s\) valeur\(s\)/.test(app),true,'C : info-bulle branchée');
+  console.log('  règle C OK');
+}

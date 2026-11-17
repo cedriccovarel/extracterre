@@ -2271,10 +2271,31 @@ function manualOverride(building,field){
 // Nombres : toute différence au-delà de l'arrondi (916,8 ≠ 916,6) ; textes : comparaison du banc Salesforce.
 function sfDocDiffers(field,a,b){ const n=v=>{ const m=String(v??'').replace(/\s/g,'').replace(',','.'); return /^-?\d+(?:\.\d+)?$/.test(m)?Number(m):null; }, x=n(a), y=n(b);
   return x!==null&&y!==null?Math.abs(x-y)>0.051:!sameValue(field,a,b); }
-function sfDiffTip(o){ return o&&o.documentValue!==undefined?`Salesforce : ${formatValue(o.value)} — document le plus récent : ${formatValue(o.documentValue)} (${o.documentFile||'document'}${o.documentPage?' p.'+o.documentPage:''})`:''; }
+function sfDiffTip(o){ if(!o) return '';
+  const doc=o.documentValue!==undefined?`Salesforce : ${formatValue(o.value)} — document le plus récent : ${formatValue(o.documentValue)} (${o.documentFile||'document'}${o.documentPage?' p.'+o.documentPage:''})`:'';
+  const other=(o.otherManual||[]).length?`Valeur retenue : ${formatValue(o.value)}${SF_SRC.test(o.fileName||'')?' (Salesforce)':''} — autre(s) valeur(s) : ${o.otherManual.map(x=>`${formatValue(x.value)} (${x.from}${x.sf?', Salesforce':''})`).join(' ; ')}`:'';
+  return [doc,other].filter(Boolean).join(' · '); }
+// v2.43.0 — règle C : gagnant par bâtiment × donnée quand plusieurs valeurs manuelles / Salesforce différentes s'y rattachent.
+function manualWinners(project,result,alias){
+  const rows=result.rows||[], groups=new Map();
+  const target=raw=>rows.find(r=>r.building===raw)?.building||rows.find(r=>r.building===alias[raw])?.building||(raw==='Bâtiment unique'&&rows.length===1?rows[0].building:raw);
+  for(const [key,value] of Object.entries(project.manualValues||{})){ const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1), b=target(raw);
+    const g=`${b}|${field}`; if(!groups.has(g)) groups.set(g,[]); groups.get(g).push({key,raw,value,own:raw===b,sf:SF_SRC.test(project.manualSources?.[key]?.fileName||'')}); }
+  const out=new Map();
+  for(const [g,list] of groups){ if(list.length<2) continue;
+    const last=f=>list.filter(f).pop();
+    const best=last(x=>x.sf&&x.own)||last(x=>x.sf)||last(x=>x.own)||list[list.length-1];
+    const others=list.filter(x=>x!==best&&sfDocDiffers(g.slice(g.indexOf('|')+1),x.value,best.value)).map(x=>({value:x.value,from:x.raw,sf:x.sf}));
+    out.set(g,{key:best.key,others}); }
+  return out;
+}
 function applyManualValuesToProject(project){
   const result=project?.result; if(!result) return;
   const deleted=new Set(project.deletedBuildings||[]), alias=Object.fromEntries((result.buildingAliases||[]).map(a=>[a.source,a.target]));
+  // v2.43.0 — règle C : plusieurs valeurs saisies / Salesforce arrivent sur un même bâtiment (bâtiments fusionnés) et diffèrent :
+  // la valeur Salesforce l'emporte (celle du bâtiment lui-même d'abord), sinon celle saisie sur le bâtiment, sinon la dernière
+  // (comme avant). Les autres sont montrées dans l'info-bulle de la cellule.
+  const manualWin=manualWinners(project,result,alias);
   for(const [key,value] of Object.entries(project.manualValues||{})){
     const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1);
     if(sfPerimeterOn(project)){ const m=project._sfMap||sfPerimeterOf(project), S=m?.sf||[], t=alias[raw]||m?.map?.[raw]||raw;
@@ -2285,12 +2306,12 @@ function applyManualValuesToProject(project){
         for(const tg of S) if(!result.uncertain.some(o=>o.sfUnassigned&&o.building===tg&&o.field===field&&String(o.value)===String(value))) result.uncertain.push({field,value,building:tg,originalBuilding:raw,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||`Correction saisie pour « ${raw} »`,confidence:1,method:'manual:unassigned',unit:meta.unit||'',sourceTier:'unrouted',status:'à vérifier',sfUnassigned:true,provenanceNote:`Correction manuelle non affectée : saisie pour « ${raw} », bâtiment absent de Salesforce. À rattacher si elle concerne ce bâtiment.`});
         continue; } }
     const row=manualRow(result,raw,deleted,alias); if(!row) continue; const building=row.building;
-    if(building!==raw&&Object.prototype.hasOwnProperty.call(project.manualValues,`${building}|${field}`)) continue;
+    const win=manualWin.get(`${building}|${field}`); if(win?(win.key!==key):(building!==raw&&Object.prototype.hasOwnProperty.call(project.manualValues,`${building}|${field}`))) continue;
     // v2.36.3 — valeur Salesforce différente de celle du document retenu (le plus récent) : gardée pour l'info-bulle.
     const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
-    const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; if(docFinal&&SF_SRC.test(manual.fileName)&&sfDocDiffers(field,value,docFinal.value)) Object.assign(manual,{documentValue:docFinal.value,documentFile:docFinal.fileName,documentPage:docFinal.page}); result.finals.push(manual); result.detailed.push(manual);
+    const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; if(docFinal&&SF_SRC.test(manual.fileName)&&sfDocDiffers(field,value,docFinal.value)) Object.assign(manual,{documentValue:docFinal.value,documentFile:docFinal.fileName,documentPage:docFinal.page}); if(win?.others?.length) manual.otherManual=win.others; result.finals.push(manual); result.detailed.push(manual);
   }
   applyGeocodes(project);
   applyComparisonBases(result);
