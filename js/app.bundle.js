@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.0.3 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.0.4 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.0.3';
+const APP_VERSION='3.0.4';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -463,7 +463,7 @@ for(const key of ['internal_code','contract_number']) DEFAULT_SOURCE_RULES[key].
 const ALL=Object.values(DOC_TYPES).filter(x=>x!==DOC_TYPES.UNKNOWN);
 for(const f of FIELD_DEFS) if(!DEFAULT_SOURCE_RULES[f.key]) DEFAULT_SOURCE_RULES[f.key]=ordered([...ALL.filter(x=>x!==DOC_TYPES.MANUAL),DOC_TYPES.MANUAL]);
 
-// v3.0.3 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
+// v3.0.4 — règle D (validée 17/11/2026) : sources principales où la donnée n'apparaît presque jamais (< 1 % des documents
 // de ce type et < 2 % des opérations, sur 21 317 documents lus de 647 opérations) passées en source secondaire : elles ne
 // servent plus qu'en dernier recours. Les règles personnalisées par l'utilisateur ne sont pas touchées. Corpus surtout neuf :
 // RT Existant et champs de rénovation (avant travaux, Ubat, DPE, Cep final, traversant) exclus, à revoir sur des rénovations.
@@ -16119,7 +16119,7 @@ function renderSearches(wrap=$('#summaryView')){
 
 // v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
 // le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
-function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',absence:x.absence||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',absence:x.absence||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line,ctx:String(e.context||'').slice(0,400),ok:e.ok!==false,...(e.negative?{negative:true}:{})}))}]; })),themes:r.themes,documents:r.documents}; }
 // v2.19.1 — flux de l'observatoire des recherches : sans citations ni noms de documents (l'observatoire ne les lit pas ;
 // avec une centaine d'opérations, le flux dépassait le stockage local et l'observatoire restait sur l'envoi précédent).
 // Le dernier résultat de chaque grille est gardé dans le projet (searchCache) : une opération dont le texte des documents

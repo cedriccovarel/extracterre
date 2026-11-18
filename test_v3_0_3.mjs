@@ -1,8 +1,8 @@
-// ExtracTerre v3.0.3 — grille Sécurité, règles v3 (validées le 18/11/2026). Documents fictifs.
+// ExtracTerre v3.0.4 — grille Sécurité, règles v3 (validées le 18/11/2026). Documents fictifs.
 import {APP_VERSION} from './js/config.js';
 import {runSearchGrid,SECURITY_GRID,normalizeGrid} from './js/recherches.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.0.3','version');
+eq(APP_VERSION,'3.0.4','version');
 eq(normalizeGrid(SECURITY_GRID).rulesVersion,3,'règles v3 appliquées');
 const doc=(name,lines)=>({id:name,name,type:'CCTP',status:'ready',read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map(t=>({text:t}))}]}});
 const run=(lines,name='CCTP.pdf')=>runSearchGrid(SECURITY_GRID,[doc(name,lines)]).criteria;
@@ -20,4 +20,4 @@ eq(yes(run(['Platine de rue video IP54 / IK08 en inox']),'hall_ik08'),true,'plat
 eq(yes(run(['Dans les logements realises sur plusieurs niveaux, tout escalier doit comporter un eclairage','artificiel supprimant toute zone d ombre, commande aux differents niveaux desservis.']),'abords_ombre'),false,'escalier de logement : non');
 eq(yes(run(['Absence de zones d ombres a cote des boites aux lettres ;']),'abords_ombre'),true,'boîtes aux lettres : gardé');
 eq(yes(run(['F 29/04/2019 Separation des batiments AB et C']),'abords_separation'),false,'note de révision : non');
-console.log(`v3.0.3 — ${n} vérifications OK (documents fictifs)`);
+console.log(`v3.0.4 — ${n} vérifications OK (documents fictifs)`);

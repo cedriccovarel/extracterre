@@ -1,3 +1,9 @@
+# v3.0.4 — Export des recherches : contexte des preuves (vérification dans TotalRecoll)
+
+- Chaque preuve d'un critère exportée dans la session (onglet Recherches) porte maintenant son contexte (lignes voisines,
+  400 caractères) et indique si elle justifie le « Oui » : TotalRecoll s'en sert pour la vérification humaine des « Oui ».
+  Ré-exporter les sessions pour en profiter.
+
 # v3.0.3 — Grille « Sécurité des logements » : règles v3 (faux « oui » retirés)
 
 Validées le 18/11/2026 après pré-audit des « oui » (10 preuves tirées au hasard par critère, 647 opérations). Ajouts seulement,

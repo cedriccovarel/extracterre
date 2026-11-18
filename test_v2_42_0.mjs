@@ -1,4 +1,4 @@
-// ExtracTerre v3.0.3 — règles validées le 17/11/2026 : A (document d'ancrage Salesforce) et B (indice du nom de fichier).
+// ExtracTerre v3.0.4 — règles validées le 17/11/2026 : A (document d'ancrage Salesforce) et B (indice du nom de fichier).
 import assert from 'node:assert/strict';
 import {consolidate,docIndice} from './js/engine.js';
 import {DEFAULT_SOURCE_RULES} from './js/config.js';

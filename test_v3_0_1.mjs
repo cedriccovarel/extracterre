@@ -1,8 +1,8 @@
-// ExtracTerre v3.0.3 — lecteurs enveloppe : doublages complexes, titre de section, épaisseurs invraisemblables. Textes fictifs.
+// ExtracTerre v3.0.4 — lecteurs enveloppe : doublages complexes, titre de section, épaisseurs invraisemblables. Textes fictifs.
 import {APP_VERSION,DOC_TYPES} from './js/config.js';
 import {parseDocument} from './js/parsers.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.0.3','version');
+eq(APP_VERSION,'3.0.4','version');
 const mk=(type,lines)=>({id:'t',name:'test.pdf',type,status:'ready',buildings:{names:['Bâtiment unique']},read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map((t,i)=>({index:i,text:t}))}]}});
 const get=(type,lines,f,min=0.9)=>[...new Set(parseDocument(mk(type,lines)).filter(o=>o.field===f&&o.confidence>=min).map(o=>o.value))];
 eq(get(DOC_TYPES.CCTP,['MURS DE FACADES','Doublage thermique type Doublissimo 100+13 sur les murs exterieurs'],'wall_insulation_thickness'),[100],'Doublissimo 100+13 → 100 mm (mur)');
@@ -13,4 +13,4 @@ eq(get(DOC_TYPES.RT2012,['Plancher bas','Dalle de compression : epaisseur 5 cm.'
 eq(get(DOC_TYPES.CCTP,['Cloisons de distribution 72/48','Doublage des gaines techniques en plaques BA13'],'wall_insulation_thickness'),[],'doublage de gaines en BA13 : rien');
 eq(get(DOC_TYPES.CCTP,['Murs exterieurs','Doublage PSE ep. 13 mm'],'wall_insulation_thickness'),[],'mur 13 mm : invraisemblable, pas retenu d’office');
 eq(get(DOC_TYPES.CCTP,['Murs exterieurs','Doublage PSE ep. 13 mm'],'wall_insulation_thickness',0.5),[13],'… mais proposé à vérifier');
-console.log(`v3.0.3 — ${n} vérifications OK (textes fictifs)`);
+console.log(`v3.0.4 — ${n} vérifications OK (textes fictifs)`);

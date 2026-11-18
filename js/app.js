@@ -2708,7 +2708,7 @@ function renderSearches(wrap=$('#summaryView')){
 
 // v2.7.0 — export JSON de la session (opérations, valeurs retenues et leurs sources, saisies, économie, recherches) ;
 // le contenu des documents n'y figure pas. Version allégée (identité + recherches) pour l'observatoire des recherches.
-function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',absence:x.absence||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line}))}]; })),themes:r.themes,documents:r.documents}; }
+function compactSearch(r){ return {criteria:Object.fromEntries(r.grid.criteria.map(c=>{ const x=r.criteria[c.id]; return [c.id,{found:x.found,contrary:!!x.contrary,partial:!!x.partial,manual:x.manual||'',absence:x.absence||'',value:searchCellValue(c,x),values:x.values,evidence:x.evidence.slice(0,5).map(e=>({doc:e.doc,page:e.page,line:e.line,ctx:String(e.context||'').slice(0,400),ok:e.ok!==false,...(e.negative?{negative:true}:{})}))}]; })),themes:r.themes,documents:r.documents}; }
 // v2.19.1 — flux de l'observatoire des recherches : sans citations ni noms de documents (l'observatoire ne les lit pas ;
 // avec une centaine d'opérations, le flux dépassait le stockage local et l'observatoire restait sur l'envoi précédent).
 // Le dernier résultat de chaque grille est gardé dans le projet (searchCache) : une opération dont le texte des documents
