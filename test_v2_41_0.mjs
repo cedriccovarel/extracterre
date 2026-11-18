@@ -10,7 +10,7 @@ const edited=normalizeGrid({id:'x',criteria:[{id:'a',label:'A',keywords:'re:serr
 assert.deepEqual(edited.criteria[0].keywords,['re:serrure[^\\n]{0,40}3\\s*points','anti soulevement','blocage']); n++;
 // 2) une grille v1 enregistrée passe en v2 une fois ; une règle modifiée ensuite est gardée
 const v1=JSON.parse(JSON.stringify(SECURITY_GRID)); delete v1.rulesVersion; v1.criteria.find(c=>c.id==='abords_aveugles').keywords=['locaux aveugles'];
-const g=normalizeGrid(v1); ok(g.rulesVersion===2&&g.criteria.find(c=>c.id==='abords_aveugles').keywords.length===0,'migration v2');
+const g=normalizeGrid(v1); ok(g.rulesVersion>=2&&g.criteria.find(c=>c.id==='abords_aveugles').keywords.length===0,'migration v2');
 const mine=normalizeGrid({...g,criteria:g.criteria.map(c=>c.id==='abords_aveugles'?{...c,keywords:['mon terme']}:c)});
 ok(mine.criteria.find(c=>c.id==='abords_aveugles').keywords[0]==='mon terme','règle utilisateur gardée');
 // 3) cas relevés : texte → critère trouvé ou non

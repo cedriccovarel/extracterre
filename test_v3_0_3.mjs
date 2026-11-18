@@ -1,0 +1,23 @@
+// ExtracTerre v3.0.3 — grille Sécurité, règles v3 (validées le 18/11/2026). Documents fictifs.
+import {APP_VERSION} from './js/config.js';
+import {runSearchGrid,SECURITY_GRID,normalizeGrid} from './js/recherches.js';
+let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
+eq(APP_VERSION,'3.0.3','version');
+eq(normalizeGrid(SECURITY_GRID).rulesVersion,3,'règles v3 appliquées');
+const doc=(name,lines)=>({id:name,name,type:'CCTP',status:'ready',read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map(t=>({text:t}))}]}});
+const run=(lines,name='CCTP.pdf')=>runSearchGrid(SECURITY_GRID,[doc(name,lines)]).criteria;
+const yes=(c,id)=>!!c[id].found;
+eq(yes(run(['Nombre de places de parking en sous-sol 0']),'parking_present'),false,'« 0 place en sous-sol » : pas de parking');
+eq(yes(run(['Le bâtiment comporte deux niveaux de parking en sous-sol.']),'parking_present'),true,'vrai parking en sous-sol : gardé');
+eq(yes(run(['Position : ensemble des vitrages sans volets roulants et sans grilles de defense des fenetres']),'fen_barreaux'),false,'« sans grilles de défense » : non');
+eq(yes(run(['6.3 INIES 30162 DED FDES Grille de defense en acier - DONNEE ENVIRONNEMENTALE PAR DEFAUT m² 2,68']),'fen_barreaux'),false,'fiche environnementale : non');
+eq(yes(run(['Garde-corps constitue de potelets avec platine soudees sur limon d escalier']),'etage_escaliers'),false,'platine de garde-corps : non');
+eq(yes(run(['Controle d acces par badge Vigik sur les portes des escaliers a tous les niveaux']),'etage_escaliers'),true,'escaliers à badge : gardé');
+eq(yes(run(['De l acces commun a la residence par un digicode + VIGIK']),'abords_acces_unique'),false,'accès commun ≠ accès unique');
+eq(yes(run(['Guichet Unique accessible depuis le site reseaux et canalisations']),'abords_acces_unique'),false,'« Guichet Unique accessible » : non');
+eq(yes(run(['HO7VU de section appropriee, sous fourreaux IK10 en dallage, vers la platine de rue']),'hall_ik08'),false,'fourreaux IK10 : non');
+eq(yes(run(['Platine de rue video IP54 / IK08 en inox']),'hall_ik08'),true,'platine IK08 : gardée');
+eq(yes(run(['Dans les logements realises sur plusieurs niveaux, tout escalier doit comporter un eclairage','artificiel supprimant toute zone d ombre, commande aux differents niveaux desservis.']),'abords_ombre'),false,'escalier de logement : non');
+eq(yes(run(['Absence de zones d ombres a cote des boites aux lettres ;']),'abords_ombre'),true,'boîtes aux lettres : gardé');
+eq(yes(run(['F 29/04/2019 Separation des batiments AB et C']),'abords_separation'),false,'note de révision : non');
+console.log(`v3.0.3 — ${n} vérifications OK (documents fictifs)`);

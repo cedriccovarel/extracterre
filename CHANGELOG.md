@@ -1,3 +1,18 @@
+# v3.0.3 — Grille « Sécurité des logements » : règles v3 (faux « oui » retirés)
+
+Validées le 18/11/2026 après pré-audit des « oui » (10 preuves tirées au hasard par critère, 647 opérations). Ajouts seulement,
+appliqués une fois aux grilles enregistrées ; les termes ajoutés par l'utilisateur sont gardés.
+- Parking en sous-sol : « Nombre de places de parking en sous-sol 0 » ne vaut plus présence (442 → 384 opérations).
+- Barreaux : sommaires, fiches environnementales (INIES / FDES), châssis électriques « à barreaux », « sans grilles de défense » exclus (119 → 77).
+- Escaliers à contrôle d'accès : platines de fixation de garde-corps, limons, réseaux enterrés exclus (63 → 48).
+- Zones d'ombre : éclairage d'escalier de logement et de chantier exclus ; abords, hall, boîtes aux lettres, porte d'entrée
+  comptent (14 → 3).
+- Accès unique : un « accès commun » n'est plus un accès unique (4 → 0) ; séparation : notes de révision datées exclues (2 → 0).
+- IK08 : fourreaux et gaines IK10 exclus, seule la platine compte (28 → 23) ; porte piétonne du parking : lignes d'alimentation
+  électrique exclues (25 → 18) ; badge parking ↔ hall : télécommande, lecture de plaque exclues (93 → 91) ; clôtures : protection
+  d'arbres, tôles de chantier exclues (167 → 164).
+- Inchangés : porte A2P + BP1 (règle validée le 17/11), volets, 44.2, serrure 3 points, portails, éclairages, ascenseurs.
+
 # v3.0.2 — Bâtiments mieux rapprochés, classement appris sur Salesforce, ITE / ITI
 
 Mesures au banc Salesforce (616 opérations, export du 12/11, textes relus, même banc avant / après) :

@@ -69,7 +69,7 @@ export function normalizeGrid(g={}){
     field:String(c?.field??'').replace(/[^\w]/g,'').slice(0,40),keywords:srch_list(c?.keywords),context:srch_list(c?.context),exclude:srch_list(c?.exclude),weak:srch_list(c?.weak),excludeNear:srch_list(c?.excludeNear),allOf:srch_list(c?.allOf),inverse:c?.inverse===true,docContext:c?.docContext===true,absence:SEARCH_ABSENCE[c?.absence]?c.absence:'indetermine',absenceDocs:srch_list(c?.absenceDocs),negative:srch_list(c?.negative),window:Math.min(15,Math.max(0,Math.round(srch_numOrNull(c?.window)??4)))})).filter(c=>c.label);
   for(const c of criteria) if(c.theme&&!themes.some(t=>t.name===c.theme)) themes.push({name:c.theme,min:0,required:[],applicableIf:''});
   let rulesVersion=Math.max(0,Math.round(srch_numOrNull(g.rulesVersion)??0));
-  if(g.id==='securite-logements'){ srch_migrateSecurity(criteria); if(rulesVersion<2){ srch_securityV2(criteria); rulesVersion=2; } }
+  if(g.id==='securite-logements'){ srch_migrateSecurity(criteria); if(rulesVersion<2){ srch_securityV2(criteria); rulesVersion=2; } if(rulesVersion<3){ srch_securityV3(criteria); rulesVersion=3; } }
   return {rulesVersion,id:String(g.id||`g${Date.now().toString(36)}`).replace(/[^\w-]/g,'').slice(0,40),name:String(g.name||'Nouvelle recherche').trim().slice(0,80),description:String(g.description??'').trim().slice(0,2000),
     docFilter:String(g.docFilter??'').trim().slice(0,200),themes,criteria,cctpLots:srch_list(g.cctpLots)};
 }
@@ -128,6 +128,37 @@ function srch_migrateSecurity(criteria){
   const sas=criteria.find(c=>c.id==='hall_sas'); if(sas&&!sas.description) sas.description='Partiel : Vigik (ou badge) + visiophone, mais sans platine IK08.';
   const fence=criteria.find(c=>c.id==='abords_cloture'); if(fence) for(const k of ['exclude','excludeNear']) for(const w of SRCH_SITE_FENCE) if(!fence[k].includes(w)) fence[k].push(w);
 }
+// v3.0.3 — grille Sécurité, règles v3 (validées le 18/11/2026, pré-audit des « oui » : 10 preuves tirées par critère sur 647 opérations).
+// Ajouts seulement (exclusions, contexte voisin) ; un terme ajouté par l'utilisateur est gardé. Appliquées une fois (rulesVersion < 3).
+const SEC_TOC='re:\\.{5,}'; // ligne de sommaire « 2.7.4 Grilles de défense ........ 28 »
+export const SECURITY_RULES_V3={
+  // Zones d'ombre : éclairage d'escalier de logement, de chantier, « disposé à l'extérieur » (luminaire) ne sont pas les abords.
+  abords_ombre:{addContext:['hall','halls','boites a lettres','boite a lettres','boites aux lettres','boite aux lettres','porte d entree','portes d entree','eclairage exterieur','cheminement','cheminements'],exclude:['niveaux desservis','logements realises','chantier','chantiers','ambiant',SEC_TOC],excludeNear:['escalier','escaliers','chantier','chantiers','logements realises sur plusieurs niveaux'],dropContext:['exterieur','exterieurs','exterieure','exterieures']},
+  // Accès unique : un accès « commun » n'est pas un accès unique.
+  abords_acces_unique:{replaceKeywords:['re:(?:acces|entree) unique[^\\n]{0,60}(?:vehicules?|pietons?|residence|site|parcelle|operation|ilot)','re:(?:un |le )?seul (?:point d )?acces[^\\n]{0,60}(?:vehicules?|pietons?|residence|site|parcelle|ilot)','re:\\bunique (?:point d )?acces\\b']},
+  // Séparation : note de révision d'étude datée (« F 29/04/2019 Séparation des bâtiments AB et C »).
+  abords_separation:{exclude:['re:\\b\\d{1,2}/\\d{1,2}/\\d{2,4}\\b','indice','revision','modification',SEC_TOC]},
+  // Barreaux : sommaires, fiches environnementales, matériel électrique (« châssis à barreaux »), et « sans grilles de défense ».
+  fen_barreaux:{exclude:[SEC_TOC,'inies','fdes','donnee environnementale','flasques','coffret','masses','appareils','re:\\bsans\\b[^\\n]{0,40}(?:grilles?|barreau)','re:\\b(?:pas|aucune?)\\b[^\\n]{0,30}(?:grilles?|barreau)']},
+  // Escaliers : « platine » de fixation (garde-corps, limons), réseaux enterrés, mobilier — pas un contrôle d'accès.
+  etage_escaliers:{exclude:['garde corps','garde-corps','limon','limons','main courante','mains courantes','tire fonnees','chevilles','cheville','canalisation','canalisations','reseau','marches bois','fixation au sol','re:platines?\\s+(?:soud|tire|chevill|interpos|d ancrage|de fixation)',SEC_TOC]},
+  // Clôtures : protection des arbres, tôles et clôtures de chantier, sommaires.
+  abords_cloture:{exclude:['arbres','houppier','toles','tole pleine','clore son chantier','grillage a mouton',SEC_TOC],excludeNear:['clore son chantier','houppier']},
+  // Porte piétonne du parking : listes d'alimentation électrique, pas la porte elle-même.
+  parking_pieton:{exclude:['alimentation','alimentations','motorisation','motorisations','depart','tableau','tableaux','eclairage',SEC_TOC]},
+  // Parking présent : « Nombre de places de parking en sous-sol 0 », « Nb de niveaux de parking en sous-sol 0 » = pas de parking.
+  parking_present:{exclude:['re:(?:nombre|nb)\\b[^\\n]{0,80}\\b0\\s*$','re:(?:nombre|nb)\\b[^\\n]{0,80}(?:sous[- ]sol|parkings?)\\s*:?\\s*0\\b','re:\\b0\\s*(?:place|niveau)s?\\b[^\\n]{0,30}(?:sous[- ]sol|parking)']},
+  // Badge parking ↔ hall : télécommande, lecture de plaque, listes de câblage.
+  parking_hall_badge:{exclude:['telecommande','telecommandes','plaque','plaques','cable','cables',SEC_TOC]},
+  // IK08 : fourreaux et câbles (IK10 en dallage), pas la platine.
+  hall_ik08:{exclude:['fourreau','fourreaux','dallage','cable','cables','gaine','gaines']},
+};
+function srch_securityV3(criteria){ for(const c of criteria){ const r=SECURITY_RULES_V3[c.id]; if(!r) continue;
+    if(r.replaceKeywords){ const old=['re:(?:acces|entree) (?:unique|commun)e?[^\\n]{0,60}(?:vehicules?|pietons?|residence|site|parcelle|operation|ilot)']; c.keywords=[...r.replaceKeywords,...(c.keywords||[]).filter(k=>!old.includes(k)&&!r.replaceKeywords.includes(k))]; }
+    for(const k of ['exclude','excludeNear']) if(r[k]) for(const w of r[k]) if(!(c[k]||[]).includes(w)) c[k]=[...(c[k]||[]),w];
+    if(r.dropContext) c.context=(c.context||[]).filter(w=>!r.dropContext.includes(w));
+    if(r.addContext) for(const w of r.addContext) if(!(c.context||[]).includes(w)) c.context=[...(c.context||[]),w];
+    if(r.window!==undefined&&(c.window??0)>r.window) c.window=r.window; } }
 // Éléments de chantier (ascenseur ou monte-charge de chantier, barrières Heras, base vie, clôtures provisoires) : jamais une preuve.
 export const SEC_SITE_EXCLUDE=['chantier','chantiers','base vie','cantonnement','cantonnements','heras','provisoire','provisoires','re:monte[- ]charges?'];
 // Termes ajoutés par l'utilisateur (absents de la grille d'origine) : gardés en plus des règles v2.
