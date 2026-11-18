@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {APP_VERSION} from './js/config.js';
 import {lotFamily,lotAllows,envelopeExclusion} from './js/envelope-rules.js';
 import {sanitizeOccurrence} from './js/sanity.js';
-assert.equal(APP_VERSION,'3.0.1');
+assert.equal(APP_VERSION,'3.0.2');
 const fam=n=>lotFamily({name:n});
 assert.equal(fam('CCTP LOT 02 GROS OEUVRE.pdf'),'gros_oeuvre');
 assert.equal(fam('CCTP LOT 15 ELECTRICITE.pdf'),'electricite');

@@ -1,0 +1,26 @@
+// ExtracTerre v3.0.2 — classement appris (levier 3), remplissage mesuré (levier 4), ITE / ITI, noms de bâtiments Salesforce.
+import {APP_VERSION,DOC_TYPES} from './js/config.js';
+import {learnedPick,learnedFill,LEARNED_RANKING} from './js/classement-appris.js';
+import {sfPerimeterMap} from './js/sf-perimeter.js';
+import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
+import {parseDocument} from './js/parsers.js';
+let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
+eq(APP_VERSION,'3.0.2','version');
+const T={minN:30,gap:0.2,keys:{'f|bon|RSET':[0.9,100],'f|moyen|RSET':[0.6,100],'f|rare|CCTP':[0.99,5]},fill:{'f|bon|RSET|main':[0.85,50]}};
+const o=(v,m,t='RSET')=>({value:v,method:m,docType:t,sourceTier:'main'});
+const ch=o(1,'moyen'), alt=o(2,'bon');
+eq(learnedPick('f',ch,[ch,alt],T)?.value,2,'lecture nettement plus précise : elle l’emporte');
+eq(learnedPick('f',ch,[ch,alt,o(1,'bon')],T),null,'même valeur aussi lue par une méthode précise : on garde');
+eq(learnedPick('f',ch,[ch,o(3,'rare','CCTP')],T),null,'précision mesurée sur trop peu de cas : ignorée');
+eq(learnedPick('f',alt,[alt,ch],T),null,'la retenue est déjà la plus précise');
+eq(learnedFill('f',[{...o(5,'bon'),confidence:0.85}],T)?.value,5,'levier 4 : lecture < 90 % retenue si précision mesurée ≥ seuil');
+eq(learnedFill('f',[{...o(5,'bon'),sourceTier:'unrouted'}],T),null,'jamais une source non autorisée');
+eq(Object.keys(LEARNED_RANKING.keys).length>500,true,'table intégrée');
+eq(sfPerimeterMap(['Bâtiment G','Bâtiment H'],['Bâtiment MACROLOT G']).map['Bâtiment MACROLOT G'],'Bâtiment G','identifiant en fin de nom');
+eq(sfPerimeterMap(['Bâtiment CHARQUEMONT'],['Bâtiment CHARQUEMON']).map['Bâtiment CHARQUEMON'],'Bâtiment CHARQUEMONT','nom tronqué');
+eq(freePasteValues(parseFreePaste('? Bâtiment AB - 108 logements :\nBbio = 64,5')).map(v=>v.building),['Bâtiment AB - 108 logements'],'puce mal encodée retirée');
+const mk=(lines)=>({id:'t',name:'t.pdf',type:DOC_TYPES.CCTP,status:'ready',buildings:{names:['Bâtiment unique']},read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map((t,i)=>({index:i,text:t}))}]}});
+const F=lines=>[...new Set(parseDocument(mk(lines)).filter(x=>/^wall_it[ei]_/.test(x.field)).map(x=>x.field))].sort();
+eq(F(['MURS DE FACADES','Doublage thermique type Doublissimo 100+13 sur les murs exterieurs']),['wall_iti_insulation','wall_iti_thickness'],'doublage → ITI');
+eq(F(['Murs exterieurs','Isolation thermique par l exterieur sous enduit PSE 140 mm R = 3,70']).includes('wall_ite_r'),true,'ITE sous enduit → ITE');
+console.log(`v3.0.2 — ${n} vérifications OK (données fictives)`);

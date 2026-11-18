@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {sfPerimeterMap} from './js/sf-perimeter.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.0.1','version');
+eq(APP_VERSION,'3.0.2','version');
 const m=(sf,d,man)=>sfPerimeterMap(sf,d,man).map;
 eq(m(['BAT A','BAT B'],['Bâtiment A','Bat. B','BATIMENT A']),{'Bâtiment A':'Bâtiment A','Bat. B':'Bâtiment B','BATIMENT A':'Bâtiment A'},'même nom, écritures neutralisées');
 eq(m(['BAT A','BAT B'],['Bâtiment A Est','Bâtiment B aile nord']),{'Bâtiment A Est':'Bâtiment A','Bâtiment B aile nord':'Bâtiment B'},'qualificatif : même identifiant');
@@ -19,7 +19,7 @@ const app=fs.readFileSync('js/app.js','utf8'), per=fs.readFileSync('js/persisten
 eq(/function effectiveBuildingOverrides/.test(app)&&!/state\.buildingOverrides,manualPasteOccurrences\(/.test(app),true,'toutes les analyses passent par la table de correspondance');
 eq(/return \{\.\.\.out,\.\.\.base\};/.test(app),true,'fusions manuelles prioritaires sur les rapprochements automatiques');
 eq(/function applySfPerimeter/.test(app)&&/applySfPerimeter\(project\);/.test(app),true,'bâtiments hors périmètre retirés (lignes, valeurs, exports)');
-eq(/method:'manual:unassigned'/.test(app)&&/result\.sfUnassigned\.push/.test(app),true,'v3.0.1 : valeur manuelle hors périmètre gardée « non affectée » (plus ignorée)');
+eq(/method:'manual:unassigned'/.test(app)&&/result\.sfUnassigned\.push/.test(app),true,'v3.0.2 : valeur manuelle hors périmètre gardée « non affectée » (plus ignorée)');
 eq(/sfBuildings:safeJsonClone\(project\.sfBuildings,\[\]\)/.test(per)&&/sfBuildingMap:safeJsonClone/.test(per)&&/sfPerimeterOff:!!project\.sfPerimeterOff/.test(per),true,'périmètre et corrections sauvegardés');
 eq(/data-sfp-open/.test(app)&&/data-sfp-off/.test(app),true,'table de correspondance et désactivation');
 console.log(`v2.31.0 — ${n} vérifications OK (données fictives)`);

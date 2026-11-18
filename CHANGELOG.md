@@ -1,3 +1,21 @@
+# v3.0.2 — Bâtiments mieux rapprochés, classement appris sur Salesforce, ITE / ITI
+
+Mesures au banc Salesforce (616 opérations, export du 12/11, textes relus, même banc avant / après) :
+- **Bâtiments** (levier 2) : puce mal encodée retirée des noms de la fiche Salesforce (« ? Bâtiment AB - 108 logements ») ;
+  rapprochement par identifiant en fin de nom (« MACROLOT G » ↔ « G », « COLLECTIF C » ↔ « C ») et nom tronqué
+  (« CHARQUEMON » ↔ « CHARQUEMONT »). Banc aligné sur l'appli v3 (Total bâtiments, bâtiment unique). Valeurs justes
+  14 253 → 15 168, fiabilité 66,4 → 71,2 %, couverture 74,8 → 79,7 %.
+- **ITE / ITI** (levier 5) : une lecture de mur va aussi dans les colonnes ITE (« ITE », ETICS, sous enduit) ou ITI (doublage,
+  contre-cloison). ITI : R 32 → 51 justes, type 127 → 149, épaisseur 41 → 61.
+- **Classement appris** (levier 3) : quand plusieurs lectures d'un bâtiment se contredisent, la lecture dont la précision mesurée
+  (donnée × méthode × type de document) est nettement meilleure (écart ≥ 0,20, ≥ 30 cas) l'emporte. Jamais sur une valeur
+  saisie / Salesforce ni sur le DH. Validation croisée en 2 moitiés : +238 justes, −208 fausses.
+- **Remplissage** (levier 4) : lecture d'une source autorisée sous 90 % retenue si sa précision mesurée ≥ 0,80 (effet marginal).
+  Les sources non autorisées n'atteignent jamais la précision requise : elles restent exclues.
+- Retiré après mesure (effet nul) : colonne « R isolant » des tableaux, libellé de paroi écrit après la ligne.
+- Total de la nuit : valeurs justes 14 253 → 15 391, exactitude 69,2 → 70,1 %, couverture 74,8 → 80,1 %, fiabilité 66,4 → 71,5 %.
+- Banc : --perimetre-v3, --suivi, --dump-candidats, --classement.
+
 # v3.0.1 — Lecteurs enveloppe : doublages complexes, titre de section, épaisseurs invraisemblables
 
 - **Doublages complexes** (« Doublissimo 100+13 », « Pregymax 32 80+13 (R=2,55) », « 13+101 R=3,35 ») : isolant, épaisseur

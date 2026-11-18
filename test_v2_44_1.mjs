@@ -1,9 +1,9 @@
-// ExtracTerre v3.0.1 — politiques d'absence par critère (onglet Recherches seulement). Documents fictifs.
+// ExtracTerre v3.0.2 — politiques d'absence par critère (onglet Recherches seulement). Documents fictifs.
 import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {normalizeGrid,runSearchGrid,searchCellValue} from './js/recherches.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.0.1','version');
+eq(APP_VERSION,'3.0.2','version');
 const doc=(id,name,type,lines)=>({id,name,type,status:'ready',read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map(t=>({text:t}))}]}});
 const cctp=doc('d1','CCTP lot 12 CVC.pdf','CCTP',['Ventilation simple flux hygro B','Chauffage par pompe à chaleur']);
 const notice=doc('d2','Notice descriptive.pdf','Notice',['Logements sans climatisation','Volets roulants motorisés']);
@@ -24,4 +24,4 @@ const app=fs.readFileSync('js/app.js','utf8');
 eq(/data-c="absence"/.test(app)&&/data-c="negative"/.test(app)&&/absence:f\('absence'\)/.test(app),true,'politique réglable dans l’éditeur de grille');
 eq(/absence:x\.absence\|\|''/.test(app),true,'statut exporté (observatoire / TotalRecoll)');
 eq(normalizeGrid({criteria:[{label:'x'}]}).criteria[0].absence,'indetermine','grilles existantes : indéterminé par défaut (aucun changement)');
-console.log(`v3.0.1 — ${n} vérifications OK (documents fictifs)`);
+console.log(`v3.0.2 — ${n} vérifications OK (documents fictifs)`);
