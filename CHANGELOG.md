@@ -1,3 +1,18 @@
+# v3.0.5 — Grille « Sécurité des logements » : règles v4 (portes d'escalier, sas, porte piétonne)
+
+Validées le 19/11/2026 (relecture des preuves sur 647 opérations et des « Sans objet » donnés dans TotalRecoll). Appliquées une
+fois aux grilles enregistrées ; les termes ajoutés par l'utilisateur sont gardés.
+- Nouveau mode de contexte « phrase » : le moyen (badge, Vigik, contrôle d'accès…) doit être dans la même phrase que la porte —
+  la ligne, la ligne d'avant si elle annonce une liste par « : », ou la suite de la phrase ; la preuve montre toute la phrase.
+- Portes d'escalier : porte ou accès d'escalier + badge / Vigik / lecteur / contrôle d'accès / gâche électrique / digicode /
+  serrure de sûreté ou 3-5 points / condamnation ou cylindre sur organigramme. Portes vers le parking ou le sous-sol comprises.
+  Fixations à platine, désenfumage, colonnes sèches, éclairage, mesures conservatoires (fourreaux) exclus. « Sans condamnation »,
+  « ouvrable sans clé », « bec de cane simple », « sans contrôle d'accès » = indice contraire (nouveau champ contraryNear).
+  647 opérations : 48 « Oui » (≈ 21 justes) → 50 (≈ 48 justes) et 22 « Non » écrits.
+- Sas sécurisé : localisations seules, sommaires, éclairage, alimentations ne comptent plus (statut Partiel inchangé).
+- Porte piétonne du parking : listes d'alimentation, de comptage ou de clés, zones de parking extérieures exclues ; « clé » et
+  « télécommande » ne suffisent plus.
+
 # v3.0.4 — Export des recherches : contexte des preuves (vérification dans TotalRecoll)
 
 - Chaque preuve d'un critère exportée dans la session (onglet Recherches) porte maintenant son contexte (lignes voisines,
