@@ -2736,7 +2736,12 @@ function sessionOperation(p,grids,details){ { const id=projectIdentity(p);
       const base={id:p.id,title:projectTitle(p),identity:id,completion:projectCompletion(p),profile:projectProfile(p),documents:(p.docs||[]).map(d=>({name:d.name,type:d.type,size:d.size,status:d.status})),
         searches:details?Object.fromEntries(grids.map(g=>[g.id,runSearchGrid(g,p.docs||[],p.searchOverrides?.[g.id]||{},p.planTables,p.planChecks,p.result)]).filter(([,r])=>r.documents.length||r.fieldHits||Object.keys(p.searchOverrides?.[r.grid.id]||{}).length).map(([k,r])=>[k,compactSearch(r)])):feedSearches(p,grids)}; // opérations sans document lu : pas de résultat de recherche
       if(!details) return base;
-      return {...base,rows:p.result?.rows||[],reliability:p.result?reliabilityTable(p.result):{},finals:(p.result?.finals||[]).map(o=>({building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt})),
+      return {...base,rows:p.result?.rows||[],reliability:p.result?reliabilityTable(p.result):{},
+        finals:(p.result?.finals||[]).map(o=>({
+          building:o.building,field:o.field,value:o.value,fileName:o.fileName,docType:o.docType,page:o.page,confidence:o.confidence,method:o.method,excerpt:o.excerpt,
+          documentValue:o.documentValue,documentFile:o.documentFile,documentPage:o.documentPage
+        })),
+        sfChecks:p.result?.sfChecks||{},
         manualValues:p.manualValues||{},manualPasteRows:p.manualPasteRows||[],freePasteRows:p.freePasteRows||[],planTables:p.planTables||{},planChecks:p.planChecks||{},favorite:!!p.favorite,economic:p.economic?.values||null,searchOverrides:p.searchOverrides||{}}; }
 }
 // v2.23.1 — témoin d'avancement de l'export de session : carte flottante (étape, opération en cours, %, taille écrite).
