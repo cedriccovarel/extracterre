@@ -347,3 +347,25 @@ export function classifyImportFile({family=null,name='',xml=null,text,appType=nu
   // 4. Seul le sous-dossier parle : type présumé.
   return {type:fam.presumedType,method:'sous-dossier',status:'à traiter',doubt:'',note:'',steps};
 }
+
+// v3.0.6 — relecture ciblée d'un dossier déjà analysé : seuls les documents liés aux onglets choisis sont relus, les autres
+// gardent leur extraction. Type du document = type déjà lu (registre), sinon famille du sous-dossier (cctp / thermique / carbone).
+export const REREAD_TABS=Object.freeze({generic:'Données générales',thermal:'Thermique',carbon:'Carbone',envelope:'Structure & enveloppe',economics:'Économie',searches:'Recherches'});
+const RR_TYPES={
+  thermal:/^(?:RSET RE2020|RSEE RE2020|RT2012|RT Existant|Étude thermique|DPE)$/,
+  carbon:/^(?:RSEE RE2020|RSENV \/ RSNV|Étude carbone \/ ACV)$/,
+  envelope:/^(?:RSET RE2020|RSEE RE2020|RT2012|RT Existant|Étude thermique|Rapport d'imperméabilité)$/,
+  economics:/^(?:Questionnaire financier|DPGF)$/,
+  generic:/^(?:RSET RE2020|RSEE RE2020|RT2012|Étude thermique|Contrat|Livret d'opération|CR de conception|CR environnemental|Choix des exigences|Descriptif du projet|Tableau de surfaces|Notice architecturale \/ pièce écrite architecte|Permis \/ pièce administrative|Questionnaire financier)$/,
+};
+const RR_FAMILY={thermal:['thermique'],carbon:['carbone'],envelope:['thermique'],generic:['thermique'],economics:[],searches:[]};
+export function rereadForTabs(file,old,tabs=[],{searchLots=[],envelopeLots=[]}={}){
+  const type=String(old?.docType||old?.importType||''), fam=String(file?.family||''), isCctp=fam==='cctp'||type==='CCTP';
+  for(const t of tabs){
+    // CCTP : le lot utile à l'onglet (ou un CCTP non découpé par lot) ; Recherches = lots des grilles, enveloppe = lots d'enveloppe.
+    if(isCctp){ if(t==='searches'&&cctpLotDecision(file?.name||'',searchLots).read) return true;
+      if(t==='envelope'&&cctpLotDecision(file?.name||'',envelopeLots).read) return true; continue; }
+    if(type&&RR_TYPES[t]?.test(type)) return true;
+    if(!type&&(RR_FAMILY[t]||[]).includes(fam)) return true; }
+  return false;
+}

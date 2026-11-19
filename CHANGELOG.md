@@ -1,3 +1,12 @@
+# v3.0.6 — Relecture par onglet (dossiers déjà analysés)
+
+- Fenêtre d'import : bouton « ⟳ Relire par onglet ▾ », menu à cases (Données générales, Thermique, Carbone, Structure &
+  enveloppe, Économie, Recherches) puis « ▶ Relire ces documents ». Seuls les documents liés aux onglets cochés sont relus ;
+  les autres gardent leur lecture. Type d'un document = type déjà lu (registre), sinon sous-dossier (CCTP / thermique / carbone).
+  CCTP : Recherches = lots des grilles, Structure & enveloppe = lots d'enveloppe ; un CCTP non découpé par lot est relu.
+- Script d'import : options --relire-onglets, --lots-recherches, --lots-enveloppe (transmises par le service). « Relire tous les
+  documents » reste disponible et inchangé.
+
 # v3.0.5 — Grille « Sécurité des logements » : règles v4 (portes d'escalier, sas, porte piétonne)
 
 Validées le 19/11/2026 (relecture des preuves sur 647 opérations et des « Sans objet » donnés dans TotalRecoll). Appliquées une

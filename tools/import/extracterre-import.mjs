@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
-import {parseContractList,matchContracts,rankVersions,classifyImportFile,documentKey,fileExtension,cctpLotDecision} from '../../js/import-rules.js';
+import {parseContractList,matchContracts,rankVersions,classifyImportFile,documentKey,fileExtension,cctpLotDecision,rereadForTabs,REREAD_TABS} from '../../js/import-rules.js';
 import {listOperationFolders,scanOperation,ignoredDirLabel} from './lib/scan.mjs';
 import {Registry,SupabaseStore,openKeys} from './lib/registry.mjs';
 import {sha256File} from './lib/crypto.mjs';
@@ -40,6 +40,10 @@ Options
   --sans-ocr-contrats <a,b> pas d'OCR pour ces contrats (posé par le service après un plantage)
   --exclure <a,b>          contrats mis de côté (plantages répétés, posé par le service)
   --reextraire             relire même les fichiers déjà connus (après une mise à jour des parseurs)
+  --relire-onglets <a,b>   relire seulement les documents déjà connus liés à ces onglets (generic, thermal, carbon,
+                           envelope, economics, searches) ; les autres gardent leur extraction
+  --lots-recherches <a,b>  lots de CCTP des grilles de Recherches (onglet searches)
+  --lots-enveloppe <a,b>   lots de CCTP d'enveloppe (onglet envelope)
   --local                  ne pas utiliser Supabase (registre local seulement)
   --racine <dossier>       dossier racine (défaut : configuration)
   --dossier-travail <dos.> rapports, résultats et registre local (défaut : ~/ExtracTerre-import)
@@ -103,6 +107,10 @@ async function main(){
   const workDir=home(args['dossier-travail']||cfg.dossierTravail||'~/ExtracTerre-import');
   const parallel=Number(args.parallelisme||cfg.parallelisme||3);
   const cctpLots=String(args['lots-cctp']||'').split(',').map(x=>x.trim()).filter(Boolean);
+  // v3.0.6 — relecture ciblée par onglet (dossiers déjà analysés).
+  const rrList=k=>String(args[k]||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const rereadTabs=rrList('relire-onglets').filter(t=>REREAD_TABS[t]), rereadLots={searchLots:rrList('lots-recherches'),envelopeLots:rrList('lots-enveloppe')};
+  if(rereadTabs.length) console.log(`  relecture ciblée : ${rereadTabs.map(t=>REREAD_TABS[t]).join(', ')}`);
   const mode=args['check-only']?'check-only':args['dry-run']?'dry-run':'traitement';
   const runDir=path.join(workDir,'rapports',`${stamp()}_${mode}`);
   if(!fs.existsSync(root)) throw new Error(`Dossier racine introuvable : ${root}`);
@@ -204,7 +212,7 @@ async function main(){
     // v2.39.1 — plantages répétés sur une opération : le service la relance sans OCR, puis la met de côté.
     if(excluded.has(contract)){ STATUS.parOp[contract]={r:'erreurs',exclu:true}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''}}); finalRows.push([contract,op.folder,'mis de côté (plantages répétés)',0,0,0,0,0,0,0]); prOps.tick(`${contract} mis de côté`); continue; }
     const ocrOp=ocrOn&&!noOcr.has(contract);
-    if(mode==='traitement'&&!args.reextraire&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); STATUS.parOp[contract]={r:'inchangé'}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
+    if(mode==='traitement'&&!args.reextraire&&!rereadTabs.length&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); STATUS.parOp[contract]={r:'inchangé'}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
     totals.ops++;
     status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`,contratCourant:contract,debutOp:new Date().toISOString()}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
@@ -224,6 +232,7 @@ async function main(){
       fileDone++; if(Date.now()-lastFileStatus>1500||fileDone===fileTotal){ lastFileStatus=Date.now(); status({fichiers:{fait:fileDone,total:fileTotal,courant:f.name}}); }
       const dec=decisions[`${contract}|${f.relPath}`]||{};
       const old=reg.file(contract,f.relPath);
+      const force=!!args.reextraire||(rereadTabs.length>0&&rereadForTabs(f,old,rereadTabs,rereadLots));
       const base={contract,folder:op.folder,relPath:f.relPath,relDir:f.relDir,name:f.name,ext:fileExtension(f.name),family:f.family,size:f.size,mtimeMs:f.mtimeMs,
         firstSeenAt:old?.firstSeenAt||now,missing:false,missingSince:null,decision:Object.keys(dec).length?dec:null};
       if(f.ignoreReason||dec.ignore){
@@ -271,7 +280,7 @@ async function main(){
       };
       try{
         const scanWas=e=>/scan/.test(e?.reason||'');
-        const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!args.reextraire&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept&&!(ocrOp&&scanWas(old));
+        const unchanged=old&&old.size===f.size&&old.mtimeMs===f.mtimeMs&&old.sha256&&old.resultFile&&fs.existsSync(path.join(workDir,old.resultFile))&&!dec.reprocess&&!force&&(old.decisionFamily||null)===(dec.family||null)&&(old.decisionAccept||false)===!!dec.accept&&!(ocrOp&&scanWas(old));
         const oldRes=unchanged?extract.readResult(workDir,old.resultFile):null;
         if(unchanged&&!extract.staleForPatches(oldRes)){
           const res=oldRes; const j=judge(res.doc,res.meta,old.sha256);
@@ -279,7 +288,7 @@ async function main(){
           reg.putFile({...old,...base,...ver,docType:res.doc.type,importType:j.k.type,method:j.k.method,status:j.status,reason:j.reason,fields:j.fields,completeness:j.completeness}); return;
         }
         const sha=await withRetry(()=>sha256File(f.abs));
-        const twin=!args.reextraire&&!dec.reprocess&&!dec.family?reg.byHash(sha):null;
+        const twin=!force&&!dec.reprocess&&!dec.family?reg.byHash(sha):null;
         if(twin&&fs.existsSync(path.join(workDir,twin.resultFile))&&!(ocrOp&&scanWas(twin))&&!extract.staleForPatches(extract.readResult(workDir,twin.resultFile))){
           // Même contenu déjà extrait : résultat réutilisé, mais le classement dépend du sous-dossier et du nom de CE fichier.
           const res=extract.readResult(workDir,twin.resultFile); const j=judge(res.doc,res.meta,sha);

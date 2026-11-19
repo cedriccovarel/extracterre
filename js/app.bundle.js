@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.0.5 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.0.6 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.0.5';
+const APP_VERSION='3.0.6';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -13190,6 +13190,28 @@ function classifyImportFile({family=null,name='',xml=null,text,appType=null,unkn
   return {type:fam.presumedType,method:'sous-dossier',status:'à traiter',doubt:'',note:'',steps};
 }
 
+// v3.0.6 — relecture ciblée d'un dossier déjà analysé : seuls les documents liés aux onglets choisis sont relus, les autres
+// gardent leur extraction. Type du document = type déjà lu (registre), sinon famille du sous-dossier (cctp / thermique / carbone).
+const REREAD_TABS=Object.freeze({generic:'Données générales',thermal:'Thermique',carbon:'Carbone',envelope:'Structure & enveloppe',economics:'Économie',searches:'Recherches'});
+const RR_TYPES={
+  thermal:/^(?:RSET RE2020|RSEE RE2020|RT2012|RT Existant|Étude thermique|DPE)$/,
+  carbon:/^(?:RSEE RE2020|RSENV \/ RSNV|Étude carbone \/ ACV)$/,
+  envelope:/^(?:RSET RE2020|RSEE RE2020|RT2012|RT Existant|Étude thermique|Rapport d'imperméabilité)$/,
+  economics:/^(?:Questionnaire financier|DPGF)$/,
+  generic:/^(?:RSET RE2020|RSEE RE2020|RT2012|Étude thermique|Contrat|Livret d'opération|CR de conception|CR environnemental|Choix des exigences|Descriptif du projet|Tableau de surfaces|Notice architecturale \/ pièce écrite architecte|Permis \/ pièce administrative|Questionnaire financier)$/,
+};
+const RR_FAMILY={thermal:['thermique'],carbon:['carbone'],envelope:['thermique'],generic:['thermique'],economics:[],searches:[]};
+function rereadForTabs(file,old,tabs=[],{searchLots=[],envelopeLots=[]}={}){
+  const type=String(old?.docType||old?.importType||''), fam=String(file?.family||''), isCctp=fam==='cctp'||type==='CCTP';
+  for(const t of tabs){
+    // CCTP : le lot utile à l'onglet (ou un CCTP non découpé par lot) ; Recherches = lots des grilles, enveloppe = lots d'enveloppe.
+    if(isCctp){ if(t==='searches'&&cctpLotDecision(file?.name||'',searchLots).read) return true;
+      if(t==='envelope'&&cctpLotDecision(file?.name||'',envelopeLots).read) return true; continue; }
+    if(type&&RR_TYPES[t]?.test(type)) return true;
+    if(!type&&(RR_FAMILY[t]||[]).includes(fam)) return true; }
+  return false;
+}
+
 /* ---- box-folder.js ---- */
 // v2.12.1 — dossier Box (via Box Drive) couplé à ExtracTerre : « 2 PRODUCTION EVALUATION/1 BEE Contrats » est choisi une fois,
 // son accès est gardé par Chrome (File System Access API) ; pour une opération, le dossier « 0000xxxx - … » de son contrat est
@@ -13394,11 +13416,11 @@ function ssParseContractPaste(text=''){
   return {contracts,invalid,column:col,owners,ownerColumn:ownerCol};
 }
 async function ss_demandes(dir){ return dir.getDirectoryHandle('demandes',{create:true}); }
-async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[],reread=false}={}){
+async function ssWriteRequest(dir,contracts,mode='traitement',{ocr=true,cctpLots=[],reread=false,rereadTabs=[],searchLots=[],envelopeLots=[]}={}){
   const d=new Date(), p=n=>String(n).padStart(2,'0');
   const id=`demande-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.json`,{create:true}); const w=await h.createWritable();
-  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,...(reread?{reextraire:true}:{}),contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
+  await w.write(JSON.stringify({format:'extracterre-import-request',id,mode,ocr,cctpLots,...(reread?{reextraire:true}:{}),...(!reread&&rereadTabs.length?{relireOnglets:rereadTabs,lotsRecherches:searchLots,lotsEnveloppe:envelopeLots}:{}),contrats:contracts,creeA:d.toISOString()},null,1)); await w.close();
   return id;
 }
 async function ss_json(dir,name){ try{ const f=await (await (await ss_demandes(dir)).getFileHandle(name)).getFile(); return JSON.parse(await f.text()); }catch{ return null; } }
@@ -13412,7 +13434,7 @@ async function ssListRequests(dir){
   for await (const [name,h] of d.entries()){ const m=h.kind==='file'&&name.match(/^(demande-[\w-]+)\.json$/); if(m&&!/\.statut$/.test(m[1])) ids.push(m[1]); }
   const out=[];
   for(const id of ids){ const req=await ss_json(dir,`${id}.json`), st=await ss_json(dir,`${id}.statut.json`); let stop=false; try{ await d.getFileHandle(`${id}.stop`); stop=true; }catch{}
-    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,reread:!!req?.reextraire,createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
+    out.push({id,contracts:Array.isArray(req?.contrats)?req.contrats.length:0,mode:req?.mode||'traitement',ocr:req?.ocr!==false,reread:!!req?.reextraire,rereadTabs:Array.isArray(req?.relireOnglets)?req.relireOnglets:[],createdAt:req?.creeA||'',status:st||null,stopAsked:stop}); }
   return out.sort((a,b)=>String(b.id).localeCompare(String(a.id)));
 }
 async function ssStopRequest(dir,id,{immediat=false}={}){
@@ -17186,7 +17208,8 @@ function ssPasteInfo(){
   const ta=$('#sourcesDialog [data-ss-paste]'); const r=ssParseContractPaste(ta?.value||''); const el=$('#sourcesDialog [data-ss-paste-info]');
   const nOwners=new Set(Object.values(r.owners||{})).size;
   if(el) el.innerHTML=r.contracts.length?`<b>${r.contracts.length}</b> contrat(s) reconnu(s)${nOwners?` · <b>${nOwners}</b> maître(s) d’ouvrage (regroupement des tuiles)`:''}${r.invalid.length?` · <span class="ss-warn">${r.invalid.length} ligne(s) ignorée(s) : ${escapeHtml(r.invalid.slice(0,5).join(', '))}${r.invalid.length>5?'…':''}</span>`:''}`:'Collez la colonne des numéros de contrat (avec ou sans en-tête).';
-  $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=!r.contracts.length);
+  $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=!r.contracts.length||(b.dataset.ssLaunch==='relecture'&&!ssRereadTabs().length));
+  ssRereadMenuSync();
   return r;
 }
 function ssRenderNew(body){
@@ -17200,13 +17223,22 @@ function ssRenderNew(body){
     <div class="ss-step"><b>3.</b> Analyse des documents <small>(études thermiques et carbone ; lots de CCTP utiles aux Recherches : ${escapeHtml(ssCctpLots().slice(0,12).join(', '))}${ssCctpLots().length>12?'…':''})</small></div>
     <label class="chk ss-ocr"><input type="checkbox" data-ss-ocr checked> OCR des PDF scannés (plus lent : quelques secondes par page)</label>
     <label class="chk ss-ocr" title="À utiliser après une amélioration des lecteurs de documents : les résultats déjà extraits sont remplacés. Beaucoup plus long."><input type="checkbox" data-ss-reread> Relire tous les documents, même déjà analysés (après une mise à jour d’ExtracTerre ; beaucoup plus long)</label>
+    <details class="ss-tabmenu" data-ss-tabmenu><summary class="btn light" title="Dossiers déjà analysés : relire seulement les documents utiles à certains onglets ; les autres gardent leur lecture">⟳ Relire par onglet ▾ <b data-ss-tabcount></b></summary>
+      <div class="ss-tabmenu-panel" role="group" aria-label="Onglets dont relire les documents"><p>Relire seulement les documents liés à :</p>
+        ${Object.entries(REREAD_TABS).map(([k,l])=>`<label class="chk"><input type="checkbox" data-ss-rtab value="${k}"> <span>${escapeHtml(l)}<small>${escapeHtml(SS_RTAB_HINT[k]||'')}</small></span></label>`).join('')}
+        <button class="btn primary" type="button" data-ss-launch="relecture" disabled>▶ Relire ces documents</button></div></details>
     <div class="ss-new-actions"><button class="btn light" data-ss-launch="check-only" disabled title="Rapport de correspondance seulement : contrats trouvés, sans dossier, en double">Vérifier la correspondance</button><button class="btn primary" data-ss-launch="traitement" disabled>▶ Lancer l’analyse</button></div>
     <div data-ss-progress></div><div class="ss-queue" data-ss-queue></div></div>`;
-  const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); ssPasteInfo();
+  const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); body.querySelectorAll('[data-ss-rtab]').forEach(x=>x.addEventListener('change',ssPasteInfo)); ssPasteInfo();
   ssRefreshService(); ssWatchRequest(); ssRenderQueue();
 }
 // v2.28.0 — file des analyses : statut de chaque demande, arrêter / annuler / supprimer, vider l'historique.
 // Lots de CCTP utiles : réunion des lots des grilles de Recherches (déduits des thèmes si la grille n'en précise pas).
+// v3.0.6 — relecture par onglet : onglets cochés, lots des grilles de Recherches, aide sous chaque case.
+const SS_RTAB_HINT={generic:'études thermiques, notices, contrats, programme, questionnaire financier',thermal:'RSET, RSEE, RT2012, RT Existant, études thermiques, DPE',carbon:'RSEE, RSENV, études carbone / ACV',envelope:'études thermiques et CCTP des lots d’enveloppe (isolation, façades, menuiseries…)',economics:'questionnaire financier, DPGF',searches:'CCTP des lots utiles aux grilles de Recherches'};
+const ssRereadTabs=()=>$$('#sourcesDialog [data-ss-rtab]:checked').map(b=>b.value);
+function ssSearchLots(){ try{ return [...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]; }catch{ return []; } }
+function ssRereadMenuSync(){ const n=ssRereadTabs().length, b=$('#sourcesDialog [data-ss-tabcount]'); if(b) b.textContent=n?`(${n})`:''; }
 function ssCctpLots(){ try{ return withEnvelopeLots([...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]); }catch{ return []; } }
 async function ssRenderQueue(){
   const box=$('#sourcesDialog [data-ss-queue]'); if(!box||!ss.dir) return;
@@ -17215,7 +17247,7 @@ async function ssRenderQueue(){
   const label=r=>{ const st=r.status; if(r.stopAsked&&!ssRequestDone(st)) return ['warn','arrêt demandé…']; if(!st) return ['muted','en attente']; return [{terminé:'ok',erreur:'bad',interrompu:'warn',annulé:'muted'}[st.etat]||'warn',st.etat==='en cours'?`en cours · ${st.operations?.fait??0}/${st.operations?.total??'?'}`:st.etat]; };
   const done=list.filter(r=>ssRequestDone(r.status));
   box.innerHTML=`<div class="ss-queue-head"><b>File des analyses</b>${done.length?`<button class="btn light" type="button" data-ss-qclear>Vider l’historique (${done.length})</button>`:''}</div>${list.slice(0,30).map(r=>{ const [cls,txt]=label(r), running=r.status?.etat==='en cours', waiting=!r.status||r.status.etat==='en attente';
-    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}${r.reread?' · relecture complète':''}</span>
+    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}${r.reread?' · relecture complète':''}${r.rereadTabs?.length?` · relecture : ${escapeHtml(r.rereadTabs.map(t=>REREAD_TABS[t]||t).join(', '))}`:''}</span>
       ${running&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}" title="Termine le document en cours, enregistre, puis s’arrête">Arrêter</button>`:''}${running&&r.stopAsked?`<button class="btn light" type="button" data-ss-qkill="${escapeHtml(r.id)}">Arrêt immédiat</button>`:''}${waiting&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}">Annuler</button>`:''}${ssRequestDone(r.status)?`<button class="icon-btn" type="button" data-ss-qdel="${escapeHtml(r.id)}" title="Supprimer de l’historique" aria-label="Supprimer">×</button>`:''}</div>`; }).join('')}`;
 }
 async function ssRefreshService(){
@@ -17237,6 +17269,8 @@ function ssChoice(title,text,buttons,note=''){
   });
 }
 async function ssLaunch(mode){
+  // v3.0.6 — « Relire par onglet » : traitement normal, mais seuls les documents liés aux onglets cochés sont relus.
+  const relecture=mode==='relecture'; if(relecture){ if(!ssRereadTabs().length) return; mode='traitement'; }
   const r=ssPasteInfo(); if(!r.contracts.length) return;
   // Une demande à la fois : un double clic ne lance pas deux analyses.
   const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!ssRequestDone(st)&&(st||(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===cur))){ toast('Une analyse est déjà en cours : attendez la fin, ou arrêtez-la dans « File des analyses ».','warn'); return; } }
@@ -17262,7 +17296,9 @@ async function ssLaunch(mode){
       const res=await sfxImport(sfFile,{onlyContracts:new Set(r.contracts.map(c=>contractKey(c))),createMissing:true});
       toast(`Salesforce : ${res.updated} opération(s) mises à jour${res.created?`, ${res.created} créée(s)`:''} · ${res.values.toLocaleString('fr-FR')} valeur(s).`,'success'); }
     catch(err){ toast(`Export Salesforce non appliqué : ${err?.message||err}`,'error'); } }
-  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots(),reread:!!$('#sourcesDialog [data-ss-reread]')?.checked});
+  const tabs=relecture?ssRereadTabs():[];
+  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots(),reread:!!$('#sourcesDialog [data-ss-reread]')?.checked&&!relecture,rereadTabs:tabs,searchLots:ssSearchLots(),envelopeLots:[...CCTP_ENVELOPE_LOTS]});
+  if(relecture) $('#sourcesDialog [data-ss-tabmenu]')?.removeAttribute('open');
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
 }

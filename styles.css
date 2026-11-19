@@ -1533,3 +1533,12 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 
 /* v2.36.3 — valeur Salesforce différente du document le plus récent : coin orange, détail au survol */
 td.sf-diff{position:relative}td.sf-diff::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 7px 7px 0;border-color:transparent #d9822b transparent transparent;pointer-events:none}
+/* v3.0.6 — relecture par onglet (fenêtre d'import) */
+.ss-tabmenu{position:relative;align-self:flex-start}
+.ss-tabmenu>summary{list-style:none;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.ss-tabmenu>summary::-webkit-details-marker{display:none}
+.ss-tabmenu-panel{margin-top:6px;padding:10px 12px;border:1px solid var(--line,#d7d7d7);border-radius:8px;background:var(--panel,#fff);display:grid;gap:6px;max-width:520px}
+.ss-tabmenu-panel p{margin:0;font-size:12px;color:var(--muted)}
+.ss-tabmenu-panel .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+.ss-tabmenu-panel .chk small{display:block;font-size:11px;color:var(--muted)}
+.ss-tabmenu-panel .btn{justify-self:end}

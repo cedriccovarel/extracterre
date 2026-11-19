@@ -96,6 +96,11 @@ function run(req){
     if(r.mode==='check-only') args.push('--check-only');
     if(r.ocr===false) args.push('--sans-ocr');
     if(r.reextraire===true) args.push('--reextraire');
+    // v3.0.6 — relecture ciblée par onglet.
+    const L=x=>Array.isArray(x)?x.map(String).filter(Boolean):[];
+    if(r.reextraire!==true&&L(r.relireOnglets).length){ args.push('--relire-onglets',L(r.relireOnglets).join(','));
+      if(L(r.lotsRecherches).length) args.push('--lots-recherches',L(r.lotsRecherches).join(','));
+      if(L(r.lotsEnveloppe).length) args.push('--lots-enveloppe',L(r.lotsEnveloppe).join(',')); }
     if(Array.isArray(r.cctpLots)&&r.cctpLots.length) args.push('--lots-cctp',r.cctpLots.map(String).join(','));
     const prev=readJson(statut)||{};
     if(prev.sansOcr?.length) args.push('--sans-ocr-contrats',prev.sansOcr.join(','));

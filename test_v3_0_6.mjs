@@ -1,0 +1,26 @@
+// ExtracTerre v3.0.6 — relecture par onglet (dossiers déjà analysés). Données fictives.
+import {APP_VERSION} from './js/config.js';
+import {rereadForTabs,REREAD_TABS} from './js/import-rules.js';
+import fs from 'fs';
+let n=0; const eq=(a,b,m)=>{ if(a!==b) throw new Error(`${m} : ${a} ≠ ${b}`); n++; };
+eq(APP_VERSION,'3.0.6','version'); eq(Object.keys(REREAD_TABS).length,6,'6 onglets');
+const L={searchLots:['electricite','menuiseries exterieures'],envelopeLots:['isolation','facade','menuiseries exterieures']};
+const rset={family:'thermique',name:'RSET.xml'}, cctpElec={family:'cctp',name:'CCTP Lot 12 Electricite.pdf'}, cctpGo={family:'cctp',name:'CCTP Lot 02 Gros oeuvre.pdf'}, cctpAll={family:'cctp',name:'CCTP.pdf'}, cctpFac={family:'cctp',name:'CCTP lot 05 Facade.pdf'};
+eq(rereadForTabs(rset,{docType:'RSET RE2020'},['thermal'],L),true,'RSET → Thermique');
+eq(rereadForTabs(rset,{docType:'RSET RE2020'},['economics'],L),false,'RSET pas Économie');
+eq(rereadForTabs(rset,{docType:'RSEE RE2020'},['carbon'],L),true,'RSEE → Carbone');
+eq(rereadForTabs(rset,null,['thermal'],L),true,'sans registre : famille thermique');
+eq(rereadForTabs({family:'carbone',name:'ACV.pdf'},null,['thermal'],L),false,'ACV pas Thermique');
+eq(rereadForTabs(cctpElec,{docType:'CCTP'},['searches'],L),true,'CCTP électricité → Recherches');
+eq(rereadForTabs(cctpGo,{docType:'CCTP'},['searches'],L),false,'gros œuvre hors Recherches');
+eq(rereadForTabs(cctpFac,{docType:'CCTP'},['envelope'],L),true,'façade → Enveloppe');
+eq(rereadForTabs(cctpElec,{docType:'CCTP'},['envelope'],L),false,'électricité hors Enveloppe');
+eq(rereadForTabs(cctpAll,{docType:'CCTP'},['searches'],L),true,'CCTP non découpé relu');
+eq(rereadForTabs(cctpElec,{docType:'CCTP'},['thermal'],L),false,'CCTP pas Thermique');
+eq(rereadForTabs({family:null,name:'Q.xlsx'},{docType:'Questionnaire financier'},['economics'],L),true,'questionnaire → Économie');
+eq(rereadForTabs(rset,{docType:'RSET RE2020'},[],L),false,'aucun onglet');
+const app=fs.readFileSync('js/app.js','utf8'), imp=fs.readFileSync('tools/import/extracterre-import.mjs','utf8'), w=fs.readFileSync('tools/import/watch.mjs','utf8');
+eq(/data-ss-launch="relecture"/.test(app)&&/data-ss-rtab/.test(app),true,'bouton et menu');
+eq(/--relire-onglets/.test(imp)&&/!force&&/.test(imp),true,'script : relecture ciblée');
+eq(/--relire-onglets/.test(w),true,'service : option transmise');
+console.log(`v3.0.6 — ${n} vérifications OK (données fictives)`);

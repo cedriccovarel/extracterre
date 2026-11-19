@@ -2,7 +2,7 @@
 import {APP_VERSION} from './js/config.js';
 import {SECURITY_GRID,normalizeGrid,runSearchGrid} from './js/recherches.js';
 let n=0; const eq=(a,b,m)=>{ if(a!==b) throw new Error(`${m} : ${a} ≠ ${b}`); n++; };
-eq(APP_VERSION,'3.0.5','version'); eq(SECURITY_GRID.rulesVersion,4,'règles v4');
+eq(APP_VERSION>='3.0.5',true,'version'); eq(SECURITY_GRID.rulesVersion,4,'règles v4');
 const doc=t=>[{id:'d',name:'CCTP Lot 08.pdf',type:'CCTP',status:'ready',read:{pages:[{page:1,text:t}]}}];
 const st=(t,id)=>{ const x=runSearchGrid(SECURITY_GRID,doc(t)).criteria[id]; return x.partial?'pa':x.found?'oui':x.contrary?'non':''; };
 // Escaliers

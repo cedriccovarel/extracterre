@@ -24,7 +24,8 @@ import {canonicalBuilding} from './buildings.js';
 import {analyzeEconomicData,ECONOMIC_FIELDS,ECONOMIC_FIELD_MAP,ECONOMIC_GROUPS,COST_CATEGORIES} from './economics.js';
 import {parseDocument,DOCUMENT_FAMILIES,resolveDocumentFamilies,autoFamiliesForType,documentExpectedFields,normalizeFamilyKey} from './parsers.js';
 import {getLlmConfig,saveLlmConfig,setLlmDirectKey,llmHasDirectKey,llmConsentGiven,setLlmConsent,runLlmAssist,checkOllama,llmComplete,LLM_MODES,LLM_PROVIDERS} from './llm-assist.js';
-import {gridCctpLots,withEnvelopeLots,normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,SEARCH_ABSENCE,SEARCH_STATUS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
+import {REREAD_TABS} from './import-rules.js';
+import {CCTP_ENVELOPE_LOTS,gridCctpLots,withEnvelopeLots,normalizeGrid,runSearchGrid,searchCellValue,SECURITY_GRID,SEARCH_KINDS,SEARCH_ABSENCE,SEARCH_STATUS,keywordPrompt,gridPrompt,parseLlmObject,ASHTON_CHECKS,hasAshtonCheck} from './recherches.js';
 import {initializeImprovementPatches,getImprovementPatches,importImprovementPatchFile,removeLocalImprovementPatch} from './patches.js';
 import {saveWorkspaceSnapshot,loadWorkspaceSnapshot,saveDocumentCheckpoint,loadDocumentReads,unloadDocumentRead,docReadLoaded,serializeProjectFull,serializeProjectFullParts,hydrateProjectFull,deleteDocumentCheckpoint,clearWorkspaceSnapshot,getWorkspaceStorageInfo,requestPersistentStorage} from './persistence.js';
 import {recordLearningEvent,flushLearningJournal,getLearningJournalOverview,getRemoteJournalConfig,saveRemoteJournalConfig,clearRemoteJournalConfig,testRemoteJournalConnection,downloadLearningImprovementPack,pullRemoteLearningMemoryEvents} from './journal.js';
@@ -3725,7 +3726,8 @@ function ssPasteInfo(){
   const ta=$('#sourcesDialog [data-ss-paste]'); const r=ssParseContractPaste(ta?.value||''); const el=$('#sourcesDialog [data-ss-paste-info]');
   const nOwners=new Set(Object.values(r.owners||{})).size;
   if(el) el.innerHTML=r.contracts.length?`<b>${r.contracts.length}</b> contrat(s) reconnu(s)${nOwners?` · <b>${nOwners}</b> maître(s) d’ouvrage (regroupement des tuiles)`:''}${r.invalid.length?` · <span class="ss-warn">${r.invalid.length} ligne(s) ignorée(s) : ${escapeHtml(r.invalid.slice(0,5).join(', '))}${r.invalid.length>5?'…':''}</span>`:''}`:'Collez la colonne des numéros de contrat (avec ou sans en-tête).';
-  $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=!r.contracts.length);
+  $$('#sourcesDialog [data-ss-launch]').forEach(b=>b.disabled=!r.contracts.length||(b.dataset.ssLaunch==='relecture'&&!ssRereadTabs().length));
+  ssRereadMenuSync();
   return r;
 }
 function ssRenderNew(body){
@@ -3739,13 +3741,22 @@ function ssRenderNew(body){
     <div class="ss-step"><b>3.</b> Analyse des documents <small>(études thermiques et carbone ; lots de CCTP utiles aux Recherches : ${escapeHtml(ssCctpLots().slice(0,12).join(', '))}${ssCctpLots().length>12?'…':''})</small></div>
     <label class="chk ss-ocr"><input type="checkbox" data-ss-ocr checked> OCR des PDF scannés (plus lent : quelques secondes par page)</label>
     <label class="chk ss-ocr" title="À utiliser après une amélioration des lecteurs de documents : les résultats déjà extraits sont remplacés. Beaucoup plus long."><input type="checkbox" data-ss-reread> Relire tous les documents, même déjà analysés (après une mise à jour d’ExtracTerre ; beaucoup plus long)</label>
+    <details class="ss-tabmenu" data-ss-tabmenu><summary class="btn light" title="Dossiers déjà analysés : relire seulement les documents utiles à certains onglets ; les autres gardent leur lecture">⟳ Relire par onglet ▾ <b data-ss-tabcount></b></summary>
+      <div class="ss-tabmenu-panel" role="group" aria-label="Onglets dont relire les documents"><p>Relire seulement les documents liés à :</p>
+        ${Object.entries(REREAD_TABS).map(([k,l])=>`<label class="chk"><input type="checkbox" data-ss-rtab value="${k}"> <span>${escapeHtml(l)}<small>${escapeHtml(SS_RTAB_HINT[k]||'')}</small></span></label>`).join('')}
+        <button class="btn primary" type="button" data-ss-launch="relecture" disabled>▶ Relire ces documents</button></div></details>
     <div class="ss-new-actions"><button class="btn light" data-ss-launch="check-only" disabled title="Rapport de correspondance seulement : contrats trouvés, sans dossier, en double">Vérifier la correspondance</button><button class="btn primary" data-ss-launch="traitement" disabled>▶ Lancer l’analyse</button></div>
     <div data-ss-progress></div><div class="ss-queue" data-ss-queue></div></div>`;
-  const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); ssPasteInfo();
+  const ta=body.querySelector('[data-ss-paste]'); ta.value=keep; ta.addEventListener('input',ssPasteInfo); body.querySelectorAll('[data-ss-rtab]').forEach(x=>x.addEventListener('change',ssPasteInfo)); ssPasteInfo();
   ssRefreshService(); ssWatchRequest(); ssRenderQueue();
 }
 // v2.28.0 — file des analyses : statut de chaque demande, arrêter / annuler / supprimer, vider l'historique.
 // Lots de CCTP utiles : réunion des lots des grilles de Recherches (déduits des thèmes si la grille n'en précise pas).
+// v3.0.6 — relecture par onglet : onglets cochés, lots des grilles de Recherches, aide sous chaque case.
+const SS_RTAB_HINT={generic:'études thermiques, notices, contrats, programme, questionnaire financier',thermal:'RSET, RSEE, RT2012, RT Existant, études thermiques, DPE',carbon:'RSEE, RSENV, études carbone / ACV',envelope:'études thermiques et CCTP des lots d’enveloppe (isolation, façades, menuiseries…)',economics:'questionnaire financier, DPGF',searches:'CCTP des lots utiles aux grilles de Recherches'};
+const ssRereadTabs=()=>$$('#sourcesDialog [data-ss-rtab]:checked').map(b=>b.value);
+function ssSearchLots(){ try{ return [...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]; }catch{ return []; } }
+function ssRereadMenuSync(){ const n=ssRereadTabs().length, b=$('#sourcesDialog [data-ss-tabcount]'); if(b) b.textContent=n?`(${n})`:''; }
 function ssCctpLots(){ try{ return withEnvelopeLots([...new Set(loadGrids().flatMap(g=>gridCctpLots(g)))]); }catch{ return []; } }
 async function ssRenderQueue(){
   const box=$('#sourcesDialog [data-ss-queue]'); if(!box||!ss.dir) return;
@@ -3754,7 +3765,7 @@ async function ssRenderQueue(){
   const label=r=>{ const st=r.status; if(r.stopAsked&&!ssRequestDone(st)) return ['warn','arrêt demandé…']; if(!st) return ['muted','en attente']; return [{terminé:'ok',erreur:'bad',interrompu:'warn',annulé:'muted'}[st.etat]||'warn',st.etat==='en cours'?`en cours · ${st.operations?.fait??0}/${st.operations?.total??'?'}`:st.etat]; };
   const done=list.filter(r=>ssRequestDone(r.status));
   box.innerHTML=`<div class="ss-queue-head"><b>File des analyses</b>${done.length?`<button class="btn light" type="button" data-ss-qclear>Vider l’historique (${done.length})</button>`:''}</div>${list.slice(0,30).map(r=>{ const [cls,txt]=label(r), running=r.status?.etat==='en cours', waiting=!r.status||r.status.etat==='en attente';
-    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}${r.reread?' · relecture complète':''}</span>
+    return `<div class="ss-qrow"><span class="ss-chip ${cls}">${escapeHtml(txt)}</span><span class="ss-qname">${escapeHtml(r.createdAt?new Date(r.createdAt).toLocaleString('fr-FR'):r.id)} · ${r.contracts} contrat(s)${r.mode==='check-only'?' · correspondance':''}${r.ocr?'':' · sans OCR'}${r.reread?' · relecture complète':''}${r.rereadTabs?.length?` · relecture : ${escapeHtml(r.rereadTabs.map(t=>REREAD_TABS[t]||t).join(', '))}`:''}</span>
       ${running&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}" title="Termine le document en cours, enregistre, puis s’arrête">Arrêter</button>`:''}${running&&r.stopAsked?`<button class="btn light" type="button" data-ss-qkill="${escapeHtml(r.id)}">Arrêt immédiat</button>`:''}${waiting&&!r.stopAsked?`<button class="btn light" type="button" data-ss-qstop="${escapeHtml(r.id)}">Annuler</button>`:''}${ssRequestDone(r.status)?`<button class="icon-btn" type="button" data-ss-qdel="${escapeHtml(r.id)}" title="Supprimer de l’historique" aria-label="Supprimer">×</button>`:''}</div>`; }).join('')}`;
 }
 async function ssRefreshService(){
@@ -3776,6 +3787,8 @@ function ssChoice(title,text,buttons,note=''){
   });
 }
 async function ssLaunch(mode){
+  // v3.0.6 — « Relire par onglet » : traitement normal, mais seuls les documents liés aux onglets cochés sont relus.
+  const relecture=mode==='relecture'; if(relecture){ if(!ssRereadTabs().length) return; mode='traitement'; }
   const r=ssPasteInfo(); if(!r.contracts.length) return;
   // Une demande à la fois : un double clic ne lance pas deux analyses.
   const cur=ssCurrentRequest(); if(cur){ const st=await ssReadStatus(ss.dir,cur); if(!ssRequestDone(st)&&(st||(await ssListRequests(ss.dir).catch(()=>[])).some(r=>r.id===cur))){ toast('Une analyse est déjà en cours : attendez la fin, ou arrêtez-la dans « File des analyses ».','warn'); return; } }
@@ -3801,7 +3814,9 @@ async function ssLaunch(mode){
       const res=await sfxImport(sfFile,{onlyContracts:new Set(r.contracts.map(c=>contractKey(c))),createMissing:true});
       toast(`Salesforce : ${res.updated} opération(s) mises à jour${res.created?`, ${res.created} créée(s)`:''} · ${res.values.toLocaleString('fr-FR')} valeur(s).`,'success'); }
     catch(err){ toast(`Export Salesforce non appliqué : ${err?.message||err}`,'error'); } }
-  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots(),reread:!!$('#sourcesDialog [data-ss-reread]')?.checked});
+  const tabs=relecture?ssRereadTabs():[];
+  const id=await ssWriteRequest(ss.dir,r.contracts,mode,{ocr:!!$('#sourcesDialog [data-ss-ocr]')?.checked,cctpLots:ssCctpLots(),reread:!!$('#sourcesDialog [data-ss-reread]')?.checked&&!relecture,rereadTabs:tabs,searchLots:ssSearchLots(),envelopeLots:[...CCTP_ENVELOPE_LOTS]});
+  if(relecture) $('#sourcesDialog [data-ss-tabmenu]')?.removeAttribute('open');
   try{ localStorage.setItem(SS_REQ_KEY,id); }catch{}
   toast(`Demande envoyée : ${r.contracts.length} contrat(s).`,'success'); ssWatchRequest();
 }
