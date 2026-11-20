@@ -1554,3 +1554,21 @@ td.sf-diff{position:relative}td.sf-diff::after{content:"";position:absolute;top:
 .session-tab-tools{display:inline-flex;gap:4px;margin-left:auto}
 .session-tab-tools button{padding:6px 9px;border:0;border-radius:8px;background:transparent;color:var(--muted,#6c7b74);font:inherit;font-size:.8rem;cursor:pointer}
 .session-tab-tools button:hover{background:var(--bg,#f2f5f3);color:var(--ink,#18201d)}
+/* v3.1.0 — bascule Salesforce ↔ documents */
+button.sfs-chip{cursor:pointer;border:1px solid #c98a1a;background:#fff6e5;color:#7a4b00;font:inherit}
+button.sfs-chip:hover{background:#ffeccb}
+.sfs-dialog{width:min(980px,96vw)}
+.sfs-bulk{display:flex;gap:8px;margin:0 0 10px}
+.sfs-table{width:100%;border-collapse:collapse;font-size:.88rem}
+.sfs-table th,.sfs-table td{padding:8px 10px;border-bottom:1px solid var(--line,#dde4df);text-align:left;vertical-align:top}
+.sfs-table td.v-sf{font-weight:600;color:#1f6b3a}.sfs-table td.v-doc{font-weight:600;color:#1d4f91}
+.sfs-table td.v-doc small{display:block;font-weight:400;color:var(--muted,#6c7b74);font-size:.75rem}
+.sfs-table tr.on-doc td{background:#f1f6fd}
+.sfs-seg{display:inline-flex;border:1px solid var(--line,#dde4df);border-radius:999px;overflow:hidden}
+.sfs-seg button{padding:5px 11px;border:0;background:#fff;font:inherit;font-size:.8rem;cursor:pointer;color:var(--ink,#18201d)}
+.sfs-seg button[aria-pressed=true][data-v=sf]{background:#1f6b3a;color:#fff}.sfs-seg button[aria-pressed=true][data-v=doc]{background:#1d4f91;color:#fff}
+.sfs-seg button:focus-visible{outline:2px solid var(--forest,#173e31);outline-offset:-2px}
+.sfs-def{color:var(--muted,#6c7b74);font-size:.72rem}
+.cell-sf-switch{border:1px solid #c98a1a;background:#fff6e5;color:#7a4b00;border-radius:6px;cursor:pointer;font-size:11px;line-height:1;padding:2px 4px;margin-left:4px}
+.cell-sf-switch.on-doc{border-color:#1d4f91;background:#e9f1fb;color:#1d4f91}
+.cell-sf-switch:focus-visible{outline:2px solid var(--forest,#173e31);outline-offset:1px}

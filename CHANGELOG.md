@@ -1,3 +1,14 @@
+# v3.2.0 — Écarts Salesforce ↔ documents : choisir la valeur retenue
+
+- Salesforce reste retenu par défaut (priorité inchangée). Quand la valeur Salesforce diffère de celle lue dans le document
+  retenu, la cellule porte un bouton ⇄ et le bandeau de l'opération « ⇄ Salesforce / documents : n écart(s) ».
+- Fenêtre « Salesforce ↔ documents » : une ligne par écart (bâtiment, donnée, valeur Salesforce, valeur des documents avec
+  fichier et page), choix Salesforce / Documents par cellule, « Tout sur Salesforce » / « Tout sur les documents ».
+- Choix « Documents » : la valeur lue est retenue (cellule bleue, info-bulle avec la valeur Salesforce), dans les tableaux,
+  l'export Excel et la session ; la valeur Salesforce reste confrontée. Choix gardé par opération (sauvegarde, session).
+- Export de session : chaque valeur retenue porte la valeur des documents (documentValue) ou le choix (sfChoice, sfValue),
+  repris par TotalRecoll.
+
 # v3.1.0 — Onglets de session (Logement neuf, Rénovation, Tertiaire…)
 
 - Accueil : barre d'onglets au-dessus des tuiles. « Toutes » = comportement d'avant (toutes les opérations, export complet).

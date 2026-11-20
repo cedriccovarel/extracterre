@@ -186,6 +186,8 @@ function serializeProject(project={}){
     favorite:!!project.favorite,
     // v3.1.0 — onglet de session (id ; '' = seulement « Toutes »).
     sessionTab:project.sessionTab||'',
+    // v3.1.0 — cellules où la valeur des documents est retenue à la place de Salesforce ('bâtiment|donnée' → 'doc').
+    sfDocChoice:safeJsonClone(project.sfDocChoice,{}),
     ownerName:project.ownerName||'',
     // v2.24.0 — opération alimentée par l'import massif (contrat, dossier, dernière mise à jour).
     // v2.24.3 — documents déchargés de l'onglet Économie (restent dans l'opération pour les autres colonnes).
