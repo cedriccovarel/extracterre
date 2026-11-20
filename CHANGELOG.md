@@ -1,3 +1,14 @@
+# v3.1.0 — Onglets de session (Logement neuf, Rénovation, Tertiaire…)
+
+- Accueil : barre d'onglets au-dessus des tuiles. « Toutes » = comportement d'avant (toutes les opérations, export complet).
+  « ＋ Onglet » crée un onglet nommé ; ✎ Renommer / × Supprimer l'onglet (ses opérations restent dans « Toutes »).
+- Un onglet nommé n'affiche, ne cherche, ne compte et n'exporte que ses opérations. Une opération créée dans un onglet
+  (nouvelle opération, tableau collé ou importé) y est rangée.
+- Ranger des opérations : ☑ Sélectionner → cocher → « Ranger dans l'onglet… » (onglet existant, nouvel onglet, ou aucun).
+- « Exporter la session » depuis un onglet : seulement ses opérations, fichier ExtracTerre_session_<date>_<onglet>.json qui
+  porte le nom de l'onglet ; « Importer une session » range ces opérations dans l'onglet du même nom (créé au besoin), sinon
+  dans l'onglet ouvert. Onglets et appartenance gardés dans la sauvegarde locale.
+
 # v3.0.6 — Relecture par onglet (dossiers déjà analysés)
 
 - Fenêtre d'import : bouton « ⟳ Relire par onglet ▾ », menu à cases (Données générales, Thermique, Carbone, Structure &

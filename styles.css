@@ -1542,3 +1542,15 @@ td.sf-diff{position:relative}td.sf-diff::after{content:"";position:absolute;top:
 .ss-tabmenu-panel .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px}
 .ss-tabmenu-panel .chk small{display:block;font-size:11px;color:var(--muted)}
 .ss-tabmenu-panel .btn{justify-self:end}
+/* v3.1.0 — onglets de session */
+.session-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line,#dde4df)}
+.session-tabs [role=tablist]{display:flex;gap:6px;flex-wrap:wrap}
+.session-tab{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1px solid var(--line,#dde4df);border-radius:999px;background:#fff;color:var(--ink,#18201d);font:inherit;font-size:.88rem;font-weight:600;cursor:pointer}
+.session-tab small{min-width:20px;padding:1px 6px;border-radius:999px;background:var(--bg,#f2f5f3);color:var(--muted,#6c7b74);font-size:.75rem;font-weight:600;text-align:center}
+.session-tab:hover{border-color:var(--forest,#173e31)}
+.session-tab.on{background:var(--forest,#173e31);border-color:var(--forest,#173e31);color:#fff}.session-tab.on small{background:rgba(255,255,255,.18);color:#fff}
+.session-tab.add{border-style:dashed;color:var(--forest,#173e31);background:transparent}
+.session-tab:focus-visible,.session-tab-tools button:focus-visible{outline:2px solid var(--forest,#173e31);outline-offset:2px}
+.session-tab-tools{display:inline-flex;gap:4px;margin-left:auto}
+.session-tab-tools button{padding:6px 9px;border:0;border-radius:8px;background:transparent;color:var(--muted,#6c7b74);font:inherit;font-size:.8rem;cursor:pointer}
+.session-tab-tools button:hover{background:var(--bg,#f2f5f3);color:var(--ink,#18201d)}

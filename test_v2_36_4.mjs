@@ -5,7 +5,7 @@ import {APP_VERSION} from './js/config.js';
 import {parseCstbRseeFiche} from './js/rset-cstb.js';
 import {parsePleiadesThermalOutput} from './js/pleiades-sortie.js';
 import {sfPerimeterMap} from './js/sf-perimeter.js';
-assert.equal(APP_VERSION,'3.0.6');
+assert.equal(APP_VERSION,'3.1.0');
 const doc=(pages)=>{ const ps=pages.map((t,i)=>({page:i+1,text:t,lines:t.split('\n').map((text,index)=>({text,index,items:[]}))})); return {id:'d1',name:'RSET fictif.pdf',read:{pages:ps,text:pages.join('\n')}}; };
 const occ=(d,page,line,field,value,method,confidence,unit,extra={})=>({field,value,method,confidence,unit,...extra});
 // 1. Tableau DH CSTB

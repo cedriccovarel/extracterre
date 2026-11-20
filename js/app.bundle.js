@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.0.6 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.1.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.0.6';
+const APP_VERSION='3.1.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -11896,6 +11896,8 @@ function serializeProject(project={}){
     planTables:safeJsonClone(project.planTables,{}),
     planChecks:safeJsonClone(project.planChecks,{}),
     favorite:!!project.favorite,
+    // v3.1.0 — onglet de session (id ; '' = seulement « Toutes »).
+    sessionTab:project.sessionTab||'',
     ownerName:project.ownerName||'',
     // v2.24.0 — opération alimentée par l'import massif (contrat, dossier, dernière mise à jour).
     // v2.24.3 — documents déchargés de l'onglet Économie (restent dans l'opération pour les autres colonnes).
@@ -11946,7 +11948,7 @@ function hydrateProjectFull(raw={}){
     else doc.status='missing';
     return doc; })};
 }
-async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab='summary'}={}){
+async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab='summary',sessionTabs=[],activeSessionTab=''}={}){
   const record={
     key:WORKSPACE_KEY,
     schema:SNAPSHOT_SCHEMA,
@@ -11954,6 +11956,8 @@ async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab
     savedAt:Date.now(),
     activeProjectId,
     activeTab,
+    sessionTabs:safeJsonClone(sessionTabs,[]),
+    activeSessionTab:activeSessionTab||'',
     projects:projects.map(serializeProject)
   };
   const db=await openDb();
@@ -13514,8 +13518,8 @@ function planOccurrences(project){ const out=[];
 function defaultPlanBuilding(d){ const bs=(d?.buildings?.names||[]).filter(b=>b&&b!=='Bâtiment unique'); return bs.length===1?bs[0]:'Bâtiment unique'; }
 
 /* ---- app.js ---- */
-function createProject(index=1){ return {id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'review',profile:'',expanded:true}; }
-const state={projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
+function createProject(index=1){ return {sessionTab:(typeof state==='object'&&state?.activeSessionTab)||'',id:`project-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,label:`Projet ${index}`,customTitle:'',operationName:'',docs:[],result:null,buildingOverrides:{},deletedBuildings:[],manualTags:[],projectTags:[],manualValues:{},manualSources:{},manualPasteRaw:'',manualPasteRows:[],manualPasteColumns:[],retainedOccurrences:[],uncertainRejectedKeys:[],manualEconomics:{},economic:null,resultView:'review',profile:'',expanded:true}; }
+const state={sessionTabs:[],activeSessionTab:'',projects:[],activeProjectId:null,rules:loadSourceRules(),selfTests:runSelfTests(),activeTab:'summary',resultWorkspaceMode:'overview'};
 
 // v2.3 — une seule dropzone : la famille documentaire est détectée à la lecture, modifiable par fichier.
 // Options proposées dans la liste des fichiers (valeur = familles séparées par « + »).
@@ -13847,7 +13851,7 @@ function sfAddedBuildings(p){
   return new Set(r.rows.map(x=>x.building).filter(b=>!fromDocs.has(b)&&src.includes(b)));
 }
 function sfStats(){
-  const ops=state.projects.filter(p=>!projectIsEmpty(p)), today=sfDayKey(Date.now());
+  const ops=state.projects.filter(p=>!projectIsEmpty(p)&&(!state.activeSessionTab||p.sessionTab===state.activeSessionTab)), today=sfDayKey(Date.now());
   // v2.20.7 — « traitées aujourd'hui » : un import Salesforce ou une analyse horodatée ce jour.
   const isToday=t=>t&&sfDayKey(t)===today;
   const filled=ops.filter(p=>sfImports(p).length), todayOps=ops.filter(p=>sfImports(p).some(i=>isToday(i.at))||(p.analysisRuns||[]).some(r=>isToday(r.at)));
@@ -13858,13 +13862,47 @@ function sfStatsHtml(){
   const s=sfStats(); if(!s.total) return '';
   const item=p=>{ const id=projectIdentity(p); return `<li><button type="button" data-sf-open="${escapeHtml(p.id)}"><strong>${escapeHtml(id.contract||id.code||projectTitle(p))}</strong><span>${escapeHtml(id.name||projectTitle(p))}</span><small>${(p.docs||[]).length} doc.</small></button></li>`; };
   return `<section class="sf-stats" aria-label="Compteur des opérations">
-<div class="sf-kpis"><div><b>${s.total}</b><span>opération(s) dans ExtracTerre</span></div><div class="today"><b>${s.today}</b><span>traitée(s) aujourd’hui</span><small>analyse ou import Salesforce</small></div><div class="filled"><b>${s.filled}</b><span>remplie(s) (import Salesforce)</span></div><div class="docs"><b>${s.docsOnly.length}</b><span>documents seuls, sans Salesforce</span></div></div>
+<div class="sf-kpis"><div><b>${s.total}</b><span>${state.activeSessionTab?`opération(s) dans l’onglet « ${escapeHtml(activeSessionTabName())} »`:'opération(s) dans ExtracTerre'}</span></div><div class="today"><b>${s.today}</b><span>traitée(s) aujourd’hui</span><small>analyse ou import Salesforce</small></div><div class="filled"><b>${s.filled}</b><span>remplie(s) (import Salesforce)</span></div><div class="docs"><b>${s.docsOnly.length}</b><span>documents seuls, sans Salesforce</span></div></div>
 ${s.docsOnly.length?`<details class="sf-short"${state.sfShortOpen?' open':''}><summary>Opérations remplies par les documents seuls, sans import Salesforce (${s.docsOnly.length})</summary><ul>${s.docsOnly.map(item).join('')}</ul></details>`:''}</section>`;
+}
+// v3.1.0 — onglets de session : « Toutes » (comportement d'avant : toutes les opérations, export complet) et des onglets
+// nommés (Logement neuf, Rénovation, Tertiaire…). Une opération appartient à un onglet au plus (p.sessionTab = id) ;
+// un onglet nommé n'affiche, ne cherche et n'exporte que ses opérations. Une opération créée dans un onglet y est rangée.
+const sessionTabOf=p=>state.sessionTabs.some(t=>t.id===p?.sessionTab)?p.sessionTab:'';
+const inSessionTab=p=>!state.activeSessionTab||sessionTabOf(p)===state.activeSessionTab;
+const activeSessionTabName=()=>state.sessionTabs.find(t=>t.id===state.activeSessionTab)?.name||'';
+const newSessionTabId=()=>`tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+function ensureSessionTab(name){ const n=String(name||'').trim(); if(!n) return '';
+  const hit=state.sessionTabs.find(t=>t.name.localeCompare(n,'fr',{sensitivity:'base'})===0); if(hit) return hit.id;
+  const t={id:newSessionTabId(),name:n}; state.sessionTabs.push(t); return t.id; }
+function sessionTabsHtml(){
+  const count=id=>state.projects.filter(p=>!projectIsEmpty(p)&&(!id||sessionTabOf(p)===id)).length;
+  const tab=(id,name,extra='')=>`<button type="button" role="tab" class="session-tab${state.activeSessionTab===id?' on':''}" aria-selected="${state.activeSessionTab===id}" data-stab="${escapeHtml(id)}">${escapeHtml(name)}<small>${count(id)}</small>${extra}</button>`;
+  const cur=state.sessionTabs.find(t=>t.id===state.activeSessionTab);
+  return `<nav class="session-tabs" aria-label="Onglets de session"><div role="tablist">${tab('','Toutes')}${state.sessionTabs.map(t=>tab(t.id,t.name)).join('')}</div><button type="button" class="session-tab add" data-stab-add title="Nouvel onglet de session">＋ Onglet</button>${cur?`<span class="session-tab-tools"><button type="button" data-stab-rename title="Renommer l’onglet « ${escapeHtml(cur.name)} »">✎ Renommer</button><button type="button" data-stab-delete title="Supprimer l’onglet (les opérations restent dans « Toutes »)">× Supprimer l’onglet</button></span>`:''}</nav>`;
+}
+function wireSessionTabs(wrap,rerender){
+  wrap.querySelectorAll('[data-stab]').forEach(b=>b.onclick=()=>{ if(state.activeSessionTab===b.dataset.stab) return; state.activeSessionTab=b.dataset.stab; state.overviewOwner=''; state.homeQuery=''; rerender(); scheduleWorkspaceCheckpoint('onglet de session'); });
+  wrap.querySelector('[data-stab-add]')?.addEventListener('click',()=>{ const n=prompt('Nom du nouvel onglet de session (ex. Logement neuf, Logement rénovation, Tertiaire) :'); if(!n||!n.trim()) return;
+    if(state.sessionTabs.some(t=>t.name.localeCompare(n.trim(),'fr',{sensitivity:'base'})===0)){ toast(`L’onglet « ${n.trim()} » existe déjà.`,'warn'); state.activeSessionTab=ensureSessionTab(n); }
+    else state.activeSessionTab=ensureSessionTab(n);
+    state.overviewOwner=''; state.homeQuery=''; rerender(); scheduleWorkspaceCheckpoint('onglet de session créé'); });
+  wrap.querySelector('[data-stab-rename]')?.addEventListener('click',()=>{ const t=state.sessionTabs.find(x=>x.id===state.activeSessionTab); if(!t) return; const n=prompt('Nouveau nom de l’onglet :',t.name); if(!n||!n.trim()||n.trim()===t.name) return;
+    if(state.sessionTabs.some(x=>x!==t&&x.name.localeCompare(n.trim(),'fr',{sensitivity:'base'})===0)){ toast(`L’onglet « ${n.trim()} » existe déjà.`,'warn'); return; }
+    t.name=n.trim(); rerender(); scheduleWorkspaceCheckpoint('onglet de session renommé'); });
+  wrap.querySelector('[data-stab-delete]')?.addEventListener('click',()=>{ const t=state.sessionTabs.find(x=>x.id===state.activeSessionTab); if(!t) return; const n=state.projects.filter(p=>sessionTabOf(p)===t.id).length;
+    if(!confirm(`Supprimer l’onglet « ${t.name} » ?${n?`\nSes ${n} opération(s) ne sont pas supprimées : elles restent dans « Toutes ».`:''}`)) return;
+    for(const p of state.projects) if(p.sessionTab===t.id) p.sessionTab=''; state.sessionTabs=state.sessionTabs.filter(x=>x!==t); state.activeSessionTab=''; rerender(); scheduleWorkspaceCheckpoint('onglet de session supprimé'); });
+  const move=wrap.querySelector('[data-tile-move]'); if(move) move.onchange=()=>{ const v=move.value; if(v==='') return; let to=v==='__none'?'':v;
+    if(v==='__new'){ const n=prompt('Nom du nouvel onglet :'); if(!n||!n.trim()){ move.value=''; return; } to=ensureSessionTab(n); }
+    const ps=state.projects.filter(p=>state.tileSelected.has(p.id)); for(const p of ps) p.sessionTab=to;
+    const name=state.sessionTabs.find(t=>t.id===to)?.name; toast(`${ps.length} opération(s) ${to?`rangée(s) dans « ${name} »`:'retirée(s) de leur onglet (visibles dans « Toutes »)'}.`,'success');
+    state.tileSelected.clear(); rerender(); scheduleWorkspaceCheckpoint('opérations rangées dans un onglet'); };
 }
 function renderTiles(wrap,{home=false}={}){
   const rerender=()=>home?renderHome():renderSummary();
   // v2.16.0 — favoris : en tête des listes, et regroupés dans une tuile « ★ Favoris » au-dessus des maîtres d'ouvrage.
-  const items=state.projects.filter(p=>!home||!projectIsEmpty(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)})).sort((a,b)=>!!b.p.favorite-!!a.p.favorite);
+  const items=state.projects.filter(p=>(!home||!projectIsEmpty(p))&&inSessionTab(p)).map(p=>({p,id:projectIdentity(p),pct:projectCompletion(p),st:projectResultStats(p)})).sort((a,b)=>!!b.p.favorite-!!a.p.favorite);
   const favs=items.filter(x=>x.p.favorite);
   const dups=contractDuplicates(); warnContractDuplicates(dups); const isDup=id=>dups.has(contractKey(id.contract));
   // Accueil : la recherche (contrat, nom, code, maître d'ouvrage ; sans accents) liste à plat les tuiles qui correspondent.
@@ -13909,8 +13947,9 @@ function renderTiles(wrap,{home=false}={}){
     <button type="button" class="op-tile action" data-home-act="paste"><span class="op-tile-plus" aria-hidden="true">⌨</span><strong>Coller un tableau</strong><span class="op-tile-meta">Zone Excel copiée avec ses en-têtes (contrat, n° d’opération, maître d’ouvrage…)</span></button>
     <button type="button" class="op-tile action" data-home-act="sfx"><span class="op-tile-plus" aria-hidden="true">☁</span><strong>Export Salesforce</strong><span class="op-tile-meta">Évaluations « Opérations (détails) » : données techniques par bâtiment</span></button>
     <label class="op-tile action" for="homeImport"><span class="op-tile-plus" aria-hidden="true">⇪</span><strong>Importer un Excel</strong><span class="op-tile-meta">Classeur listant plusieurs opérations</span></label>`:'';
-  if(home&&!items.length) sub='Aucune opération pour le moment';
-  wrap.innerHTML=`<div class="result-overview"><div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?'Opérations':title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}${items.length?'<button type="button" class="btn light" data-synth-open title="Une ligne par opération : données cruciales manquantes, valeurs inhabituelles, géolocalisation">▦ Tableau de synthèse</button>':''}${items.length?`<button type="button" class="btn light op-select-toggle" data-tile-select>${sel?'Terminer la sélection':'☑ Sélectionner'}</button>`:''}</div>${sel?`<div class="op-select-bar"><b>${state.tileSelected.size} opération(s) sélectionnée(s)</b>${visibleIds.length?`<button type="button" class="btn light" data-tile-selall>Tout sélectionner (${visibleIds.length} affichée(s))</button>`:'<span class="op-select-hint">Ouvrez un maître d’ouvrage ou faites une recherche pour cocher les opérations.</span>'}${state.tileSelected.size?'<button type="button" class="btn light" data-tile-selnone>Tout décocher</button><button type="button" class="btn primary danger-fill" data-tile-unload>Décharger la sélection</button>':''}</div>`:''}${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
+  if(home&&!items.length) sub=state.activeSessionTab?'Aucune opération dans cet onglet : créez-en ici, ou depuis « Toutes » cochez des opérations (☑ Sélectionner) puis « Ranger dans l’onglet… »':'Aucune opération pour le moment';
+  wrap.innerHTML=`<div class="result-overview">${sessionTabsHtml()}<div class="result-overview-intro"><div>${grouped&&state.overviewOwner?'<button type="button" class="op-back" data-tile-back>← Tous les maîtres d’ouvrage</button>':''}<h3>${escapeHtml(home&&!(grouped&&state.overviewOwner)?(activeSessionTabName()||'Opérations'):title)}</h3><p>${escapeHtml(sub)}${items.length?' · cliquez sur une tuile pour l’ouvrir':''}</p></div>${home&&items.length?`<input type="search" class="op-search" data-home-search placeholder="Rechercher une opération (contrat, nom, code, MOA) ou coller une liste de contrats" aria-label="Rechercher une opération ou coller une liste de numéros de contrat" value="${escapeHtml(state.homeQuery||'')}">`:''}${sortCtl}${shown?`<span class="badge doc">${shown} opération(s)</span>`:''}${items.length?'<button type="button" class="btn light" data-synth-open title="Une ligne par opération : données cruciales manquantes, valeurs inhabituelles, géolocalisation">▦ Tableau de synthèse</button>':''}${items.length?`<button type="button" class="btn light op-select-toggle" data-tile-select>${sel?'Terminer la sélection':'☑ Sélectionner'}</button>`:''}</div>${sel?`<div class="op-select-bar"><b>${state.tileSelected.size} opération(s) sélectionnée(s)</b>${visibleIds.length?`<button type="button" class="btn light" data-tile-selall>Tout sélectionner (${visibleIds.length} affichée(s))</button>`:'<span class="op-select-hint">Ouvrez un maître d’ouvrage ou faites une recherche pour cocher les opérations.</span>'}${state.tileSelected.size?`<button type="button" class="btn light" data-tile-selnone>Tout décocher</button><select class="op-sort" data-tile-move aria-label="Ranger la sélection dans un onglet"><option value="">Ranger dans l’onglet…</option>${state.sessionTabs.map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('')}<option value="__new">＋ Nouvel onglet…</option>${state.sessionTabs.length?'<option value="__none">Aucun onglet (seulement « Toutes »)</option>':''}</select><button type="button" class="btn primary danger-fill" data-tile-unload>Décharger la sélection</button>`:''}</div>`:''}${sfStatsHtml()}${missing.length?`<p class="op-missing">Non trouvé(s) (${missing.length}) : ${escapeHtml(missing.join(', '))}</p>`:''}<div class="op-tiles">${body||(q?'<p class="op-none">Aucune opération ne correspond à cette recherche.</p>':'')}${actions}</div></div>`;
+  wireSessionTabs(wrap,rerender);
   const search=wrap.querySelector('[data-home-search]');
   if(search){ search.oninput=()=>{ state.homeQuery=search.value; rerender(); const s=wrap.querySelector('[data-home-search]'); s.focus(); s.setSelectionRange(s.value.length,s.value.length); }; search.onkeydown=e=>{ if(e.key==='Escape'&&search.value){ search.value=''; search.oninput(); } };
     // Liste collée depuis Excel ou un texte (une valeur par ligne) : les retours à la ligne deviennent des virgules.
@@ -13920,7 +13959,7 @@ function renderTiles(wrap,{home=false}={}){
   wrap.querySelectorAll('[data-tile-owner]').forEach(b=>b.onclick=()=>{ state.overviewOwner=b.dataset.tileOwner; rerender(); });
   wrap.querySelector('[data-synth-open]')?.addEventListener('click',()=>openSynthesis());
   wrap.querySelector('[data-tile-back]')?.addEventListener('click',()=>{ state.overviewOwner=''; rerender(); });
-  wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='sfx') openSfxDialog(); else if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
+  wrap.querySelectorAll('[data-home-act]').forEach(b=>b.onclick=()=>{ if(b.dataset.homeAct==='sfx') openSfxDialog(); else if(b.dataset.homeAct==='paste') openManualDataDialog(); else { const cur=activeProject(); if(projectIsEmpty(cur)){ cur.sessionTab=state.activeSessionTab; setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); } });
   wrap.querySelectorAll('[data-tile-open]').forEach(b=>b.onclick=()=>activateProject(b.dataset.tileOpen));
   const toggleSel=id=>{ if(state.tileSelected.has(id)) state.tileSelected.delete(id); else state.tileSelected.add(id); rerender(); };
   wrap.querySelectorAll('[data-tile-toggle]').forEach(b=>b.onclick=()=>toggleSel(b.dataset.tileToggle));
@@ -13957,7 +13996,7 @@ function importOperationRows(rows,{columns=[],source='copier-coller'}={}){
     return rows; };
   for(const [k,rs] of groups){
     let p=state.projects.find(x=>{ const id=projectIdentity(x); return id.contract===k||id.code===k||(!id.contract&&!id.code&&id.name===k); });
-    if(p) updated++; else { p=state.projects.find(x=>projectIsEmpty(x)&&!Object.keys(x.manualValues||{}).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } created++; } fresh.add(p.id);
+    if(p) updated++; else { p=state.projects.find(x=>projectIsEmpty(x)&&!Object.keys(x.manualValues||{}).length); if(!p){ p=createProject(state.projects.length+1); state.projects.push(p); } p.sessionTab=state.activeSessionTab; created++; } fresh.add(p.id);
     const v=rs[0].values||{}; const known=new Set((p.manualPasteColumns||[]).map(c=>c.key||c.header));
     p.manualPasteRows=merge(p,rs); p.manualPasteColumns=[...(p.manualPasteColumns||[]),...columns.filter(c=>!known.has(c.key||c.header))]; p.manualPasteRaw='';
     if(!p.operationName) p.operationName=String(v.operation_name||v.project||k); const owner=String(v.owner_main_company||v.owner_company||'').trim(); if(owner) p.ownerName=owner; // v2.33.0 — groupe principal d'abord ; le tableau collé fait foi
@@ -14104,7 +14143,7 @@ function refreshTileCache(p){ if(p.pendingRebuild) return; p.tileCache={identity
 const FREE_RESULTS_ABOVE=120;
 function freeProjectResult(p){ if(!p?.result||p.pendingRebuild||p.id===state.activeProjectId||analysisControl.running||state.projects.length<=FREE_RESULTS_ABOVE) return false;
   refreshTileCache(p); p.result=null; p.pendingRebuild=true; return true; }
-function workspacePayload(){ for(const p of state.projects) refreshTileCache(p); return {projects:state.projects,activeProjectId:state.activeProjectId,activeTab:state.activeTab,resultWorkspaceMode:state.resultWorkspaceMode}; }
+function workspacePayload(){ for(const p of state.projects) refreshTileCache(p); return {projects:state.projects,activeProjectId:state.activeProjectId,activeTab:state.activeTab,resultWorkspaceMode:state.resultWorkspaceMode,sessionTabs:state.sessionTabs,activeSessionTab:state.activeSessionTab}; }
 function checkpointWorkspace(reason='mise à jour',silent=true){
   if(!persistenceReady||restoringWorkspace) return Promise.resolve(null);
   const payload=workspacePayload(); setLocalSaveUi('Sauvegarde…');
@@ -14466,7 +14505,7 @@ function openExternalText(text,source){
   if(!String(text||'').trim()){ toast(`${source} : aucun texte lu.`,'warn'); return; }
   // v2.12.1 — depuis l'accueil : l'opération dont l'OPE ou le contrat figure dans le texte est ouverte, sinon une nouvelle est créée.
   if(state.homeView){ pendingExternalText=null; const p=projectForText(text);
-    if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
+    if(p) activateProject(p.id); else { const cur=activeProject(); if(projectIsEmpty(cur)){ cur.sessionTab=state.activeSessionTab; setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
     toast(p?`${source} reçu : opération ${projectIdentity(p).contract||projectIdentity(p).code||projectTitle(p)} ouverte.`:`${source} reçu : aucune opération ne correspond, nouvelle opération créée.`,'info'); }
   pendingExternalText=null; const dlg=$('#manualDataDialog'), ta=$('#manualDataPaste'); if(!dlg||!ta) return;
   // Fiche Évaluation Salesforce : la zone montre le texte déjà converti (« libellé = valeur » par bâtiment), modifiable.
@@ -16258,10 +16297,12 @@ async function exportSessionJson(){
 }
 async function exportSessionRun(ui,dir=null){
   setLocalSaveUi('Export de la session…');
-  const all=state.projects.filter(p=>!projectIsEmpty(p)); if(!all.length){ ui.close(); toast('Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
+  // v3.1.0 — onglet nommé : seulement ses opérations ; « Toutes » : toutes (comme avant).
+  const tabName=activeSessionTabName(), tabSlug=tabName?'_'+tabName.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,''):'';
+  const all=state.projects.filter(p=>!projectIsEmpty(p)&&inSessionTab(p)); if(!all.length){ ui.close(); toast(tabName?`Aucune opération dans l’onglet « ${tabName} ».`:'Aucune opération à exporter.','warn'); setLocalSaveUi('Prêt',lastLocalSaveAt); return; }
   const chunks=[]; for(let i=0;i<all.length;i+=SESSION_EXPORT_CHUNK) chunks.push(all.slice(i,i+SESSION_EXPORT_CHUNK));
   const K=chunks.length, N=all.length, date=new Date().toISOString().slice(0,10), grids=loadGrids();
-  const fileName=k=>K===1?`ExtracTerre_session_${date}.json`:`ExtracTerre_session_${date}_partie-${k+1}-sur-${K}.json`;
+  const fileName=k=>K===1?`ExtracTerre_session_${date}${tabSlug}.json`:`ExtracTerre_session_${date}${tabSlug}_partie-${k+1}-sur-${K}.json`;
   const heavy=[]; let done=0, totalBytes=0, skipped=0;
   for(const [k,list] of chunks.entries()){
     const tag=K>1?` (fichier ${k+1}/${K})`:'';
@@ -16273,7 +16314,7 @@ async function exportSessionRun(ui,dir=null){
     const operations=[];
     for(const [i,p] of list.entries()){ ui.set(`Préparation des recherches ${done+i+1}/${N}${tag}`,(done+list.length/3+i/3)/N,projectTitle(p)||''); await yieldToBrowser();
       await ensureProjectReads(p); operations.push(sessionOperation(p,grids,true)); releaseProjectReads(p); }
-    const snap={format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),...(K>1?{part:k+1,parts:K}:{}),grids,operations};
+    const snap={format:'extracterre-session',schema:1,appVersion:APP_VERSION,exportedAt:new Date().toISOString(),...(K>1?{part:k+1,parts:K}:{}),...(tabName?{sessionTab:{name:tabName}}:{}),grids,operations};
     // 3. Écriture : sur le disque opération par opération (dossier choisi), sinon fichier en mémoire du seul paquet.
     let w=null, parts=[], bytes=0;
     if(dir){ const fh=await dir.getFileHandle(fileName(k),{create:true}); w=await fh.createWritable(); }
@@ -16304,7 +16345,7 @@ async function exportSessionRun(ui,dir=null){
   if(skipped) toast(`${skipped} très gros fichier(s) (tableurs ACV de plus de 2 Mo, XML de plus de 4 Mo) exporté(s) sans leur texte brut : valeurs et lectures gardées.`,'info');
   if(heavy.length) toast(`${heavy.length} opération(s) trop volumineuse(s) exportée(s) sans le texte brut des documents : ${heavy.slice(0,5).join(', ')}${heavy.length>5?'…':''}`,'warn');
   ui.done('Session exportée',`${N} opération(s) · ${K} fichier(s) · ${formatBytes(totalBytes)}${dir?` · dossier « ${dir.name} »`:''}`);
-  toast(`Session exportée : ${N} opération(s) en ${K} fichier(s)${K>1?' (à déposer ensemble dans TotalRecoll ou « Importer une session »)':''}.`,'success');
+  toast(`Session${tabName?` « ${tabName} »`:''} exportée : ${N} opération(s) en ${K} fichier(s)${K>1?' (à déposer ensemble dans TotalRecoll ou « Importer une session »)':''}.`,'success');
 }
 // v2.12.1 — import d'une session exportée : les opérations s'ajoutent à la liste. Un export complet (« workspace »)
 // restitue documents lus, occurrences et saisies ; un export plus ancien restitue les valeurs retenues (avec leur source),
@@ -16342,7 +16383,10 @@ async function importSessionJson(file){
     return {...p,id:op.id||p.id,customTitle:op.title||'',operationName:op.identity?.name||op.title||'',ownerName:op.identity?.owner||'',manualValues:op.manualValues||{},manualPasteRows:op.manualPasteRows||[],freePasteRows:op.freePasteRows||[],planTables:op.planTables||{},planChecks:op.planChecks||{},favorite:!!op.favorite,searchOverrides:op.searchOverrides||{},manualEconomics:op.economic||{},
       docs:(op.documents||[]).map((d,i)=>({id:`${op.id||p.id}-doc-${i}`,name:d.name,size:d.size||0,type:d.type||'En attente',status:'missing',file:null,read:null,cachedOccurrences:null})),
       retainedOccurrences:(op.finals||[]).map(f=>({...f,docId:`import-${op.id||p.id}-${f.fileName||''}`,unit:FIELD_MAP[f.field]?.unit||'',removedDocument:true,provenanceNote:`Importé de la session JSON du ${date} (document source non joint).`}))}; });
-  for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; }
+  // v3.1.0 — session exportée d'un onglet : rangée dans l'onglet du même nom (créé au besoin) ; sinon dans l'onglet ouvert.
+  const intoTab=o.sessionTab?.name?ensureSessionTab(o.sessionTab.name):state.activeSessionTab;
+  for(const p of projects){ if(used.has(p.id)) p.id=fresh(); used.add(p.id); p.expanded=false; p.sessionTab=intoTab||''; }
+  if(intoTab) state.activeSessionTab=intoTab;
   restoringWorkspace=true; try{ for(const p of projects) rebuildProjectFromCheckpoints(p); } finally { restoringWorkspace=false; }
   const cur=activeProject(); if(cur&&projectIsEmpty(cur)) state.projects=state.projects.filter(p=>p!==cur);
   state.projects.push(...projects); if(!state.projects.some(p=>p.id===state.activeProjectId)) state.activeProjectId=projects[0]?.id;
@@ -16350,7 +16394,7 @@ async function importSessionJson(file){
   await checkpointWorkspace('import de session',true);
   setHomeMode(true); renderAll();
   const docs=projects.reduce((n,p)=>n+p.docs.filter(d=>d.status==='ready').length,0);
-  toast(`Session du ${date} importée : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
+  toast(`Session du ${date} importée${intoTab?` dans l’onglet « ${state.sessionTabs.find(t=>t.id===intoTab)?.name} »`:''} : ${projects.length} opération(s)${o.workspace?` · ${docs} document(s) analysé(s)`:' · valeurs retenues et saisies (export sans documents)'}.`,'success');
 }
 // v2.12.1 — même numéro de contrat sur plusieurs tuiles : signalé une fois par doublon, et sur les tuiles concernées.
 const contractKey=c=>{ const s=String(c||'').replace(/\s/g,''); return /^\d+$/.test(s)?s.replace(/^0+/,''):s.toUpperCase(); };
@@ -16850,7 +16894,7 @@ function wire(){
   // v2.12.1 — un fichier lâché hors de la zone (accueil compris) n'est plus ignoré : il rejoint l'opération ouverte, ou une nouvelle depuis l'accueil.
   window.addEventListener('drop',async e=>{ if(dz.contains(e.target)||$('#resultQuickDrop')?.contains(e.target)||!e.dataTransfer?.files?.length) return; e.preventDefault();
     try{ const fs=await filesFromDrop(e.dataTransfer); if(!fs?.length) return;
-      if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
+      if(state.homeView){ const cur=activeProject(); if(projectIsEmpty(cur)){ cur.sessionTab=state.activeSessionTab; setHomeMode(false); syncProjectInput(); renderAll(); } else addNewProject(); }
       addFiles(fs); }catch(err){ toast(`Import impossible : ${err?.message||err}`,'error'); } },true);
   $('#analyzeBtn').onclick=()=>analyze();
   $$('[data-analysis-pause]').forEach(b=>b.onclick=toggleAnalysisPause); $$('[data-analysis-stop]').forEach(b=>b.onclick=stopAnalysis);
@@ -16951,6 +16995,7 @@ async function initializeApp(){
     const restored=await loadWorkspaceSnapshot((n,t)=>restoreUi.set(`Lecture des documents enregistrés… ${n} / ${t}`,n/t));
     if(restored?.projects?.length&&meaningfulWorkspace(restored.projects)){
       state.projects=restored.projects;
+      state.sessionTabs=Array.isArray(restored.sessionTabs)?restored.sessionTabs.filter(t=>t?.id&&t?.name):[]; state.activeSessionTab=state.sessionTabs.some(t=>t.id===restored.activeSessionTab)?restored.activeSessionTab:'';
       state.activeProjectId=state.projects.some(p=>p.id===restored.activeProjectId)?restored.activeProjectId:state.projects[0].id; state.resultWorkspaceMode=restored.resultWorkspaceMode||'overview';
       // v2.5.0 — l'ancien onglet latéral « Données économiques » est devenu l'onglet de résultats « Économie ».
       state.activeTab=restored.activeTab==='economics'?'summary':(restored.activeTab||'summary');

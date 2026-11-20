@@ -184,6 +184,8 @@ function serializeProject(project={}){
     planTables:safeJsonClone(project.planTables,{}),
     planChecks:safeJsonClone(project.planChecks,{}),
     favorite:!!project.favorite,
+    // v3.1.0 — onglet de session (id ; '' = seulement « Toutes »).
+    sessionTab:project.sessionTab||'',
     ownerName:project.ownerName||'',
     // v2.24.0 — opération alimentée par l'import massif (contrat, dossier, dernière mise à jour).
     // v2.24.3 — documents déchargés de l'onglet Économie (restent dans l'opération pour les autres colonnes).
@@ -234,7 +236,7 @@ export function hydrateProjectFull(raw={}){
     else doc.status='missing';
     return doc; })};
 }
-export async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab='summary'}={}){
+export async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,activeTab='summary',sessionTabs=[],activeSessionTab=''}={}){
   const record={
     key:WORKSPACE_KEY,
     schema:SNAPSHOT_SCHEMA,
@@ -242,6 +244,8 @@ export async function saveWorkspaceSnapshot({projects=[],activeProjectId=null,ac
     savedAt:Date.now(),
     activeProjectId,
     activeTab,
+    sessionTabs:safeJsonClone(sessionTabs,[]),
+    activeSessionTab:activeSessionTab||'',
     projects:projects.map(serializeProject)
   };
   const db=await openDb();
