@@ -1,3 +1,12 @@
+# v3.4.2 — Parois verticales : notes acoustiques, références normatives, maçonnerie avant béton
+
+- Notes / notices acoustiques : ne donnent plus de structure (elles décrivent refends, séparatifs, planchers entre logements).
+- Références normatives d'un CCTP (cahiers du CSTB, ETAG, avis techniques, annales, Eurocodes, NF EN / DTU) ignorées pour la
+  structure (ex. CCTP charpente : « ETAG 007 kits à ossature bois » n'est pas un mur à ossature bois).
+- Murs d'un même bâtiment lus en maçonnerie et en béton armé : la maçonnerie (façade) passe devant le béton (refends, pignons).
+- Banc Salesforce avec relecture des documents (≈ 150 opérations, v3.4.0 → v3.4.2) : parois verticales 58 % → 82 % de justes
+  (14 justes / 3 faux contre 7 / 5), plus de cases laissées vides plutôt que fausses ; autres champs inchangés.
+
 # v3.4.1 — Structure des parois et planchers : moins de confusions (opération 00005428)
 
 - Paroi verticale : « Mur extérieur Brique » reconnu (brique seule) ; un mur intérieur, refend, séparatif ou une paroi sur

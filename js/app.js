@@ -2387,7 +2387,7 @@ function applyManualValuesToProject(project){
     const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     if(docFinal&&project.sfDocChoice?.[`${building}|${field}`]==='doc'&&SF_SRC.test(project.manualSources?.[key]?.fileName||'')&&sfDocDiffers(field,value,docFinal.value)){
       Object.assign(docFinal,{sfChoice:'doc',sfValue:value,sfFile:project.manualSources[key].fileName}); sfKept.push({building,field,value,docFinal}); continue; }
-    // v3.4.1 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
+    // v3.4.2 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
     if(STRUCTURE_CLASS_FIELDS.has(field)){ const c=structuralClass(value); if(c&&c!==value) value=c; }
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
