@@ -19,7 +19,7 @@ pdfjs.GlobalWorkerOptions.workerSrc=require.resolve('pdfjs-dist/legacy/build/pdf
 globalThis.XLSX=require('xlsx');
 // OCR (v2.25.0) : même moteur que l'appli (tesseract.js 7), pages rendues par @napi-rs/canvas. Activé par enableOcr().
 let OCR_ON=false;
-export function enableOcr(){
+export function enableOcr(parallel=2){
   if(OCR_ON) return true;
   let napi,Tess; try{ napi=require('@napi-rs/canvas'); Tess=require('tesseract.js'); }catch{ return false; }
   // v2.31.4 — pdf.js en a besoin pour dessiner certaines pages (motifs, images) : absents de Node → « DOMMatrix is not defined ».
@@ -34,8 +34,8 @@ export function enableOcr(){
   const toImg=img=>img&&typeof img.toBuffer==='function'?img.toBuffer('image/png'):img;
   globalThis.Tesseract={...Tess,createWorker:async(...a)=>{ const w=await Tess.createWorker(...a); return new Proxy(w,{get(t,k){ if(k==='recognize') return (img,...r)=>t.recognize(toImg(img),...r); const v=t[k]; return typeof v==='function'?v.bind(t):v; }}); }};
   OCR_ON=true;
-  // Deux pages OCR en parallèle (limite de l'appli : 2).
-  import('../../../js/readers.js').then(m=>m.setOcrConcurrencyLimit?.(2)).catch(()=>{});
+  // v3.4.4 — lectures OCR en parallèle (import : parallelismeOcr, 2 par défaut ; l'appli reste à 2).
+  import('../../../js/readers.js').then(m=>m.setOcrConcurrencyLimit?.(Number(parallel)||2)).catch(()=>{});
   return true;
 }
 

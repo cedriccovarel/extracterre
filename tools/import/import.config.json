@@ -236,7 +236,7 @@
   },
   "_aide_extraction": "incompleteBelow : en dessous de cette part de champs attendus trouvés, le document passe « à vérifier ». parallelisme : documents lus en même temps.",
   "incompleteBelow": 0.5,
-  "parallelisme": 3,
+  "parallelisme": 6,
   "profondeurMax": 8,
   "ia": {
     "modele": "qwen2.5:7b",
@@ -265,6 +265,8 @@
   "_aide_ocrReglages": "Vitesse de l'OCR : ocrMaxPagesParDocument (pages OCR au plus par document), ocrEchelle (2 ≈ 144 dpi, suffisant pour du texte dactylographié ; 3 = plus fin et ~2× plus lent), ocrPixelsMax (taille maximale d'une page rendue).",
   "ocrMaxPagesParDocument": 40,
   "ocrEchelle": 2,
+  "_aide_parallelismeOcr": "v3.4.4 — pages OCR lues en même temps (1 à 8). Avec parallelisme (documents lus en même temps) au même niveau. Redescendre à 3 si le Mac est trop sollicité.",
+  "parallelismeOcr": 6,
   "ocrPixelsMax": 4500000,
   "_aide_box": "v3.3.0 — Box figé. parallelismeParcours : dossiers Box parcourus à la fois (2). boxSilenceSecondes : un dossier sans réponse plus longtemps est relégué en fin de parcours (l'analyse continue). boxSilenceFinSecondes : délai du nouvel essai final. relancerBoxSiBloque : relance Box Drive avant ce nouvel essai. parcoursCacheHeures : parcours réutilisés lors d'une reprise. blocageMinutes : sans avancement pendant cette durée, le service débloque seul (arrêt, relance de Box, reprise), au plus deblocagesAutoMax fois par demande.",
   "boxSilenceSecondes": 240,

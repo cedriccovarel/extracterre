@@ -17,7 +17,7 @@ eq(st("Les portes des escaliers a R.d.C. debattent a 180°.\n10.3.2 SERRURE DE S
 // Sas
 eq(st("La porte interieure du sas d'entree sera controlee par lecteur de badge type Vigik.",'hall_sas'),'oui','sas badge');
 eq(st("Platine Vigik et lecteur.\nLocalisation : Sas d'entree.",'hall_sas'),'','localisation seule');
-eq(st("3.4.3 Ensembles vitres du sas halls d'entree.................. 39",'hall_sas'),'','sommaire');
+eq(st("3.4.4 Ensembles vitres du sas halls d'entree.................. 39",'hall_sas'),'','sommaire');
 // Porte piétonne
 eq(st("• 1 lecteur sur le portillon d'acces au parking",'parking_pieton'),'oui','lecteur portillon');
 eq(st("Organigramme : portillons d'entree et sortie parking, toutes les cles seront reperees",'parking_pieton'),'','clés');

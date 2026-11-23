@@ -242,7 +242,7 @@ async function main(){
 
   // v2.25.0 — OCR des scans (même moteur que l'appli).
   let ocrOn=false;
-  if(mode==='traitement'&&cfg.ocr!==false&&!args['sans-ocr']){ ocrOn=!!extract?.enableOcr?.(); console.log(ocrOn?'  OCR des PDF scannés : activé':'  OCR indisponible (bibliothèques absentes : npm install).'); }
+  if(mode==='traitement'&&cfg.ocr!==false&&!args['sans-ocr']){ ocrOn=!!extract?.enableOcr?.(cfg.parallelismeOcr??2); console.log(ocrOn?'  OCR des PDF scannés : activé':'  OCR indisponible (bibliothèques absentes : npm install).'); }
   const listArg=k=>new Set(String(args[k]||'').split(',').map(x=>x.trim()).filter(Boolean));
   const noOcr=listArg('sans-ocr-contrats'), excluded=listArg('exclure');
   if(noOcr.size) console.log(`  Sans OCR après plantage : ${[...noOcr].join(', ')}`);

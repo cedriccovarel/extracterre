@@ -7,7 +7,7 @@ import {sanitizeOccurrence} from './js/sanity.js';
 import {technicalDataFields} from './js/donnees-techniques.js';
 import {analyzeDocuments} from './js/engine.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'3.4.3','version');
+eq(APP_VERSION,'3.4.4','version');
 // Matériau écrit dans le libellé ; sinon rien, jamais de valeur par défaut (« Combles perdus » seul → rien).
 eq(['Plancher haut poutrelles hourdis','Prédalles + dalle de compression','Dalle béton 20 cm','Plancher bois sur solives','Charpente bois fermettes','Bac acier collaborant','Combles perdus','Combles perdus sur plancher béton','Terrasse accessible sur CLT'].map(roofStructureFrom),
   ['Poutrelles-hourdis','Prédalle','Dalle béton','Plancher bois','Charpente bois','Bac acier collaborant',null,'Dalle béton','Plancher bois'],'matériaux');
@@ -29,7 +29,7 @@ const doc={id:'d1',name:'cctp-fictif.pdf',type:DOC_TYPES.CCTP,status:'ready',bui
 const r=analyzeDocuments([doc],DEFAULT_SOURCE_RULES,'Opération fictive');
 const vals=r.finals.filter(f=>f.field==='roof_structure').map(f=>f.value);
 eq(vals.includes('Toiture terrasse non accessible'),false,'statut retiré des lectures conservées');
-eq(vals.includes('Béton armé'),true,'matériau retenu (v3.4.3 : liste Prestaterre, Poutrelles-hourdis → Béton armé)');
+eq(vals.includes('Béton armé'),true,'matériau retenu (v3.4.4 : liste Prestaterre, Poutrelles-hourdis → Béton armé)');
 // Jamais de valeur par défaut : U48win sans ligne « REFROIDISSEMENT » ne donne plus 0 ni « Aucun » ;
 // postes et énergies du Cep absents ne deviennent plus 0 (Pléiades RT existant, U48win, tableau des postes).
 const src=f=>readFileSync(f,'utf8');

@@ -32,7 +32,7 @@ function acquireOcrSlot(signal,onWaiting=()=>{}){
   });
 }
 export function setOcrConcurrencyLimit(limit=MAX_OCR_WORKERS){
-  const next=Math.max(1,Math.min(2,Math.round(Number(limit)||MAX_OCR_WORKERS)));
+  const next=Math.max(1,Math.min(8,Math.round(Number(limit)||MAX_OCR_WORKERS)));
   OCR_LIMIT=next;
   pumpOcrQueue();
   return OCR_LIMIT;
