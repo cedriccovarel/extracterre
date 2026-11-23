@@ -101,7 +101,7 @@ function run(req){
     if(process.env.EXTRACTERRE_SERVICE_ARGS) args.push(...process.env.EXTRACTERRE_SERVICE_ARGS.split(' ').filter(Boolean));
     if(r.mode==='check-only') args.push('--check-only');
     if(r.ocr===false) args.push('--sans-ocr');
-    if(r.reextraire===true) args.push('--reextraire');
+    if(r.reextraire===true){ args.push('--reextraire'); if(r.creeA) args.push('--reextraire-depuis',String(r.creeA)); }
     // v3.0.6 — relecture ciblée par onglet.
     const L=x=>Array.isArray(x)?x.map(String).filter(Boolean):[];
     if(r.reextraire!==true&&L(r.relireOnglets).length){ args.push('--relire-onglets',L(r.relireOnglets).join(','));

@@ -42,6 +42,7 @@ Options
   --sans-ocr-contrats <a,b> pas d'OCR pour ces contrats (posé par le service après un plantage)
   --exclure <a,b>          contrats mis de côté (plantages répétés, posé par le service)
   --reextraire             relire même les fichiers déjà connus (après une mise à jour des parseurs)
+  --reextraire-depuis <date ISO>  avec --reextraire : fichiers déjà ré-extraits depuis cette date repris tels quels (reprise)
   --relire-onglets <a,b>   relire seulement les documents déjà connus liés à ces onglets (generic, thermal, carbon,
                            envelope, economics, searches) ; les autres gardent leur extraction
   --lots-recherches <a,b>  lots de CCTP des grilles de Recherches (onglet searches)
@@ -285,7 +286,10 @@ async function main(){
       fileDone++; if(Date.now()-lastFileStatus>1500||fileDone===fileTotal){ lastFileStatus=Date.now(); status({fichiers:{fait:fileDone,total:fileTotal,courant:f.name}}); }
       const dec=decisions[`${contract}|${f.relPath}`]||{};
       const old=reg.file(contract,f.relPath);
-      const force=!!args.reextraire||(rereadTabs.length>0&&rereadForTabs(f,old,rereadTabs,rereadLots));
+      // v3.4.5 — « ré-extraire tout » : une seule fois par demande. À la reprise, un fichier déjà ré-extrait depuis la
+      // création de la demande, inchangé dans Box, est repris tel quel au lieu d'être relu (et ré-OCRisé) à nouveau.
+      const reextraitDeja=!!args['reextraire-depuis']&&!!old?.processedAt&&old.processedAt>=String(args['reextraire-depuis'])&&old.size===f.size&&old.mtimeMs===f.mtimeMs;
+      const force=(!!args.reextraire&&!reextraitDeja)||(rereadTabs.length>0&&rereadForTabs(f,old,rereadTabs,rereadLots));
       const base={contract,folder:op.folder,relPath:f.relPath,relDir:f.relDir,name:f.name,ext:fileExtension(f.name),family:f.family,size:f.size,mtimeMs:f.mtimeMs,
         firstSeenAt:old?.firstSeenAt||now,missing:false,missingSince:null,decision:Object.keys(dec).length?dec:null};
       if(f.ignoreReason||dec.ignore){
