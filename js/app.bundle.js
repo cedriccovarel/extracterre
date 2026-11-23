@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.3.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.4.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.3.0';
+const APP_VERSION='3.4.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -529,6 +529,24 @@ const STRUCTURES = [
   pair('Éléments préfabriqués',['éléments préfabriqués','elements prefabriques','préfabrication béton','prefabrication beton'])
 ];
 
+// v3.4.0 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
+// (Béton armé, Maçonnerie, Acier, Bois, Mixte). Le détail lu (« Brique terre cuite », « Poutrelles-hourdis »…) reste dans la note
+// de provenance. Une valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») n'est pas retenue.
+const STRUCTURE_CLASSES=['Béton armé','Maçonnerie','Acier','Bois','Mixte'];
+const STRUCTURE_CLASS_FIELDS=new Set(['structure','roof_structure','floor_structure','wall_structure']);
+function structuralClass(value){
+  const s=String(value??'').replace(/œ/gi,'oe').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(!s.trim()) return null;
+  for(const c of STRUCTURE_CLASSES) if(s.trim()===c.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()) return c;
+  // Mixte : association de deux matériaux nommée (bois-béton, acier-béton, plancher collaborant).
+  if(/\bmixte\b|bois[\s/-]+beton|beton[\s/-]+bois|acier[\s/-]+beton|beton[\s/-]+acier|metal[\s/-]+beton|collaborant/.test(s)) return 'Mixte';
+  if(/beton\s+cellulaire|siporex|ytong|maconnerie|parpaing|agglo|bloc\s+(?:creux\s+)?beton|\bblocs?\b|\bbriques?\b|monomur|porotherm|terre\s+cuite|pierre|moellon|meuliere/.test(s)) return 'Maçonnerie';
+  if(/ossature\s+bois|\bmob\b|\bclt\b|lamelle|pans?\s+de\s+bois|colombage|plancher\s+bois|solive|\bbois\b/.test(s)) return 'Bois';
+  if(/metalli|\bacier\b|charpente\s+metal|poutrelles?\s+acier|\bipn\b|\bhea\b/.test(s)) return 'Acier';
+  if(/beton|banche|voile|predalle|hourdis|dalle|prefabri/.test(s)) return 'Béton armé';
+  return null;
+}
+
 const HVAC = {
   vectors:[
     pair('Réseau de chaleur urbain',['rcu','réseau de chaleur','reseau de chaleur','chauffage urbain','sous-station','sous station']),
@@ -862,6 +880,8 @@ function sameValue(field,a,b){
     if(na===null||nb===null) return false;
     return Math.abs(na-nb)<=Math.max(0.051,Math.abs(nb)*0.001)+1e-9;
   }
+  // v3.4.0 — structure / planchers / parois : même classe de la liste Prestaterre (« Brique terre cuite » = « Maçonnerie »).
+  if(STRUCTURE_CLASS_FIELDS.has(field)){ const ca=structuralClass(a), cb=structuralClass(b); if(ca&&cb) return ca===cb; }
   const x=q_norm(a), y=q_norm(b); if(!x||!y) return false;
   if(x===y) return true;
   return (x.length>=3&&y.includes(x))||(y.length>=3&&x.includes(y));
@@ -9009,7 +9029,10 @@ function routeAndDeduplicate(raw,rules){
   // Normalisation transversale : quelle que soit la source (RSET, CCTP, Excel, manuel),
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
   const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(withDpePhases(raw))));
-  const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o);
+  const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o)
+    // v3.4.0 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
+    .map(o=>{ if(!o||!STRUCTURE_CLASS_FIELDS.has(o.field)||o.userValidated) return o; const c=structuralClass(o.value); if(!c) return null; if(c===o.value) return o;
+      return {...o,value:c,valueDetail:o.value,provenanceNote:[o.provenanceNote,`Détail lu : ${o.value}.`].filter(Boolean).join(' ')}; }).filter(Boolean);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });
   const agreement=new Map();
   for(const o of routed){ const k=[o.field,valueKey(o.value),o.building].join('|'); if(!agreement.has(k)) agreement.set(k,new Set()); agreement.get(k).add(o.docId); }
@@ -9833,7 +9856,7 @@ Bâtiment (Batiment B) 1323,3 10,1 4,6 7,6 2 0,6 0 0,1 24,8 0 0 49,8`;
   assert('Étude thermique -> Cep auxiliaire ventilation',thermalParsed.some(o=>o.field==='cep_aux_vent'&&o.value===5.1),String(thermalParsed.find(o=>o.field==='cep_aux_vent')?.value));
   const cachedDoc={id:'cached-doc',name:'ancien.pdf',type:DOC_TYPES.CCTP,buildings:{names:['Bâtiment A']},cachedOccurrences:[{field:'structure',value:'Béton',building:'Bâtiment A',docId:'cached-doc',fileName:'ancien.pdf',docType:DOC_TYPES.CCTP,page:1,excerpt:'Béton',confidence:.96,method:'cached'}]};
   const cachedResult=analyzeDocuments([cachedDoc],DEFAULT_SOURCE_RULES,'Cache');
-  assert('Analyse incrémentale réutilise les documents déjà analysés',cachedResult.reusedParsedCount===1&&cachedResult.newlyParsedCount===0&&cachedResult.rows[0].structure==='Béton',`${cachedResult.reusedParsedCount}/${cachedResult.newlyParsedCount}`);
+  assert('Analyse incrémentale réutilise les documents déjà analysés',cachedResult.reusedParsedCount===1&&cachedResult.newlyParsedCount===0&&cachedResult.rows[0].structure==='Béton armé',`${cachedResult.reusedParsedCount}/${cachedResult.newlyParsedCount}`);
   const newText='Mur extérieur PSE R=3.8';
   const newDoc={id:'new-doc',name:'nouveau.txt',type:DOC_TYPES.CCTP,read:{pages:[{page:1,text:newText,lines:[{text:newText,index:0,items:[]}]}],text:newText},buildings:{names:['Bâtiment A']}};
   const incremented=analyzeDocuments([cachedDoc,newDoc],DEFAULT_SOURCE_RULES,'Cache');
@@ -9868,7 +9891,7 @@ Bâtiment (Batiment B) 1323,3 10,1 4,6 7,6 2 0,6 0 0,1 24,8 0 0 49,8`;
   ].map(o=>({...o,originalBuilding:o.building,building:mappedBuilding(o.building,manualGrouping)}));
   const mergeOcc=routeAndDeduplicate(mergeRaw,DEFAULT_SOURCE_RULES);
   const mergeResult=consolidate(ambiguousDocs,mergeOcc,DEFAULT_SOURCE_RULES,'Fusion',manualGrouping);
-  assert('Fusion manuelle = une seule ligne avec données cumulées',mergeResult.rows.length===1&&mergeResult.rows[0].structure==='Béton'&&mergeResult.rows[0].ventilation==='VMC Hygro B',JSON.stringify(mergeResult.rows));
+  assert('Fusion manuelle = une seule ligne avec données cumulées',mergeResult.rows.length===1&&mergeResult.rows[0].structure==='Béton armé'&&mergeResult.rows[0].ventilation==='VMC Hygro B',JSON.stringify(mergeResult.rows));
 
   const carbonDetailText=`Bâtiment A
 1-VRD
@@ -13447,7 +13470,7 @@ async function ssStopRequest(dir,id,{immediat=false}={}){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.stop`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString(),immediat})); await w.close();
 }
-// v3.3.0 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
+// v3.4.0 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
 async function ssUnblockRequest(dir,id){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.debloquer`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString()})); await w.close();
@@ -13481,7 +13504,7 @@ function ssProgressModel(st,now=Date.now()){
   const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
-    // v3.3.0 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
+    // v3.4.0 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
     let state=r?.r||(!st?.pipeline&&i<fait?'ok':'attente');
     if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
     if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
@@ -15868,7 +15891,7 @@ function applyManualValuesToProject(project){
   // v3.1.0 — écart Salesforce ↔ documents : Salesforce reste retenu par défaut ; project.sfDocChoice['bâtiment|donnée']='doc'
   // garde la valeur lue dans les documents (ExtracTerre) pour cette cellule. La valeur Salesforce reste confrontée et visible.
   const sfKept=[];
-  for(const [key,value] of Object.entries(project.manualValues||{})){
+  for(let [key,value] of Object.entries(project.manualValues||{})){
     const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1);
     if(sfPerimeterOn(project)){ const m=project._sfMap||sfPerimeterOf(project), S=m?.sf||[], t=alias[raw]||m?.map?.[raw]||raw;
       if(!S.includes(canonicalBuilding(t))&&!(S.length===1&&t==='Bâtiment unique')){
@@ -15883,6 +15906,8 @@ function applyManualValuesToProject(project){
     const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     if(docFinal&&project.sfDocChoice?.[`${building}|${field}`]==='doc'&&SF_SRC.test(project.manualSources?.[key]?.fileName||'')&&sfDocDiffers(field,value,docFinal.value)){
       Object.assign(docFinal,{sfChoice:'doc',sfValue:value,sfFile:project.manualSources[key].fileName}); sfKept.push({building,field,value,docFinal}); continue; }
+    // v3.4.0 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
+    if(STRUCTURE_CLASS_FIELDS.has(field)){ const c=structuralClass(value); if(c&&c!==value) value=c; }
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; if(docFinal&&SF_SRC.test(manual.fileName)&&sfDocDiffers(field,value,docFinal.value)) Object.assign(manual,{documentValue:docFinal.value,documentFile:docFinal.fileName,documentPage:docFinal.page}); if(win?.others?.length) manual.otherManual=win.others; result.finals.push(manual); result.detailed.push(manual);

@@ -1,3 +1,14 @@
+# v3.4.0 — Enveloppe : structure, planchers et parois verticales dans la liste Prestaterre
+
+- Structure, Planchers hauts, Planchers bas structure, Parois verticales structure prennent une valeur de la liste :
+  Béton armé, Maçonnerie, Acier, Bois, Mixte (config.js : structuralClass). Béton banché / armé, dalle, prédalle,
+  poutrelles-hourdis, préfabriqué → Béton armé ; parpaing, brique, béton cellulaire, pierre, meulière → Maçonnerie ;
+  structure métallique → Acier ; ossature bois, CLT, pans de bois, plancher bois → Bois ; bois-béton, acier-béton,
+  plancher collaborant, « mixte » → Mixte. Le détail lu reste dans la note de provenance (« Détail lu : Brique terre cuite »).
+- Valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») : plus retenue pour ces champs.
+- Valeurs Salesforce / saisies : affichées dans la liste ; comparaison Salesforce ↔ documents par classe (« Brique terre
+  cuite » = « Maçonnerie »), donc pas de faux écart.
+
 # v3.3.0 — Import massif : Box figé ne bloque plus l'analyse
 
 - Cause du blocage du 20/11/2026 (2 jours perdus) : Box Drive a figé le listage de 4 dossiers ; ils occupaient les 4 fils de

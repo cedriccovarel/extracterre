@@ -1,4 +1,4 @@
-export const APP_VERSION='3.3.0';
+export const APP_VERSION='3.4.0';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -523,6 +523,24 @@ export const STRUCTURES = [
   pair('Bac acier collaborant',['bac acier collaborant','plancher collaborant','bac collaborant']),
   pair('Éléments préfabriqués',['éléments préfabriqués','elements prefabriques','préfabrication béton','prefabrication beton'])
 ];
+
+// v3.4.0 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
+// (Béton armé, Maçonnerie, Acier, Bois, Mixte). Le détail lu (« Brique terre cuite », « Poutrelles-hourdis »…) reste dans la note
+// de provenance. Une valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») n'est pas retenue.
+export const STRUCTURE_CLASSES=['Béton armé','Maçonnerie','Acier','Bois','Mixte'];
+export const STRUCTURE_CLASS_FIELDS=new Set(['structure','roof_structure','floor_structure','wall_structure']);
+export function structuralClass(value){
+  const s=String(value??'').replace(/œ/gi,'oe').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(!s.trim()) return null;
+  for(const c of STRUCTURE_CLASSES) if(s.trim()===c.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()) return c;
+  // Mixte : association de deux matériaux nommée (bois-béton, acier-béton, plancher collaborant).
+  if(/\bmixte\b|bois[\s/-]+beton|beton[\s/-]+bois|acier[\s/-]+beton|beton[\s/-]+acier|metal[\s/-]+beton|collaborant/.test(s)) return 'Mixte';
+  if(/beton\s+cellulaire|siporex|ytong|maconnerie|parpaing|agglo|bloc\s+(?:creux\s+)?beton|\bblocs?\b|\bbriques?\b|monomur|porotherm|terre\s+cuite|pierre|moellon|meuliere/.test(s)) return 'Maçonnerie';
+  if(/ossature\s+bois|\bmob\b|\bclt\b|lamelle|pans?\s+de\s+bois|colombage|plancher\s+bois|solive|\bbois\b/.test(s)) return 'Bois';
+  if(/metalli|\bacier\b|charpente\s+metal|poutrelles?\s+acier|\bipn\b|\bhea\b/.test(s)) return 'Acier';
+  if(/beton|banche|voile|predalle|hourdis|dalle|prefabri/.test(s)) return 'Béton armé';
+  return null;
+}
 
 export const HVAC = {
   vectors:[

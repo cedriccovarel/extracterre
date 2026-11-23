@@ -1,4 +1,4 @@
-import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
+import {APP_VERSION,STRUCTURE_CLASS_FIELDS,structuralClass,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
 import {classifyDocument} from './classifier.js';
 import {classifyForSelectedFamily} from './doc-pipeline.js';
 import {IMPORT_SPACE,ssSupported,ssUnblockRequest,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState,ssListRequests,ssStopRequest,ssDeleteRequest,ssRequestDone,ssContractsToLoad,ssProgressModel,ssDuration,SS_STEPS,SS_TILE_LABEL} from './suivi-sources.js';
@@ -2372,7 +2372,7 @@ function applyManualValuesToProject(project){
   // v3.1.0 — écart Salesforce ↔ documents : Salesforce reste retenu par défaut ; project.sfDocChoice['bâtiment|donnée']='doc'
   // garde la valeur lue dans les documents (ExtracTerre) pour cette cellule. La valeur Salesforce reste confrontée et visible.
   const sfKept=[];
-  for(const [key,value] of Object.entries(project.manualValues||{})){
+  for(let [key,value] of Object.entries(project.manualValues||{})){
     const sep=key.indexOf('|'); if(sep<0) continue; const raw=key.slice(0,sep), field=key.slice(sep+1);
     if(sfPerimeterOn(project)){ const m=project._sfMap||sfPerimeterOf(project), S=m?.sf||[], t=alias[raw]||m?.map?.[raw]||raw;
       if(!S.includes(canonicalBuilding(t))&&!(S.length===1&&t==='Bâtiment unique')){
@@ -2387,6 +2387,8 @@ function applyManualValuesToProject(project){
     const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     if(docFinal&&project.sfDocChoice?.[`${building}|${field}`]==='doc'&&SF_SRC.test(project.manualSources?.[key]?.fileName||'')&&sfDocDiffers(field,value,docFinal.value)){
       Object.assign(docFinal,{sfChoice:'doc',sfValue:value,sfFile:project.manualSources[key].fileName}); sfKept.push({building,field,value,docFinal}); continue; }
+    // v3.4.0 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
+    if(STRUCTURE_CLASS_FIELDS.has(field)){ const c=structuralClass(value); if(c&&c!==value) value=c; }
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
     const meta=project.manualSources?.[key]||{}; const manual={field,value,building,docId:meta.docId||'manual',fileName:meta.fileName||'Correction utilisateur',docType:'Correction manuelle',page:meta.page||'',excerpt:meta.excerpt||'Valeur corrigée manuellement dans la synthèse',confidence:1,method:meta.method||'manual:override',unit:meta.unit||'',sourceTier:'manual',status:'retenu',operation:result.operation,provenanceNote:meta.provenanceNote||''}; if(docFinal&&SF_SRC.test(manual.fileName)&&sfDocDiffers(field,value,docFinal.value)) Object.assign(manual,{documentValue:docFinal.value,documentFile:docFinal.fileName,documentPage:docFinal.page}); if(win?.others?.length) manual.otherManual=win.others; result.finals.push(manual); result.detailed.push(manual);
