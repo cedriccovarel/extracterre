@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {normalizeGrid,runSearchGrid,searchCellValue} from './js/recherches.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.4.2','version');
+eq(APP_VERSION,'3.4.3','version');
 const doc=(id,name,type,lines)=>({id,name,type,status:'ready',read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map(t=>({text:t}))}]}});
 const cctp=doc('d1','CCTP lot 12 CVC.pdf','CCTP',['Ventilation simple flux hygro B','Chauffage par pompe à chaleur']);
 const notice=doc('d2','Notice descriptive.pdf','Notice',['Logements sans climatisation','Volets roulants motorisés']);

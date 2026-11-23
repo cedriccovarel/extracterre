@@ -67,10 +67,10 @@ export function routeAndDeduplicate(raw,rules){
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
   const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(withDpePhases(raw))));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o)
-    // v3.4.2 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
+    // v3.4.3 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
     .map(o=>{ if(!o||!STRUCTURE_CLASS_FIELDS.has(o.field)||o.userValidated) return o; const c=structuralClass(o.value); if(!c) return null; if(c===o.value) return o;
       return {...o,value:c,valueDetail:o.value,provenanceNote:[o.provenanceNote,`Détail lu : ${o.value}.`].filter(Boolean).join(' ')}; }).filter(Boolean);
-  // v3.4.2 — parois verticales d'un même bâtiment lues à la fois en maçonnerie et en béton armé : la maçonnerie (façade) passe
+  // v3.4.3 — parois verticales d'un même bâtiment lues à la fois en maçonnerie et en béton armé : la maçonnerie (façade) passe
   // devant le béton (refends, pignons, voiles des parties communes), comme le retiennent les évaluateurs.
   { const masonry=new Set(normalizedRaw.filter(o=>o.field==='wall_structure'&&o.value==='Maçonnerie'&&!o.userValidated).map(o=>o.building));
     for(let k=0;k<normalizedRaw.length;k++){ const o=normalizedRaw[k]; if(o.field==='wall_structure'&&o.value==='Béton armé'&&!o.userValidated&&masonry.has(o.building)) normalizedRaw[k]={...o,confidence:Math.max(0,(o.confidence||0)-0.08),provenanceNote:[o.provenanceNote,'Maçonnerie lue aussi pour ce bâtiment : retenue en priorité.'].filter(Boolean).join(' ')}; } }

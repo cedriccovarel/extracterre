@@ -3,7 +3,7 @@ import fs from 'fs';
 import {APP_VERSION} from './js/config.js';
 import {sfConfront,sfCheckCounts} from './js/confrontation.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.4.2','version');
+eq(APP_VERSION,'3.4.3','version');
 const differs=(f,a,b)=>{ const x=Number(String(a).replace(',','.')),y=Number(String(b).replace(',','.')); return Number.isFinite(x)&&Number.isFinite(y)?Math.abs(x-y)>0.051:String(a)!==String(b); };
 const rules={bbio:{main:['RSET'],secondary:['Étude thermique'],forbidden:[]},heating_system:{main:['CCTP'],secondary:[],forbidden:[]},tic:{main:['RSET'],secondary:[],forbidden:[]},ic_energy:{main:['RSEE'],secondary:[],forbidden:[]}};
 const det=[{building:'Bâtiment A',field:'bbio',value:52.1,fileName:'RSET v2.pdf',page:3,status:'retenu',confidence:.95},{building:'Bâtiment A',field:'bbio',value:49.9,fileName:'RSET v1.pdf',status:'rejeté',confidence:.95},

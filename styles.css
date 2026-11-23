@@ -1476,6 +1476,7 @@ tr.sf-added>td.building-cell,tr.sf-added>td.building-cell span{color:#b42318}tr.
 .ss-tiles{display:flex;flex-wrap:wrap;gap:3px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fff;max-height:150px;overflow:auto}
 .ss-tile{width:13px;height:13px;border-radius:3px;background:#e3e8e5;display:inline-block;flex:none}
 .ss-tile.differe{background:#d9c6f0;outline:1px dashed #7a5aa8;outline-offset:-1px}.ss-tile.bloque{background:#7a5aa8}
+.ss-health{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;padding:6px 10px;border-radius:8px;font-size:13px}.ss-health.ok{background:#e6f4ec;color:#1d5b3b}.ss-health.warn{background:#fff3dc;color:#7a4b00}.ss-health.bad{background:#fbe5e2;color:#8a2318}.ss-hdot{width:9px;height:9px;border-radius:50%;background:currentColor}.ss-health.ok .ss-hdot{animation:ss-pulse 1.2s ease-in-out infinite}
 .ss-unblock{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0}.ss-unblock small{color:var(--muted,#5b6f65)}
 .ss-tile.ok{background:#2c8a55}.ss-tile.inchangé{background:#9ccfaf}.ss-tile.erreurs{background:#b43b3b}.ss-tile.vide{background:#c9b27a}
 .ss-tile.interrompu,.ss-tile.nontraite{background:#e0a84a}.ss-tile.encours{background:var(--forest);animation:ss-pulse 1.2s ease-in-out infinite;outline:2px solid #86c55d;outline-offset:1px}

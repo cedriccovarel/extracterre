@@ -165,7 +165,8 @@ async function main(){
   // Producteur : parcours (4 à la fois), puis dossiers relégués une fois tout le reste analysé (Box relancé avant si option).
   const producer=(async()=>{
     let lastStatus=0;
-    await pool(uniqueFolders,4,async name=>{ if(stopping) return;
+    // v3.4.3 — 2 parcours à la fois (parallelismeParcours) : à 4, Box saturait (dossiers relégués, analyse des documents ralentie).
+    await pool(uniqueFolders,Number(cfg.parallelismeParcours??2),async name=>{ if(stopping) return;
       lecture.courant=name; const ok=await scanFolder(name,silence); pr.tick(name);
       if(ok){ lecture.fait++; push(name); } else { deferred.push(name); lecture.differes=deferred.length; for(const f of opsByFolder.get(name)) STATUS.parOp[f.contract]={r:'differe'}; }
       if(Date.now()-lastStatus>1500){ lastStatus=Date.now(); status({lecture:{...lecture}}); } });

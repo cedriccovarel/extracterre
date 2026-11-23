@@ -20,7 +20,7 @@ export function sameValue(field,a,b){
     if(na===null||nb===null) return false;
     return Math.abs(na-nb)<=Math.max(0.051,Math.abs(nb)*0.001)+1e-9;
   }
-  // v3.4.2 — structure / planchers / parois : même classe de la liste Prestaterre (« Brique terre cuite » = « Maçonnerie »).
+  // v3.4.3 — structure / planchers / parois : même classe de la liste Prestaterre (« Brique terre cuite » = « Maçonnerie »).
   if(STRUCTURE_CLASS_FIELDS.has(field)){ const ca=structuralClass(a), cb=structuralClass(b); if(ca&&cb) return ca===cb; }
   const x=q_norm(a), y=q_norm(b); if(!x||!y) return false;
   if(x===y) return true;

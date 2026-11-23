@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import {APP_VERSION} from './js/config.js';
 import {scanOperation} from './tools/import/lib/scan.mjs';
-assert.equal(APP_VERSION,'3.4.2');
+assert.equal(APP_VERSION,'3.4.3');
 const cfg=JSON.parse(fs.readFileSync('./tools/import/import.config.json','utf8'));
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'et-scan-')); fs.mkdirSync(path.join(dir,'CCTP')); fs.writeFileSync(path.join(dir,'CCTP','CCTP Lot 1 fictif.pdf'),'x');
 const real=fs.promises.readdir; let fails=1;

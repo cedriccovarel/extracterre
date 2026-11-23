@@ -8,7 +8,7 @@ import {detectBuildings} from './js/buildings.js';
 import {parseDocument} from './js/parsers.js';
 import {analyzeDocuments} from './js/engine.js';
 import {mkPage,mkDoc} from './test_fixtures_v2_3_3.mjs';
-assert.equal(APP_VERSION,'3.4.2');
+assert.equal(APP_VERSION,'3.4.3');
 const rows=(arr,y0=800)=>arr.map((t,i)=>[t,y0-i*10]);
 const prep=d=>{ const c=classifyDocument(d.name,d.read.text,{kind:'pdf'}); d.classification={...c,automaticType:c.type}; d.type=c.type; d.familyMode='auto'; d.buildings=detectBuildings(d); return d; };
 const th=prep(mkDoc('th','Etude thermique RE2020 fictive.pdf',[

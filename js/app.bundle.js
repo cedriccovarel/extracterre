@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.4.2 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.4.3 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.4.2';
+const APP_VERSION='3.4.3';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -512,7 +512,7 @@ const STRUCTURES = [
   pair('Béton armé',['béton armé','beton arme','voile béton','voile beton','mur béton','mur beton','dalle béton armé','dalle beton arme']),
   pair('Bloc béton / parpaing',['bloc béton','bloc beton','parpaing','agglo','aggloméré de béton','agglomere de beton','bloc creux béton','bloc creux beton','easytherm','easy therm','air bloc','air’bloc',"air'bloc",'technibloc']),
   pair('Brique terre cuite',['brique terre cuite','brique creuse','brique alvéolaire','brique alveolaire','porotherm','bio bric','monomur','brique bgv','bgv thermo']),
-  // v3.4.2 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
+  // v3.4.3 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
   pair('Brique',['brique pleine','maçonnerie brique','maconnerie brique','brique','briques']),
   pair('Béton cellulaire',['béton cellulaire','beton cellulaire','siporex','ytong']),
   pair('Pierre de taille',['pierre de taille']),
@@ -530,7 +530,7 @@ const STRUCTURES = [
   pair('Éléments préfabriqués',['éléments préfabriqués','elements prefabriques','préfabrication béton','prefabrication beton'])
 ];
 
-// v3.4.2 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
+// v3.4.3 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
 // (Béton armé, Maçonnerie, Acier, Bois, Mixte). Le détail lu (« Brique terre cuite », « Poutrelles-hourdis »…) reste dans la note
 // de provenance. Une valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») n'est pas retenue.
 const STRUCTURE_CLASSES=['Béton armé','Maçonnerie','Acier','Bois','Mixte'];
@@ -881,7 +881,7 @@ function sameValue(field,a,b){
     if(na===null||nb===null) return false;
     return Math.abs(na-nb)<=Math.max(0.051,Math.abs(nb)*0.001)+1e-9;
   }
-  // v3.4.2 — structure / planchers / parois : même classe de la liste Prestaterre (« Brique terre cuite » = « Maçonnerie »).
+  // v3.4.3 — structure / planchers / parois : même classe de la liste Prestaterre (« Brique terre cuite » = « Maçonnerie »).
   if(STRUCTURE_CLASS_FIELDS.has(field)){ const ca=structuralClass(a), cb=structuralClass(b); if(ca&&cb) return ca===cb; }
   const x=q_norm(a), y=q_norm(b); if(!x||!y) return false;
   if(x===y) return true;
@@ -7622,7 +7622,7 @@ function parseEnvelope(doc){
     const structNoise=/composant\s+pce|contributors|sous-lot|donnee\s+environnementale|\binies\b|\bsemelles?\b|fondations?|terrassements?|surconsommation|stabilite\s+au\s+feu|coupe[- ]feu|en\s+liaison\s+avec|coordination\s+avec|incorporations?|fourreaux?|traversees?\s+de\s+parois|conducteurs?\s+de\s+protection|collecteur\s+de\s+terre|escaliers?|limons?|huisseries?|ebrasements?|protection\s+des\s+facades|\.{5,}|dans\s+le\s+cas\s+de/i;
     // v2.38.0 — répertoire d'exclusions (échafaudage, clôture, support d'équipement…) : ni structure ni isolation.
     const excluded=envelopeExclusion(base); // la ligne elle-même, pas ses voisines
-    // v3.4.2 — 00005428 : mur intérieur / refend / séparatif (voile béton) n'est ni la paroi verticale ni la structure de façade ;
+    // v3.4.3 — 00005428 : mur intérieur / refend / séparatif (voile béton) n'est ni la paroi verticale ni la structure de façade ;
     // un système de plancher (poutrelles-hourdis, prédalle…) n'est jamais une paroi verticale ; faux-plafonds, cloisons, ossature
     // de plafond, références DTU / normes, plans et enrobage d'un CCTP ne décrivent pas la structure.
     const baseN=normLower(base), interiorWall=/\bmurs?\s+(?:interieurs?|int\.?\b)|\brefends?\b|\bseparatifs?\b|mitoyen|parois?\s+sur\s+locaux?\s+non\s+chauffes?/.test(baseN);
@@ -9044,10 +9044,10 @@ function routeAndDeduplicate(raw,rules){
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
   const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(withDpePhases(raw))));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o)
-    // v3.4.2 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
+    // v3.4.3 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
     .map(o=>{ if(!o||!STRUCTURE_CLASS_FIELDS.has(o.field)||o.userValidated) return o; const c=structuralClass(o.value); if(!c) return null; if(c===o.value) return o;
       return {...o,value:c,valueDetail:o.value,provenanceNote:[o.provenanceNote,`Détail lu : ${o.value}.`].filter(Boolean).join(' ')}; }).filter(Boolean);
-  // v3.4.2 — parois verticales d'un même bâtiment lues à la fois en maçonnerie et en béton armé : la maçonnerie (façade) passe
+  // v3.4.3 — parois verticales d'un même bâtiment lues à la fois en maçonnerie et en béton armé : la maçonnerie (façade) passe
   // devant le béton (refends, pignons, voiles des parties communes), comme le retiennent les évaluateurs.
   { const masonry=new Set(normalizedRaw.filter(o=>o.field==='wall_structure'&&o.value==='Maçonnerie'&&!o.userValidated).map(o=>o.building));
     for(let k=0;k<normalizedRaw.length;k++){ const o=normalizedRaw[k]; if(o.field==='wall_structure'&&o.value==='Béton armé'&&!o.userValidated&&masonry.has(o.building)) normalizedRaw[k]={...o,confidence:Math.max(0,(o.confidence||0)-0.08),provenanceNote:[o.provenanceNote,'Maçonnerie lue aussi pour ce bâtiment : retenue en priorité.'].filter(Boolean).join(' ')}; } }
@@ -13488,7 +13488,7 @@ async function ssStopRequest(dir,id,{immediat=false}={}){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.stop`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString(),immediat})); await w.close();
 }
-// v3.4.2 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
+// v3.4.3 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
 async function ssUnblockRequest(dir,id){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.debloquer`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString()})); await w.close();
@@ -13522,7 +13522,7 @@ function ssProgressModel(st,now=Date.now()){
   const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
-    // v3.4.2 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
+    // v3.4.3 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
     let state=r?.r||(!st?.pipeline&&i<fait?'ok':'attente');
     if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
     if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
@@ -13534,6 +13534,8 @@ function ssProgressModel(st,now=Date.now()){
     current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
     scan:st?.pipeline&&st.lecture&&!done?{fait:st.lecture.fait||0,total:st.lecture.total||0,differes:st.lecture.differes||0,courant:st.lecture.courant||''}:null,
     deblocage:st?.deblocage||'',deblocages:st?.deblocages||0,dernierDeblocage:st?.dernierDeblocage||null,
+    // v3.4.3 — indicateur de blocage : temps depuis la dernière activité et depuis le début de l'opération en cours.
+    idleMs:!done&&st?.majA?now-Date.parse(st.majA):null, opMs:!done&&st?.operations?.debutOp?now-Date.parse(st.operations.debutOp):null,
     elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
 }
 const SS_TILE_LABEL={differe:'dossier Box lent, relégué en fin',bloque:'dossier Box bloqué (non traité)',ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
@@ -15924,7 +15926,7 @@ function applyManualValuesToProject(project){
     const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     if(docFinal&&project.sfDocChoice?.[`${building}|${field}`]==='doc'&&SF_SRC.test(project.manualSources?.[key]?.fileName||'')&&sfDocDiffers(field,value,docFinal.value)){
       Object.assign(docFinal,{sfChoice:'doc',sfValue:value,sfFile:project.manualSources[key].fileName}); sfKept.push({building,field,value,docFinal}); continue; }
-    // v3.4.2 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
+    // v3.4.3 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
     if(STRUCTURE_CLASS_FIELDS.has(field)){ const c=structuralClass(value); if(c&&c!==value) value=c; }
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
@@ -17457,6 +17459,8 @@ function ssProgressHtml(id,st){
     ${m.scan&&m.scan.fait<m.scan.total?`<small class="ss-times">📂 Lecture de Box en parallèle : ${m.scan.fait} / ${m.scan.total} dossier(s)${m.scan.differes?` · <b>${m.scan.differes}</b> lent(s) relégué(s) en fin de parcours`:''}</small>`:m.scan?.differes?`<small class="ss-times">📂 Dossiers Box lents : ${m.scan.differes} — nouvel essai ${escapeHtml(m.scan.courant==='relance de Box Drive'?'après relance de Box Drive…':'en cours…')}</small>`:''}
     ${m.deblocage?`<p class="ss-wait">🔧 Déblocage : ${escapeHtml(m.deblocage)}</p>`:''}
     ${m.deblocages&&!m.deblocage?`<small class="ss-times">🔧 ${m.deblocages} déblocage(s)${m.dernierDeblocage?` · dernier ${escapeHtml(new Date(m.dernierDeblocage.at).toLocaleString('fr-FR',{weekday:'short',hour:'2-digit',minute:'2-digit'}))} (${escapeHtml(m.dernierDeblocage.cause||'')})`:''}</small>`:''}
+    ${m.idleMs!=null&&st.etat==='en cours'?(()=>{ const lv=m.idleMs<2*60000?'ok':m.idleMs<10*60000?'warn':'bad', t=m.idleMs<60000?'à l’instant':`il y a ${ssDuration(m.idleMs)}`;
+      return `<p class="ss-health ${lv}"><span class="ss-hdot"></span><b>${lv==='ok'?'L’analyse avance':lv==='warn'?'L’analyse ralentit':'L’analyse semble bloquée'}</b> · dernière activité ${t}${m.opMs!=null&&m.current?` · opération en cours depuis ${escapeHtml(ssDuration(m.opMs)||'moins d’1 min')}`:''}${lv==='bad'?' · déblocage automatique à 30 min, ou bouton ci-dessous':''}</p>`; })():''}
     ${m.stale?'<p class="ss-bad">Aucune nouvelle de l’analyse depuis plus de 10 minutes : Box Drive est probablement figé. Le service débloque seul après 30 min ; vous pouvez le faire tout de suite.</p>':''}
     ${!m.done&&st.etat==='en cours'&&!m.deblocage?`<div class="ss-unblock"><button class="btn ${m.stale?'primary':'light'}" type="button" data-ss-unblock="${escapeHtml(id)}" title="Arrête l’analyse figée, relance Box Drive, puis reprend où elle en était (opérations faites sautées)">🔧 Débloquer</button><small>Box figé ? Arrête l’analyse, relance Box Drive et reprend où elle en était. Rien n’est perdu.</small></div>`:''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}

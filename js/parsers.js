@@ -1308,7 +1308,7 @@ function parseEnvelope(doc){
     const structNoise=/composant\s+pce|contributors|sous-lot|donnee\s+environnementale|\binies\b|\bsemelles?\b|fondations?|terrassements?|surconsommation|stabilite\s+au\s+feu|coupe[- ]feu|en\s+liaison\s+avec|coordination\s+avec|incorporations?|fourreaux?|traversees?\s+de\s+parois|conducteurs?\s+de\s+protection|collecteur\s+de\s+terre|escaliers?|limons?|huisseries?|ebrasements?|protection\s+des\s+facades|\.{5,}|dans\s+le\s+cas\s+de/i;
     // v2.38.0 — répertoire d'exclusions (échafaudage, clôture, support d'équipement…) : ni structure ni isolation.
     const excluded=envelopeExclusion(base); // la ligne elle-même, pas ses voisines
-    // v3.4.2 — 00005428 : mur intérieur / refend / séparatif (voile béton) n'est ni la paroi verticale ni la structure de façade ;
+    // v3.4.3 — 00005428 : mur intérieur / refend / séparatif (voile béton) n'est ni la paroi verticale ni la structure de façade ;
     // un système de plancher (poutrelles-hourdis, prédalle…) n'est jamais une paroi verticale ; faux-plafonds, cloisons, ossature
     // de plafond, références DTU / normes, plans et enrobage d'un CCTP ne décrivent pas la structure.
     const baseN=normLower(base), interiorWall=/\bmurs?\s+(?:interieurs?|int\.?\b)|\brefends?\b|\bseparatifs?\b|mitoyen|parois?\s+sur\s+locaux?\s+non\s+chauffes?/.test(baseN);

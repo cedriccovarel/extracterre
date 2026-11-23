@@ -2387,7 +2387,7 @@ function applyManualValuesToProject(project){
     const docFinal=result.finals.find(o=>o.field===field&&o.building===building&&!String(o.method||'').startsWith('manual:')&&o.sourceTier!=='manual');
     if(docFinal&&project.sfDocChoice?.[`${building}|${field}`]==='doc'&&SF_SRC.test(project.manualSources?.[key]?.fileName||'')&&sfDocDiffers(field,value,docFinal.value)){
       Object.assign(docFinal,{sfChoice:'doc',sfValue:value,sfFile:project.manualSources[key].fileName}); sfKept.push({building,field,value,docFinal}); continue; }
-    // v3.4.2 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
+    // v3.4.3 — valeur Salesforce / saisie de structure : affichée dans la liste Prestaterre (détail d'origine en info-bulle).
     if(STRUCTURE_CLASS_FIELDS.has(field)){ const c=structuralClass(value); if(c&&c!==value) value=c; }
     row[field]=value; result.finals=result.finals.filter(o=>!(o.field===field&&o.building===building));
     result.detailed=result.detailed.filter(o=>!(o.field===field&&o.building===building&&String(o.method||'').startsWith('manual:')));
@@ -3920,6 +3920,8 @@ function ssProgressHtml(id,st){
     ${m.scan&&m.scan.fait<m.scan.total?`<small class="ss-times">📂 Lecture de Box en parallèle : ${m.scan.fait} / ${m.scan.total} dossier(s)${m.scan.differes?` · <b>${m.scan.differes}</b> lent(s) relégué(s) en fin de parcours`:''}</small>`:m.scan?.differes?`<small class="ss-times">📂 Dossiers Box lents : ${m.scan.differes} — nouvel essai ${escapeHtml(m.scan.courant==='relance de Box Drive'?'après relance de Box Drive…':'en cours…')}</small>`:''}
     ${m.deblocage?`<p class="ss-wait">🔧 Déblocage : ${escapeHtml(m.deblocage)}</p>`:''}
     ${m.deblocages&&!m.deblocage?`<small class="ss-times">🔧 ${m.deblocages} déblocage(s)${m.dernierDeblocage?` · dernier ${escapeHtml(new Date(m.dernierDeblocage.at).toLocaleString('fr-FR',{weekday:'short',hour:'2-digit',minute:'2-digit'}))} (${escapeHtml(m.dernierDeblocage.cause||'')})`:''}</small>`:''}
+    ${m.idleMs!=null&&st.etat==='en cours'?(()=>{ const lv=m.idleMs<2*60000?'ok':m.idleMs<10*60000?'warn':'bad', t=m.idleMs<60000?'à l’instant':`il y a ${ssDuration(m.idleMs)}`;
+      return `<p class="ss-health ${lv}"><span class="ss-hdot"></span><b>${lv==='ok'?'L’analyse avance':lv==='warn'?'L’analyse ralentit':'L’analyse semble bloquée'}</b> · dernière activité ${t}${m.opMs!=null&&m.current?` · opération en cours depuis ${escapeHtml(ssDuration(m.opMs)||'moins d’1 min')}`:''}${lv==='bad'?' · déblocage automatique à 30 min, ou bouton ci-dessous':''}</p>`; })():''}
     ${m.stale?'<p class="ss-bad">Aucune nouvelle de l’analyse depuis plus de 10 minutes : Box Drive est probablement figé. Le service débloque seul après 30 min ; vous pouvez le faire tout de suite.</p>':''}
     ${!m.done&&st.etat==='en cours'&&!m.deblocage?`<div class="ss-unblock"><button class="btn ${m.stale?'primary':'light'}" type="button" data-ss-unblock="${escapeHtml(id)}" title="Arrête l’analyse figée, relance Box Drive, puis reprend où elle en était (opérations faites sautées)">🔧 Débloquer</button><small>Box figé ? Arrête l’analyse, relance Box Drive et reprend où elle en était. Rien n’est perdu.</small></div>`:''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}

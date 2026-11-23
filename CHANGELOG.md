@@ -1,3 +1,10 @@
+# v3.4.3 — Suivi de l'import : indicateur de blocage ; moins de dossiers Box relégués
+
+- Suivi de l'analyse : bandeau « L'analyse avance / ralentit / semble bloquée » (vert < 2 min, orange < 10 min, rouge au-delà)
+  avec la dernière activité et la durée de l'opération en cours.
+- Import : 2 dossiers Box parcourus à la fois au lieu de 4 (parallelismeParcours) et délai avant relégation porté à 4 min
+  (boxSilenceSecondes 240) : Box saturé reléguait des dossiers seulement lents et ralentissait l'analyse des documents.
+
 # v3.4.2 — Parois verticales : notes acoustiques, références normatives, maçonnerie avant béton
 
 - Notes / notices acoustiques : ne donnent plus de structure (elles décrivent refends, séparatifs, planchers entre logements).
