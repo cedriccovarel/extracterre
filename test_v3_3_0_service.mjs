@@ -8,6 +8,7 @@ const lock=path.join(tmp,'fige'); fs.writeFileSync(lock,'1');
 const id='demande-20990101-000000';
 fs.writeFileSync(path.join(dem,`${id}.json`),JSON.stringify({format:'extracterre-import-request',contrats:['2001','2002'],ocr:false}));
 const svc=spawn(process.execPath,['tools/import/watch.mjs'],{env:{...process.env,EXTRACTERRE_WORKDIR:work,EXTRACTERRE_SERVICE_ARGS:`--local --racine ${root}`,EXTRACTERRE_TEST_FIGE:'Deux fige',EXTRACTERRE_TEST_FIGE_TANT_QUE:lock,EXTRACTERRE_TEST_SANS_BOX:'1'},stdio:['ignore','pipe','pipe']});
+process.on('exit',()=>{ try{ svc.kill('SIGKILL'); }catch{} try{ fs.rmSync(tmp,{recursive:true,force:true}); }catch{} });
 let log=''; svc.stdout.on('data',d=>log+=d); svc.stderr.on('data',d=>log+=d);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms)); const st=()=>{ try{ return JSON.parse(fs.readFileSync(path.join(dem,`${id}.statut.json`),'utf8')); }catch{ return null; } };
 try{
