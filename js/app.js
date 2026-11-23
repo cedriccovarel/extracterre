@@ -1,7 +1,7 @@
 import {APP_VERSION,DOC_TYPES,FIELD_DEFS,FIELD_MAP,FAMILIES,ANALYSIS_MODES,DEFAULT_ANALYSIS_MODE,MIN_REVIEW_CONFIDENCE,matchFieldByHeader,matchFieldByHeaderDetailed} from './config.js';
 import {classifyDocument} from './classifier.js';
 import {classifyForSelectedFamily} from './doc-pipeline.js';
-import {IMPORT_SPACE,ssSupported,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState,ssListRequests,ssStopRequest,ssDeleteRequest,ssRequestDone,ssContractsToLoad,ssProgressModel,ssDuration,SS_STEPS,SS_TILE_LABEL} from './suivi-sources.js';
+import {IMPORT_SPACE,ssSupported,ssUnblockRequest,ssSavedWorkDir,ssPickWorkDir,ssEnsure,ssReadRegistry,ssReadResult,ssReadDecisions,ssWriteDecisions,ssReasonCategory,ssOperations,ssLoadableFiles,ssOperationName,ssCompareLinked,ssParseContractPaste,ssWriteRequest,ssReadStatus,ssServiceState,ssListRequests,ssStopRequest,ssDeleteRequest,ssRequestDone,ssContractsToLoad,ssProgressModel,ssDuration,SS_STEPS,SS_TILE_LABEL} from './suivi-sources.js';
 import {BOX_KINDS,boxSupported,boxSavedRoot,boxPickRoot,boxEnsureAccess,boxFindOperation,boxListEvaluation,boxContractKey} from './box-folder.js';
 import {readFile,readSpreadsheet,tightenSheetRef,makeDocumentRecord,compactReadForRetention,setOcrConcurrencyLimit,ocrPoolStatus} from './readers.js';
 import {detectBuildings,DH_READ,BLD_READ} from './buildings.js';
@@ -3680,6 +3680,7 @@ async function ssClick(e){
   if(t.matches('[data-ss-refresh]')){ await ssLoadDir(false); renderSourcesView(); toast('Registre relu.','success'); return; }
   if(t.dataset.ssTab){ ss.tab=t.dataset.ssTab; renderSourcesView(); return; }
   if(t.dataset.ssLaunch){ await ssLaunch(t.dataset.ssLaunch); return; }
+  if(t.dataset.ssUnblock){ t.disabled=true; await ssUnblockRequest(ss.dir,t.dataset.ssUnblock); toast('Déblocage demandé : le service arrête l’analyse figée, relance Box Drive (environ 1 min), puis reprend où elle en était.','info'); ssWatchRequest(); return; }
   if(t.dataset.ssQstop){ await ssStopRequest(ss.dir,t.dataset.ssQstop); toast('Arrêt demandé : le document en cours se termine, puis l’analyse s’arrête.','info'); ssRenderQueue(); return; }
   if(t.dataset.ssQkill){ await ssStopRequest(ss.dir,t.dataset.ssQkill,{immediat:true}); toast('Arrêt immédiat demandé.','info'); ssRenderQueue(); return; }
   if(t.dataset.ssQdel){ await ssDeleteRequest(ss.dir,t.dataset.ssQdel); if(ssCurrentRequest()===t.dataset.ssQdel) ssForgetRequest(); ssRenderQueue(); return; }
@@ -3914,7 +3915,11 @@ function ssProgressHtml(id,st){
     <div class="ss-bar"><i style="width:${m.done&&st.etat==='terminé'?100:m.pct}%"></i></div>
     ${times?`<small class="ss-times">${times}</small>`:''}
     ${m.current&&!m.done&&m.total?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
-    ${m.stale?'<p class="ss-bad">Aucune nouvelle du service depuis plus de 10 minutes : vérifiez qu’il est actif (pastille ci-dessus).</p>':''}
+    ${m.scan&&m.scan.fait<m.scan.total?`<small class="ss-times">📂 Lecture de Box en parallèle : ${m.scan.fait} / ${m.scan.total} dossier(s)${m.scan.differes?` · <b>${m.scan.differes}</b> lent(s) relégué(s) en fin de parcours`:''}</small>`:m.scan?.differes?`<small class="ss-times">📂 Dossiers Box lents : ${m.scan.differes} — nouvel essai ${escapeHtml(m.scan.courant==='relance de Box Drive'?'après relance de Box Drive…':'en cours…')}</small>`:''}
+    ${m.deblocage?`<p class="ss-wait">🔧 Déblocage : ${escapeHtml(m.deblocage)}</p>`:''}
+    ${m.deblocages&&!m.deblocage?`<small class="ss-times">🔧 ${m.deblocages} déblocage(s)${m.dernierDeblocage?` · dernier ${escapeHtml(new Date(m.dernierDeblocage.at).toLocaleString('fr-FR',{weekday:'short',hour:'2-digit',minute:'2-digit'}))} (${escapeHtml(m.dernierDeblocage.cause||'')})`:''}</small>`:''}
+    ${m.stale?'<p class="ss-bad">Aucune nouvelle de l’analyse depuis plus de 10 minutes : Box Drive est probablement figé. Le service débloque seul après 30 min ; vous pouvez le faire tout de suite.</p>':''}
+    ${!m.done&&st.etat==='en cours'&&!m.deblocage?`<div class="ss-unblock"><button class="btn ${m.stale?'primary':'light'}" type="button" data-ss-unblock="${escapeHtml(id)}" title="Arrête l’analyse figée, relance Box Drive, puis reprend où elle en était (opérations faites sautées)">🔧 Débloquer</button><small>Box figé ? Arrête l’analyse, relance Box Drive et reprend où elle en était. Rien n’est perdu.</small></div>`:''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
     ${tiles}
     ${t?`<div class="ss-counters"><span>Fichiers <b>${t.files}</b></span><span>Extraits <b>${t.extracted}</b></span><span>Réutilisés <b>${t.reused}</b></span><span class="${t.review?'warn':''}">À vérifier <b>${t.review}</b></span><span class="${t.errors?'bad':''}">Erreurs <b>${t.errors}</b></span>${t.opsSkipped?`<span>Inchangées <b>${t.opsSkipped}</b></span>`:''}</div>`:''}

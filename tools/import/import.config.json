@@ -265,5 +265,12 @@
   "_aide_ocrReglages": "Vitesse de l'OCR : ocrMaxPagesParDocument (pages OCR au plus par document), ocrEchelle (2 ≈ 144 dpi, suffisant pour du texte dactylographié ; 3 = plus fin et ~2× plus lent), ocrPixelsMax (taille maximale d'une page rendue).",
   "ocrMaxPagesParDocument": 40,
   "ocrEchelle": 2,
-  "ocrPixelsMax": 4500000
+  "ocrPixelsMax": 4500000,
+  "_aide_box": "v3.3.0 — Box figé. boxSilenceSecondes : un dossier sans réponse plus longtemps est relégué en fin de parcours (l'analyse continue). boxSilenceFinSecondes : délai du nouvel essai final. relancerBoxSiBloque : relance Box Drive avant ce nouvel essai. parcoursCacheHeures : parcours réutilisés lors d'une reprise. blocageMinutes : sans avancement pendant cette durée, le service débloque seul (arrêt, relance de Box, reprise), au plus deblocagesAutoMax fois par demande.",
+  "boxSilenceSecondes": 120,
+  "boxSilenceFinSecondes": 300,
+  "relancerBoxSiBloque": true,
+  "parcoursCacheHeures": 12,
+  "blocageMinutes": 30,
+  "deblocagesAutoMax": 6
 }

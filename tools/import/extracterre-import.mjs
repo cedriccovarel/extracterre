@@ -7,7 +7,9 @@ import path from 'path';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
 import {parseContractList,matchContracts,rankVersions,classifyImportFile,documentKey,fileExtension,cctpLotDecision,rereadForTabs,REREAD_TABS} from '../../js/import-rules.js';
-import {listOperationFolders,scanOperation,ignoredDirLabel} from './lib/scan.mjs';
+import {listOperationFolders,ignoredDirLabel} from './lib/scan.mjs';
+import {guardedScan} from './lib/scan-guard.mjs';
+import {restartBox} from './lib/box.mjs';
 import {Registry,SupabaseStore,openKeys} from './lib/registry.mjs';
 import {sha256File} from './lib/crypto.mjs';
 import {withRetry} from './lib/retry.mjs';
@@ -99,7 +101,7 @@ const FAMILY_LABEL=cfg=>Object.fromEntries((cfg.families||[]).map(f=>[f.id,f.lab
 async function main(){
   const args=parseArgs(process.argv.slice(2));
   if(args.statut) STATUS_FILE=path.resolve(home(args.statut));
-  if(STATUS_FILE){ try{ const prev=JSON.parse(fs.readFileSync(STATUS_FILE,'utf8')); for(const k of ['tentatives','plantages','sansOcr','exclus','debutDemande']) if(prev?.[k]!=null) STATUS[k]=prev[k]; }catch{} }
+  if(STATUS_FILE){ try{ const prev=JSON.parse(fs.readFileSync(STATUS_FILE,'utf8')); for(const k of ['tentatives','plantages','sansOcr','exclus','debutDemande','deblocages','dernierDeblocage']) if(prev?.[k]!=null) STATUS[k]=prev[k]; }catch{} }
   if(args.aide||args.help){ console.log(AIDE); return; }
   const cfgPath=path.resolve(args.config||path.join(HERE,'import.config.json'));
   const cfg=JSON.parse(fs.readFileSync(cfgPath,'utf8'));
@@ -132,39 +134,90 @@ async function main(){
   const match=matchContracts(folders,wanted,cfg);
   console.log(`  dossiers dans la racine : ${folders.length} · trouvés : ${match.found.length} · sans dossier : ${match.missing.length} · plusieurs dossiers (à vérifier) : ${match.multiple.length}${match.onlyCancelled.length?` · seulement annulés : ${match.onlyCancelled.length}`:''}`);
 
-  // 3. Sous-dossiers de chaque opération retenue (noms et tailles seulement)
+  let stopping=false;
+  // 3. Parcours des dossiers d'opération (noms et tailles seulement).
+  // v3.3.0 — chaque dossier est parcouru dans un processus à part (lib/scan-guard.mjs) : un dossier que Box ne liste plus
+  // (aucun signe de vie pendant boxSilenceSecondes) est arrêté et relégué en fin de parcours au lieu de bloquer toute l'analyse.
+  // L'analyse des documents démarre dès qu'une opération est parcourue (file d'attente), sans attendre la fin de la lecture de Box.
+  // Parcours déjà faits gardés dans <demande>.parcours.json : une reprise (relance, déblocage) ne relit pas Box pour eux.
   const scans=new Map();
   const uniqueFolders=[...new Set(match.found.map(f=>f.folder))];
-  const pr=new Progress(uniqueFolders.length,'Parcours');
-  status({etape:'lecture',debutLecture:new Date().toISOString(),lecture:{fait:0,total:uniqueFolders.length,courant:''}}); let scanned=0,lastScanStatus=0;
-  await pool(uniqueFolders,4,async name=>{ scans.set(name,await scanOperation(path.join(root,name),cfg,{allSubfolders:!!args['all-subfolders']})); pr.tick(name);
-    scanned++; if(Date.now()-lastScanStatus>1500||scanned===uniqueFolders.length){ lastScanStatus=Date.now(); status({lecture:{fait:scanned,total:uniqueFolders.length,courant:name}}); } });
-  pr.end();
-
-  const famLabel=FAMILY_LABEL(cfg);
-  const corr=[], ignored=new Map(), noFamily=[];
-  for(const f of match.found){
-    const s=scans.get(f.folder); const fams=s.retained.map(r=>`${r.relDir} → ${famLabel[r.family]||r.family}${r.container?' (fichiers directs)':''}`);
-    const kept=s.files.filter(x=>!x.ignoreReason).length;
-    if(!s.retained.length&&!args['all-subfolders']) noFamily.push(f.contract);
-    corr.push([f.contract,'trouvé',f.folder,f.sharedWith.join(' + '),fams.join(' | '),kept,s.files.length-kept,!s.retained.length&&!args['all-subfolders']?'aucun sous-dossier de famille':'',s.errors.length?`${s.errors.length} dossier(s) illisible(s)`:'']);
-    for(const n of s.ignoredDirs){ const k=ignoredDirLabel(n); const e=ignored.get(k)||{n:0,ops:new Set(),example:n}; e.n++; e.ops.add(f.contract); ignored.set(k,e); }
+  const opsByFolder=new Map(); for(const f of match.found){ if(!opsByFolder.has(f.folder)) opsByFolder.set(f.folder,[]); opsByFolder.get(f.folder).push(f); }
+  const silence=Number(cfg.boxSilenceSecondes??120)*1000, silenceEnd=Number(cfg.boxSilenceFinSecondes??300)*1000;
+  const cacheFile=STATUS_FILE?STATUS_FILE.replace(/\.statut\.json$/,'')+'.parcours.json':null, cacheMaxMs=Number(cfg.parcoursCacheHeures??12)*3600000;
+  const cache=(()=>{ try{ const o=JSON.parse(fs.readFileSync(cacheFile,'utf8')); return new Map(Object.entries(o.dossiers||{}).filter(([,v])=>Date.now()-Date.parse(v.at)<cacheMaxMs)); }catch{ return new Map(); } })();
+  let cacheDirty=0, cacheSavedAt=0;
+  const saveCache=(force=false)=>{ if(!cacheFile||!cacheDirty||(!force&&Date.now()-cacheSavedAt<60000)) return; cacheSavedAt=Date.now(); cacheDirty=0;
+    try{ const tmp=`${cacheFile}.tmp`; fs.writeFileSync(tmp,JSON.stringify({format:'extracterre-parcours',dossiers:Object.fromEntries(cache)})); fs.renameSync(tmp,cacheFile); }catch(err){ console.warn(`  ⚠ parcours non enregistré : ${err?.message||err}`); } };
+  if(cache.size) console.log(`  parcours repris de la session précédente : ${[...cache.keys()].filter(k=>opsByFolder.has(k)).length} dossier(s)`);
+  async function scanFolder(name,silenceMs){
+    const c=cache.get(name); if(c){ scans.set(name,c.scan); return true; }
+    const r=await guardedScan(path.join(root,name),cfgPath,{allSubfolders:!!args['all-subfolders'],silenceMs});
+    if(r.ok){ scans.set(name,r.scan); cache.set(name,{at:new Date().toISOString(),scan:r.scan}); cacheDirty++; saveCache(); return true; }
+    console.log(`  ⏭ ${name} : ${r.error} — relégué en fin de parcours`); return false;
   }
-  for(const m of match.multiple) corr.push([m.contract,'plusieurs dossiers — à vérifier (non traité)',m.folders.join(' | '),'','',0,0,'','']);
-  for(const k of match.missing) corr.push([k,'aucun dossier','','','',0,0,'','']);
-  for(const m of match.onlyCancelled) corr.push([m.contract,'seulement un dossier « Annulé » (non traité)',m.folders.join(' | '),'','',0,0,'','']);
-  for(const x of listInfo?.invalid||[]) corr.push([x.value,`ligne ${x.line} du fichier de contrats illisible`,'','','',0,0,'','']);
-  writeCsv(path.join(runDir,'correspondance.csv'),['contrat','statut','dossier','dossier commun avec','sous-dossiers retenus (famille)','fichiers lisibles','fichiers ignorés','alerte','erreurs'],corr);
-  const ign=[...ignored].sort((a,b)=>b[1].n-a[1].n);
-  writeCsv(path.join(runDir,'sous-dossiers-ignores.csv'),['nom (normalisé)','exemple de nom','occurrences','opérations'],ign.map(([k,e])=>[k,e.example,e.n,e.ops.size]));
-  console.log(`\nCorrespondance\n  contrats sans sous-dossier de famille : ${noFamily.length}${noFamily.length?` (${noFamily.slice(0,10).join(', ')}${noFamily.length>10?'…':''})`:''}`);
-  if(match.multiple.length) console.log(`  plusieurs dossiers : ${match.multiple.slice(0,10).map(m=>m.contract).join(', ')}`);
-  if(match.missing.length) console.log(`  sans dossier : ${match.missing.slice(0,15).join(', ')}${match.missing.length>15?'…':''}`);
-  { const bad=match.found.filter(f=>scans.get(f.folder)?.errors.length); if(bad.length) console.log(`  ATTENTION : ${bad.length} opération(s) avec des dossiers illisibles (Box) — fichiers non lus, relancer l'analyse : ${bad.slice(0,10).map(f=>f.contract).join(', ')}${bad.length>10?'…':''}`); }
-  console.log(`  sous-dossiers ignorés les plus fréquents : ${ign.slice(0,12).map(([k,e])=>`${k} (${e.n})`).join(' · ')||'aucun'}`);
-  console.log(`  rapports : ${runDir}`);
-  status({etape:'correspondance',correspondance:{demandes:wanted?.length??null,trouves:match.found.length,sansDossier:match.missing,plusieursDossiers:match.multiple.map(m=>m.contract),annules:match.onlyCancelled.map(m=>m.contract),illisibles:(listInfo?.invalid||[]).map(x=>x.value),sansSousDossier:noFamily},rapports:runDir});
-  if(mode==='check-only'){ status({etat:'terminé',etape:'terminé'}); return; }
+  const lecture={fait:0,total:uniqueFolders.length,differes:0,courant:''};
+  status({etape:mode==='check-only'?'lecture':'extraction',pipeline:true,parOp:{},debutLecture:new Date().toISOString(),lecture:{...lecture},
+    correspondance:{demandes:wanted?.length??null,trouves:match.found.length,sansDossier:match.missing,plusieursDossiers:match.multiple.map(m=>m.contract),annules:match.onlyCancelled.map(m=>m.contract),illisibles:(listInfo?.invalid||[]).map(x=>x.value)}});
+  const ready=[]; let wake=null, scanDone=false, idleWake=null, consumerIdle=false; const deferred=[];
+  const push=name=>{ ready.push(name); const w=wake; wake=null; w?.(); };
+  const pr=new Progress(uniqueFolders.length,'Parcours');
+  // Producteur : parcours (4 à la fois), puis dossiers relégués une fois tout le reste analysé (Box relancé avant si option).
+  const producer=(async()=>{
+    let lastStatus=0;
+    await pool(uniqueFolders,4,async name=>{ if(stopping) return;
+      lecture.courant=name; const ok=await scanFolder(name,silence); pr.tick(name);
+      if(ok){ lecture.fait++; push(name); } else { deferred.push(name); lecture.differes=deferred.length; for(const f of opsByFolder.get(name)) STATUS.parOp[f.contract]={r:'differe'}; }
+      if(Date.now()-lastStatus>1500){ lastStatus=Date.now(); status({lecture:{...lecture}}); } });
+    pr.end(); status({lecture:{...lecture}});
+    if(deferred.length&&!stopping){
+      if(mode!=='check-only'){ await new Promise(r=>{ if(!ready.length&&consumerIdle) return r(); idleWake=r; }); }
+      console.log(`\nDossiers relégués (Box ne répondait pas) : ${deferred.length} — nouvel essai${cfg.relancerBoxSiBloque!==false?' après relance de Box':''}.`);
+      if(cfg.relancerBoxSiBloque!==false){ status({lecture:{...lecture,courant:'relance de Box Drive'}}); await restartBox(); }
+      const again=deferred.splice(0);
+      for(const name of again){ if(stopping) break; lecture.courant=name; status({lecture:{...lecture}});
+        if(await scanFolder(name,silenceEnd)){ lecture.fait++; for(const f of opsByFolder.get(name)) if(STATUS.parOp) delete STATUS.parOp[f.contract]; push(name); }
+        else { deferred.push(name); for(const f of opsByFolder.get(name)) if(STATUS.parOp) STATUS.parOp[f.contract]={r:'bloque'}; }
+        lecture.differes=deferred.length; status({lecture:{...lecture}}); }
+    }
+    saveCache(true); scanDone=true; lecture.courant=''; status({lecture:{...lecture}}); const w=wake; wake=null; w?.();
+  })();
+  async function* readyFolders(){
+    for(;;){
+      if(ready.length){ consumerIdle=false; yield ready.shift(); continue; }
+      if(scanDone||stopping) return;
+      consumerIdle=true; const iw=idleWake; idleWake=null; iw?.();
+      await new Promise(r=>{ wake=r; });
+    }
+  }
+  function writeCorrespondance(){
+  const famLabel=FAMILY_LABEL(cfg);
+    const corr=[], ignored=new Map(), noFamily=[];
+    for(const f of match.found){
+      const s=scans.get(f.folder);
+      if(!s){ corr.push([f.contract,'dossier Box bloqué (non lu, non traité)',f.folder,f.sharedWith.join(' + '),'',0,0,'Box n’a pas répondu, même en fin de parcours : relancer l’analyse plus tard','dossier bloqué']); continue; }
+      const fams=s.retained.map(r=>`${r.relDir} → ${famLabel[r.family]||r.family}${r.container?' (fichiers directs)':''}`);
+      const kept=s.files.filter(x=>!x.ignoreReason).length;
+      if(!s.retained.length&&!args['all-subfolders']) noFamily.push(f.contract);
+      corr.push([f.contract,'trouvé',f.folder,f.sharedWith.join(' + '),fams.join(' | '),kept,s.files.length-kept,!s.retained.length&&!args['all-subfolders']?'aucun sous-dossier de famille':'',s.errors.length?`${s.errors.length} dossier(s) illisible(s)`:'']);
+      for(const n of s.ignoredDirs){ const k=ignoredDirLabel(n); const e=ignored.get(k)||{n:0,ops:new Set(),example:n}; e.n++; e.ops.add(f.contract); ignored.set(k,e); }
+    }
+    for(const m of match.multiple) corr.push([m.contract,'plusieurs dossiers — à vérifier (non traité)',m.folders.join(' | '),'','',0,0,'','']);
+    for(const k of match.missing) corr.push([k,'aucun dossier','','','',0,0,'','']);
+    for(const m of match.onlyCancelled) corr.push([m.contract,'seulement un dossier « Annulé » (non traité)',m.folders.join(' | '),'','',0,0,'','']);
+    for(const x of listInfo?.invalid||[]) corr.push([x.value,`ligne ${x.line} du fichier de contrats illisible`,'','','',0,0,'','']);
+    writeCsv(path.join(runDir,'correspondance.csv'),['contrat','statut','dossier','dossier commun avec','sous-dossiers retenus (famille)','fichiers lisibles','fichiers ignorés','alerte','erreurs'],corr);
+    const ign=[...ignored].sort((a,b)=>b[1].n-a[1].n);
+    writeCsv(path.join(runDir,'sous-dossiers-ignores.csv'),['nom (normalisé)','exemple de nom','occurrences','opérations'],ign.map(([k,e])=>[k,e.example,e.n,e.ops.size]));
+    console.log(`\nCorrespondance\n  contrats sans sous-dossier de famille : ${noFamily.length}${noFamily.length?` (${noFamily.slice(0,10).join(', ')}${noFamily.length>10?'…':''})`:''}`);
+    if(match.multiple.length) console.log(`  plusieurs dossiers : ${match.multiple.slice(0,10).map(m=>m.contract).join(', ')}`);
+    if(match.missing.length) console.log(`  sans dossier : ${match.missing.slice(0,15).join(', ')}${match.missing.length>15?'…':''}`);
+    { const bad=match.found.filter(f=>scans.get(f.folder)?.errors.length); if(bad.length) console.log(`  ATTENTION : ${bad.length} opération(s) avec des dossiers illisibles (Box) — fichiers non lus, relancer l'analyse : ${bad.slice(0,10).map(f=>f.contract).join(', ')}${bad.length>10?'…':''}`); }
+    console.log(`  sous-dossiers ignorés les plus fréquents : ${ign.slice(0,12).map(([k,e])=>`${k} (${e.n})`).join(' · ')||'aucun'}`);
+    console.log(`  rapports : ${runDir}`);
+    status({correspondance:{demandes:wanted?.length??null,trouves:match.found.length,sansDossier:match.missing,plusieursDossiers:match.multiple.map(m=>m.contract),annules:match.onlyCancelled.map(m=>m.contract),illisibles:(listInfo?.invalid||[]).map(x=>x.value),sansSousDossier:noFamily,bloques:match.found.filter(f=>!scans.get(f.folder)).map(f=>f.contract)},rapports:runDir});
+  }
+  if(mode==='check-only'){ for await (const _ of readyFolders()){} await producer; writeCorrespondance(); status({etat:'terminé',etape:'terminé'}); return; }
 
   // 4. Registre, décisions, phrase secrète
   const env={...loadEnv(path.join(HERE,'.env')),...process.env};
@@ -193,7 +246,6 @@ async function main(){
   const noOcr=listArg('sans-ocr-contrats'), excluded=listArg('exclure');
   if(noOcr.size) console.log(`  Sans OCR après plantage : ${[...noOcr].join(', ')}`);
   if(excluded.size) console.log(`  Mis de côté après plantages répétés : ${[...excluded].join(', ')}`);
-  let stopping=false;
   process.on('SIGINT',()=>{ if(stopping) process.exit(130); stopping=true; console.log('\nArrêt demandé : fin du document en cours, registre enregistré, puis arrêt (relancer reprendra ici).'); });
 
   const totals={ops:0,opsSkipped:0,files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0,aiProposals:0};
@@ -202,17 +254,17 @@ async function main(){
   const ops=match.found;
   const prOps=new Progress(ops.length,mode==='dry-run'?'Simulation':'Opérations');
   // v2.31.0 — suivi visuel : début de l'extraction (temps restant) et résultat de chaque opération (cases colorées dans l'appli).
-  status({etape:'extraction',operations:{fait:0,total:ops.length,courante:''},contrats:ops.map(o=>o.contract),debutExtraction:new Date().toISOString(),parOp:{}});
+  status({etape:'extraction',operations:{fait:0,total:ops.length,courante:''},contrats:ops.map(o=>o.contract),debutExtraction:new Date().toISOString(),parOp:{...(STATUS.parOp||{})}});
 
-  for(const op of ops){
-    if(stopping) break;
+  const processOp=async op=>{
+    if(stopping) return;
     const s=scans.get(op.folder); const contract=op.contract;
     const fp=crypto.createHash('sha256').update(JSON.stringify([APP_VERSION,cctpLots,...(cfg.ignoreNamePatterns?.length?[cfg.ignoreNamePatterns]:[]),s.files.map(f=>[f.relPath,f.size,f.mtimeMs]).sort(),Object.entries(decisions).filter(([k])=>k.startsWith(`${contract}|`)).sort()])).digest('hex');
     const prev=reg.operation(contract);
     // v2.39.1 — plantages répétés sur une opération : le service la relance sans OCR, puis la met de côté.
-    if(excluded.has(contract)){ STATUS.parOp[contract]={r:'erreurs',exclu:true}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''}}); finalRows.push([contract,op.folder,'mis de côté (plantages répétés)',0,0,0,0,0,0,0]); prOps.tick(`${contract} mis de côté`); continue; }
+    if(excluded.has(contract)){ STATUS.parOp[contract]={r:'erreurs',exclu:true}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''}}); finalRows.push([contract,op.folder,'mis de côté (plantages répétés)',0,0,0,0,0,0,0]); prOps.tick(`${contract} mis de côté`); return; }
     const ocrOp=ocrOn&&!noOcr.has(contract);
-    if(mode==='traitement'&&!args.reextraire&&!rereadTabs.length&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); STATUS.parOp[contract]={r:'inchangé'}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); continue; }
+    if(mode==='traitement'&&!args.reextraire&&!rereadTabs.length&&prev?.status==='complet'&&prev.fingerprint===fp&&!(prev.counts?.errors)&&(prev.families||[]).length){ totals.opsSkipped++; prOps.tick(`${contract} inchangé`); STATUS.parOp[contract]={r:'inchangé'}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:contract}}); finalRows.push([contract,op.folder,'inchangé (sauté)',0,0,0,0,0,0,0]); return; }
     totals.ops++;
     status({operations:{fait:STATUS.operations.fait,total:ops.length,courante:`${contract} · ${op.folder}`,contratCourant:contract,debutOp:new Date().toISOString()}});
     const c={files:0,extracted:0,reused:0,ignored:0,review:0,errors:0,missing:0,ai:0};
@@ -350,7 +402,12 @@ async function main(){
     if(reread.length&&mode==='traitement') consumeReprocess(decisionsFile,reread);
     finalRows.push([contract,op.folder,stopping?'interrompu':mode==='dry-run'?'simulé':'traité',c.files,c.extracted,c.reused,c.ignored,c.review,c.errors,c.missing,c.ai]);
     prOps.tick(`${contract} · ${c.files} fichier(s)`); STATUS.parOp[contract]={r:stopping?'interrompu':c.errors?'erreurs':!s.retained.length?'vide':'ok',f:c.files,x:c.extracted,v:c.review,e:c.errors}; status({operations:{fait:STATUS.operations.fait+1,total:ops.length,courante:''},totaux:{...totals}});
-  }
+  };
+  for await (const name of readyFolders()) for(const op of opsByFolder.get(name)||[]){ if(stopping) break; await processOp(op); }
+  await producer;
+  for(const name of deferred) for(const op of opsByFolder.get(name)||[]){ STATUS.parOp[op.contract]={r:'bloque'}; finalRows.push([op.contract,op.folder,'dossier Box bloqué (non traité)',0,0,0,0,0,0,0]); }
+  if(deferred.length) status({operations:{fait:STATUS.operations.fait+deferred.reduce((n,d)=>n+(opsByFolder.get(d)?.length||0),0),total:ops.length,courante:''}});
+  writeCorrespondance();
   prOps.end();
 
   if(mode==='dry-run') writeCsv(path.join(runDir,'simulation.csv'),['contrat','sous-dossier','famille','fichier','extension','taille (octets)','type détecté','méthode','clé de famille','version','rang','courante','statut prévu','motif'],inventory);

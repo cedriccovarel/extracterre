@@ -152,9 +152,14 @@ export async function ssStopRequest(dir,id,{immediat=false}={}){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.stop`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString(),immediat})); await w.close();
 }
+// v3.3.0 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
+export async function ssUnblockRequest(dir,id){
+  const h=await (await ss_demandes(dir)).getFileHandle(`${id}.debloquer`,{create:true}); const w=await h.createWritable();
+  await w.write(JSON.stringify({at:new Date().toISOString()})); await w.close();
+}
 export async function ssDeleteRequest(dir,id){
   const d=await ss_demandes(dir);
-  for(const ext of ['.json','.statut.json','.contrats.txt','.log','.stop']){ try{ await d.removeEntry(`${id}${ext}`); }catch{} }
+  for(const ext of ['.json','.statut.json','.contrats.txt','.log','.stop','.debloquer','.parcours.json']){ try{ await d.removeEntry(`${id}${ext}`); }catch{} }
 }
 export const ssRequestDone=st=>!!st&&['terminé','erreur','interrompu','annulé'].includes(st.etat);
 
@@ -181,7 +186,8 @@ export function ssProgressModel(st,now=Date.now()){
   const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
-    let state=r?.r||(i<fait?'ok':'attente');
+    // v3.3.0 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
+    let state=r?.r||(!st?.pipeline&&i<fait?'ok':'attente');
     if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
     if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
     const detail=r&&r.f!=null?` · ${r.f} fichier(s), ${r.x||0} extrait(s)${r.v?`, ${r.v} à vérifier`:''}${r.e?`, ${r.e} erreur(s)`:''}`:'';
@@ -190,13 +196,15 @@ export function ssProgressModel(st,now=Date.now()){
   return {step,done,unit:scanning?'dossier(s) Box parcouru(s)':'opération(s)',etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
     docs:f.total&&!done?{fait:f.fait||0,total:f.total,courant:f.courant||''}:null,
     current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
+    scan:st?.pipeline&&st.lecture&&!done?{fait:st.lecture.fait||0,total:st.lecture.total||0,differes:st.lecture.differes||0,courant:st.lecture.courant||''}:null,
+    deblocage:st?.deblocage||'',deblocages:st?.deblocages||0,dernierDeblocage:st?.dernierDeblocage||null,
     elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
 }
-export const SS_TILE_LABEL={ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
+export const SS_TILE_LABEL={differe:'dossier Box lent, relégué en fin',bloque:'dossier Box bloqué (non traité)',ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
 
 // v2.32.0 — chargement au fil de l'eau : contrats dont l'analyse est finie (avec documents) et pas encore chargés dans l'appli.
 export function ssContractsToLoad(st,loaded=new Set()){
   if(!st||!Array.isArray(st.contrats)) return [];
   const par=st.parOp||{}, finished=st.etat==='terminé';
-  return st.contrats.filter(c=>!loaded.has(c)&&(finished?par[c]?.r!=='vide':['ok','erreurs','inchangé'].includes(par[c]?.r)));
+  return st.contrats.filter(c=>!loaded.has(c)&&(finished?!['vide','bloque','differe'].includes(par[c]?.r):['ok','erreurs','inchangé'].includes(par[c]?.r)));
 }

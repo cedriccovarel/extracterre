@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.2.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.3.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.2.0';
+const APP_VERSION='3.3.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -13447,9 +13447,14 @@ async function ssStopRequest(dir,id,{immediat=false}={}){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.stop`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString(),immediat})); await w.close();
 }
+// v3.3.0 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
+async function ssUnblockRequest(dir,id){
+  const h=await (await ss_demandes(dir)).getFileHandle(`${id}.debloquer`,{create:true}); const w=await h.createWritable();
+  await w.write(JSON.stringify({at:new Date().toISOString()})); await w.close();
+}
 async function ssDeleteRequest(dir,id){
   const d=await ss_demandes(dir);
-  for(const ext of ['.json','.statut.json','.contrats.txt','.log','.stop']){ try{ await d.removeEntry(`${id}${ext}`); }catch{} }
+  for(const ext of ['.json','.statut.json','.contrats.txt','.log','.stop','.debloquer','.parcours.json']){ try{ await d.removeEntry(`${id}${ext}`); }catch{} }
 }
 const ssRequestDone=st=>!!st&&['terminé','erreur','interrompu','annulé'].includes(st.etat);
 
@@ -13476,7 +13481,8 @@ function ssProgressModel(st,now=Date.now()){
   const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
-    let state=r?.r||(i<fait?'ok':'attente');
+    // v3.3.0 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
+    let state=r?.r||(!st?.pipeline&&i<fait?'ok':'attente');
     if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
     if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
     const detail=r&&r.f!=null?` · ${r.f} fichier(s), ${r.x||0} extrait(s)${r.v?`, ${r.v} à vérifier`:''}${r.e?`, ${r.e} erreur(s)`:''}`:'';
@@ -13485,15 +13491,17 @@ function ssProgressModel(st,now=Date.now()){
   return {step,done,unit:scanning?'dossier(s) Box parcouru(s)':'opération(s)',etat:st?.etat||'en attente',pct:Math.round(pct*10)/10,total,fait,
     docs:f.total&&!done?{fait:f.fait||0,total:f.total,courant:f.courant||''}:null,
     current:(()=>{ const [c,...rest]=String(o.courante||'').split(' · '), folder=rest.join(' · '); return folder&&folder.replace(/\s/g,'').includes(c.replace(/\s/g,''))?folder:String(o.courante||''); })(),
+    scan:st?.pipeline&&st.lecture&&!done?{fait:st.lecture.fait||0,total:st.lecture.total||0,differes:st.lecture.differes||0,courant:st.lecture.courant||''}:null,
+    deblocage:st?.deblocage||'',deblocages:st?.deblocages||0,dernierDeblocage:st?.dernierDeblocage||null,
     elapsed,eta,tiles,counts,stale:!done&&st?.majA?now-Date.parse(st.majA)>10*60000:false};
 }
-const SS_TILE_LABEL={ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
+const SS_TILE_LABEL={differe:'dossier Box lent, relégué en fin',bloque:'dossier Box bloqué (non traité)',ok:'traitée',inchangé:'inchangée (sautée)',erreurs:'avec erreurs',vide:'sans document',interrompu:'interrompue',encours:'en cours',attente:'en attente',nontraite:'non traitée'};
 
 // v2.32.0 — chargement au fil de l'eau : contrats dont l'analyse est finie (avec documents) et pas encore chargés dans l'appli.
 function ssContractsToLoad(st,loaded=new Set()){
   if(!st||!Array.isArray(st.contrats)) return [];
   const par=st.parOp||{}, finished=st.etat==='terminé';
-  return st.contrats.filter(c=>!loaded.has(c)&&(finished?par[c]?.r!=='vide':['ok','erreurs','inchangé'].includes(par[c]?.r)));
+  return st.contrats.filter(c=>!loaded.has(c)&&(finished?!['vide','bloque','differe'].includes(par[c]?.r):['ok','erreurs','inchangé'].includes(par[c]?.r)));
 }
 
 /* ---- plans.js ---- */
@@ -17168,6 +17176,7 @@ async function ssClick(e){
   if(t.matches('[data-ss-refresh]')){ await ssLoadDir(false); renderSourcesView(); toast('Registre relu.','success'); return; }
   if(t.dataset.ssTab){ ss.tab=t.dataset.ssTab; renderSourcesView(); return; }
   if(t.dataset.ssLaunch){ await ssLaunch(t.dataset.ssLaunch); return; }
+  if(t.dataset.ssUnblock){ t.disabled=true; await ssUnblockRequest(ss.dir,t.dataset.ssUnblock); toast('Déblocage demandé : le service arrête l’analyse figée, relance Box Drive (environ 1 min), puis reprend où elle en était.','info'); ssWatchRequest(); return; }
   if(t.dataset.ssQstop){ await ssStopRequest(ss.dir,t.dataset.ssQstop); toast('Arrêt demandé : le document en cours se termine, puis l’analyse s’arrête.','info'); ssRenderQueue(); return; }
   if(t.dataset.ssQkill){ await ssStopRequest(ss.dir,t.dataset.ssQkill,{immediat:true}); toast('Arrêt immédiat demandé.','info'); ssRenderQueue(); return; }
   if(t.dataset.ssQdel){ await ssDeleteRequest(ss.dir,t.dataset.ssQdel); if(ssCurrentRequest()===t.dataset.ssQdel) ssForgetRequest(); ssRenderQueue(); return; }
@@ -17402,7 +17411,11 @@ function ssProgressHtml(id,st){
     <div class="ss-bar"><i style="width:${m.done&&st.etat==='terminé'?100:m.pct}%"></i></div>
     ${times?`<small class="ss-times">${times}</small>`:''}
     ${m.current&&!m.done&&m.total?`<div class="ss-current"><span class="ss-dot"></span><b>${escapeHtml(m.current)}</b>${m.docs?`<div class="ss-subbar"><i style="width:${Math.round(100*m.docs.fait/m.docs.total)}%"></i></div><small>document ${m.docs.fait} / ${m.docs.total}${m.docs.courant?` : ${escapeHtml(m.docs.courant)}`:''}</small>`:''}</div>`:''}
-    ${m.stale?'<p class="ss-bad">Aucune nouvelle du service depuis plus de 10 minutes : vérifiez qu’il est actif (pastille ci-dessus).</p>':''}
+    ${m.scan&&m.scan.fait<m.scan.total?`<small class="ss-times">📂 Lecture de Box en parallèle : ${m.scan.fait} / ${m.scan.total} dossier(s)${m.scan.differes?` · <b>${m.scan.differes}</b> lent(s) relégué(s) en fin de parcours`:''}</small>`:m.scan?.differes?`<small class="ss-times">📂 Dossiers Box lents : ${m.scan.differes} — nouvel essai ${escapeHtml(m.scan.courant==='relance de Box Drive'?'après relance de Box Drive…':'en cours…')}</small>`:''}
+    ${m.deblocage?`<p class="ss-wait">🔧 Déblocage : ${escapeHtml(m.deblocage)}</p>`:''}
+    ${m.deblocages&&!m.deblocage?`<small class="ss-times">🔧 ${m.deblocages} déblocage(s)${m.dernierDeblocage?` · dernier ${escapeHtml(new Date(m.dernierDeblocage.at).toLocaleString('fr-FR',{weekday:'short',hour:'2-digit',minute:'2-digit'}))} (${escapeHtml(m.dernierDeblocage.cause||'')})`:''}</small>`:''}
+    ${m.stale?'<p class="ss-bad">Aucune nouvelle de l’analyse depuis plus de 10 minutes : Box Drive est probablement figé. Le service débloque seul après 30 min ; vous pouvez le faire tout de suite.</p>':''}
+    ${!m.done&&st.etat==='en cours'&&!m.deblocage?`<div class="ss-unblock"><button class="btn ${m.stale?'primary':'light'}" type="button" data-ss-unblock="${escapeHtml(id)}" title="Arrête l’analyse figée, relance Box Drive, puis reprend où elle en était (opérations faites sautées)">🔧 Débloquer</button><small>Box figé ? Arrête l’analyse, relance Box Drive et reprend où elle en était. Rien n’est perdu.</small></div>`:''}
     ${st.erreur?`<p class="ss-bad">${escapeHtml(st.erreur)}</p>`:''}
     ${tiles}
     ${t?`<div class="ss-counters"><span>Fichiers <b>${t.files}</b></span><span>Extraits <b>${t.extracted}</b></span><span>Réutilisés <b>${t.reused}</b></span><span class="${t.review?'warn':''}">À vérifier <b>${t.review}</b></span><span class="${t.errors?'bad':''}">Erreurs <b>${t.errors}</b></span>${t.opsSkipped?`<span>Inchangées <b>${t.opsSkipped}</b></span>`:''}</div>`:''}

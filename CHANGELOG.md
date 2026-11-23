@@ -1,3 +1,17 @@
+# v3.3.0 — Import massif : Box figé ne bloque plus l'analyse
+
+- Cause du blocage du 20/11/2026 (2 jours perdus) : Box Drive a figé le listage de 4 dossiers ; ils occupaient les 4 fils de
+  lecture du script, qui attendait sans fin ni erreur, et l'analyse des documents ne commençait qu'après la lecture de tout Box.
+- Chaque dossier d'opération est parcouru dans un processus à part (tools/import/lib/scan-guard.mjs) : sans réponse de Box
+  pendant 2 min (boxSilenceSecondes), il est arrêté et relégué en fin de parcours. Une fois le reste analysé, Box Drive est
+  relancé et les dossiers relégués sont réessayés (5 min, boxSilenceFinSecondes) ; toujours muets → « dossier Box bloqué ».
+- Analyse en flux : une opération est analysée dès que son dossier est parcouru, sans attendre la lecture de tout Box.
+- Parcours enregistrés (<demande>.parcours.json, 12 h) : une reprise ne relit pas Box pour les dossiers déjà parcourus.
+- Service : surveillance automatique — aucun avancement pendant 30 min (blocageMinutes) → arrêt de l'analyse figée, relance
+  de Box Drive, reprise (au plus 6 fois par demande). Bouton « 🔧 Débloquer » dans le suivi de l'analyse (même remède, tout de
+  suite) ; nombre et heure des déblocages affichés.
+- Suivi : lecture de Box affichée en parallèle de l'analyse, cases « relégué » (mauve pointillé) et « bloqué » (mauve).
+
 # v3.2.0 — Écarts Salesforce ↔ documents : choisir la valeur retenue
 
 - Salesforce reste retenu par défaut (priorité inchangée). Quand la valeur Salesforce diffère de celle lue dans le document

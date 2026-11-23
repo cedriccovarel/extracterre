@@ -16,7 +16,7 @@ export async function listOperationFolders(root,extraRoots=[]){
 
 // Sous-dossiers d'une opération : familles retenues, fichiers (sans lecture), noms de dossiers ignorés.
 // allSubfolders : pas de filtrage, tous les fichiers gardent family=null.
-export async function scanOperation(opDir,cfg,{allSubfolders=false}={}){
+export async function scanOperation(opDir,cfg,{allSubfolders=false,onDir=null}={}){
   const retained=[],files=[],ignoredDirs=[],errors=[];
   const maxDepth=cfg.profondeurMax||8;
   async function walk(abs,rel,depth,family,directFamily){
@@ -24,7 +24,7 @@ export async function scanOperation(opDir,cfg,{allSubfolders=false}={}){
     // (2, 5, 10 s) avant de le déclarer illisible. Le 16/11/2026, 89 opérations sur 106 avaient 0 fichier pour cette raison.
     let entries;
     for(let attempt=0;;attempt++){
-      try{ entries=await fs.promises.readdir(abs,{withFileTypes:true}); break; }
+      try{ entries=await fs.promises.readdir(abs,{withFileTypes:true}); onDir?.(rel); break; }
       catch(err){ if(err.code==='ENOENT'||err.code==='ENOTDIR'||attempt>=3){ errors.push({relDir:rel,error:err.code||err.message}); return; }
         await new Promise(r=>setTimeout(r,[2000,5000,10000][attempt])); }
     }

@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import {spawn} from 'child_process';
 import {fileURLToPath} from 'url';
+import {restartBox} from './lib/box.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
 const cfg=JSON.parse(fs.readFileSync(path.join(HERE,'import.config.json'),'utf8'));
@@ -25,7 +26,7 @@ const readJson=f=>{ try{ return JSON.parse(fs.readFileSync(f,'utf8')); }catch{ r
 const heartbeat=extra=>{ try{ fs.mkdirSync(dir,{recursive:true}); writeJson(path.join(dir,'service.json'),{format:'extracterre-import-service',version:VERSION,pid:process.pid,vu:new Date().toISOString(),occupe:busy,...extra}); }catch{} };
 
 // v2.39.1 — champs de suivi des plantages gardés d'une relance à l'autre.
-const KEEP=['tentatives','plantages','sansOcr','exclus','derniereErreur','debutDemande'];
+const KEEP=['tentatives','plantages','sansOcr','exclus','derniereErreur','debutDemande','deblocages','dernierDeblocage'];
 const MAX_TENTATIVES=60;
 function crashPlan(st,code,signal){
   const cause=signal?`signal ${signal}`:`code ${code}`;
@@ -69,6 +70,11 @@ function memoryMb(now=new Date()){
   return (h>=22||h<6)?Number(cfg.memoireNuitMo||10240):Number(cfg.memoireMo||8192);
 }
 const stopFile=id=>path.join(dir,`${id}.stop`);
+// v3.3.0 — déblocage : bouton « Débloquer » de l'appli (<id>.debloquer) ou surveillance automatique (aucun avancement depuis
+// blocageMinutes). Remède : arrêt de l'analyse figée, relance de Box Drive, reprise (opérations faites sautées, parcours repris).
+const unblockFile=id=>path.join(dir,`${id}.debloquer`);
+const BLOCAGE_MS=Number(cfg.blocageMinutes??30)*60000, MAX_AUTO=Number(cfg.deblocagesAutoMax??6);
+let unblocking=null;
 function pending(){
   let names=[]; try{ names=fs.readdirSync(dir); }catch{ return []; }
   return names.filter(n=>/^demande-[\w-]+\.json$/.test(n)).sort().map(n=>{
@@ -110,8 +116,18 @@ function run(req){
     const child=spawn(process.execPath,args,{cwd:HERE,stdio:['ignore',log,log],env:{...process.env}});
     // v2.31.3 — Mac gardé éveillé pendant l'analyse (sinon la veille la met en pause la nuit) ; s'arrête avec elle.
     if(process.platform==='darwin'){ try{ spawn('/usr/bin/caffeinate',['-i','-s','-w',String(child.pid)],{stdio:'ignore',detached:true}).unref(); }catch{} }
-    current={id:req.id,child,stopAsked:0};
-    child.on('exit',(code,signal)=>{ fs.closeSync(log); const st=readJson(statut)||{}; const stopped=current?.stopAsked; current=null;
+    current={id:req.id,child,stopAsked:0,unblock:null};
+    child.on('exit',async(code,signal)=>{ fs.closeSync(log); const st=readJson(statut)||{}; const stopped=current?.stopAsked, unb=current?.unblock; current=null;
+      if(unb&&!stopped&&st.etat!=='terminé'){
+        const n=(st.deblocages||0)+1, info={at:new Date().toISOString(),cause:unb.cause,etape:st.etape||'',sur:st.operations?.courante||st.lecture?.courant||''};
+        console.log(`${req.id} : déblocage ${n} (${unb.cause}) — relance de Box puis reprise.`);
+        writeJson(statut,{...st,etat:'en cours',etape:st.etape,deblocage:'relance de Box Drive…',majA:new Date().toISOString()});
+        unblocking=req.id; await restartBox({log:t=>console.log(`${req.id} :${t}`)}); unblocking=null;
+        const keep={}; for(const k of KEEP) if(st[k]!=null) keep[k]=st[k];
+        writeJson(statut,{etat:'en attente',etape:'attente',reprise:true,...keep,deblocages:n,dernierDeblocage:info});
+        try{ fs.unlinkSync(unblockFile(req.id)); }catch{}
+        try{ fs.unlinkSync(stopFile(req.id)); }catch{}
+        return resolve(); }
       if(stopped&&st.etat!=='terminé') writeJson(statut,{...st,etat:'interrompu',etape:'arrêté à la demande',finA:new Date().toISOString()});
       // v2.39.1 — arrêt inattendu (plantage du moteur natif de l'OCR, aléatoire) : relance tant que l'analyse avance.
       // L'opération en cours au plantage est notée : 2e plantage sur elle → relancée sans OCR ; 3e → mise de côté.
@@ -136,11 +152,24 @@ function checkStop(){
   if(!current.stopAsked){ current.stopAsked=Date.now(); try{ current.child.kill('SIGINT'); }catch{} }
   else if(req.immediat||Date.now()-current.stopAsked>60000){ try{ current.child.kill('SIGKILL'); }catch{} }
 }
+// Demande de déblocage (bouton) ou analyse sans avancement depuis BLOCAGE_MS : arrêt forcé, puis relance de Box à la sortie.
+function checkUnblock(){
+  for(const n of (()=>{ try{ return fs.readdirSync(dir).filter(x=>/^demande-[\w-]+\.debloquer$/.test(x)); }catch{ return []; } })()){
+    const id=n.replace(/\.debloquer$/,'');
+    if(current?.id===id){ if(!current.unblock){ current.unblock={cause:'bouton Débloquer'}; try{ current.child.kill('SIGKILL'); }catch{} } continue; }
+    // Pas d'analyse en cours pour cette demande : Box est relancé seul (une fois).
+    if(!unblocking){ try{ fs.unlinkSync(path.join(dir,n)); }catch{} unblocking=id; console.log(`${id} : déblocage demandé hors analyse — relance de Box.`); restartBox().finally(()=>{ unblocking=null; }); }
+  }
+  if(!current||current.unblock||current.stopAsked) return;
+  const st=readJson(path.join(dir,`${current.id}.statut.json`)); const t=Date.parse(st?.majA||st?.debut||'');
+  if(st?.etat==='en cours'&&Number.isFinite(t)&&Date.now()-t>BLOCAGE_MS&&(st.deblocages||0)<MAX_AUTO){
+    current.unblock={cause:`aucun avancement depuis ${Math.round((Date.now()-t)/60000)} min`}; try{ current.child.kill('SIGKILL'); }catch{} }
+}
 async function tick(){
-  heartbeat(); checkStop(); cancelPending();
+  heartbeat({...(unblocking?{deblocage:unblocking}:{})}); checkStop(); cancelPending(); checkUnblock();
   // Code mis à jour : le service s'arrête entre deux analyses et le lanceur macOS le relance avec le nouveau code.
   try{ if(!busy&&fs.statSync(SELF).mtimeMs!==CODE_MTIME){ console.log('Code du service mis à jour : redémarrage.'); process.exit(0); } }catch{}
-  if(busy) return;
+  if(busy||unblocking) return;
   const next=pending()[0]; if(!next) return;
   busy=true; heartbeat({demande:next.id});
   try{ await run(next); } finally { busy=false; heartbeat(); }
