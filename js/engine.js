@@ -67,7 +67,7 @@ export function routeAndDeduplicate(raw,rules){
   // le résultat Menuiseries vitrage privilégie la composition technique 4.16.4 Ar.
   const learnedRaw=applyLearningBoosts(withDhZones(withWallSides(withDpePhases(raw))));
   const normalizedRaw=learnedRaw.map(o=>o?.field==='window_glazing'?{...o,value:normalizeGlazingType(o.value)||o.value}:o)
-    // v3.4.0 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
+    // v3.4.1 — structure / planchers / parois verticales : valeur de la liste Prestaterre, détail lu gardé en note.
     .map(o=>{ if(!o||!STRUCTURE_CLASS_FIELDS.has(o.field)||o.userValidated) return o; const c=structuralClass(o.value); if(!c) return null; if(c===o.value) return o;
       return {...o,value:c,valueDetail:o.value,provenanceNote:[o.provenanceNote,`Détail lu : ${o.value}.`].filter(Boolean).join(' ')}; }).filter(Boolean);
   let routed=normalizedRaw.map(o=>({...o,sourceTier:o.userValidated?'main':(o.secondarySourceOk&&sourceTier(o.field,o.docType,rules)==='unrouted'?'secondary':sourceTier(o.field,o.docType,rules)),sourceRank:o.userValidated?-1:sourceRank(o.field,o.docType,rules)})).map(o=>{ if(o.userValidated) return {...o,confidence:1,sourceTier:'main',sourceRank:o.manualDefinitive?-2:-1}; const adj=o.libraryDerived?(o.sourceTier==='main'?0:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10):(o.sourceTier==='main'?0.05:o.sourceTier==='secondary'?-0.03:o.sourceTier==='forbidden'?-0.5:-0.10); return {...o,confidence:Math.max(0,Math.min(1,o.confidence+adj))}; });

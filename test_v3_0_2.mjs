@@ -5,7 +5,7 @@ import {sfPerimeterMap} from './js/sf-perimeter.js';
 import {parseFreePaste,freePasteValues} from './js/collage-libre.js';
 import {parseDocument} from './js/parsers.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.4.0','version');
+eq(APP_VERSION,'3.4.1','version');
 const T={minN:30,gap:0.2,keys:{'f|bon|RSET':[0.9,100],'f|moyen|RSET':[0.6,100],'f|rare|CCTP':[0.99,5]},fill:{'f|bon|RSET|main':[0.85,50]}};
 const o=(v,m,t='RSET')=>({value:v,method:m,docType:t,sourceTier:'main'});
 const ch=o(1,'moyen'), alt=o(2,'bon');

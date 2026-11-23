@@ -4,7 +4,7 @@ import {APP_VERSION} from './js/config.js';
 import {sfPerimeter,sfCountNames,sfRankNames,sfIsList,sfSplitGroup} from './js/sf-perimeter.js';
 import {sfxColumns,sfxFiche} from './js/sf-export.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.4.0','version');
+eq(APP_VERSION,'3.4.1','version');
 const D=[{name:'Bâtiment A',results:8},{name:'BATIMENT A',results:2},{name:'Bâtiment 1',results:3},{name:'Bâtiment B',results:6},{name:'Bâtiment A et B',results:5},
   {name:'Bâtiment Zone 1',results:4},{name:'Bâtiment C',results:1},{name:'Bâtiment unique',results:9},{name:'Bâtiment Synthèse des résultats',results:7}];
 eq(sfCountNames(2,D),['Bâtiment A','Bâtiment B'],'N=2 sans noms : les 2 noms les mieux renseignés, un par identifiant (A = BATIMENT A = 1)');

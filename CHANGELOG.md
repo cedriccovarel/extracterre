@@ -1,3 +1,13 @@
+# v3.4.1 — Structure des parois et planchers : moins de confusions (opération 00005428)
+
+- Paroi verticale : « Mur extérieur Brique » reconnu (brique seule) ; un mur intérieur, refend, séparatif ou une paroi sur
+  local non chauffé (voile béton) ne donne plus la structure de façade ; un système de plancher (poutrelles-hourdis, prédalle,
+  plancher bois, bac collaborant) n'est jamais une paroi verticale.
+- Planchers : un pont thermique / une liaison (« Dalle terre-plein / Mur Brique », Psi) et une maçonnerie de mur ne donnent
+  plus la structure d'un plancher ; ossature de faux-plafond, cloisons, références DTU / NF, plans et enrobage du CCTP ignorés.
+- Banc Salesforce (328 opérations, avant / après) : plancher bas 88,4 % → 92,7 % justes ; parois verticales 67,6 % → 70,2 %
+  sur les mêmes valeurs, et 23 valeurs Salesforce « Brique » de plus lues juste ; autres champs inchangés.
+
 # v3.4.0 — Enveloppe : structure, planchers et parois verticales dans la liste Prestaterre
 
 - Structure, Planchers hauts, Planchers bas structure, Parois verticales structure prennent une valeur de la liste :

@@ -152,7 +152,7 @@ export async function ssStopRequest(dir,id,{immediat=false}={}){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.stop`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString(),immediat})); await w.close();
 }
-// v3.4.0 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
+// v3.4.1 — « Débloquer » : <id>.debloquer lu par le service (arrêt de l'analyse figée, relance de Box Drive, reprise).
 export async function ssUnblockRequest(dir,id){
   const h=await (await ss_demandes(dir)).getFileHandle(`${id}.debloquer`,{create:true}); const w=await h.createWritable();
   await w.write(JSON.stringify({at:new Date().toISOString()})); await w.close();
@@ -186,7 +186,7 @@ export function ssProgressModel(st,now=Date.now()){
   const par=st?.parOp||{}, list=!scanning&&Array.isArray(st?.contrats)?st.contrats:[];
   const current=String(o.courante||'').split(' · ')[0];
   const tiles=list.map((c,i)=>{ const r=par[c];
-    // v3.4.0 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
+    // v3.4.1 — analyse en flux (pipeline) : l'ordre de traitement suit la lecture de Box, l'état vient seulement de parOp.
     let state=r?.r||(!st?.pipeline&&i<fait?'ok':'attente');
     if(!r&&!done&&(c===current||(!current&&i===fait&&step==='extraction'))) state='encours';
     if(!r&&done&&i>=fait) state=st.etat==='terminé'?'ok':'nontraite';
