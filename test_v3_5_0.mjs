@@ -27,3 +27,7 @@ for(const [d,why] of [
 // Règle de source
 assert.ok(!DEFAULT_SOURCE_RULES.dh.main.includes(T.RSEE_RE2020)); assert.ok(DEFAULT_SOURCE_RULES.dh.forbidden.includes(T.RSEE_RE2020));
 console.log('test_v3_5_0 : OK');
+// Bouton « ↻ Recalculer » d'un onglet de session.
+const app=(await import('node:fs')).readFileSync('js/app.js','utf8');
+assert.match(app,/data-stab-recompute/); assert.match(app,/await ensureProjectReads\(p\); computeProjectResult\(p\);/);
+console.log('test_v3_5_0 (bouton) : OK');

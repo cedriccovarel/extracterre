@@ -393,7 +393,7 @@ function sessionTabsHtml(){
   const count=id=>state.projects.filter(p=>!projectIsEmpty(p)&&(!id||sessionTabOf(p)===id)).length;
   const tab=(id,name,extra='')=>`<button type="button" role="tab" class="session-tab${state.activeSessionTab===id?' on':''}" aria-selected="${state.activeSessionTab===id}" data-stab="${escapeHtml(id)}">${escapeHtml(name)}<small>${count(id)}</small>${extra}</button>`;
   const cur=state.sessionTabs.find(t=>t.id===state.activeSessionTab);
-  return `<nav class="session-tabs" aria-label="Onglets de session"><div role="tablist">${tab('','Toutes')}${state.sessionTabs.map(t=>tab(t.id,t.name)).join('')}</div><button type="button" class="session-tab add" data-stab-add title="Nouvel onglet de session">＋ Onglet</button>${cur?`<span class="session-tab-tools"><button type="button" data-stab-rename title="Renommer l’onglet « ${escapeHtml(cur.name)} »">✎ Renommer</button><button type="button" data-stab-delete title="Supprimer l’onglet (les opérations restent dans « Toutes »)">× Supprimer l’onglet</button></span>`:''}</nav>`;
+  return `<nav class="session-tabs" aria-label="Onglets de session"><div role="tablist">${tab('','Toutes')}${state.sessionTabs.map(t=>tab(t.id,t.name)).join('')}</div><button type="button" class="session-tab add" data-stab-add title="Nouvel onglet de session">＋ Onglet</button>${cur?`<span class="session-tab-tools"><button type="button" data-stab-recompute title="Recalculer les résultats des opérations de l’onglet « ${escapeHtml(cur.name)} » avec les règles actuelles (sans relire les documents)">↻ Recalculer</button><button type="button" data-stab-rename title="Renommer l’onglet « ${escapeHtml(cur.name)} »">✎ Renommer</button><button type="button" data-stab-delete title="Supprimer l’onglet (les opérations restent dans « Toutes »)">× Supprimer l’onglet</button></span>`:''}</nav>`;
 }
 function wireSessionTabs(wrap,rerender){
   wrap.querySelectorAll('[data-stab]').forEach(b=>b.onclick=()=>{ if(state.activeSessionTab===b.dataset.stab) return; state.activeSessionTab=b.dataset.stab; state.overviewOwner=''; state.homeQuery=''; rerender(); scheduleWorkspaceCheckpoint('onglet de session'); });
@@ -401,6 +401,15 @@ function wireSessionTabs(wrap,rerender){
     if(state.sessionTabs.some(t=>t.name.localeCompare(n.trim(),'fr',{sensitivity:'base'})===0)){ toast(`L’onglet « ${n.trim()} » existe déjà.`,'warn'); state.activeSessionTab=ensureSessionTab(n); }
     else state.activeSessionTab=ensureSessionTab(n);
     state.overviewOwner=''; state.homeQuery=''; rerender(); scheduleWorkspaceCheckpoint('onglet de session créé'); });
+  // v3.5.0 — recalcul des résultats d'un onglet avec les règles actuelles (ex. nouvelle règle DH), sans relire les documents.
+  wrap.querySelector('[data-stab-recompute]')?.addEventListener('click',async e=>{ const t=state.sessionTabs.find(x=>x.id===state.activeSessionTab); if(!t) return;
+    const btn=e.currentTarget; if(btn.disabled) return; const ps=state.projects.filter(p=>sessionTabOf(p)===t.id&&(p.docs||[]).some(d=>d.status==='ready'));
+    if(!ps.length){ toast(`Aucune opération analysée dans « ${t.name} ».`,'warn'); return; }
+    btn.disabled=true; let k=0;
+    try{ for(const p of ps){ k++; btn.textContent=`↻ ${k}/${ps.length}…`; const was=projectReadsLoaded(p); await ensureProjectReads(p); computeProjectResult(p); if(!was&&p!==activeProject()) releaseProjectReads(p); await new Promise(r=>setTimeout(r,0)); } }
+    finally{ btn.disabled=false; btn.textContent='↻ Recalculer'; }
+    if(ps.includes(activeProject())) recomputeProject(`Onglet « ${t.name} » recalculé.`);
+    toast(`${ps.length} opération(s) de « ${t.name} » recalculée(s).`,'success'); rerender(); renderAll(); scheduleWorkspaceCheckpoint('onglet de session recalculé'); });
   wrap.querySelector('[data-stab-rename]')?.addEventListener('click',()=>{ const t=state.sessionTabs.find(x=>x.id===state.activeSessionTab); if(!t) return; const n=prompt('Nouveau nom de l’onglet :',t.name); if(!n||!n.trim()||n.trim()===t.name) return;
     if(state.sessionTabs.some(x=>x!==t&&x.name.localeCompare(n.trim(),'fr',{sensitivity:'base'})===0)){ toast(`L’onglet « ${n.trim()} » existe déjà.`,'warn'); return; }
     t.name=n.trim(); rerender(); scheduleWorkspaceCheckpoint('onglet de session renommé'); });
