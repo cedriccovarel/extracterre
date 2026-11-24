@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.5.0 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.5.1 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.5.0';
+const APP_VERSION='3.5.1';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -434,7 +434,7 @@ DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OP
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
 // v2.36.2 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
 // l'étude thermique n'est qu'un secours quand aucun RSET n'est lu.
-// v3.5.0 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE (PDF ou XML, RE2020 ou E+C-) ; un RSET XML reste une source ; les études RT (RT2012, RT existant)
+// v3.5.1 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE (PDF ou XML, RE2020 ou E+C-) ; un RSET XML reste une source ; les études RT (RT2012, RT existant)
 // et E+C- n'ont pas de DH. Voir dhSourceAllowed (engine.js).
 for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]={main:[DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],secondary:[DOC_TYPES.THERMAL],forbidden:[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING]};
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
@@ -514,7 +514,7 @@ const STRUCTURES = [
   pair('Béton armé',['béton armé','beton arme','voile béton','voile beton','mur béton','mur beton','dalle béton armé','dalle beton arme']),
   pair('Bloc béton / parpaing',['bloc béton','bloc beton','parpaing','agglo','aggloméré de béton','agglomere de beton','bloc creux béton','bloc creux beton','easytherm','easy therm','air bloc','air’bloc',"air'bloc",'technibloc']),
   pair('Brique terre cuite',['brique terre cuite','brique creuse','brique alvéolaire','brique alveolaire','porotherm','bio bric','monomur','brique bgv','bgv thermo']),
-  // v3.5.0 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
+  // v3.5.1 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
   pair('Brique',['brique pleine','maçonnerie brique','maconnerie brique','brique','briques']),
   pair('Béton cellulaire',['béton cellulaire','beton cellulaire','siporex','ytong']),
   pair('Pierre de taille',['pierre de taille']),
@@ -532,7 +532,7 @@ const STRUCTURES = [
   pair('Éléments préfabriqués',['éléments préfabriqués','elements prefabriques','préfabrication béton','prefabrication beton'])
 ];
 
-// v3.5.0 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
+// v3.5.1 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
 // (Béton armé, Maçonnerie, Acier, Bois, Mixte). Le détail lu (« Brique terre cuite », « Poutrelles-hourdis »…) reste dans la note
 // de provenance. Une valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») n'est pas retenue.
 const STRUCTURE_CLASSES=['Béton armé','Maçonnerie','Acier','Bois','Mixte'];
@@ -7080,10 +7080,12 @@ function parseRset(doc){
         if(vals.length>=2){ push(out,occ(doc,page,line,'cep',vals[0],'rset:cep-summary-row',0.995,'kWhEP/m².an')); push(out,occ(doc,page,line,'cep_max',vals[1],'rset:cep-summary-row',0.995,'kWhEP/m².an')); if(vals.length>=3) push(out,occ(doc,page,line,'cep_gain',vals[2],'rset:cep-summary-row',0.99,'%')); }
       }
       if(/\bdh\b|degres?[- ]heures?/i.test(s)){
-        const explicit=/\bDH\s*(?:max|seuil)/i.test(s)?null:firstValueAfterLabel(s,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */
+        // v3.5.1 — « Degrés-Heures Groupe 2 473,6 °C.h » : le numéro de groupe n'est pas le chiffre des milliers (2 473,6).
+        const sd=s.replace(/\bgroupe\s*\d+\s+(?=\d)/gi,'');
+        const explicit=/\bDH\s*(?:max|seuil)/i.test(sd)?null:firstValueAfterLabel(sd,/\bDH\b|degres?[- ]heures?/i); /* « Le DH max est de 1250 » : le seuil, pas le DH */
         // v2.36.1 — « DH: 1250 °C.h », « DH: 350 °C.h », « DH: 0 °C.h » : seuils du schéma réglementaire ; « 1 » : numéro, pas un DH
         if(explicit!==null&&explicit>=5&&![350,1250,1850].includes(explicit)&&!(Number.isInteger(explicit)&&explicit>=2020&&explicit<=2031)) /* « seuil 2025 » : une année, pas un DH */ push(out,occ(doc,page,line,'dh',explicit,'rset:dh-explicit',0.98,'°C.h'));
-        const max=firstValueAfterLabel(s,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
+        const max=firstValueAfterLabel(sd,/DH\s*(?:max|seuil)|degres?[- ]heures?\s*(?:max|seuil)/i); if(max!==null) push(out,occ(doc,page,line,'dh_max',max,'rset:dh-explicit',0.97,'°C.h'));
       }
       if(/conforme|non\s+conforme/i.test(s) && i>0){
         const context=lineWindow(page,i,5,0);
@@ -9497,7 +9499,16 @@ function dhSourceAllowed(d){
   }
   return true;
 }
-const dhFilter=d=>{ if(dhSourceAllowed(d)) return o=>o; return o=>o&&DH_FIELDS.has(o.field)&&!o.userValidated?null:o; };
+// v3.5.1 — « Degrés-Heures Groupe 2 473,6 °C.h » lu 2 473,6 : le numéro de groupe était pris pour les milliers.
+// Rattrapage des lectures déjà enregistrées (bouton « Recalculer »), d'après l'extrait conservé.
+function fixDhGroupValue(o){
+  if(!o||o.userValidated||!DH_FIELDS.has(o.field)||o.field==='dh_max'||typeof o.value!=='number') return o;
+  const m=String(o.excerpt||'').match(/groupe\s*(\d+)\s+(\d{1,3}(?:[ \u00a0.]\d{3})*(?:,\d+)?)/i); if(!m) return o;
+  const rest=m[2].replace(/[ \u00a0.]/g,'').replace(',','.'), joined=parseFloat(m[1]+rest), real=parseFloat(rest);
+  if(!(Math.abs(o.value-joined)<0.01)||!isFinite(real)) return o;
+  return {...o,value:real,provenanceNote:[o.provenanceNote,`DH corrigé : « Groupe ${m[1]} » n'est pas le chiffre des milliers (lu ${o.value}).`].filter(Boolean).join(' ')};
+}
+const dhFilter=d=>{ if(dhSourceAllowed(d)) return o=>fixDhGroupValue(o); return o=>o&&DH_FIELDS.has(o.field)&&!o.userValidated?null:fixDhGroupValue(o); };
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){

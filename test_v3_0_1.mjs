@@ -2,7 +2,7 @@
 import {APP_VERSION,DOC_TYPES} from './js/config.js';
 import {parseDocument} from './js/parsers.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.5.0','version');
+eq(APP_VERSION,'3.5.1','version');
 const mk=(type,lines)=>({id:'t',name:'test.pdf',type,status:'ready',buildings:{names:['Bâtiment unique']},read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map((t,i)=>({index:i,text:t}))}]}});
 const get=(type,lines,f,min=0.9)=>[...new Set(parseDocument(mk(type,lines)).filter(o=>o.field===f&&o.confidence>=min).map(o=>o.value))];
 eq(get(DOC_TYPES.CCTP,['MURS DE FACADES','Doublage thermique type Doublissimo 100+13 sur les murs exterieurs'],'wall_insulation_thickness'),[100],'Doublissimo 100+13 → 100 mm (mur)');

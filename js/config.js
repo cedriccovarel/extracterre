@@ -1,4 +1,4 @@
-export const APP_VERSION='3.5.0';
+export const APP_VERSION='3.5.1';
 export const MIN_RETAINED_CONFIDENCE = 0.90;
 export const MIN_REVIEW_CONFIDENCE = 0.65;
 export const ANALYSIS_MODES = Object.freeze({
@@ -429,7 +429,7 @@ DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OP
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
 // v2.36.2 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
 // l'étude thermique n'est qu'un secours quand aucun RSET n'est lu.
-// v3.5.0 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE (PDF ou XML, RE2020 ou E+C-) ; un RSET XML reste une source ; les études RT (RT2012, RT existant)
+// v3.5.1 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE (PDF ou XML, RE2020 ou E+C-) ; un RSET XML reste une source ; les études RT (RT2012, RT existant)
 // et E+C- n'ont pas de DH. Voir dhSourceAllowed (engine.js).
 for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]={main:[DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],secondary:[DOC_TYPES.THERMAL],forbidden:[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING]};
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
@@ -509,7 +509,7 @@ export const STRUCTURES = [
   pair('Béton armé',['béton armé','beton arme','voile béton','voile beton','mur béton','mur beton','dalle béton armé','dalle beton arme']),
   pair('Bloc béton / parpaing',['bloc béton','bloc beton','parpaing','agglo','aggloméré de béton','agglomere de beton','bloc creux béton','bloc creux beton','easytherm','easy therm','air bloc','air’bloc',"air'bloc",'technibloc']),
   pair('Brique terre cuite',['brique terre cuite','brique creuse','brique alvéolaire','brique alveolaire','porotherm','bio bric','monomur','brique bgv','bgv thermo']),
-  // v3.5.0 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
+  // v3.5.1 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
   pair('Brique',['brique pleine','maçonnerie brique','maconnerie brique','brique','briques']),
   pair('Béton cellulaire',['béton cellulaire','beton cellulaire','siporex','ytong']),
   pair('Pierre de taille',['pierre de taille']),
@@ -527,7 +527,7 @@ export const STRUCTURES = [
   pair('Éléments préfabriqués',['éléments préfabriqués','elements prefabriques','préfabrication béton','prefabrication beton'])
 ];
 
-// v3.5.0 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
+// v3.5.1 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
 // (Béton armé, Maçonnerie, Acier, Bois, Mixte). Le détail lu (« Brique terre cuite », « Poutrelles-hourdis »…) reste dans la note
 // de provenance. Une valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») n'est pas retenue.
 export const STRUCTURE_CLASSES=['Béton armé','Maçonnerie','Acier','Bois','Mixte'];

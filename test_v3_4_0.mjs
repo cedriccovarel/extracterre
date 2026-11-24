@@ -4,7 +4,7 @@ import assert from 'assert';
 import {structuralClass,STRUCTURE_CLASSES,APP_VERSION} from './js/config.js';
 import {routeAndDeduplicate} from './js/engine.js';
 import {sameValue} from './js/qualite.js';
-assert.strictEqual(APP_VERSION,'3.5.0');
+assert.strictEqual(APP_VERSION,'3.5.1');
 const cases={'Béton banché':'Béton armé','Béton armé':'Béton armé','Dalle béton':'Béton armé','Prédalle':'Béton armé','Poutrelles-hourdis':'Béton armé','Éléments préfabriqués':'Béton armé',
   'Brique terre cuite':'Maçonnerie','Bloc béton / parpaing':'Maçonnerie','Béton cellulaire':'Maçonnerie','Pierre de taille':'Maçonnerie','Meulière':'Maçonnerie',
   'Structure métallique':'Acier','Ossature bois':'Bois','CLT':'Bois','Plancher bois':'Bois','Pans de bois':'Bois',

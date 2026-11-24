@@ -518,7 +518,16 @@ export function dhSourceAllowed(d){
   }
   return true;
 }
-const dhFilter=d=>{ if(dhSourceAllowed(d)) return o=>o; return o=>o&&DH_FIELDS.has(o.field)&&!o.userValidated?null:o; };
+// v3.5.1 — « Degrés-Heures Groupe 2 473,6 °C.h » lu 2 473,6 : le numéro de groupe était pris pour les milliers.
+// Rattrapage des lectures déjà enregistrées (bouton « Recalculer »), d'après l'extrait conservé.
+export function fixDhGroupValue(o){
+  if(!o||o.userValidated||!DH_FIELDS.has(o.field)||o.field==='dh_max'||typeof o.value!=='number') return o;
+  const m=String(o.excerpt||'').match(/groupe\s*(\d+)\s+(\d{1,3}(?:[ \u00a0.]\d{3})*(?:,\d+)?)/i); if(!m) return o;
+  const rest=m[2].replace(/[ \u00a0.]/g,'').replace(',','.'), joined=parseFloat(m[1]+rest), real=parseFloat(rest);
+  if(!(Math.abs(o.value-joined)<0.01)||!isFinite(real)) return o;
+  return {...o,value:real,provenanceNote:[o.provenanceNote,`DH corrigé : « Groupe ${m[1]} » n'est pas le chiffre des milliers (lu ${o.value}).`].filter(Boolean).join(' ')};
+}
+const dhFilter=d=>{ if(dhSourceAllowed(d)) return o=>fixDhGroupValue(o); return o=>o&&DH_FIELDS.has(o.field)&&!o.userValidated?null:fixDhGroupValue(o); };
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
