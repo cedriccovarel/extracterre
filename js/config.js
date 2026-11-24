@@ -429,7 +429,7 @@ DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OP
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
 // v2.36.2 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
 // l'étude thermique n'est qu'un secours quand aucun RSET n'est lu.
-// v3.5.0 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE ni dans un XML ; les études RT (RT2012, RT existant)
+// v3.5.0 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE (PDF ou XML, RE2020 ou E+C-) ; un RSET XML reste une source ; les études RT (RT2012, RT existant)
 // et E+C- n'ont pas de DH. Voir dhSourceAllowed (engine.js).
 for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]={main:[DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],secondary:[DOC_TYPES.THERMAL],forbidden:[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING]};
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);

@@ -1,4 +1,4 @@
-// v3.5.0 — DH : jamais lu dans un RSEE ni un XML ; une étude thermique RT2012 / RT existant / E+C- n'a pas de DH.
+// v3.5.0 — DH : jamais lu dans un RSEE (PDF ou XML) ; un RSET XML reste une source ; une étude thermique RT2012 / RT existant / E+C- n'a pas de DH.
 import assert from 'node:assert/strict';
 const {DOC_TYPES,DEFAULT_SOURCE_RULES}=await import('./js/config.js');
 const {analyzeDocuments,dhSourceAllowed}=await import('./js/engine.js');
@@ -11,7 +11,8 @@ const bbioOf=docs=>analyzeDocuments(docs,structuredClone(DEFAULT_SOURCE_RULES),'
 // Refusés
 for(const [d,why] of [
   [doc('a',T.RSEE_RE2020,'RSEE.pdf','RE2020 RSEE DH 420'),'RSEE'],
-  [doc('b',T.RSET_RE2020,'RSET.xml','<RSET>'),'XML'],
+  [doc('b',T.RSEE_RE2020,'RSEE.xml','RSEE'),'XML RSEE'],
+  [Object.assign(doc('b2',T.RSET_RE2020,'RS2E.xml','RSEE E+C-'),{read:{kind:'xml',text:'RSEE E+C-',pages:[{page:1,text:'x'}],re2020:{format:'EC-XML'}}}),'XML RSEE E+C- rangé en RSET'],
   [doc('c',T.RT2012,'RT2012.pdf','RT 2012'),'étude RT2012'],
   [doc('d',T.RT_EXISTING,'RTex.pdf','RT existant'),'RT existant'],
   [doc('e',T.THERMAL,'Etude.pdf','Étude thermique réglementaire RT 2012 Bbio Cep'),'étude thermique RT2012'],
@@ -20,6 +21,7 @@ for(const [d,why] of [
 // Acceptés
 for(const [d,why] of [
   [doc('g',T.RSET_RE2020,'RSET.pdf','RSET RE2020'),'RSET PDF'],
+  [Object.assign(doc('g2',T.RSET_RE2020,'RSET.xml','RSET'),{read:{kind:'xml',text:'RSET',pages:[{page:1,text:'RSET'}],re2020:{format:'RE2020-XML'}}}),'RSET XML'],
   [doc('h',T.THERMAL,'Etude.pdf','Étude thermique RE2020 (seuils RT 2012 rappelés)'),'étude thermique RE2020'],
 ]){ assert.equal(dhSourceAllowed(d),true,why); assert.equal(dhOf([d]).length,1,`DH lu : ${why}`); }
 // Règle de source

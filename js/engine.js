@@ -502,12 +502,13 @@ export function dropResultlessBuildings(consolidated,manual={}){
   consolidated.detailed=(consolidated.detailed||[]).map(o=>d.has(o.building)&&o.status==='retenu'?{...o,status:'rejeté',rejectionReason:'Bâtiment sans aucun résultat (Tic, DH, Bbio, Cep, Ic…) : très probablement un faux bâtiment'}:o);
   return drop;
 }
-// v3.5.0 — DH : jamais depuis un RSEE ni un XML ; une étude thermique RT2012 / RT existant / E+C- (sans RE2020) n'a pas de DH.
+// v3.5.0 — DH : jamais depuis un RSEE (PDF ou XML) ; un RSET XML reste une source ; une étude thermique RT2012 / RT existant / E+C- (sans RE2020) n'a pas de DH.
 const DH_FIELDS=new Set(['dh','dh_zt','dh_znt','dh_max']);
 export function dhSourceAllowed(d){
   if(!d) return true;
   if(d.type===DOC_TYPES.RSEE_RE2020||d.type===DOC_TYPES.RT2012||d.type===DOC_TYPES.RT_EXISTING) return false;
-  if(/\.xml$/i.test(String(d.name||''))) return false; // sans lire d.read (recalculs sans relecture)
+  // XML : un RSET XML fournit le DH ; un RSEE (RE2020 ou E+C-, « RS2E ») non, même rangé en RSET. d.read n'est lu que pour un XML.
+  if(/\.xml$/i.test(String(d.name||''))&&d.read?.re2020?.format==='EC-XML') return false;
   if(d.type===DOC_TYPES.THERMAL){
     // Verdict mémorisé sur le document : le texte n'est lu qu'une fois (recalculs sans relecture, v2.19.2).
     if(d.dhRtStudy!=null) return !d.dhRtStudy;
