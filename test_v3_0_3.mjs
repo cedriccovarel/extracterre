@@ -2,7 +2,7 @@
 import {APP_VERSION} from './js/config.js';
 import {runSearchGrid,SECURITY_GRID,normalizeGrid} from './js/recherches.js';
 let n=0; const eq=(a,b,l)=>{ const A=JSON.stringify(a),B=JSON.stringify(b); if(A!==B){ console.error(`ÉCHEC ${l}\n  obtenu  : ${A}\n  attendu : ${B}`); process.exit(1); } n++; };
-eq(APP_VERSION,'3.4.5','version');
+eq(APP_VERSION,'3.5.0','version');
 eq(normalizeGrid(SECURITY_GRID).rulesVersion>=3,true,'règles v3 appliquées');
 const doc=(name,lines)=>({id:name,name,type:'CCTP',status:'ready',read:{pages:[{page:1,text:lines.join('\n'),lines:lines.map(t=>({text:t}))}]}});
 const run=(lines,name='CCTP.pdf')=>runSearchGrid(SECURITY_GRID,[doc(name,lines)]).criteria;

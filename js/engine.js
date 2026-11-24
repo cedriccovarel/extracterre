@@ -502,6 +502,22 @@ export function dropResultlessBuildings(consolidated,manual={}){
   consolidated.detailed=(consolidated.detailed||[]).map(o=>d.has(o.building)&&o.status==='retenu'?{...o,status:'rejeté',rejectionReason:'Bâtiment sans aucun résultat (Tic, DH, Bbio, Cep, Ic…) : très probablement un faux bâtiment'}:o);
   return drop;
 }
+// v3.5.0 — DH : jamais depuis un RSEE ni un XML ; une étude thermique RT2012 / RT existant / E+C- (sans RE2020) n'a pas de DH.
+const DH_FIELDS=new Set(['dh','dh_zt','dh_znt','dh_max']);
+export function dhSourceAllowed(d){
+  if(!d) return true;
+  if(d.type===DOC_TYPES.RSEE_RE2020||d.type===DOC_TYPES.RT2012||d.type===DOC_TYPES.RT_EXISTING) return false;
+  if(/\.xml$/i.test(String(d.name||''))) return false; // sans lire d.read (recalculs sans relecture)
+  if(d.type===DOC_TYPES.THERMAL){
+    // Verdict mémorisé sur le document : le texte n'est lu qu'une fois (recalculs sans relecture, v2.19.2).
+    if(d.dhRtStudy!=null) return !d.dhRtStudy;
+    const t=String(d.read?.text||'');
+    d.dhRtStudy=!/\bRE\s?2020\b/i.test(t)&&/\bRT\s?2012\b|\bRT\s?(?:existant|ex\b|globale?|par\s+éléments?)|\bE\s?\+\s?C\s?[-−–]|\blabel\s+E\s?\+\s?C\b/i.test(t);
+    return !d.dhRtStudy;
+  }
+  return true;
+}
+const dhFilter=d=>{ if(dhSourceAllowed(d)) return o=>o; return o=>o&&DH_FIELDS.has(o.field)&&!o.userValidated?null:o; };
 export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
@@ -509,8 +525,8 @@ export function analyzeDocuments(docs,rules,operationName='',buildingOverrides={
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
-    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
+    if(Array.isArray(d.cachedOccurrences)){ const keep=dhFilter(d); for(const o of d.cachedOccurrences){ const c=keep(engRoofClean(o)); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; { const keep=dhFilter(d); for(const o of parsed){ const c=keep(o); if(c) raw.push(dated(c)); } } newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const pass=()=>{ const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

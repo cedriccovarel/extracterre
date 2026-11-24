@@ -1,9 +1,9 @@
-/* ExtracTerre bundled runtime v3.4.5 - compatible file:// and GitHub Pages */
+/* ExtracTerre bundled runtime v3.5.0 - compatible file:// and GitHub Pages */
 (function(){
 'use strict';
 
 /* ---- config.js ---- */
-const APP_VERSION='3.4.5';
+const APP_VERSION='3.5.0';
 const MIN_RETAINED_CONFIDENCE = 0.90;
 const MIN_REVIEW_CONFIDENCE = 0.65;
 const ANALYSIS_MODES = Object.freeze({
@@ -434,7 +434,9 @@ DEFAULT_SOURCE_RULES.housing_typologies=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OP
 DEFAULT_SOURCE_RULES.construction_year=ordered([DOC_TYPES.CONTRACT,DOC_TYPES.OPERATION_BOOKLET,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSENV,DOC_TYPES.PLAN,DOC_TYPES.NOTICE,DOC_TYPES.RT_EXISTING,DOC_TYPES.DIAGNOSTIC,DOC_TYPES.MANUAL]);
 // v2.36.2 — règle métier : Salesforce d'abord (prime partout), sinon le DH se lit dans le RSET (RSEE : sa partie RSET) ;
 // l'étude thermique n'est qu'un secours quand aucun RSET n'est lu.
-for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],[DOC_TYPES.THERMAL]);
+// v3.5.0 — exigence Prestaterre : le DH n'est jamais lu dans un RSEE ni dans un XML ; les études RT (RT2012, RT existant)
+// et E+C- n'ont pas de DH. Voir dhSourceAllowed (engine.js).
+for(const key of ['dh','dh_zt','dh_znt','dh_max']) DEFAULT_SOURCE_RULES[key]={main:[DOC_TYPES.RSET_RE2020,DOC_TYPES.MANUAL],secondary:[DOC_TYPES.THERMAL],forbidden:[DOC_TYPES.RSEE_RE2020,DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING]};
 for(const key of ['tic','tic_ref']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RT2012,DOC_TYPES.RT_EXISTING,DOC_TYPES.THERMAL,DOC_TYPES.MANUAL]);
 // v2.3.20 — une étude RT existant (Th-C-E ex) déclare explicitement ses zones traversantes, comme une étude thermique.
 for(const key of ['cross_ventilated','non_cross_ventilated','fan_count','fan_type','fan_presence']) DEFAULT_SOURCE_RULES[key]=ordered([DOC_TYPES.RSEE_RE2020,DOC_TYPES.RSET_RE2020,DOC_TYPES.RT2012,DOC_TYPES.THERMAL,DOC_TYPES.RT_EXISTING,DOC_TYPES.PLAN,DOC_TYPES.CCTP,DOC_TYPES.MANUAL],[DOC_TYPES.NOTICE]);
@@ -512,7 +514,7 @@ const STRUCTURES = [
   pair('Béton armé',['béton armé','beton arme','voile béton','voile beton','mur béton','mur beton','dalle béton armé','dalle beton arme']),
   pair('Bloc béton / parpaing',['bloc béton','bloc beton','parpaing','agglo','aggloméré de béton','agglomere de beton','bloc creux béton','bloc creux beton','easytherm','easy therm','air bloc','air’bloc',"air'bloc",'technibloc']),
   pair('Brique terre cuite',['brique terre cuite','brique creuse','brique alvéolaire','brique alveolaire','porotherm','bio bric','monomur','brique bgv','bgv thermo']),
-  // v3.4.5 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
+  // v3.5.0 — « Mur extérieur Brique 200 » (étude thermique) : brique seule reconnue (après les briques nommées).
   pair('Brique',['brique pleine','maçonnerie brique','maconnerie brique','brique','briques']),
   pair('Béton cellulaire',['béton cellulaire','beton cellulaire','siporex','ytong']),
   pair('Pierre de taille',['pierre de taille']),
@@ -530,7 +532,7 @@ const STRUCTURES = [
   pair('Éléments préfabriqués',['éléments préfabriqués','elements prefabriques','préfabrication béton','prefabrication beton'])
 ];
 
-// v3.4.5 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
+// v3.5.0 — Enveloppe : structure, planchers hauts, planchers bas, parois verticales prennent une valeur de la liste Prestaterre
 // (Béton armé, Maçonnerie, Acier, Bois, Mixte). Le détail lu (« Brique terre cuite », « Poutrelles-hourdis »…) reste dans la note
 // de provenance. Une valeur qui n'est pas un système porteur (« Façade légère », « Toiture terrasse ») n'est pas retenue.
 const STRUCTURE_CLASSES=['Béton armé','Maçonnerie','Acier','Bois','Mixte'];
@@ -9479,6 +9481,22 @@ function dropResultlessBuildings(consolidated,manual={}){
   consolidated.detailed=(consolidated.detailed||[]).map(o=>d.has(o.building)&&o.status==='retenu'?{...o,status:'rejeté',rejectionReason:'Bâtiment sans aucun résultat (Tic, DH, Bbio, Cep, Ic…) : très probablement un faux bâtiment'}:o);
   return drop;
 }
+// v3.5.0 — DH : jamais depuis un RSEE ni un XML ; une étude thermique RT2012 / RT existant / E+C- (sans RE2020) n'a pas de DH.
+const DH_FIELDS=new Set(['dh','dh_zt','dh_znt','dh_max']);
+function dhSourceAllowed(d){
+  if(!d) return true;
+  if(d.type===DOC_TYPES.RSEE_RE2020||d.type===DOC_TYPES.RT2012||d.type===DOC_TYPES.RT_EXISTING) return false;
+  if(/\.xml$/i.test(String(d.name||''))) return false; // sans lire d.read (recalculs sans relecture)
+  if(d.type===DOC_TYPES.THERMAL){
+    // Verdict mémorisé sur le document : le texte n'est lu qu'une fois (recalculs sans relecture, v2.19.2).
+    if(d.dhRtStudy!=null) return !d.dhRtStudy;
+    const t=String(d.read?.text||'');
+    d.dhRtStudy=!/\bRE\s?2020\b/i.test(t)&&/\bRT\s?2012\b|\bRT\s?(?:existant|ex\b|globale?|par\s+éléments?)|\bE\s?\+\s?C\s?[-−–]|\blabel\s+E\s?\+\s?C\b/i.test(t);
+    return !d.dhRtStudy;
+  }
+  return true;
+}
+const dhFilter=d=>{ if(dhSourceAllowed(d)) return o=>o; return o=>o&&DH_FIELDS.has(o.field)&&!o.userValidated?null:o; };
 function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extraOccurrences=[]){
   const raw=[...(extraOccurrences||[])]; let newlyParsedCount=0, reusedParsedCount=0;
   for(const d of docs){
@@ -9486,8 +9504,8 @@ function analyzeDocuments(docs,rules,operationName='',buildingOverrides={},extra
     catchUpDocument(d,buildingOverrides);
     // v2.20.2 — lectures conservées d'avant : « Planchers hauts » = matériau, plus le statut de la toiture.
     const vd=ENGINE_OPTIONS.versionByFileDate&&VERSION_TYPES.has(d.type)?fileVersionDate(d):null; const dated=o=>vd&&o&&!o.studyDate?{...o,studyDate:vd,versionFromFile:true}:o;
-    if(Array.isArray(d.cachedOccurrences)){ for(const o of d.cachedOccurrences){ const c=engRoofClean(o); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
-    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; for(const o of parsed) raw.push(dated(o)); newlyParsedCount++;
+    if(Array.isArray(d.cachedOccurrences)){ const keep=dhFilter(d); for(const o of d.cachedOccurrences){ const c=keep(engRoofClean(o)); if(c) raw.push(dated(c)); } reusedParsedCount++; continue; }
+    const parsed=parseDocument(d); d.cachedOccurrences=parsed; d.analysisCachedAt=Date.now(); d.rsetAddressRead=true; d.dhZonesRead=true; d.fanRead=2; d.bldRead=BLD_READ; d.dhRead=DH_READ; d.envRead=ENV_READ; { const keep=dhFilter(d); for(const o of parsed){ const c=keep(o); if(c) raw.push(dated(c)); } } newlyParsedCount++;
   }
   const grouping=buildBuildingGrouping(docs,raw,buildingOverrides);
   const pass=()=>{ const remappedRaw=raw.map(o=>{ const mapped=mappedBuilding(o.building,grouping); return {...o,originalBuilding:o.originalBuilding||o.building,building:mapped}; });

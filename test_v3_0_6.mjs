@@ -1,9 +1,9 @@
-// ExtracTerre v3.4.5 — relecture par onglet (dossiers déjà analysés). Données fictives.
+// ExtracTerre v3.5.0 — relecture par onglet (dossiers déjà analysés). Données fictives.
 import {APP_VERSION} from './js/config.js';
 import {rereadForTabs,REREAD_TABS} from './js/import-rules.js';
 import fs from 'fs';
 let n=0; const eq=(a,b,m)=>{ if(a!==b) throw new Error(`${m} : ${a} ≠ ${b}`); n++; };
-eq(APP_VERSION,'3.4.5','version'); eq(Object.keys(REREAD_TABS).length,6,'6 onglets');
+eq(APP_VERSION,'3.5.0','version'); eq(Object.keys(REREAD_TABS).length,6,'6 onglets');
 const L={searchLots:['electricite','menuiseries exterieures'],envelopeLots:['isolation','facade','menuiseries exterieures']};
 const rset={family:'thermique',name:'RSET.xml'}, cctpElec={family:'cctp',name:'CCTP Lot 12 Electricite.pdf'}, cctpGo={family:'cctp',name:'CCTP Lot 02 Gros oeuvre.pdf'}, cctpAll={family:'cctp',name:'CCTP.pdf'}, cctpFac={family:'cctp',name:'CCTP lot 05 Facade.pdf'};
 eq(rereadForTabs(rset,{docType:'RSET RE2020'},['thermal'],L),true,'RSET → Thermique');
@@ -23,4 +23,4 @@ const app=fs.readFileSync('js/app.js','utf8'), imp=fs.readFileSync('tools/import
 eq(/data-ss-launch="relecture"/.test(app)&&/data-ss-rtab/.test(app),true,'bouton et menu');
 eq(/--relire-onglets/.test(imp)&&/!force&&/.test(imp),true,'script : relecture ciblée');
 eq(/--relire-onglets/.test(w),true,'service : option transmise');
-console.log(`v3.4.5 — ${n} vérifications OK (données fictives)`);
+console.log(`v3.5.0 — ${n} vérifications OK (données fictives)`);

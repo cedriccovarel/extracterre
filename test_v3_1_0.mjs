@@ -1,11 +1,11 @@
-// ExtracTerre v3.4.5 — onglets de session : l'onglet d'une opération est gardé (sauvegarde locale, export), l'export de
+// ExtracTerre v3.5.0 — onglets de session : l'onglet d'une opération est gardé (sauvegarde locale, export), l'export de
 // session ne prend que l'onglet ouvert (« Toutes » = toutes, comme avant), l'import range dans l'onglet du fichier.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull,hydrateProjectFull} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; };
-eq(APP_VERSION,'3.4.5','version');
+eq(APP_VERSION,'3.5.0','version');
 const full=serializeProjectFull({id:'p1',sessionTab:'tab-neuf',docs:[]});
 eq(full.sessionTab,'tab-neuf','onglet sérialisé');
 eq(serializeProjectFull({id:'p2',docs:[]}).sessionTab,'','sans onglet : seulement « Toutes »');

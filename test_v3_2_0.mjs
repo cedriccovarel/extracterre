@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import {APP_VERSION} from './js/config.js';
 import {serializeProjectFull,hydrateProjectFull} from './js/persistence.js';
 let n=0; const eq=(a,b,m)=>{ assert.deepEqual(a,b,m); n++; }; const has=(s,re,m)=>{ assert.match(s,re,m); n++; };
-eq(APP_VERSION,'3.4.5','version');
+eq(APP_VERSION,'3.5.0','version');
 const p=serializeProjectFull({id:'p1',docs:[],sfDocChoice:{'Bâtiment A|cep':'doc'}});
 eq(p.sfDocChoice,{'Bâtiment A|cep':'doc'},'choix sauvegardé');
 eq(hydrateProjectFull(p).sfDocChoice,{'Bâtiment A|cep':'doc'},'choix relu');
