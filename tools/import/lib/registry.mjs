@@ -30,11 +30,17 @@ export class SupabaseStore{
       throw new Error(`Supabase ${res.status} : ${t.slice(0,300)}`);
     }
   }
+  // Lecture par clé (keyset) : chaque page reprend après la dernière clé lue, via l'index de la clé primaire.
+  // Avant (26/11/2026) : pagination par décalage triée sur updated_at (sans index) → tri de toute la table à chaque page,
+  // « canceling statement due to statement timeout » (57014) quand le registre a grossi.
   async getAll(table,select){
-    const out=[]; const page=1000;
-    for(let from=0;;from+=page){
-      const rows=await this.req('GET',`${table}?select=${select}&order=${table==='extracterre_import_keys'?'id':'updated_at'}.asc`,null,{Range:`${from}-${from+page-1}`,'Range-Unit':'items'});
-      out.push(...rows); if(rows.length<page) return out;
+    const key={extracterre_import_files:'file_key',extracterre_import_operations:'contract_key',extracterre_import_keys:'id'}[table]||'id';
+    const cols=String(select).split(',').map(x=>x.trim()); const sel=cols.includes(key)?select:`${key},${select}`;
+    const out=[]; const page=500; let last=null;
+    for(;;){
+      const after=last==null?'':`&${key}=gt.${encodeURIComponent(String(last))}`;
+      const rows=await this.req('GET',`${table}?select=${sel}&order=${key}.asc&limit=${page}${after}`);
+      out.push(...rows); if(rows.length<page) return out; last=rows[rows.length-1][key];
     }
   }
   async upsert(table,rows,onConflict){
